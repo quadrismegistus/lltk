@@ -1,0 +1,15 @@
+black
+color
+desegregation
+discrimination
+ethnic
+indian
+jew
+native
+negro
+nigger
+prejudice
+race
+racial
+segregation
+white

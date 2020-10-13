@@ -1,0 +1,16 @@
+colour
+colours
+figure
+heat
+length
+light
+motion
+name
+presence
+quantity
+size
+space
+taste
+time
+union
+weight

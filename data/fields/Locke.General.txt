@@ -1,0 +1,16 @@
+animal
+army
+body
+court
+creature
+earth
+man
+mankind
+mind
+nation
+nature
+object
+person
+substance
+town
+world

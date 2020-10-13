@@ -1,6 +1,14 @@
 from gevent import monkey,sleep
 monkey.patch_all()
 
+import os,sys
+path_self = os.path.realpath(__file__)
+path_code = os.path.abspath(os.path.join(path_self,'..','..','..'))
+path_code_data = os.path.join(path_code,'data')
+os.environ['PYTHONPATH']=f'{path_code}:'+os.environ.get('PYTHONPATH','')
+sys.path.insert(0,path_code)
+
+
 MODERNIZE_SPELLING=False
 
 import numpy as np
@@ -22,6 +30,14 @@ from flask_session import Session
 from pymongo import MongoClient
 client = MongoClient()
 db_lltk = client['lltk']
+
+
+word2pos=json.load(open(os.path.join(path_code_data,'word2pos.json')))
+pos2words=defaultdict(list)
+for word,pos in word2pos.items(): pos2words[pos[:1]]+=[word]
+
+word2fields=load_fields()
+
 
 
 ONLY_FIELDS={'VG.Human','VG.Object','VG.Animal','W2V.Locke.Abstract','W2V.Locke.Concrete','W2V.HGI.Abstract','W2V.HGI.Concrete'}
@@ -401,8 +417,3 @@ def load_notebook(path,only_defs=False):
 
 
 
-word2pos_df=pd.read_csv('/Users/ryan/DH/TOOLS/words/byu/worddb.byu.txt',sep='\t')
-word2pos_df['pos0']=word2pos_df.pos.apply(lambda x: x[0])
-word2pos=dict(zip(word2pos_df.word,word2pos_df.pos))
-pos2words=dict((group,set(group_df.word)) for group,group_df in word2pos_df.groupby('pos0'))
-word2fields=load_fields()

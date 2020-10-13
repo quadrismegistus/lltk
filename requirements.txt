@@ -14,3 +14,9 @@ pandas
 gevent
 gunicorn
 flask
+pymongo
+ujson
+mongo_datatables
+flask_pymongo
+flask_socketio
+flask_session
