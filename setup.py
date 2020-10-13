@@ -13,7 +13,7 @@ from subprocess import check_call
 #     """Post-installation for installation mode."""
 #     def run(self):
 #         install.run(self)
-#         check_call('llp configure'.split())
+#         check_call('lltk configure'.split())
 
 
 
@@ -25,18 +25,18 @@ with open("requirements.txt", "r") as fh:
     requirements = [x.strip() for x in fh.read().split('\n') if x.strip()]
 
 setup(
-    name='llp',
+    name='lltk',
     version='0.2.2',
-    description=('Literary Language Processing (LLP): corpora, models, and tools for the digital humanities'),
+    description=('Literary Language Processing (LLTK): corpora, models, and tools for the digital humanities'),
     long_description=long_description,
     long_description_content_type="text/markdown",
     author='Ryan Heuser',
     author_email='heuser@stanford.edu',
-    url='https://github.com/quadrismegistus/llp',
+    url='https://github.com/quadrismegistus/lltk',
     license='MIT',
     packages=setuptools.find_packages(),
     install_requires=requirements,
-    scripts=['bin/llp'],
+    scripts=['bin/lltk'],
     include_package_data=True,
     classifiers=[
         #'Development Status :: 3 - Alpha',

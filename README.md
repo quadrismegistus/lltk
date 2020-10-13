@@ -1,26 +1,26 @@
-# llp
+# lltk
 
-Literary Language Processing (LLP): corpora, models, and tools for the digital humanities.
+Literary Language Tool Kit (LLTK): corpora, models, and tools for the study of complex language.
 
 ## Quickstart
 
 1) Install:
 
 ```
-pip install llp                       # install with pip in terminal
+pip install git+https://github.com/quadrismegistus/litlangtoolkit                       # install with pip in terminal
 ```
 
 2) Download an existing corpus...
 
 ```
-llp status                            # show which corpora/data are available
-llp download ECCO_TCP                 # download a corpus
+lltk status                            # show which corpora/data are available
+lltk download ECCO_TCP                 # download a corpus
 ```
 
 ...or import your own:
 
 ```
-llp import                            # use the "import" command \
+lltk import                            # use the "import" command \
   -path_txt mycorpus/txts             # a folder of txt files  (use -path_xml for xml) \
   -path_metadata mycorpus/meta.xls    # a metadata csv/tsv/xls about those txt files \
   -col_fn filename                    # filename in the metadata corresponding to the .txt filename
@@ -29,14 +29,14 @@ llp import                            # use the "import" command \
 ...or start a new one:
 
 ```
-llp create                            # then follow the interactive prompt
+lltk create                            # then follow the interactive prompt
 ```
 
 3) Then you can load the corpus in Python:
 
 ```python
-import llp                            # import llp as a python module
-corpus = llp.load('ECCO_TCP')         # load the corpus by name or ID
+import lltk                            # import lltk as a python module
+corpus = lltk.load('ECCO_TCP')         # load the corpus by name or ID
 ```
 
 ...and play with convenient Corpus objects...
@@ -84,9 +84,9 @@ corpus.save_dtm()                     # save a document-term matrix with top N w
 You can also run these commands in the terminal:
 
 ```
-llp install my_corpus                 # this is equivalent to python above
-llp install my_corpus -parallel 4     # but can access parallel processing with MPI/Slingshot
-llp install my_corpus dtm             # run a specific step
+lltk install my_corpus                 # this is equivalent to python above
+lltk install my_corpus -parallel 4     # but can access parallel processing with MPI/Slingshot
+lltk install my_corpus dtm             # run a specific step
 ```
 
 Generating this kind of data allows for easier access to things like:
@@ -99,7 +99,7 @@ dtm = corpus.freqs(words=mfw)         # get a document-term matrix as a pandas d
 You can also build word2vec models:
 
 ```python
-w2v_model = corpus.word2vec()         # get an llp word2vec model object
+w2v_model = corpus.word2vec()         # get an lltk word2vec model object
 w2v_model.model()                     # run the modeling process
 w2v_model.save()                      # save the model somewhere
 gensim_model = w2v_model.gensim       # get the original gensim object

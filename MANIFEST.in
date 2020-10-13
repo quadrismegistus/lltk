@@ -1,10 +1,10 @@
 include *.txt
 recursive-include *.txt *.py
-recursive-include llp/corpus *.txt
+recursive-include lltk/corpus *.txt
 
 # added by check_manifest.py
 include LICENSE
 recursive-include bin *.sh
 recursive-include data *.gz
-recursive-include llp *.md
-recursive-include llp *.txt
+recursive-include lltk *.md
+recursive-include lltk *.txt

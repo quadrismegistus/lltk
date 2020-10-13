@@ -22,4 +22,4 @@ model/_models_word2vec/
 build/
 dist/
 mpi_slingshot.egg-info/
-llp.egg-info/
+lltk.egg-info/

@@ -1,0 +1,284 @@
+####
+# LLTK CORPUS MANIFEST
+####
+
+[ARTFL]
+name = ARTFL
+id = artfl
+desc = American and French Research on the Treasury of the French Language
+link = https://artfl-project.uchicago.edu
+
+
+[BPO]
+name = BPO
+id = bpo
+desc = British Periodicals Online
+link = https://proquest.libguides.com/britishperiodicals
+
+
+[Chadwyck]
+name = Chadwyck
+id = chadwyck
+desc = Chadwyck-Healey Fiction Collections
+link = http://collections.chadwyck.co.uk/marketing/list_of_all.jsp
+
+
+[ChadwyckDrama]
+name = ChadwyckDrama
+desc = Chadwyck-Healey Drama Collections
+link = http://collections.chadwyck.co.uk/marketing/list_of_all.jsp
+id = chadwyck_drama
+
+
+[ChadwyckPoetry]
+name = ChadwyckPoetry
+desc = Chadwyck-Healey Poetry Collections
+link = http://collections.chadwyck.co.uk/marketing/list_of_all.jsp
+id = chadwyck_poetry
+
+
+[Chicago]
+name = Chicago
+desc = U of Chicago Corpus of C20 Novels
+id = chicago
+
+
+[CLMET]
+name = CLMET
+desc = Corpus of Late Modern English Texts
+link = https://perswww.kuleuven.be/~u0044428/clmet.htm
+id = clmet
+ext_xml = .txt
+
+
+[COHA]
+name = COHA
+id = coha
+desc = Corpus of Historical American English
+link = https://www.english-corpora.org/coca/
+
+
+[COCA]
+name = COCA
+id = coca
+desc = Corpus of Contemporary American English
+link = https://www.english-corpora.org/coca/
+
+
+[DialNarr]
+name = DialNarr
+desc = Dialogue/Narration in Chadwyck-Healey Novels
+id = dialnarr
+
+
+[EnglishDialogues]
+name = EnglishDialogues
+desc = A Corpus of English Dialogues, 1560-1760
+id = dialogues
+
+
+[ECCO]
+name = ECCO
+desc = Eighteenth Century Collections Online
+id = ecco
+
+
+[ECCO_LitLang]
+name = ECCO_LitLang
+desc = ECCO (Literature and Language section)
+id = ecco_litlang
+path_root = ecco
+path_python = ecco/ecco.py
+class_name = ECCO_LitLang
+
+
+[ECCO_TCP]
+name = ECCO_TCP
+desc = ECCO (curated by the Text Creation Partnership)
+id = ecco_tcp
+path_root = ecco
+path_python = ecco/ecco.py
+class_name = ECCO_TCP
+path_freqs=freqs_tcp
+path_txt = txt_tcp
+path_xml = xml_tcp
+path_header = headers_tcp
+path_schema = schemas_tcp
+path_metadata = metadata_tcp.txt
+url_txt=https://www.dropbox.com/s/8sa4f6yqpz6ku3d/ecco_tcp_txt.zip?dl=1
+url_xml=https://www.dropbox.com/s/vtv2iw7ujtivqss/ecco_tcp_xml.zip?dl=1
+url_freqs=https://www.dropbox.com/s/sdf5pdyifnrulyk/ecco_tcp_freqs.zip?dl=1
+url_metadata=https://www.dropbox.com/s/xh991n4sohulczb/ecco_tcp_metadata.zip?dl=1
+
+
+[EEBO_TCP]
+name = EEBO_TCP
+desc = Early English Books Online (curated by the Text Creation Partnership)
+id = eebo_tcp
+path_root = eebo
+path_python = eebo/eebo.py
+class_name = EEBO_TCP
+
+
+[ESTC]
+name = ESTC
+desc = English Short Title Catalogue
+id = estc
+path_txt = json
+
+
+[GaleAmericanFiction]
+name = GaleAmericanFiction
+id = gale_amfic
+desc = Gale American Fiction, 1774-1920
+link = https://www.gale.com/c/american-fiction-1774-1920
+
+
+[GildedAge]
+name = GildedAge
+desc = U.S. Fiction of the Gilded Age
+id = gildedage
+url_metadata = https://www.dropbox.com/s/fg605k0cnebf70i/gildedage_metadata.zip?dl=1
+url_txt = https://www.dropbox.com/s/qnwbx488ftepuno/gildedage_txt.zip?dl=1
+
+
+[LitLab]
+name = LitLab
+desc = Literary Lab Corpus of 18th and 19th Century Novels
+id = litlab
+
+
+[MarkMark]
+name = MarkMark
+desc = Mark Algee-Hewitt's and Mark McGurl's 20th Century Corpus
+id = markmark
+
+
+[OldBailey]
+name = OldBailey
+desc = Old Bailey Online
+id = oldbailey
+
+
+[RavenGarside]
+name = RavenGarside
+desc = Raven & Garside's Bibliography of English Novels, 1770-1830
+id = ravengarside
+
+
+[Sellars]
+name = Sellars
+desc = 19th Century Texts compiled by Jordan Sellars
+id = sellars
+
+
+[Spectator]
+name = Spectator
+desc = The Spectator (1711-1714)
+id = spectator
+
+
+[TedJDH]
+name = TedJDH
+desc = Corpus used by Ted Underwood in the 2012 Journal of Digital Humanities piece
+id = tedjdh
+
+
+[InternetArchive]
+name = InternetArchive
+id = internet_archive
+desc = 19th Century Novels, curated by the U of Illinois and hosted on the Internet Archive
+link = https://archive.org/details/19thcennov?tab=about
+path_xml = meta_xml
+
+
+[txtLAB450]
+name = txtLAB450
+id = txtlab
+desc = A multilingual dataset of 450 novels
+link = https://txtlab.org/2016/01/txtlab450-a-data-set-of-multilingual-novels-for-teaching-and-research
+path_metadata = metadata.csv
+url_raw = https://github.com/christofs/txtlab450/archive/master.zip
+url_data = https://www.dropbox.com/s/7s5899li3qi1fuk/txtlab_data.zip?dl=1
+url_metadata = https://www.dropbox.com/s/eh33qy6bcm7rvcp/txtlab_metadata.zip?dl=1
+url_freqs = https://www.dropbox.com/s/56azeswx0omjum2/txtlab_freqs.zip?dl=1
+url_txt = https://www.dropbox.com/s/q4bm4yf76zgumi6/txtlab_txt.zip?dl=1
+
+
+[HathiEngLit]
+name = HathiEngLit
+id = hathi_englit
+desc = English Literature corpus from Hathi Trust
+
+
+[HathiBio]
+name = HathiBio
+id = hathi_bio
+desc = Biographies from Hathi Trust
+path_metadata = metadata.csv
+
+
+
+[DTA]
+name = DTA
+id = dta
+desc = Deutsches Text Archiv
+link = http://www.deutschestextarchiv.de
+url_raw = http://media.dwds.de/dta/download/dta_komplett_2019-06-05.zip
+url_raw_metadata = http://media.dwds.de/dta/download/dta_metadaten_oai_dc_2018-09-12.zip
+path_xml_meta = xml_meta
+
+
+[SOTU]
+name = SOTU
+id = sotu
+desc = State of the Union Addresses
+
+
+
+
+####
+# Synthetic Corpora
+####
+
+[LitHistAuthors]
+name = LitHistAuthors
+desc = Literary-historical texts with known author DOB
+sources = Chadwyck, ChadwyckPoetry, ChadwyckDrama, COHA, ECCO_TCP, EEBO_TCP
+id = lithist_authors
+path_root = lithist
+path_python = lithist/lithist.py
+class_name = LitHistAuthors
+path_metadata = corpus-metadata.LitHistAuthors.txt
+is_meta = True
+
+[LitHist]
+name = LitHist
+desc = Literary-historical texts from a wide variety of sources
+sources = ['Chadwyck','ChadwyckPoetry','ChadwyckDrama', 'ECCO-TCP','EEBO-TCP','TedJDH','Sellars', 'DialNarr', 'MarkMark','Chicago', 'COHA','CLMET','OldBailey','EnglishDialogues', 'Spectator']
+id = lithist
+path_root = lithist
+path_python = lithist/lithist.py
+class_name = LitHist
+path_metadata = corpus-metadata.LitHist.txt
+is_meta = True
+
+[LitHistProse]
+name = LitHistProse
+desc = Literary-historical texts from a wide variety of sources (PROSE)
+id = lithist
+path_python = lithist/lithist.py
+class_name = LitHistProse
+path_metadata = corpus-metadata.LitHistProse.txt
+is_meta = True
+
+[LitHistHathi]
+name = LitHistHathi
+desc = Literary-historical texts, plus HathiEngLit
+sources = Chadwyck, ChadwyckPoetry, ChadwyckDrama, COHA, ECCO_TCP, EEBO_TCP, HathEngLit
+id = lithist_hathi
+path_root = lithist
+path_python = lithist/lithist.py
+class_name = LitHistHathi
+path_metadata = metadata.LitHistHathi.txt
+is_meta = True
