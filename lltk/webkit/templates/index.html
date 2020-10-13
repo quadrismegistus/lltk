@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h3>Data</h3>
+<ul>
+<li><a href="/tokens">Parsed tokens from Chadwyck-Healey's poetry collections</a></li>
+</ul>
+
+<h3>Corpora</h3>
+
+<table width=100%>
+	<thead>
+		<tr>
+			<th>Corpus name</th>
+			<th>Description</th>
+		</tr>
+	</thead>
+	<tbody>
+{% for corpus_name,corpus_obj in g.lltk.corpora(load=False) %}
+		<tr>
+			<td><a href="/corpus/{{corpus_name}}">{{corpus_name}}</a></td>
+			<td>{{corpus_obj.get('desc','')}}</td>
+		</tr>
+{% endfor %}
+	</tbody>
+</table>
+
+{% endblock %}

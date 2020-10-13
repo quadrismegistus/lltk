@@ -1,0 +1,58 @@
+{% extends 'base.html' %}
+
+{% block head %}
+
+<script src="/static/jquery-3.3.1.min.js"></script>
+<link rel="stylesheet" type="text/css" href="//cdn.datatables.net/1.10.19/css/jquery.dataTables.min.css">
+<script src="//cdn.datatables.net/1.10.19/js/jquery.dataTables.min.js"></script>
+
+
+<script type='text/javascript'>
+$(document).ready( function () {
+
+  // in case you want to pass the querystring along with the request
+        function getQuerystring() {
+            var $qItems = $('#qItems');
+            $qItems.empty();
+            var hash;
+            var filters = {};
+            var q = document.URL.split('?')[1];
+            if (q != undefined) {
+                q = q.split('&');
+                for (var i = 0; i < q.length; i++) {
+                    hash = q[i].split('=');
+                    filters[hash[0]] = hash[1];
+                }
+            }
+            return filters
+        }
+         var table = $('#metadata').DataTable({
+        	"order": [[ 2, "asc" ]],
+        "ajax": "{{url_for('corpus_json', corpus_name=corpus_name)}}"
+        });
+
+
+
+});
+</script>
+
+{% endblock %}
+
+
+{% block content %}
+<h3>{{corpus_name}}</h3>
+
+<table id='metadata'>
+	<thead>
+	<tr>
+    <th>id</th>
+		<th>author</th>
+		<th>title</th>
+		<th>year</th>
+	</tr>
+	</thead>
+</table>
+
+
+
+{% endblock %}

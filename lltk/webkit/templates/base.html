@@ -1,0 +1,32 @@
+<!doctype html>
+<html>
+<head>
+	<!-- <title>Abstraction: A Literary History</title> -->
+	<link rel="stylesheet" type="text/css" href="/static/style.css">
+	<script type="text/javascript" src="/static/jquery.min.js" ></script>
+	<script type="text/javascript" src="/static/socket.io.min.js"></script>
+	<script type="text/javascript" charset="utf-8">
+		var socket = io.connect('http://' + document.domain + ':' + location.port);
+	</script>
+	{%block head %}
+
+	{% endblock %}
+</head>
+
+<body>
+	<div id='body'>
+	<div id='frame'>
+		<div id='header'>
+			<h1><a href='/'>Abstraction: A Literary History</a></h1>
+			<h2>An Interactive Appendix</h2>
+		</div>
+
+		<hr />
+
+		<div id='content'>
+			{% block content %}
+
+			{% endblock %}
+		</div>
+		<div>
+	</div>

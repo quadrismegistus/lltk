@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+
+{% block head %}
+
+<script src="/static/jquery-3.3.1.min.js"></script>
+<link rel="stylesheet" type="text/css" href="//cdn.datatables.net/1.10.19/css/jquery.dataTables.min.css">
+<script src="//cdn.datatables.net/1.10.19/js/jquery.dataTables.min.js"></script>
+
+
+<script type='text/javascript'>
+$(document).ready( function () {
+    var table = $('#metadata').DataTable({
+			"order": [[ 2, "asc" ]]
+		});
+
+    table.rows.add([
+      {% for text in corpus_obj.texts()[:10000] %}
+        ['{{text.author}}', '<a href="/text/{{corpus_name}}/{{text.id}}">{{text.title}}</a>', {{text.year}}],
+      {% endfor %}
+    ]);
+
+table.draw();
+});
+console.log('hello')
+</script>
+
+{% endblock %}
+
+
+{% block content %}
+<h3>{{corpus_name}}</h3>
+
+<table id='metadata'>
+	<thead>
+	<tr>
+		<th>author</th>
+		<th>title</th>
+		<th>year</th>
+	</tr>
+	</thead>
+</table>
+
+
+
+{% endblock %}

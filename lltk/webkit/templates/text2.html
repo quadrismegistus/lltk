@@ -1,0 +1,269 @@
+{% extends 'base.html' %}
+
+{% block head %}
+<title>{{text_meta['title']}}</title>
+<script type="text/javascript" src="/static/rainbowvis.js"></script>
+{% endblock %}
+
+
+{% block content %}
+<h3><i>{{text_meta['title']}}</i> [{{text_meta['year']}}], by {{text_meta['author']}}</h3>
+
+
+Color by:
+<script type="text/javascript">
+
+
+
+
+function color_abs_type(prefix='CH', suffix='Robust') {
+	key_abs=prefix+'_Abstract'+suffix
+	key_conc=prefix+'_Concrete'+suffix
+	key_neither=prefix+'_Neither'+suffix
+
+	console.log(prefix,suffix,key_abs,key_conc,key_neither)
+
+	$('.word').css({'font-weight': 'normal', 'background-color':'white' })
+	// $('.field_'+key_neither).css({ 'font-weight': 'normal', 'background-color':'silver' })
+	//$('.field_'+key_conc).css({ 'text-decoration': 'none', 'background-color':'#f9b466', 'font-weight': 'normal' })
+	$('.field_'+key_abs).css({'font-weight': 'normal', 'background-color':'#83b9d8'})
+	$('.field_'+key_conc).css({ 'background-color':'#f9b466', 'font-weight': 'normal' })
+}
+
+
+
+
+function color_type(key, color='silver') {
+	$('.word').css({ 'text-decoration': 'none', 'font-weight': 'normal', 'background-color':'white' })
+	$('.field_'+key.replace('.','_')).css({ 'text-decoration': 'none', 'font-style':'italic', 'font-weight': 'normal', 'background-color':color })
+}
+
+
+
+
+
+
+
+function color_quant(prefix_pos='CH_Abstractness',prefix_neg='CH_Concreteness', x_start=-0.5, x_end=0.5, x_step=0.1, col_start='#f9b466', col_middle='silver', col_end='#83b9d8') {
+	// source = https://stackoverflow.com/questions/3080421/javascript-color-gradient
+
+
+
+	var s = '';
+
+	list=[]
+	//for (var i = -0.9; i<=0.6; i+=0.1) {
+	//for (var i = -0.5; i<=0.5; i+=0.1) {
+	for (var i = x_start; i<x_end; i+=x_step) {
+		list.push(i);
+	}
+
+
+	//var numberOfItems = 11;
+	var numberOfItems = list.length;
+	var rainbow = new Rainbow();
+	rainbow.setNumberRange(1, numberOfItems);
+
+
+
+	if (col_middle!='') {
+		console.log(col_start,col_middle,col_end);
+		rainbow.setSpectrum(col_start, col_middle, col_end);
+	} else {
+		rainbow.setSpectrum(col_start, col_end);
+	}
+
+	// rainbow.setSpectrum('#CC95C0', '#DBD4B4', '#7AA1D2');
+	// rainbow.setSpectrum('red', 'silver', 'blue');
+	// rainbow.setSpectrum('#ffd194', '#70e1f5');
+
+
+	console.log(list, x_start, x_end, x_step)
+
+	$('.word').css({ 'text-decoration': 'none', 'font-weight': 'normal', 'background-color':'white' })
+	for (var i = 0; i < numberOfItems; i++) {
+	    var hexColour = rainbow.colourAt(i);
+			step=list[i]
+			//step=parseFloat(i_x) / 10.0 - 1.0
+			//console.log(i,i_x)
+
+			if (step<0) {
+				prefix = prefix_neg;
+				step=Math.abs(step)
+			} else {
+				prefix=prefix_pos;
+			}
+
+			console.log(i,step,prefix)
+
+			step=Number(step.toFixed(1));
+			step_str=step.toString()
+			if (step_str=='0') {
+				step_str='0_0'
+			}
+
+			console.log(prefix, step_str)
+
+			css_class='.field_' + prefix + '_' + step_str.replace('.','_');
+
+			console.log(css_class, hexColour)
+			console.log()
+			$(css_class).css({ 'background-color':'#'+hexColour })
+
+	}
+
+}
+
+
+function color_diction(kind='Speech') {
+	$('.word').css({'font-weight': 'normal', 'background-color':'white', 'font-style':'normal' })
+	color_quant(prefix_pos='CP_MDW_' + kind, prefix_neg='', x_start=0, x_end=0.9, x_step=0.1, col_start='#86d99b', col_middle='silver', col_end='#9d74e8')
+	$('.field_CP_MDW_Poetic_'+kind).css({'font-style':'italic'})
+}
+
+function color_abstractness() {
+	color_quant(prefix_pos='CH_Abstractness',prefix_neg='CH_Concreteness', x_start=-0.5, x_end=0.5, x_step=0.1, col_start='#f9b466', col_middle='silver', col_end='#83b9d8');
+}
+
+function color_abstractness2() {
+	color_quant(prefix_pos='CH_Abstractness_Consolidated',prefix_neg='CH_Concreteness_Consolidated', x_start=-0.5, x_end=0.5, x_step=0.1, col_start='#f9b466', col_middle='silver', col_end='#83b9d8');
+	// $('.field_W2V_Consolidated_Concrete_njv').css({'text-decoration':'underline'})
+	// $('.field_W2V_Consolidated_Abstract_njv').css({'font-weight':'bold'})
+	// $('.field_W2V_Consolidated_Abstract_njv').css({'font-style':'italic'})
+
+}
+
+function color_abstractness3() {
+	color_quant(prefix_pos='W2V_Abstractness',prefix_neg='W2V_Concreteness', x_start=-0.5, x_end=0.5, x_step=0.1, col_start='#f9b466', col_middle='silver', col_end='#83b9d8');
+}
+
+
+// DEFAULT COLORING
+$(function() {
+	//color_type('CP.poetic_diction_notspeech','teal');
+	//color_diction();
+	color_abstractness2();
+}
+	 );
+
+</script>
+
+<a id='colorer_absconc2' href="javascript:color_abstractness2()">Abstractness (Consolidated)</a>
+<a id='colorer_absconc1' href="javascript:color_abstractness()">Abstractness (ChadwyckPoetry)</a>
+<a id='colorer_absconc3' href="javascript:color_abstractness3()">Abstractness (ECCO)</a>
+<a id='colorer_diction1' href="javascript:color_diction(kind='Speech')">Poetic Diction (vs. Speech)</a>
+<a id='colorer_diction2' href="javascript:color_diction(kind='Prose')">Poetic Diction (vs. Prose)</a>
+
+
+
+
+<a href="javascript:color_type('CP.poetic_diction_notspeech','teal')">Poetic Diction (v2)</a>
+<a href="javascript:color_type('CP.poetic_diction','teal')">Poetic Diction (v1)</a>
+<a href="javascript:color_type('CP.speech_words','teal')">Speech Words</a>
+<a href="javascript:color_type('CP.poetry_words','teal')">Poetry Words</a>
+<a href="javascript:color_type('CP.prose_words','teal')">Prose Words</a>
+
+<hr/>
+<a href="javascript:color_abs_type('W2V_Consolidated','_njv')">Consolidated</a>
+<a href="javascript:color_abs_type('CH','_Robust')">Robust</a>
+<a href="javascript:color_quant()">Quant</a>
+<a href="javascript:color_quant()">Quant</a>
+<a href="javascript:color_abs_type('W2V_HGI','')">Original</a>
+<a href="javascript:color_abs_type('CH','_{{period}}')">Local</a>
+<a href="javascript:color_abs_type('CH','_All')">All</a>
+
+
+
+<!--
+<small><a href="javascript:color_abs_type('CH','1500-1524')">1500-1524</a>
+<a href="javascript:color_abs_type('CH','1525-1549')">1525-1549</a>
+<a href="javascript:color_abs_type('CH','1550-1574')">1550-1574</a>
+<a href="javascript:color_abs_type('CH','1575-1599')">1575-1599</a>
+<a href="javascript:color_abs_type('CH','1600-1624')">1600-1624</a>
+<a href="javascript:color_abs_type('CH','1625-1649')">1625-1649</a>
+<a href="javascript:color_abs_type('CH','1650-1674')">1650-1674</a>
+<a href="javascript:color_abs_type('CH','1675-1699')">1675-1699</a>
+<a href="javascript:color_abs_type('CH','1700-1724')">1700-1724</a>
+<a href="javascript:color_abs_type('CH','1725-1749')">1725-1749</a>
+<a href="javascript:color_abs_type('CH','1750-1774')">1750-1774</a>
+<a href="javascript:color_abs_type('CH','1775-1799')">1775-1799</a>
+<a href="javascript:color_abs_type('CH','1800-1824')">1800-1824</a>
+<a href="javascript:color_abs_type('CH','1825-1849')">1825-1849</a>
+<a href="javascript:color_abs_type('CH','1850-1874')">1850-1874</a>
+<a href="javascript:color_abs_type('CH','1875-1899')">1875-1899</a>
+<a href="javascript:color_abs_type('CH','1900-1924')">1900-1924</a>
+<a href="javascript:color_abs_type('CH','1925-1949')">1925-1949</a>
+<a href="javascript:color_abs_type('CH','1950-1974')">1950-1974</a>
+<a href="javascript:color_abs_type('CH','1975-1999')">1975-1999</a></small>
+
+-->
+
+<hr/>
+
+
+{% autoescape false %}
+	{{text_html}}
+{% endautoescape %}
+
+{%if data %}<h4>Data</h4>{%endif%}
+
+{% for datatype in g.sorted(data) %}
+<li><i>{{datatype}}</i>: {{data[datatype]}}</li>
+{% endfor %}
+
+<hr/>
+Color by:
+<a href="javascript:color_abs_type('CH','_Robust')">Robust</a>
+<a href="javascript:color_abs_type('CH','_All')">All</a>
+<a href="javascript:color_abs_type('CH','_{{period}}')">Local</a>
+<a href="javascript:color_abs_type('W2V_HGI','')">Original</a>
+
+<small><a href="javascript:color_abs_type('CH','1500-1524')">1500-1524</a>
+<a href="javascript:color_abs_type('CH','1525-1549')">1525-1549</a>
+<a href="javascript:color_abs_type('CH','1550-1574')">1550-1574</a>
+<a href="javascript:color_abs_type('CH','1575-1599')">1575-1599</a>
+<a href="javascript:color_abs_type('CH','1600-1624')">1600-1624</a>
+<a href="javascript:color_abs_type('CH','1625-1649')">1625-1649</a>
+<a href="javascript:color_abs_type('CH','1650-1674')">1650-1674</a>
+<a href="javascript:color_abs_type('CH','1675-1699')">1675-1699</a>
+<a href="javascript:color_abs_type('CH','1700-1724')">1700-1724</a>
+<a href="javascript:color_abs_type('CH','1725-1749')">1725-1749</a>
+<a href="javascript:color_abs_type('CH','1750-1774')">1750-1774</a>
+<a href="javascript:color_abs_type('CH','1775-1799')">1775-1799</a>
+<a href="javascript:color_abs_type('CH','1800-1824')">1800-1824</a>
+<a href="javascript:color_abs_type('CH','1825-1849')">1825-1849</a>
+<a href="javascript:color_abs_type('CH','1850-1874')">1850-1874</a>
+<a href="javascript:color_abs_type('CH','1875-1899')">1875-1899</a>
+<a href="javascript:color_abs_type('CH','1900-1924')">1900-1924</a>
+<a href="javascript:color_abs_type('CH','1925-1949')">1925-1949</a>
+<a href="javascript:color_abs_type('CH','1950-1974')">1950-1974</a>
+<a href="javascript:color_abs_type('CH','1975-1999')">1975-1999</a></small>
+
+<br/><br/>
+
+<hr/>
+
+
+
+<div id="legend"></div>
+
+{% if text_meta %}
+	<h4>Metadata</h4>
+	<table id='text_metadata'>
+		<tbody>
+	{% for k,v in text_meta.items() %}
+	{% if v %}
+		<tr>
+			<th>{{k}}</th>
+			<td>{{v}}</td>
+		</tr>
+	{% endif %}
+	{%endfor %}
+	</tbody>
+	</table>
+{%endif%}
+
+
+
+
+{% endblock %}

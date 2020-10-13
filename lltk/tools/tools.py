@@ -116,11 +116,11 @@ def load_user_config():
 
 
 def configure_prompt(default_config='config.txt',default_corpora='corpora',default_manifest='manifest.txt'):
-	print('## Literary Language Processing (LLTK) configuration')
+	print('## Literary Language Toolkit (LLTK) configuration')
 
 	if not os.path.isabs(default_config): default_config=os.path.join(PATH_LLTK_HOME,default_config)
 	if not os.path.isabs(default_corpora): default_corpora=os.path.join(PATH_LLTK_HOME,default_corpora)
-	if not os.path.isabs(default_manifest): default_config=os.path.join(PATH_LLTK_HOME,default_manifest)
+	if not os.path.isabs(default_manifest): default_manifest=os.path.join(PATH_LLTK_HOME,default_manifest)
 
 	path_config=input('>> Where should the config file be stored? [default: {default}]: '.format(default=default_config)).strip()
 	path_corpora=input('>> Where should corpora be stored? [default: {default}]: '.format(default=default_corpora)).strip()

@@ -1,0 +1,143 @@
+<!-- extend from base layout -->
+{% extends "base.html" %}
+
+{% block head %}
+<script src="/static/jquery-3.3.1.min.js"></script>
+<link rel="stylesheet" type="text/css" href="//cdn.datatables.net/1.10.19/css/jquery.dataTables.min.css">
+<script src="//cdn.datatables.net/1.10.19/js/jquery.dataTables.min.js"></script>
+{%endblock%}
+
+
+
+
+
+{% block content %}
+<!-- <input type='text' id='parse_text'></input> -->
+
+<div id='parse_input_row'>
+  Word: <input type="text" id="q_word"></input>
+  Dep: <input type="text" id="q_dep"></input>
+  Head: <input type="text" id="q_head"></input>
+  Index: <input type="text" id="q_i"></input>
+
+  <input type='submit' id='parse_button' value='Query'></input>
+  <div id='progressbar'></div>
+</div>
+
+<div class='hr'></div>
+
+
+<div id='box'></div>
+<div id='parse'></div>
+
+
+
+<script type='text/javascript'>
+
+
+  $('#parse_button').click(function() {
+    console.log('button clicked');
+    var q_word = $('#q_word').val();
+    var q_head = $('#q_head').val();
+    var q_dep = $('#q_dep').val();
+    var q_i = $('#q_i').val();
+
+    q = {'word':q_word, 'head':q_head, 'dep':q_dep, '_i':q_i}
+    socket.emit('query_tokens', {data: q});
+  });
+
+   $("#q_word").keypress(function(event) {
+       if (event.which == 13) {
+           event.preventDefault();
+           console.log('hit enter');
+           $("#parse_button").click();
+     }
+ });
+
+ $("#q_head").keypress(function(event) {
+     if (event.which == 13) {
+         event.preventDefault();
+         console.log('hit enter');
+         $("#parse_button").click();
+   }
+});
+
+$("#q_dep").keypress(function(event) {
+    if (event.which == 13) {
+        event.preventDefault();
+        console.log('hit enter');
+        $("#parse_button").click();
+  }
+});
+
+$("#q_i").keypress(function(event) {
+    if (event.which == 13) {
+        event.preventDefault();
+        console.log('hit enter');
+        $("#parse_button").click();
+  }
+});
+
+
+
+socket.on('query_tokens_response', function(msg) {
+  $('#parse').html("<table id='table_lines'></table>");
+  //bar.animate(0.0);
+  console.log(msg);
+  columns = msg.columns;
+  var table = $('#table_lines').DataTable({
+    language: {
+   emptyTable: "...", //
+   loadingRecords: "....", // default Loading...
+   zeroRecords: "?"
+  },
+    dom: 'Bfrtip',
+    buttons: [
+      // { extend: 'copy', text: 'Copy to clipboard' },
+      { extend: 'excel', text: 'Save excel file' },
+      // { extend: 'pdf', text: 'Print pdf' }
+    ],
+    // data: ['a','b','c','d','e','f','g','h','i','j','k','l','m'],
+    data:[],
+    columns: msg.columns,
+    // "scrollY": "555px",
+    // "scrollX": false,
+    // "paging": false,
+    "pageLength": 100,
+    "order": [[ 0, "asc" ]],
+    // "ordering": false,
+    // "autoWidth": false,
+    // "fixedHeader": {
+        // "header": false,
+        // "footer": false
+    // },
+    "columnDefs": [
+      { "width": "5px", "targets": 0 },
+      { "width": "300px", "targets": 1 },
+      { "width": "300px", "targets": 2 },
+      { "width": "100px", "targets": 3 }
+    ]
+    // fixedColumns: true
+  });
+
+  //$('.dt-buttons').insert(0,'yoyoy');
+  //$('<b>Actions:</b>').prependTo('.dt-buttons')
+
+  button_template = '<a class="dt-button buttons-copy buttons-html5 [[ACTION]]" tabindex="0" aria-controls="table_lines" href="#"><span>[[LABEL]]</span></a>'
+  button_save_ot = $(button_template.replace('[[LABEL]]', 'Save excel showing all candidate parses').replace('[[CLASS]]','button-ot'))
+  button_save_ot.appendTo('.dt-buttons')
+
+
+  /// Add other action buttons
+  // <div class="dt-buttons">   <a class="dt-button buttons-copy buttons-html5" tabindex="0" aria-controls="table_lines" href="#"><span>Copy</span></a> <a class="dt-button buttons-excel buttons-html5" tabindex="0" aria-controls="table_lines" href="#"><span>Excel</span></a> <a class="dt-button buttons-pdf buttons-html5" tabindex="0" aria-controls="table_lines" href="#"><span>PDF</span></a> </div>
+
+});
+
+socket.on('query_tokens_addrow',function(msg) {
+  console.log(msg);
+  var table = $('#table_lines').DataTable();
+  table.row.add(msg.row).draw();
+});
+</script>
+
+{% endblock %}

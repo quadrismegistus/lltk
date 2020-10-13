@@ -1,0 +1,166 @@
+body { font-family: 'Baskerville'; font-size: 14px; text-align: center; }
+
+#body { text-align: center; }
+#frame { width:800px; border-right:1px solid; border-left: 1px solid; display: inline-block; }
+
+#header { text-align: center; }
+#content { text-align:left; margin:1em; font-size: 20px; }
+
+h1 { font-weight: normal; font-style: italic; }
+h2 { font-weight: normal; }
+
+table { border:1px dotted silver; text-align:left; }
+ul,ol { text-align:left; }
+th,td { padding: 5px; }
+th { font-style: italic; font-weight: normal; }
+
+
+h1 a { text-decoration: none; color: black; }
+
+
+/* .field_W2V_Locke_Abstract { font-weight: bold; background-color:#83b9d8; }
+.field_W2V_Locke_Concrete { text-decoration: underline; background-color:#f9b466; }
+
+
+
+.field_W2V_HGI_Abstract { font-weight: bold; background-color:#83b9d8; }
+.field_W2V_HGI_Concrete { text-decoration: underline; background-color:#f9b466; } */
+
+/* .field_CH_Neither_Robust { text-decoration: none; background-color:silver; }
+.field_CH_Concrete_Robust { text-decoration: none; background-color:#f9b466; }
+.field_CH_Abstract_Robust { font-weight: normal; background-color:#83b9d8; } */ */
+
+/*
+.field_CH_Neither_1700-1724 { text-decoration: none; font-weight: normal; background-color:silver; }
+.field_CH_Concrete_1700-1724 { text-decoration: underline; background-color:#f9b466; font-weight: normal; }
+.field_CH_Abstract_1700-1724 { font-weight: bold; background-color:#83b9d8; text-decoration: none;}
+*/
+
+
+
+
+
+
+
+/* .dep_nsubj { font-style:italic; } */ */
+/* .correct_True { background-color: green; } */
+/* .correct_False { background-color: red; } */
+/* .pred_VG_Object { text-decoration:underline; } */
+/* .pred_VG_Human { font-weight: bold; } */
+
+pre { font-size: 14px; }
+
+
+.span_word:target {
+ /* background-color: #ffa; */
+ font-size:2em;
+ /* color:red; */
+}
+
+
+/* Colors 10 v4 */
+
+/*
+.prob_VG_Human_0_0 { background-color: #808080 }
+.prob_VG_Human_0_1 { background-color: #989893 }
+.prob_VG_Human_0_2 { background-color: #b1b0a5 }
+.prob_VG_Human_0_3 { background-color: #cbcbb9 }
+.prob_VG_Human_0_4 { background-color: #e5e5cc }
+.prob_VG_Human_0_5 { background-color: #ffffe0 }
+.prob_VG_Human_0_6 { background-color: #d4e5cc }
+.prob_VG_Human_0_7 { background-color: #aacbb8 }
+.prob_VG_Human_0_8 { background-color: #7fb1a5 }
+.prob_VG_Human_0_9 { background-color: #509892 }
+.prob_VG_Human_1_0 { background-color: #008080 }
+*/
+
+
+/*
+
+.field_CH_Abstractness_1_0 { background-color: #8b0000 }
+.field_CH_Abstractness_0_9 { background-color: #a70c25 }
+.field_CH_Abstractness_0_8 { background-color: #bf2543 }
+.field_CH_Abstractness_0_7 { background-color: #d23f5d }
+.field_CH_Abstractness_0_6 { background-color: #e35875 }
+.field_CH_Abstractness_0_5 { background-color: #ef738b }
+.field_CH_Abstractness_0_4 { background-color: #f98d9f }
+.field_CH_Abstractness_0_3 { background-color: #ffa9b2 }
+.field_CH_Abstractness_0_2 { background-color: #ffc7c4 }
+.field_CH_Abstractness_0_1 { background-color: #ffe3d3 }
+.field_CH_Abstractness_0_0 { background-color: #ffffe0 }
+.field_CH_Concreteness_0_1 { background-color: #dcf7c6 }
+.field_CH_Concreteness_0_2 { background-color: #beecb5 }
+.field_CH_Concreteness_0_3 { background-color: #a5e0a8 }
+.field_CH_Concreteness_0_4 { background-color: #8ed29e }
+.field_CH_Concreteness_0_5 { background-color: #7ac696 }
+.field_CH_Concreteness_0_6 { background-color: #66b890 }
+.field_CH_Concreteness_0_7 { background-color: #53aa8b }
+.field_CH_Concreteness_0_8 { background-color: #3f9c87 }
+.field_CH_Concreteness_0_9 { background-color: #288d83 }
+.field_CH_Concreteness_1_0 { background-color: #008080 }
+
+
+ */
+
+
+
+
+
+
+
+/*
+.coeff_1_0 { background-color: #8b0000 }
+.coeff_0_9 { background-color: #a70c25 }
+.coeff_0_8 { background-color: #bf2543 }
+.coeff_0_7 { background-color: #d23f5d }
+.coeff_0_6 { background-color: #e35875 }
+.coeff_0_5 { background-color: #ef738b }
+.coeff_0_4 { background-color: #f98d9f }
+.coeff_0_3 { background-color: #ffa9b2 }
+.coeff_0_2 { background-color: #ffc7c4 }
+.coeff_0_1 { background-color: #ffe3d3 }
+.coeff_0_0 { background-color: #ffffe0 }
+.coeff_-0_1 { background-color: #dcf7c6 }
+.coeff_-0_2 { background-color: #beecb5 }
+.coeff_-0_3 { background-color: #a5e0a8 }
+.coeff_-0_4 { background-color: #8ed29e }
+.coeff_-0_5 { background-color: #7ac696 }
+.coeff_-0_6 { background-color: #66b890 }
+.coeff_-0_7 { background-color: #53aa8b }
+.coeff_-0_8 { background-color: #3f9c87 }
+.coeff_-0_9 { background-color: #288d83 }
+.coeff_-1_0 { background-color: #008080 } */
+
+/* .prob_VG_Human_0_0 { background-color:#aaaaaa }
+.prob_VG_Human_0_1 { background-color:#b7af9d }
+.prob_VG_Human_0_2 { background-color:#c1b491 }
+.prob_VG_Human_0_3 { background-color:#cbba85 }
+.prob_VG_Human_0_4 { background-color:#d6c077 }
+.prob_VG_Human_0_5 { background-color:#dfc569 }
+.prob_VG_Human_0_6 { background-color:#e7cb5a }
+.prob_VG_Human_0_7 { background-color:#f0d047 }
+.prob_VG_Human_0_8 { background-color:#f8d630 }
+.prob_VG_Human_0_9 { background-color:#ffdc00 } */
+
+/* .prob_VG_Human_1_0 { background-color: #8b0000 }
+.prob_VG_Human_0_9 { background-color: #bf2543 }
+.prob_VG_Human_0_8 { background-color: #e35875 }
+.prob_VG_Human_0_7 { background-color: #f98d9f }
+.prob_VG_Human_0_6 { background-color: #ffc7c4 }
+.prob_VG_Human_0_5 { background-color: #ffffe0 }
+.prob_VG_Human_0_4 { background-color: #beecb5 }
+.prob_VG_Human_0_3 { background-color: #8ed29e }
+.prob_VG_Human_0_2 { background-color: #66b890 }
+.prob_VG_Human_0_1 { background-color: #3f9c87 }
+.prob_VG_Human_0_0 { background-color: #008080 } */
+/* .prob_VG_Human_0_0 { background-color: #dfdce3 }
+.prob_VG_Human_0_1 { background-color: #c2c6e2 }
+.prob_VG_Human_0_2 { background-color: #a3b1e0 }
+.prob_VG_Human_0_3 { background-color: #829cde }
+.prob_VG_Human_0_4 { background-color: #5987dc }
+.prob_VG_Human_0_5 { background-color: #0074d9 }
+.prob_VG_Human_0_6 { background-color: #777fbc }
+.prob_VG_Human_0_7 { background-color: #a28c9f }
+.prob_VG_Human_0_8 { background-color: #c29981 }
+.prob_VG_Human_0_9 { background-color: #dea85f }
+.prob_VG_Human_1_0 { background-color: #f7b733 } */

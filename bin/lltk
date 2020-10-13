@@ -3,6 +3,11 @@
 import os,sys,argparse,multiprocessing as mp
 SLINGSHOT_N=mp.cpu_count()
 
+path_self = os.path.realpath(__file__)
+path_code = os.path.abspath(os.path.join(path_self,'..','..'))
+os.environ['PYTHONPATH']=f'{path_code}:'+os.environ.get('PYTHONPATH','')
+sys.path.insert(0,path_code)
+
 
 COMMANDS = [
 	dict(name='list', help='List names and descriptions of all corpora', takes_corpus_obj=False, group='Corpus status'),
@@ -28,9 +33,9 @@ COMMANDS = [
 
 
 LOGO="""
-#####################################
-# LLTK: Literary Language Processing #
-#####################################
+###################################
+# LLTK: Literary Language Toolkit #
+###################################
 """
 
 def usage():

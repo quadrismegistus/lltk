@@ -10,3 +10,7 @@ bs4
 lxml
 nbimporter
 nbformat
+pandas
+gevent
+gunicorn
+flask

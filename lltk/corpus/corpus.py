@@ -56,10 +56,10 @@ MANIFEST_DEFAULTS=dict(
 	is_meta = '')
 
 PATH_HERE=os.path.abspath(os.path.dirname(__file__))
-PATH_TO_CORPUS_CODE = config.get('PATH_TO_CORPUS_CODE', PATH_HERE )
-PATH_CORPUS_ZIP = os.path.join(PATH_CORPUS, 'lltk_corpora')
 PATH_LLTK_HOME = os.path.join(HOME,'lltk_data')
 PATH_CORPUS = config.get('PATH_TO_CORPORA', os.path.join(PATH_LLTK_HOME,'corpora') )
+PATH_CORPUS_ZIP = os.path.join(PATH_CORPUS, 'lltk_corpora')
+PATH_TO_CORPUS_CODE = config.get('PATH_TO_CORPUS_CODE', PATH_HERE )
 
 PATH_MANIFEST=os.path.join(PATH_TO_CORPUS_CODE,'manifest.txt')
 PATH_MANIFEST_USER = config.get('PATH_TO_MANIFEST','')
