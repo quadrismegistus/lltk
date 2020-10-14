@@ -5,6 +5,8 @@ from __future__ import absolute_import
 import codecs,os
 from lltk import tools
 from lltk.text import Text,text_plain_from_xml,clean_text
+from lltk.corpus import PATH_CORPUS
+
 BAD={'figdesc','head','edit','note','l'}
 OK={'p'}
 
@@ -24,13 +26,14 @@ class TextChadwyck(Text):
 
 
 
-def split_raw_xml_into_chapters(xml_str,chapter_tags=['div5','div4','div3','div2','div1','div0'],para_tag='p',verse_tag='l',keep_verse=True, metadata=False):
+def split_raw_xml_into_chapters(xml_str,chapter_tags=['div5','div4','div3','div2','div1','div0'],para_tag='p',verse_tag='l',keep_verse=True):
 	import bs4,tools
 	from collections import defaultdict
 	txt=xml_str
 	done=0
 	parent_tags={}
 	chapter_tag=None
+
 	for ctag in chapter_tags:
 		if '</'+ctag+'>' in txt:
 			if not chapter_tag:
@@ -42,6 +45,7 @@ def split_raw_xml_into_chapters(xml_str,chapter_tags=['div5','div4','div3','div2
 	for ctag in list(parent_tags.values()):
 		for i,ctagx in enumerate(dom(ctag)):
 			ctagx['num']=i+1
+			
 	for child_i,child in enumerate(chapter_tags):
 		immediate_parents=chapter_tags[child_i+1:]
 		#print 'xx',child_i,child,immediate_parents
@@ -61,33 +65,35 @@ def split_raw_xml_into_chapters(xml_str,chapter_tags=['div5','div4','div3','div2
 
 	for tag in BAD: [x.extract() for x in dom.findAll(tag)]
 
-	chapters=[]
 	for chap_i,xml_chapter in enumerate(dom(chapter_tag)):
+		if xml_chapter is None: continue
+		xml_str=str(xml_chapter)
+		name=xml_str.split('</collection>')[1].split('<attbytes')[0].strip()
+		chapter_meta = {'chap_num':chap_i+1}
+		chapter_meta['chap_idref']=xml_chapter('idref')[0].text
+		chapter_meta['chap_name']=name
+
+		for level,ptag in sorted(parent_tags.items()):
+			parent=xml_chapter.find_parent(ptag)
+
+			if parent:
+				for k,v in list(parent.attrs.items()):
+					#print '>>',level,ptag,k,v
+					chapter_meta[ptag+'_num' if '_num' not in k else k]=v
+
+	
+		## make txt
 		chapter=[]
-		if metadata:
-			chapter_meta = {'num_chap_in_doc':chap_i+1}
-
-			for level,ptag in sorted(parent_tags.items()):
-				parent=xml_chapter.find_parent(ptag)
-
-				if parent:
-					for k,v in list(parent.attrs.items()):
-						#print '>>',level,ptag,k,v
-						chapter_meta[k+'_'+ptag+'_in_doc' if '_in_' not in k else k]=v
-
 		for xml_para in xml_chapter(para_tag):
 			if not xml_para: continue
-			#print xml_para.attrs
 			para=clean_text(xml_para.text).replace('\n',' ')
 			while '  ' in para: para=para.replace('  ',' ')
 			if para: chapter+=[para]
-		if chapter:
-			chapter_txt='\n\n'.join(chapter)
-			if metadata:
-				#chapter_meta['txt']=chapter_txt
-				yield (chapter_meta,chapter_txt)
-			else:
-				yield chapter_txt
+		chapter_txt='\n\n'.join(chapter)
+
+		# yield meta, xml, txt
+		yield(chapter_meta,str(xml_chapter),chapter_txt)
+
 
 
 def get_meta_from_raw_xml(xml_str,xml_fn):
@@ -97,26 +103,62 @@ def get_meta_from_raw_xml(xml_str,xml_fn):
 
 		if '<T1>' in line and not 'title' in md:
 			md['title']=line.split('<T1>')[1].split('</T1>')[0]
+		if '<ID>' in line and not 'idref' in md:
+			md['idref']=line.split('<ID>')[1].split('</ID>')[0]
 		if '<A1>' in line and not 'author' in md:
 			md['author']=line.split('<A1>')[1].split('</A1>')[0]
 		if '<Y1>' in line and not 'year' in md:
 			md['year']=line.split('<Y1>')[1].split('</Y1>')[0]
-
-		if 'title' in md and 'author' in md and 'year' in md:
-			break
+		if '<PBL>' in line and not 'pub' in md:
+			md['pub']=line.split('<PBL>')[1].split('</PBL>')[0]
+		if '<TY>' in line and not 'type' in md:
+			md['type']=line.split('<TY>')[1].split('</TY>')[0]
+		if '<body>' in line: break
 
 	if 'America' in xml_fn:
 		md['nation']='American'
 	else:
 		md['nation']='British'
 	md['medium']='Fiction'
-	md['subcorpus']=xml_fn.split('/')[-2]
+	md['subcorpus']=xml_fn.split(os.path.sep)[-2]
+	md['fn_raw']=os.path.sep.join(xml_fn.split(os.path.sep)[-2:])
 	return md
+
+def compile_text(fnfn):
+	import json
+	with open(fnfn) as f:
+		xml_str=f.read()
+
+		# overall meta
+		book_meta = get_meta_from_raw_xml(xml_str,fnfn)
+		# print(book_meta)
+
+		for chapter_meta,chapter_xml,chapter_txt in split_raw_xml_into_chapters(xml_str):
+			# print(chapter_meta)
+			all_meta = {**book_meta, **chapter_meta}
+
+			# get id
+			idhash = tools.hash(all_meta['chap_idref'])[:10]
+			all_meta['id']=idhash
+			path_l=tools.slice(idhash,slice_length=2)
+			all_meta['path']='/'.join(path_l)
+
+			# write meta, xml, txt
+			path_text = os.path.join(PATH_CORPUS,Chadwyck.ID,'texts',*path_l)
+			if not os.path.exists(path_text): os.makedirs(path_text)
+			path_meta = os.path.join(path_text, 'meta.json')
+			path_txt = os.path.join(path_text, 'text.txt')
+			path_xml = os.path.join(path_text, 'text.xml')
+
+			with open(path_meta,'w') as of: json.dump(all_meta, of)
+			with open(path_txt,'w') as of: of.write(chapter_txt)
+			with open(path_xml,'w') as of: of.write(chapter_xml)
 
 
 ### CORPUS CLASS
 from lltk.corpus import Corpus
 class Chadwyck(Corpus):
+	ID='chadwyck'
 	TEXT_CLASS=TextChadwyck
 	PATH_TXT = 'chadwyck/_txt_chadwyck'
 	PATH_XML = 'chadwyck/_xml_chadwyck'
@@ -129,28 +171,24 @@ class Chadwyck(Corpus):
 		self.path = os.path.dirname(__file__)
 
 	# compile from raw
-	def compile(self,raw_ext='.new'):
+	def compile(self,raw_ext='.new',**y):
 		# make sure I have it
 		self.compile_get_raw()
 
 		# walk
+		fnfns=[]
 		for root, dirs, files in os.walk(self.path_raw, topdown=False):
 			for fn in files:
-				print(fn)
+				# print(fn)
 				if not fn.endswith(raw_ext): continue
 				fnfn=os.path.join(root,fn)
-				with open(fnfn) as f:
-					xml_str=f.read()
-
-					# overall meta
-					book_meta = get_meta_from_raw_xml(xml_str,fnfn)
-					print(book_meta)
-					stop
-
-					for chapter_meta,chapter_xml in split_raw_xml_into_chapters(xml_str,metadata=True):
-						print(chapter_meta)
-						# print(chapter_xml)
-						stop
+				fnfns+=[fnfn]
+		
+		from tqdm import tqdm
+		import json
+		from p_tqdm import p_map
+		p_map(compile_text,fnfns,num_cpus=2)
+		
 
 
 
