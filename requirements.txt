@@ -20,3 +20,5 @@ mongo_datatables
 flask_pymongo
 flask_socketio
 flask_session
+gevent-websocket
+xlrd

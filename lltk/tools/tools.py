@@ -1740,7 +1740,7 @@ def read_csv_with_pandas(fnfn,return_ld=False,encoding='utf-8',**attrs):
 		except UnicodeDecodeError:
 			df=pd.read_csv(fnfn,sep='\t',encoding='ISO-8859-1',**attrs)
 	elif ext in {'.xls','.xlsx'}:
-		df=pd.read_excel(fnfn,**attrs)
+		df=pd.read_excel(fnfn)#,**attrs)
 	else:
 		return pd.DataFrame() if not return_ld else []
 	return df if not return_ld else df.to_dict('records')

@@ -145,13 +145,13 @@ def corpora(load=True,incl_meta_corpora=True):
 		if corpus_obj is None: continue
 		yield (corpus_name, corpus_obj)
 
-def check_corpora(paths=['path_xml','path_txt','path_freqs','path_metadata'],incl_meta_corpora=False):
+def check_corpora(paths=['path_raw','path_xml','path_txt','path_freqs','path_metadata'],incl_meta_corpora=False):
 	old=[]
 	#clist=tools.cloud_list()
-	print('{:25s} {:50s} {:12s} {:12s} {:12s} {:12s}'.format('[CORPUS]','[DESCRIPTION]',' [XML?]',' [TXT?]',' [FREQS?]',' [METADATA?]'))
+	print('{:25s} {:32s} {:12s} {:12s} {:12s} {:12s} {:12s}'.format('[CORPUS]','[DESCRIPTION]',' [RAW?]',' [XML?]',' [TXT?]',' [FREQS?]',' [METADATA?]'))
 	for cname,corpus in corpora(load=True,incl_meta_corpora=incl_meta_corpora):
 		if corpus is None: continue
-		print('{:25s} {:50s}'.format(cname, corpus.desc[:45]),end=" ")
+		print('{:25s} {:30s}'.format(cname, corpus.desc[:25]),end=" ")
 		for path in paths:
 			pathtype=path.replace('path_','')
 			pathval = getattr(corpus,path)
@@ -818,6 +818,13 @@ class Corpus(object):
 		print(cmd)
 		import os
 		os.system(cmd)"""
+
+	def compile_get_raw(self):
+		now=os.getcwd()
+
+		# move to raw folder
+		if not os.path.exists(self.path_raw):
+			self.download(part='raw')
 
 
 	def command_prep(self,method,attrs):

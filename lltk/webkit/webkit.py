@@ -5,6 +5,7 @@ import os,sys
 path_self = os.path.realpath(__file__)
 path_code = os.path.abspath(os.path.join(path_self,'..','..','..'))
 path_code_data = os.path.join(path_code,'data')
+path_fields = os.path.join(path_code_data,'fields')
 os.environ['PYTHONPATH']=f'{path_code}:'+os.environ.get('PYTHONPATH','')
 sys.path.insert(0,path_code)
 
@@ -32,11 +33,6 @@ client = MongoClient()
 db_lltk = client['lltk']
 
 
-word2pos=json.load(open(os.path.join(path_code_data,'word2pos.json')))
-pos2words=defaultdict(list)
-for word,pos in word2pos.items(): pos2words[pos[:1]]+=[word]
-
-word2fields=load_fields()
 
 
 
@@ -112,9 +108,10 @@ def api_csv(fn,basic=True,corpus_name=None):
 
 @app.route('/corpus_json/<corpus_name>')
 def corpus_json(corpus_name, keys=['id','author','title_link','year']):
-	from lltk.tools.db import get_corpus_meta
+	# from lltk.tools.db import get_corpus_meta
 	print('>> querying')
-	corpus_meta=get_corpus_meta(corpus_name)
+	# corpus_meta=get_corpus_meta(corpus_name)
+	corpus_meta = lltk.corpus(corpus_name).meta
 	print('>> packaging')
 	rows=[]
 	for dx in corpus_meta:
@@ -161,9 +158,18 @@ def load_fields():
 	import pickle
 	from collections import defaultdict
 	word2fields=defaultdict(set)
-	with open('../abstraction/words/data.all_fields.pickle','rb') as f:
+	# with open('../abstraction/words/data.all_fields.pickle','rb') as f:
 	#with open('data/data.fields.pickle','rb') as f:
-		fields = pickle.load(f)
+		# fields = pickle.load(f)
+	fields={}
+	for field_fn in os.listdir(path_fields):
+		if not field_fn.endswith('.txt'): continue
+		field_name=field_fn[:-4]
+		field_fnfn=os.path.join(path_fields,field_fn)
+		with open(field_fnfn) as f:
+			field_data=set(f.read().strip().split('\n'))
+			fields[field_name]=field_data
+	
 
 	for field in sorted(fields):
 		if field in ONLY_FIELDS:
@@ -417,3 +423,9 @@ def load_notebook(path,only_defs=False):
 
 
 
+
+word2pos=json.load(open(os.path.join(path_code_data,'word2pos.json')))
+pos2words=defaultdict(list)
+for word,pos in word2pos.items(): pos2words[pos[:1]]+=[word]
+
+word2fields=load_fields()
