@@ -928,6 +928,7 @@ class Text(object):
 
 REPLACEMENTS={
 				'&hyphen;':'-',
+				'&sblank;':'--',
 				'&mdash;':' -- ',
 				'&ndash;':' - ',
 				'&longs;':'s',
