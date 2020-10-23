@@ -1,1 +1,1 @@
-from .webkit import *
+from .web import *

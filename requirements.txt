@@ -22,3 +22,4 @@ flask_socketio
 flask_session
 gevent-websocket
 xlrd
+htrc-feature-reader

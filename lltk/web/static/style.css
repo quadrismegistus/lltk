@@ -1,7 +1,33 @@
-body { font-family: 'Baskerville'; font-size: 14px; text-align: center; }
+body { 
+    font-family: 'Baskerville'; 
+    text-align: center;
+    color:rgba(240,240,240,1); 
+    background-color: black;
+}
 
-#body { text-align: center; }
-#frame { width:800px; border-right:1px solid; border-left: 1px solid; display: inline-block; }
+#body { text-align: center; font-size:'16px';}
+#frame { max-width:666px; display: inline-block; }
+
+/*  border-right:1px solid; border-left: 1px solid; */
+/* width */
+::-webkit-scrollbar {
+    width: 10px;
+  }
+  
+  /* Track */
+  ::-webkit-scrollbar-track {
+    background: #000000; 
+  }
+   
+  /* Handle */
+  ::-webkit-scrollbar-thumb {
+    background: rgba(136, 136, 136, 0.5); 
+  }
+  
+  /* Handle on hover */
+  ::-webkit-scrollbar-thumb:hover {
+    background: #555; 
+  }
 
 #header { text-align: center; }
 #content { text-align:left; margin:1em; font-size: 20px; }
@@ -60,7 +86,6 @@ pre { font-size: 14px; }
 
 /* Colors 10 v4 */
 
-/*
 .prob_VG_Human_0_0 { background-color: #808080 }
 .prob_VG_Human_0_1 { background-color: #989893 }
 .prob_VG_Human_0_2 { background-color: #b1b0a5 }
@@ -72,10 +97,9 @@ pre { font-size: 14px; }
 .prob_VG_Human_0_8 { background-color: #7fb1a5 }
 .prob_VG_Human_0_9 { background-color: #509892 }
 .prob_VG_Human_1_0 { background-color: #008080 }
-*/
 
 
-/*
+
 
 .field_CH_Abstractness_1_0 { background-color: #8b0000 }
 .field_CH_Abstractness_0_9 { background-color: #a70c25 }
@@ -100,7 +124,6 @@ pre { font-size: 14px; }
 .field_CH_Concreteness_1_0 { background-color: #008080 }
 
 
- */
 
 
 
@@ -108,7 +131,8 @@ pre { font-size: 14px; }
 
 
 
-/*
+
+
 .coeff_1_0 { background-color: #8b0000 }
 .coeff_0_9 { background-color: #a70c25 }
 .coeff_0_8 { background-color: #bf2543 }
@@ -129,9 +153,9 @@ pre { font-size: 14px; }
 .coeff_-0_7 { background-color: #53aa8b }
 .coeff_-0_8 { background-color: #3f9c87 }
 .coeff_-0_9 { background-color: #288d83 }
-.coeff_-1_0 { background-color: #008080 } */
+.coeff_-1_0 { background-color: #008080 }
 
-/* .prob_VG_Human_0_0 { background-color:#aaaaaa }
+.prob_VG_Human_0_0 { background-color:#aaaaaa }
 .prob_VG_Human_0_1 { background-color:#b7af9d }
 .prob_VG_Human_0_2 { background-color:#c1b491 }
 .prob_VG_Human_0_3 { background-color:#cbba85 }
@@ -140,9 +164,9 @@ pre { font-size: 14px; }
 .prob_VG_Human_0_6 { background-color:#e7cb5a }
 .prob_VG_Human_0_7 { background-color:#f0d047 }
 .prob_VG_Human_0_8 { background-color:#f8d630 }
-.prob_VG_Human_0_9 { background-color:#ffdc00 } */
+.prob_VG_Human_0_9 { background-color:#ffdc00 }
 
-/* .prob_VG_Human_1_0 { background-color: #8b0000 }
+.prob_VG_Human_1_0 { background-color: #8b0000 }
 .prob_VG_Human_0_9 { background-color: #bf2543 }
 .prob_VG_Human_0_8 { background-color: #e35875 }
 .prob_VG_Human_0_7 { background-color: #f98d9f }
@@ -152,8 +176,9 @@ pre { font-size: 14px; }
 .prob_VG_Human_0_3 { background-color: #8ed29e }
 .prob_VG_Human_0_2 { background-color: #66b890 }
 .prob_VG_Human_0_1 { background-color: #3f9c87 }
-.prob_VG_Human_0_0 { background-color: #008080 } */
-/* .prob_VG_Human_0_0 { background-color: #dfdce3 }
+.prob_VG_Human_0_0 { background-color: #008080 }
+
+.prob_VG_Human_0_0 { background-color: #dfdce3 }
 .prob_VG_Human_0_1 { background-color: #c2c6e2 }
 .prob_VG_Human_0_2 { background-color: #a3b1e0 }
 .prob_VG_Human_0_3 { background-color: #829cde }
@@ -163,4 +188,104 @@ pre { font-size: 14px; }
 .prob_VG_Human_0_7 { background-color: #a28c9f }
 .prob_VG_Human_0_8 { background-color: #c29981 }
 .prob_VG_Human_0_9 { background-color: #dea85f }
-.prob_VG_Human_1_0 { background-color: #f7b733 } */
+.prob_VG_Human_1_0 { background-color: #f7b733 }
+
+
+
+
+
+/* .cm-level_1 { color: #8b0000 }
+.cm-level_2 { color: #bf2543 }
+.cm-level_3 { color: #e35875 }
+.cm-level_4 { color: #f98d9f }
+.cm-level_5 { color: #ffc7c4 }
+.cm-level_6 { color: #beecb5 }
+.cm-level_7 { color: #8ed29e }
+.cm-level_8 { color: #66b890 }
+.cm-level_9 { color: #3f9c87 }
+.cm-level_10 { color: #008080 } */
+
+
+/* .cm-level_1 { background-color: #8b0000 }
+.cm-level_2 { background-color: #bf2543 }
+.cm-level_3 { background-color: #e35875 }
+.cm-level_4 { background-color: #f98d9f }
+.cm-level_5 { background-color: #ffc7c4 }
+.cm-level_6 { background-color: #ffffe0 }
+.cm-level_7 { background-color: #beecb5 }
+.cm-level_8 { background-color: #8ed29e }
+.cm-level_9 { background-color: #66b890 }
+.cm-level_10 { background-color: #3f9c87 } */
+
+/* .cm-level_1 { background-color: #DF8211 }
+.cm-level_2 { background-color: #C67624 }
+.cm-level_3 { background-color: #AD6B37 }
+.cm-level_4 { background-color: #94604B }
+.cm-level_5 { background-color: #7B545E }
+.cm-level_6 { background-color: #634971 }
+.cm-level_7 { background-color: #4A3E85 }
+.cm-level_8 { background-color: #313298 }
+.cm-level_9 { background-color: #1827AB }
+.cm-level_10 { background-color: #001CBF;} */
+
+
+
+
+.cm-level_1 { background: rgba(223,130,17,0.8) }
+.cm-level_2 { background: rgba(198,118,36,0.8) }
+.cm-level_3 { background: rgba(173,107,55,0.8) }
+.cm-level_4 { background: rgba(148,96,75,0.8) }
+.cm-level_5 { background: rgba(123,84,94,0.8) }
+.cm-level_6 { background: rgba(99,73,113,0.8) }
+.cm-level_7 { background: rgba(74,62,133,0.8) }
+.cm-level_8 { background: rgba(49,50,152,0.8) }
+.cm-level_9 { background: rgba(24,39,171,0.8) }
+.cm-level_10 { background: rgba(0,28,191,0.8) }
+.cm-level_11 { background: rgba(0,28,191,0.8) }
+
+
+/* 
+DF8211
+C67624
+AD6B37
+94604B
+7B545E
+634971
+4A3E85
+313298
+1827AB
+001CBF */
+
+.cm-tag { 
+    color: rgba(255,0,0,0.5);
+    font-size:0.5em;
+}
+
+.cm-tag > .cm-level_1 { background-color: transparent !important; }
+.cm-tag > .cm-level_2 { background-color: transparent !important; }
+.cm-tag > .cm-level_3 { background-color: transparent !important; }
+.cm-tag > .cm-level_4 { background-color: transparent !important; }
+.cm-tag > .cm-level_5 { background-color: transparent !important; }
+.cm-tag > .cm-level_6 { background-color: transparent !important; }
+.cm-tag > .cm-level_7 { background-color: transparent !important; }
+.cm-tag > .cm-level_8 { background-color: transparent !important; }
+.cm-tag > .cm-level_9 { background-color: transparent !important; }
+.cm-tag > .cm-level_10 { background-color: transparent !important; }
+
+
+.cm-style1 { color: red; }
+.cm-style2 { color: blue; }
+
+
+
+#editor {
+    /* width: 100%; */
+    /* min-height: 400px; */
+    padding: 1em;
+    /* background-color: #444; */
+    /* color: white; */
+    /* font-size: 16px; */
+    /* font-family: monospace; */
+    border:0px;
+    /* text-align: justify; */
+}

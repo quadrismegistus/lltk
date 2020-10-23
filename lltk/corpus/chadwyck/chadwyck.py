@@ -25,93 +25,6 @@ class TextChadwyck(Text):
 		return text_plain_from_xml(txt,body_tag='doc',BAD=BAD,OK=OK)
 
 
-
-# def split_raw_xml_into_chapters(xml_str,chapter_tags=['div5','div4','div3','div2','div1','div0'],para_tag='p',verse_tag='l',keep_verse=True,modernize_spelling=True):
-# 	import bs4,tools
-# 	from collections import defaultdict
-# 	txt=xml_str
-# 	done=0
-# 	parent_tags={}
-# 	chapter_tag=None
-
-# 	for ctag in chapter_tags:
-# 		txt=txt.replace(f'<{ctag}>','<chapter>').replace('</{ctag}>','</chapter>')
-
-# 	chapter_tags=['chapter']
-# 	chapter_tag='chapter'
-# 	# for ctag in chapter_tags:
-# 	# 	if '</'+ctag+'>' in txt:
-# 	# 		if not chapter_tag:
-# 	# 			chapter_tag=ctag
-# 	# 		parent_tags[len(parent_tags)]=ctag
-# 	# #print chapter_tag,done,parent_tags
-# 	dom=bs4.BeautifulSoup(txt,'lxml')
-# 	# # numretu
-# 	# for ctag in list(parent_tags.values()):
-# 	# 	for i,ctagx in enumerate(dom(ctag)):
-# 	# 		ctagx['num']=i+1
-			
-# 	# for child_i,child in enumerate(chapter_tags):
-# 	# 	immediate_parents=chapter_tags[child_i+1:]
-# 	# 	#print 'xx',child_i,child,immediate_parents
-# 	# 	for ptagi,ptag in enumerate(immediate_parents):
-# 	# 		for pi,parentx in enumerate(dom(ptag)):
-# 	# 			#print 'parent',pi,ptag,child,len(parentx)
-# 	# 			for ci,ctagx in enumerate(parentx(child)):
-# 	# 				#print 'chap',ci,len(ctagx)
-# 	# 				#ctagx['num_in_parent%s' % str(ptagi+1)]=ci+1
-# 	# 				ctagx['num_%s_in_%s' % (child,ptag)]=ci+1
-# 	# 				#print ctagx.attrs
-
-
-# 	if keep_verse:
-# 		for tag in dom(verse_tag):
-# 			tag.name=para_tag
-
-# 	for tag in BAD: [x.extract() for x in dom.findAll(tag)]
-
-# 	# if modernize_spelling:
-# 		# spelling_d=tools.get_spelling_modernizer()
-
-# 	# print(chapter_tag)
-# 	for chap_i,xml_chapter in enumerate(dom(chapter_tag)):
-# 		if xml_chapter is None: continue
-# 		xml_str=str(xml_chapter)
-# 		try:
-# 			name=xml_str.split('<attbytes>')[0].split('\n')[1].strip()
-# 		except IndexError:
-# 			name='?'
-# 			print(xml_str,'??????')
-# 		chapter_meta = {'num':chap_i+1}
-# 		chapter_meta['idref']=xml_chapter('idref')[0].text
-# 		chapter_meta['name']=name
-
-# 		for level,ptag in sorted(parent_tags.items()):
-# 			parent=xml_chapter.find_parent(ptag)
-
-# 			if parent:
-# 				for k,v in list(parent.attrs.items()):
-# 					#print '>>',level,ptag,k,v
-# 					chapter_meta[ptag+'_num' if '_num' not in k else k]=v
-
-	
-# 		## make txt
-# 		chapter=[]
-# 		for xml_para in xml_chapter(para_tag):
-# 			if not xml_para: continue
-# 			para=clean_text(xml_para.text).replace('\n',' ')
-# 			while '  ' in para: para=para.replace('  ',' ')
-# 			if para: chapter+=[para]
-# 		chapter_txt='\n\n'.join(chapter)
-
-# 		# modernize?
-# 		# if modernize_spelling:
-# 			# speling_
-# 			# chapter_txt=tools.modernize_spelling_in_txt(chapter_txt,spelling_d)
-
-# 		# yield meta, xml, txt
-# 		yield(chapter_meta,str(xml_chapter),chapter_txt)
-
 def test_split():
 	raw=open(os.path.join(PATH_CORPUS,Chadwyck.ID,'raw','Eighteenth-Century_Fiction','sterne.01.new')).read()
 	for x in split_raw_xml_into_chapters(raw):
@@ -129,60 +42,19 @@ def split_raw_xml_into_chapters(xml_str,chapter_tags=['div5','div4','div3','div2
 	for tag in BAD: [x.extract() for x in dom.findAll(tag)]
 	was = dict((i,False) for i in range(7))
 
-
 	xml_chapters=[]
-	divs_0 = list(dom('div000'))
-	if not divs_0: divs_0=[dom]
-	else: was[0]=True
-
+	
 	for ctag in dom('div0'): ctag.name='div1'
 	for ctag in dom('div1'): ctag.name='div1'
 	for ctag in dom('div2'): ctag.name='div1'
 	for ctag in dom('div3'): ctag.name='div1'
 	for ctag in dom('div4'): ctag.name='div1'
 	for ctag in dom('div5'): ctag.name='div1'
-		
 
-	for i_div0,div0 in enumerate(divs_0):
-		divs_1 = list(div0('div1'))
-		if not divs_1: divs_1=[div0]
-		else: was[1]=True
-		# print(divs_1,'!?!?!?!?')
-
-		for i_div1,div1 in enumerate(divs_1):
-			# print(i_div1,div1)
-			# print('\n\n^^')
-
-			divs_2 = list(div1('div2'))
-			if not divs_2: divs_2=[div1]
-			else: was[2]=True
-
-			for i_div2,div2 in enumerate(divs_2):
-				divs_3 = list(div2('div3'))
-				if not divs_3: divs_3=[div2]
-				else: was[3]=True
-
-				for i_div3,div3 in enumerate(divs_3):
-					divs_4 = list(div3('div4'))
-					if not divs_4: divs_4=[div3]
-					else: was[4]=True
-
-					for i_div4,div4 in enumerate(divs_4):
-						divs_5 = list(div4('div5'))
-						if not divs_5: divs_5=[div4]
-						else: was[5]=True
-
-						for i_div5,div5 in enumerate(divs_5):
-							# print(i_div0,i_div1,i_div2,i_div3,i_div4,i_div5)
-							index_l=[i_div0,i_div1,i_div2,i_div3,i_div4,i_div5]
-							index=tuple([ix for ii,ix in enumerate(index_l) if was[ii]])
-							xml_chapters+=[(index,div5)]
-
-
-				# print(div2)
-				# print('\n\n')
-	# stop
-
+	divs = list(dom('div1'))
+	if not divs: divs=[dom]
+	for i_div,div in enumerate(divs):
+		xml_chapters+=[(i_div,div)]
 
 	for chap_i,(chap_index,xml_chapter) in enumerate(xml_chapters):
 		if xml_chapter is None: continue
@@ -191,14 +63,13 @@ def split_raw_xml_into_chapters(xml_str,chapter_tags=['div5','div4','div3','div2
 			name=xml_str.split('<attbytes>')[0].split('</collection>')[1].strip()
 		except IndexError:
 			name='?'
-			# print(xml_str,'??????')
-		chapter_meta = {'num':chap_i+1}
+		chapter_meta = {} #'num':chap_i+1}
 		try:
 			chapter_meta['idref']=xml_chapter('idref')[0].text
 		except IndexError:
 			continue
 		chapter_meta['name']=name
-		chapter_meta['index']='.'.join(str(x+1) for x in chap_index)
+		chapter_meta['index']=chap_index#='.'.join(str(x+1) for x in chap_index)
 	
 		## make txt
 		chapter=[]
@@ -216,15 +87,15 @@ def split_raw_xml_into_chapters(xml_str,chapter_tags=['div5','div4','div3','div2
 
 		chapter_txt='\n\n'.join(chapter)
 		chapter_xml='\n\n'.join(chapter_xml)
-		if chapter_xml:
-			chapter_xml=f'''<TEI xmlns="http://www.tei-c.org/ns/1.0">
-<text>
-<body>
-{chapter_xml}
-</body>
-</text>
-</TEI>
-'''
+		# if chapter_xml:
+# 			chapter_xml=f'''<TEI xmlns="http://www.tei-c.org/ns/1.0">
+# <text>
+# <body>
+# {chapter_xml}
+# </body>
+# </text>
+# </TEI>
+# '''
 			# minidom=bs4.BeautifulSoup(chapter_xml, 'xml')
 			# chapter_xml=minidom.prettify()
 		
@@ -292,20 +163,37 @@ def compile_text(fnfn):
 			# if dob.isdigit(): author+='_'+str(dob)
 		else:
 			author = tools.noPunc(author)
+		author_id=Chadwyck.ID+'/'+author
 
-		title = book_meta.get('title','Unknown').split('.')[0].split(';')[0].split(':')[0].split('(')[0]
+		path_l_author=[author]
+		path_author=os.path.join(PATH_CORPUS,Chadwyck.ID,'texts',*path_l_author)
+		if not os.path.exists(path_author): os.makedirs(path_author)
+		with open(os.path.join(path_author,'meta.json'),'w') as of:
+			json.dump(
+				{
+				'_id':author_id,
+				'_type':'author',
+				'name':author
+				},
+				of,
+				indent=4, sort_keys=True
+			)
+		if 'author' in book_meta: del book_meta['author']
+
+		title = book_meta.get('title','Unknown').split('.')[0].split(';')[0].split(':')[0].split('(')[0].split('[')[0]
 		title=title.strip()
 		if title.startswith('A '): title=title[2:]
 		if title.startswith('The '): title=title[4:]
 		title=title.replace(' ','_')
 
 		path_l_book=[
-			# book_meta.get('subcorpus'),
-			author,
+			*path_l_author,
 			title[:50],
 			book_meta.get('idref')
 		]
-		book_meta['id']='/'.join(path_l_book)
+		book_meta['_id']=Chadwyck.ID+'/'+ ('/'.join(path_l_book))
+		book_meta['_id_author']=author_id
+		book_meta['_type']='text'
 
 		# save book meta
 		path_book=os.path.join(PATH_CORPUS,Chadwyck.ID,'texts',*path_l_book)
@@ -325,14 +213,16 @@ def compile_text(fnfn):
 			#all_meta['path']='/'.join(path_l)
 			path_l=[
 				*path_l_book,
-				# str(chapter_meta.get('num',0)).zfill(4)
-				*[str(x).zfill(3) for xi,x in enumerate(chapter_meta.get('index').split('.'))],
+				str(chapter_meta.get('index',0)).zfill(3)
+				# *[str(x).zfill(3) for xi,x in enumerate(chapter_meta.get('index').split('.'))],
 				# chapter_meta.get('idref'),
 				# str(chapter_meta.get('div2_num',0)).zfill(2),
 				# str(chapter_meta.get('div3_num',0)).zfill(2),
 			]
-			chapter_meta['id']='/'.join(path_l)
-
+			chapter_meta['_id']=Chadwyck.ID+'/'+('/'.join(path_l))
+			chapter_meta['_type']='section'
+			chapter_meta['_id_author']=author_id
+			chapter_meta['_id_text']=book_meta['_id']
 
 			# write meta, xml, txt
 			path_text = os.path.join(PATH_CORPUS,Chadwyck.ID,'texts',*path_l)
@@ -342,8 +232,8 @@ def compile_text(fnfn):
 			path_raw = os.path.join(path_text, 'text.raw')
 			path_xml = os.path.join(path_text, 'text.xml')
 
-			if os.path.exists(path_meta):
-				raise Exception('!! already exists!',path_meta,book_meta)
+			# if os.path.exists(path_meta):
+				# raise Exception('!! already exists!',path_meta,book_meta)
 				
 
 			# with open(path_meta,'w') as of: json.dump(all_meta, of, indent=4)
@@ -352,9 +242,9 @@ def compile_text(fnfn):
 			with open(path_raw,'w') as of: of.write(chapter_raw)
 			with open(path_xml,'w') as of: of.write(chapter_xml)
 
-			chapters_meta+=[all_meta]
+			# chapters_meta+=[all_meta]
 	
-	return chapters_meta
+	# return chapters_meta
 
 
 ### CORPUS CLASS
@@ -395,9 +285,11 @@ class Chadwyck(Corpus):
 		import json
 		from p_tqdm import p_umap
 		res=p_umap(compile_text,fnfns,num_cpus=4)
-		all_meta=[chap_meta for meta in res for chap_meta in meta]
-		tools.write2(self.path_metadata,all_meta)
+		# all_meta=[chap_meta for meta in res for chap_meta in meta]
+		# tools.write2(self.path_metadata,all_meta)
 
+		# compile metadata
+		self.save_metadata_from_meta_jsons()
 
 
 

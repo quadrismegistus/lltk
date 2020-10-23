@@ -13,6 +13,7 @@ COMMANDS = [
 	dict(name='list', help='List names and descriptions of all corpora', takes_corpus_obj=False, group='Corpus status'),
 	dict(name='status', help='Get download/installation status for all corpora', takes_corpus_obj=False, group='Corpus status'),
 	dict(name='info', help='Get information about a corpus', takes_corpus_obj=True, group='Corpus status'),
+	dict(name='web', help='Run web server', takes_corpus_obj=False, group='Corpus status'),
 
 	dict(name='create', help='Create a corpus with LLTK', takes_corpus_obj=False, group='New corpora'),
 	dict(name='import', help='Import an existing corpus into LLTK', takes_corpus_obj=False, group='New corpora'),
@@ -170,6 +171,10 @@ def main():
 	elif args.cmd=='status':
 		from lltk.corpus import check_corpora
 		check_corpora()
+
+	elif args.cmd=='web':
+		from lltk.web import run
+		run()
 
 	elif args.cmd=='links':
 		from lltk import tools

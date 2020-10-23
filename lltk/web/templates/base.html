@@ -1,13 +1,16 @@
 <!doctype html>
 <html>
 <head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">	
 	<title>LLTK: Literary Language Toolkit</title>
 	<link rel="stylesheet" type="text/css" href="/static/style.css">
 	<script type="text/javascript" src="/static/jquery.min.js" ></script>
-	<script type="text/javascript" src="/static/socket.io.min.js"></script>
-	<script type="text/javascript" charset="utf-8">
-		var socket = io.connect('http://' + document.domain + ':' + location.port);
-	</script>
+	<!-- <script type="text/javascript" src="/static/socket.io.min.js"></script> -->
+	<!-- <script type="text/javascript" charset="utf-8"> -->
+		<!-- var socket = io.connect('http://' + document.domain + ':' + location.port); -->
+	<!-- </script> -->
+	
 	{%block head %}
 
 	{% endblock %}
@@ -20,7 +23,7 @@
 			<h1><a href='/'>LLTK: Literary Language Toolkit</a></h1>
 		</div>
 
-		<hr />
+		<!-- <hr /> -->
 
 		<div id='content'>
 			{% block content %}

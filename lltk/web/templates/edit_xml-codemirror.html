@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+
+{% block head %}
+<title>Enter text</title>
+<!-- <script type="text/javascript" src="/static/rainbowvis.js"></script> -->
+<script src="/static/codemirror/lib/codemirror.js"></script>
+<link rel="stylesheet" href="/static/codemirror/lib/codemirror.css">
+
+{% endblock %}
+
+
+{% block content %}
+
+<h4>Text</h4>
+
+<textarea name="txt" cols="60" rows="20" id="cm" name="cm"></textarea>
+<input type="submit" value="Save" />
+
+
+
+
+<script>
+
+    word_class_list={{word_class_list|tojson}};
+
+    CodeMirror.defineMode("mymode", function() {
+    
+    return {
+        token: function(stream,state) {
+
+            for (i=0; i<word_class_list.length; i++) {
+                d=word_class_list[i]
+                word=d[0]
+                style=d[1]
+                matcher = new RegExp(' '+word+' ')
+                // console.log(word,style,matcher)
+                if (stream.match(matcher) ) {
+                    // console.log(word,'!!')
+                    return style;
+                }
+            }
+        
+            stream.next();
+            return null;
+        }
+    };
+});
+
+
+var editor = CodeMirror.fromTextArea(document.getElementById('cm'), {
+    mode: "mymode",
+    lineNumbers: false,
+    lineWrapping: true,
+});  
+
+
+
+
+
+
+
+
+
+
+</script>
+
+
+{% endblock %}

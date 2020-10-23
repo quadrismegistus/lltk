@@ -178,6 +178,32 @@ desc = The Spectator (1711-1714)
 id = spectator
 
 
+
+[Hathi]
+name = Hathi
+desc = Hathi Trust Research Center
+id = hathi
+url_full_metadata = https://www.hathitrust.org/filebrowser/download/297178
+path_root = hathi
+
+[HathiSermons]
+name = HathiSermons
+id = hathi_sermons
+desc = Volumes with "sermon" in title
+path_root = hathi_sermons
+path_python = hathi/hathi.py
+class_name = HathiSermons
+
+
+
+[HathiEssays]
+name = HathiEssays
+id = hathi_essays
+desc = Volumes with "essay" in title
+path_root = hathi_essays
+path_python = hathi/hathi.py
+class_name = HathiEssays
+
 [TedJDH]
 name = TedJDH
 desc = Corpus used by Ted Underwood in the 2012 Journal of Digital Humanities piece

@@ -19,4 +19,41 @@
 
 
 
+<script>
+    CodeMirror.defineMode("mymode", function() {
+    
+    return {
+        token: function(stream,state) {
+            
+            if (stream.match("the") ) {
+                return "style1";
+            } else if (stream.match("a") ) {
+                return "style2";
+            } else {
+                stream.next();
+                return null;
+            }
+        }
+    };
+    
+});
+
+
+var editor = CodeMirror.fromTextArea(document.getElementById('cm'), {
+    mode: "mymode",
+    lineNumbers: true
+});  
+
+
+
+
+
+
+
+
+
+
+</script>
+
+
 {% endblock %}

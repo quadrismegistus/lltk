@@ -1,0 +1,151 @@
+{% extends 'base.html' %}
+
+{% block head %}
+<title>Enter text</title>
+<!-- <script type="text/javascript" src="/static/rainbowvis.js"></script> -->
+<script src="/static/codemirror/lib/codemirror.js"></script>
+<link rel="stylesheet" href="/static/codemirror/lib/codemirror.css">
+
+{% endblock %}
+
+
+{% block content %}
+
+<center><h4>{{meta.get('_id','')}}</h4></center>
+<center><h5>{{meta.get('name','')}}</h5></center>
+
+
+<!-- <textarea name="txt" cols="60" rows="20" id="cm" name="cm"></textarea> -->
+
+<!-- <input type="submit" value="Recolor" id="color1" onclick="recolor()" /> -->
+<!-- <input type="submit" value="Save" id="savebutton1" onclick="save_xml()" /> -->
+
+<div id="editor" contenteditable="true">{{text_default|safe}}</div>
+
+<input type="submit" value="Recolor" id="color" onclick="recolor()" />
+<input type="submit" value="Save" id="savebutton" onclick="save_xml()" />
+
+
+
+
+<script>
+
+    word2level={{word2level|tojson}};
+    console.log(word2level)
+
+function esc(w) {
+    return w.split('<').join('&lt;').split('>').join('&gt;')
+}
+
+// SQL keywords
+// Keyup event
+function get_text() {
+    content=$('#editor').html()
+    content=content.split('<div>').join('').split('<br>').join('').split('</div>').join('')
+    content=content.split('&amp;').join('&').replace(/<\/?span[^>]*>/g,"")
+    console.log(content)
+    content=content.split('&lt;/p&gt;').join('&lt;/p&gt;\n')
+    content=content.split('&lt;p&gt;').join('\n&lt;p&gt;')
+    content=content.split('&hyphen;').join('-')
+    return content
+}
+
+function recolor() {
+    console.log('!!')
+  // Space key pressed
+//   if (e.keyCode == 32){
+    var newHTML = "";
+    // Loop through words
+    
+    content=get_text()
+    lines=content.split('\n\n')
+
+    lines.forEach(function(line) {
+        console.log('line!',line)
+        if (line) {
+            words=line.split(/\b/) // #.replace(/[\s]+/g, " ").trim().split(" ")
+            
+            words.forEach(function(word){
+                // console.log([word]);
+                word_l=word.toString().toLowerCase()
+                if (word_l in word2level) {
+                    newHTML += "<span class='cm-level_"+word2level[word_l].toString()+"'>" + esc(word) + "</span>";
+                // } else if (word.includes('<') || word.includes('>')) {
+                    // console.log('oh no!!')
+                    // newHTML += "<span class='cm-style1'>" + esc(word) + "</span>";
+                } else {
+                    newHTML+=esc(word)
+                    // newHTML += "<span>"+esc(word)+"</span> "
+                }
+            });
+
+            newHTML+='<br/><br/>'
+        }
+    })
+    newHTML=newHTML.split('&lt;').join('<span class="cm-tag">&lt;')
+    newHTML=newHTML.split('&gt;').join('&gt;</span>')
+
+    // newHTML=newHTML.split('&lt;it&gt;').join('&lt;it&gt;<i>')
+    // newHTML=newHTML.split('&lt;/it&gt;').join('</i>&lt;/it&gt;')
+    $('#editor').html(newHTML);
+
+    // Set cursor postion to end of text
+    // var child = $(this).children();
+    // var range = document.createRange();
+    // var sel = window.getSelection();
+    // range.setStart(child[child.length-1], 1);
+    // range.collapse(true);
+    // sel.removeAllRanges();
+    // sel.addRange(range);
+    // this.focus();
+//   }
+}
+
+CORPUS={{corpus|tojson}}
+TEXT_ID={{text_id|tojson}}
+
+$("#editor").keydown(function (event) {
+    if ((event.metaKey || event.ctrlKey) && event.keyCode == 13) {
+        recolor()
+    } else if ((event.ctrlKey || event.metaKey) && event.which == 83) {
+        // Save Function
+        console.log('shift S!')
+        save_xml()
+
+        event.preventDefault();
+        return false;
+    }
+});
+
+
+
+function save_xml() {
+    text=$('#editor').text()
+    text=text.split('</p>').join('</p>\n\n')
+    console.log(text)
+    $.post('/save/'+CORPUS+'/'+TEXT_ID, {
+        text: text,
+    }).done(function(response) {
+        console.log('done!',response)
+    }).fail(function(e) {
+        console.log('!! ERROR',e)
+    });
+}
+
+
+$(function(){
+    txt=$('#editor').text()
+    console.log([txt])
+    if (txt) {
+        recolor()
+    }
+})
+
+
+
+
+
+</script>
+
+
+{% endblock %}

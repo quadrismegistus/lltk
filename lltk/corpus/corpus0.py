@@ -15,7 +15,6 @@ import inspect
 from tqdm import tqdm
 import random
 import json
-import pandas as pd
 
 from os.path import expanduser
 HOME=expanduser("~")
@@ -211,10 +210,17 @@ class Corpus(object):
 
 		# Set defaults
 		default_kwargs=MANIFEST_DEFAULTS
+
 		if not name: name = input_kwargs.get('name')
 		if not name: name = self.__class__.__name__
+
 		if not id: id = input_kwargs.get('id')
 		if not id: id = camel2snake_case(name)
+
+		# self.name=name
+		# self.id=id
+		# self.input_kwargs=input_kwargs
+		# for k,v in input_kwargs.items(): setattr(self,k,v)
 
 		### Configs
 		manifest_kwargs=load_manifest().get(name,{})
@@ -222,9 +228,12 @@ class Corpus(object):
 		self.name=name
 		self.id = id
 
+
+
 		path_root = get_path_abs(self.opts.get('path_root',''),sources=sources)
 		if not path_root: path_root=os.path.join(PATH_CORPUS,self.id)
-		self.path_root=path_root
+		#print([path_root,self.id,self.name])
+		#if not os.path.isabs(path_root): path_root=os.path.abspath(os.path.join(PATH_CORPUS,path_root))
 
 		# Set as attributes
 		for opt_name,opt_val in sorted(self.opts.items()):
@@ -245,6 +254,7 @@ class Corpus(object):
 		# print('>> PATH_TO_CORPUS_CODE:',PATH_TO_CORPUS_CODE)
 		# print()
 
+
 	@property
 	def num_texts(self):
 		return len(self.texts())
@@ -254,14 +264,13 @@ class Corpus(object):
 
 	## Sections
 	@property
-	def path_metadata_sections(self): return os.path.join(self.path_root,'metadata_section.csv')
-	@property
-	def metadata_sections(self):
-		if not hasattr(self,'_metadata_sections'):
-			import pandas as pd
-			self._metadata_sections = pd.read_csv(self.path_metadata_sections,error_bad_lines=False).set_index('_id')
-		return self._metadata_sections
-
+	def sections(self):
+		if not hasattr(self,'_sections'):
+			corp=Corpus_in_Sections(name=self.name+'_in_Sections', parent=self)
+			if hasattr(self,'TEXT_SECTION_CLASS') and self.TEXT_SECTION_CLASS:
+				corp.TEXT_SECTION_CLASS=self.TEXT_SECTION_CLASS
+			self._sections=corp
+		return self._sections
 
 	### TEXT RELATED
 
@@ -419,8 +428,8 @@ class Corpus(object):
 		
 		metadatas=defaultdict(list)
 		#from tqdm import tqdm
-		from p_tqdm import p_map
-		to_walk = sorted(list(os.walk(self.path_texts))) #[:1000]
+		from p_tqdm import p_umap
+		to_walk = list(os.walk(self.path_texts)) #[:1000]
 
 		def do_walk(args):
 			(root,dirs,fns)=args
@@ -433,7 +442,7 @@ class Corpus(object):
 				#metadatas[meta['_type']]+=[meta]
 			return (meta_type,meta)
 		
-		all_meta = p_map(do_walk, to_walk)
+		all_meta = p_umap(do_walk, to_walk)
 		print(len(all_meta))
 		for mt,m in all_meta:
 			if mt and m:
@@ -441,9 +450,8 @@ class Corpus(object):
 			
 		for metatype,meta_ld in metadatas.items():
 			path_meta=os.path.join(self.path_home,'metadata_'+metatype+'.csv')
-			#print(path_meta,'...')
-			#tools.write(path_meta, meta_ld, sep='\t')
-			pd.DataFrame(meta_ld).set_index('_id').to_csv(path_meta) #,index=False)
+			print(path_meta,'...')
+			tools.write(path_meta, meta_ld)
 
 	
 

@@ -14,7 +14,8 @@ corpus/_matches
 .DS_Store
 model/_models_word2vec/
 #data/data.worddb*
-
+data/fields*
+data
 
 .ipynb_checkpoints
 .pypirc
@@ -23,3 +24,6 @@ build/
 dist/
 mpi_slingshot.egg-info/
 lltk.egg-info/
+
+venv
+.vscode

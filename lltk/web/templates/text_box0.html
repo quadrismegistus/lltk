@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+
+{% block head %}
+<title>Enter text</title>
+<script type="text/javascript" src="/static/rainbowvis.js"></script>
+{% endblock %}
+
+
+{% block content %}
+
+<h4>Text</h4>
+
+<form action="/text/custom" method="post">
+<textarea name="txt" cols="100" rows="20">
+</textarea>
+
+<input type="submit" value="Submit" />
+</form>
+
+
+
+{% endblock %}
