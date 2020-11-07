@@ -1,7 +1,8 @@
 from __future__ import absolute_import
 
 from lltk.corpus import Corpus
-from lltk.text.default import TextPlainTextCorpus
+from lltk.text import Text
+# from lltk.corpus.default import TextPlainTextCorpus,PlainTextCorpus
 import os
 
 # class DotTXT(PlainTextCorpus):
@@ -19,7 +20,7 @@ import os
 # 		self.path = self.PATH_ROOT
 
 class DotTXT(Corpus):
-	TEXT_CLASS=TextPlainTextCorpus
+	TEXT_CLASS=Text
 	PATH_TXT = 'dottxt/_txt_dottxt'
 	PATH_METADATA = 'dottxt/corpus-metadata.DotTXT.xlsx'
 	EXT_TXT='.txt'

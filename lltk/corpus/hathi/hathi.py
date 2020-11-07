@@ -369,6 +369,19 @@ class HathiEssays(Hathi):
 
 
 
+class HathiLetters(Hathi):
+	ID='hathi_letters'
+	NAME='HathiLetters'
+	SEARCH_TERMS=['letters']
+
+
+class HathiTreatises(Hathi):
+	ID='hathi_treatises'
+	NAME='HathiTreatises'
+	SEARCH_TERMS=['treatise']
+
+
+
 
 
 

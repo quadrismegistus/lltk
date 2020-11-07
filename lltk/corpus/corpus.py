@@ -507,6 +507,7 @@ class Corpus(object):
 
 		#meta_ld=tools.read_ld(self.path_metadata,keymap={'*':str})
 		self._metadf=meta_df=tools.read_csv_with_pandas(self.path_metadata,dtype=None,low_memory=False,error_bad_lines=False).fillna('')
+		self._metadf['corpus']=self.name
 		self._meta=meta_ld=meta_df.to_dict('records')
 		self._text_ids=[self.get_id_from_metad(d) for d in meta_ld]
 		self._texts=[self.TEXT_CLASS(idx,self) for idx in self._text_ids]
@@ -923,7 +924,8 @@ class Corpus(object):
 		return self._metadf
 
 	@property
-	def metadata(self): return self.metadf
+	def metadata(self):
+		return self.metadf
 
 	@property
 	def df(self): return self.metadf

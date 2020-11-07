@@ -306,6 +306,11 @@ class ECCO(Corpus):
 	year_start=1700
 	year_end=1800
 
+	@property
+	def metadata(self):
+		meta=super().metadata
+		return meta.query(f'{self.year_start}<=year<{self.year_end}')
+
 	def __init__(self):
 		super(ECCO,self).__init__('ECCO',path_txt=None,ext_txt=None,path_metadata=self.PATH_METADATA,paths_rel_data=self.PATHS_REL_DATA,paths_text_data=self.PATHS_TEXT_DATA,path_freq_table=self.PATH_FREQ_TABLE)
 		self.path = os.path.dirname(__file__)

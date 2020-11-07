@@ -56,3 +56,10 @@ class EEBO_TCP(TCP):
 	EXT_XML = '.headed.xml.gz'
 	EXT_TXT='.txt'
 	TEXT_SECTION_CLASS=TextSectionTCP
+	MIN_YEAR=1500
+	MAX_YEAR=1700
+
+	@property
+	def metadata(self):
+		meta=super().metadata
+		return meta.query(f'{self.MIN_YEAR}<=year<{self.MAX_YEAR}')	

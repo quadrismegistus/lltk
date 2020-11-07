@@ -116,3 +116,11 @@ class GaleAmericanFiction(Corpus):
     def __init__(self):
         super(GaleAmericanFiction,self).__init__('GaleAmericanFiction')
         self.path = os.path.dirname(__file__)
+
+    @property
+    def metadata(self):
+        import numpy as np
+        meta=super().metadata
+        meta['genre']='Fiction'
+        meta['year']=[int(x[:4]) if x[:4].isdigit() else np.nan for x in meta.pub_date_start]
+        return meta

@@ -133,6 +133,8 @@ class ChadwyckPoetry(Corpus):
 
 	TEXT_CLASS=TextChadwyckPoetry
 	EXT_XML='.xml'
+	MIN_YEAR=1500
+	MAX_YEAR=2020	
 
 	# def __init__(self):
 	# 	super(ChadwyckPoetry,self).__init__('ChadwyckPoetry',path_txt=self.PATH_TXT,path_xml=self.PATH_XML,path_metadata=self.PATH_METADATA,ext_xml=self.EXT_XML)
@@ -191,7 +193,13 @@ class ChadwyckPoetry(Corpus):
 	def word2vec_by_period(self,year_min=1500,year_max=2000,**attrs):
 		return super(ChadwyckPoetry,self).word2vec_by_period(year_min=year_min,year_max=year_max,**attrs)
 
-
+	@property
+	def metadata(self):
+		import numpy as np
+		meta=super().metadata
+		meta['genre']='Verse'
+		meta['year']=meta.author_dob.apply(lambda x: int(x)+30 if x.isdigit() else np.nan)
+		return meta.query(f'{self.MIN_YEAR}<=year<{self.MAX_YEAR}')
 
 
 class ChadwyckPoetrySample(ChadwyckPoetry):

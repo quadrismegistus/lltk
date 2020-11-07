@@ -194,7 +194,13 @@ path_root = hathi_sermons
 path_python = hathi/hathi.py
 class_name = HathiSermons
 
-
+[HathiLetters]
+name = HathiLetters
+id = hathi_letters
+desc = Volumes with "letters" in title
+path_root = hathi_letters
+path_python = hathi/hathi.py
+class_name = HathiLetters
 
 [HathiEssays]
 name = HathiEssays
@@ -203,6 +209,14 @@ desc = Volumes with "essay" in title
 path_root = hathi_essays
 path_python = hathi/hathi.py
 class_name = HathiEssays
+
+[HathiTreatises]
+name = HathiTreatises
+id = hathi_treatises
+desc = Volumes with "treatise" in title
+path_root = hathi_treatises
+path_python = hathi/hathi.py
+class_name = HathiTreatises
 
 [TedJDH]
 name = TedJDH

@@ -3,7 +3,6 @@ xopen
 wget
 smart_open
 bounter
-pycurl
 bleach
 internetarchive
 bs4

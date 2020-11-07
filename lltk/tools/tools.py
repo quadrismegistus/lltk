@@ -33,6 +33,14 @@ PATH_DEFAULT_CONF=os.path.abspath(os.path.join(LIT_ROOT,'..','config_default.txt
 PATH_MANIFEST_GLOBAL = os.path.join(LIT_ROOT,'corpus','manifest.txt')
 #print(PATH_MANIFEST_GLOBAL, os.path.exists(PATH_MANIFEST_GLOBAL))
 
+def human_format(num):
+	magnitude = 0
+	if num<1000: return str(num)
+	while abs(num) >= 1000:
+		magnitude += 1
+		num /= 1000.0
+	# add more suffixes if you need them
+	return '%.0f%s' % (num, ['', 'K', 'M', 'B', 'T', 'P'][magnitude])
 
 
 

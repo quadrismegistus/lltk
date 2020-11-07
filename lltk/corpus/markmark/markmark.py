@@ -73,7 +73,11 @@ class MarkMark(Corpus):
 
 		tools.write2(self.path_metadata, meta_ld)
 
-
+	@property
+	def metadata(self):
+		meta=super().metadata
+		meta['genre']='Fiction'
+		return meta
 
 
 

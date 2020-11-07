@@ -350,17 +350,20 @@ def show_text_box(word2level={},text_default='',corpus=None,text_id=None,meta={}
 # Dickens/Bleak_House/Z200035096/015
 @app.route('/edit/<corpus_name>/<path:text_id>')
 def edit_text(corpus_name,text_id):
-	corpus_obj=lltk.load_corpus(corpus_name)
+	# corpus_obj=lltk.load_corpus(corpus_name)
 	#text_obj=corpus_obj.TEXT_CLASS(text_id,corpus_obj)
 
 	#from lltk.tools.db import get_text_meta
 	#meta=get_text_meta(corpus_name,text_id)
-	meta_path = os.path.join(corpus_obj.path_texts,text_id,'meta.json')
+	import lltk
+
+	path_texts=os.path.join(lltk.config['PATH_TO_CORPORA'],corpus_name,'texts')
+	meta_path = os.path.join(path_texts,text_id,'meta.json')
 	meta=json.load(open(meta_path))
 
-	text_path = os.path.join(corpus_obj.path_texts,text_id,'text.xml')
-	text_anno_path = os.path.join(corpus_obj.path_texts,text_id,'text.anno.xml')
-	text_anno_path_bak = os.path.join(corpus_obj.path_texts,text_id,'.text.anno.xml.bak')
+	text_path = os.path.join(path_texts,text_id,'text.xml')
+	text_anno_path = os.path.join(path_texts,text_id,'text.anno.xml')
+	text_anno_path_bak = os.path.join(path_texts,text_id,'.text.anno.xml.bak')
 
 	if os.path.exists(text_anno_path):
 		with open(text_anno_path) as f:
@@ -377,10 +380,11 @@ def edit_text(corpus_name,text_id):
 
 @app.route('/save/<corpus_name>/<path:text_id>',methods=['POST'])
 def save_text(corpus_name,text_id):
-	corpus_obj=lltk.load_corpus(corpus_name)
-	text_path = os.path.join(corpus_obj.path_texts,text_id,'text.xml')
-	text_anno_path = os.path.join(corpus_obj.path_texts,text_id,'text.anno.xml')
-	text_anno_path_bak = os.path.join(corpus_obj.path_texts,text_id,'.text.anno.xml.bak')
+	import lltk
+	path_texts=os.path.join(lltk.config['PATH_TO_CORPORA'],corpus_name,'texts')
+	text_path = os.path.join(path_texts,text_id,'text.xml')
+	text_anno_path = os.path.join(path_texts,text_id,'text.anno.xml')
+	text_anno_path_bak = os.path.join(path_texts,text_id,'.text.anno.xml.bak')
 	
 	new_txt=request.form.get('text')
 	if new_txt:
