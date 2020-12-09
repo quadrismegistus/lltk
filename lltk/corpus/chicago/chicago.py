@@ -7,7 +7,12 @@ import os
 
 
 class TextChicago(Text):
-	pass
+	@property
+	def id(self):
+		idx=super().id
+		if type(idx)!=str or len(idx)!=8:
+			idx=str(int(idx)).zfill(8)
+		return idx
 
 class Chicago(Corpus):
 	TEXT_CLASS=TextChicago

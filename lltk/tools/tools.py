@@ -1771,3 +1771,44 @@ def remove_duplicates(seq,remove_empty=False):
 	l = [x for x in seq if not (x in seen or seen_add(x))]
 	if not remove_empty: return l
 	return [x for x in l if x]
+
+
+
+
+
+"""
+Simple mofo'n parallelism with progress bar. Born of frustration with p_tqdm.
+"""
+
+
+def pmap_iter(func, objs, num_proc=6, use_threads=False):
+    """
+    Yields results of func(obj) for each obj in objs
+    Uses multiprocessing.Pool(num_proc) for parallelism.
+    If use_threads, use ThreadPool instead of Pool.
+    Results in any order.
+    """
+    
+    # imports
+    import multiprocessing as mp
+    from tqdm import tqdm
+    
+    # if parallel
+    if num_proc>1:
+        # create pool
+        pool=mp.Pool(num_proc) if not use_threads else mp.ThreadPool(num_proc)
+
+        # yield iter
+        for res in tqdm(pool.imap_unordered(func, objs),total=len(objs)):
+            yield res
+    else:
+        # yield
+        for obj in tqdm(objs):
+            yield func(obj)
+
+def pmap(*x,**y):
+    """
+    Non iterator version of pmap_iter
+    """
+    # return as list
+    return list(pmap_iter(*x,**y))

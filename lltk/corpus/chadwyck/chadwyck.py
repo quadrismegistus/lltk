@@ -129,9 +129,9 @@ class Chadwyck(Corpus):
 	MIN_YEAR=1500
 	MAX_YEAR=1900
 
-	def __init__(self):
-		super(Chadwyck,self).__init__('Chadwyck',path_txt=self.PATH_TXT,path_xml=self.PATH_XML,path_metadata=self.PATH_METADATA,ext_xml=self.EXT_XML,ext_txt=self.EXT_TXT)
-		self.path = os.path.dirname(__file__)
+	# def __init__(self):
+	# 	super(Chadwyck,self).__init__('Chadwyck',path_txt=self.PATH_TXT,path_xml=self.PATH_XML,path_metadata=self.PATH_METADATA,ext_xml=self.EXT_XML,ext_txt=self.EXT_TXT)
+	# 	self.path = os.path.dirname(__file__)
 
 	@property
 	def metadata(self):

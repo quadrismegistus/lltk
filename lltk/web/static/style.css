@@ -1,8 +1,8 @@
 body { 
     font-family: 'Baskerville'; 
     text-align: center;
-    color:rgba(240,240,240,1); 
-    background-color: black;
+    /* color:rgba(240,240,240,1);  */
+    /* background-color: black; */
 }
 
 #body { text-align: center; font-size:'16px';}
@@ -125,13 +125,123 @@ pre { font-size: 14px; }
 
 
 
+.cm-level { opacity:0.75; }
+
+.cm-level_00 { background-color: #f9b466 }
+.cm-level_01 { background-color: #e8a97f }
+.cm-level_02 { background-color: #d9a897 }
+.cm-level_03 { background-color: #cbb0ac }
+.cm-level_04 { background-color: #c0c0c0 }
+.cm-level_05 { background-color: #c0c0c0 }
+.cm-level_06 { background-color: #c3bfb5 }
+.cm-level_07 { background-color: #bdc7aa }
+.cm-level_08 { background-color: #9ecc9f }
+.cm-level_09 { background-color: #91d2be }
+.cm-level_10 { background-color: #83b9d8 }
 
 
 
-
-
-
-
+/* .cm-level_00 { background-color: #f9b466 }
+.cm-level_01 { background-color: #f8b368 }
+.cm-level_02 { background-color: #f6b16a }
+.cm-level_03 { background-color: #f5b06c }
+.cm-level_04 { background-color: #f3af6e }
+.cm-level_05 { background-color: #f2ae71 }
+.cm-level_06 { background-color: #f0ad73 }
+.cm-level_07 { background-color: #efac75 }
+.cm-level_08 { background-color: #eeac77 }
+.cm-level_09 { background-color: #ecab79 }
+.cm-level_10 { background-color: #ebaa7b }
+.cm-level_11 { background-color: #eaaa7d }
+.cm-level_12 { background-color: #e8a97f }
+.cm-level_13 { background-color: #e7a981 }
+.cm-level_14 { background-color: #e6a883 }
+.cm-level_15 { background-color: #e4a885 }
+.cm-level_16 { background-color: #e3a887 }
+.cm-level_17 { background-color: #e2a889 }
+.cm-level_18 { background-color: #e1a78b }
+.cm-level_19 { background-color: #dfa78d }
+.cm-level_20 { background-color: #dea78e }
+.cm-level_21 { background-color: #dda890 }
+.cm-level_22 { background-color: #dca892 }
+.cm-level_23 { background-color: #daa894 }
+.cm-level_24 { background-color: #d9a896 }
+.cm-level_25 { background-color: #d8a898 }
+.cm-level_26 { background-color: #d7a99a }
+.cm-level_27 { background-color: #d6a99b }
+.cm-level_28 { background-color: #d5aa9d }
+.cm-level_29 { background-color: #d4aa9f }
+.cm-level_30 { background-color: #d2aba1 }
+.cm-level_31 { background-color: #d1aca2 }
+.cm-level_32 { background-color: #d0aca4 }
+.cm-level_33 { background-color: #cfada6 }
+.cm-level_34 { background-color: #ceaea8 }
+.cm-level_35 { background-color: #cdafa9 }
+.cm-level_36 { background-color: #ccb0ab }
+.cm-level_37 { background-color: #cbb1ad }
+.cm-level_38 { background-color: #cab2ae }
+.cm-level_39 { background-color: #c9b3b0 }
+.cm-level_40 { background-color: #c8b4b2 }
+.cm-level_41 { background-color: #c7b5b3 }
+.cm-level_42 { background-color: #c6b6b5 }
+.cm-level_43 { background-color: #c5b8b7 }
+.cm-level_44 { background-color: #c4b9b8 }
+.cm-level_45 { background-color: #c4baba }
+.cm-level_46 { background-color: #c3bcbb }
+.cm-level_47 { background-color: #c2bdbd }
+.cm-level_48 { background-color: #c1bebe }
+.cm-level_49 { background-color: #c0c0c0 }
+.cm-level_50 { background-color: #c0c0c0 }
+.cm-level_51 { background-color: #c0bfbf }
+.cm-level_52 { background-color: #c1bebe }
+.cm-level_53 { background-color: #c1bebd }
+.cm-level_54 { background-color: #c1bdbc }
+.cm-level_55 { background-color: #c2bdbb }
+.cm-level_56 { background-color: #c2bdba }
+.cm-level_57 { background-color: #c2bdb9 }
+.cm-level_58 { background-color: #c3bdb8 }
+.cm-level_59 { background-color: #c3beb6 }
+.cm-level_60 { background-color: #c3bfb5 }
+.cm-level_61 { background-color: #c4c0b4 }
+.cm-level_62 { background-color: #c4c1b3 }
+.cm-level_63 { background-color: #c4c2b2 }
+.cm-level_64 { background-color: #c5c4b1 }
+.cm-level_65 { background-color: #c5c5b0 }
+.cm-level_66 { background-color: #c4c6af }
+.cm-level_67 { background-color: #c2c6ad }
+.cm-level_68 { background-color: #c1c6ac }
+.cm-level_69 { background-color: #bfc7ab }
+.cm-level_70 { background-color: #bdc7aa }
+.cm-level_71 { background-color: #bbc8a9 }
+.cm-level_72 { background-color: #b8c8a8 }
+.cm-level_73 { background-color: #b6c9a6 }
+.cm-level_74 { background-color: #b3c9a5 }
+.cm-level_75 { background-color: #b0caa4 }
+.cm-level_76 { background-color: #adcaa3 }
+.cm-level_77 { background-color: #a9cba1 }
+.cm-level_78 { background-color: #a5cba0 }
+.cm-level_79 { background-color: #a1cc9f }
+.cm-level_80 { background-color: #9ecc9f }
+.cm-level_81 { background-color: #9ccda1 }
+.cm-level_82 { background-color: #9bcda3 }
+.cm-level_83 { background-color: #9acea5 }
+.cm-level_84 { background-color: #99cea8 }
+.cm-level_85 { background-color: #97cfab }
+.cm-level_86 { background-color: #96cfae }
+.cm-level_87 { background-color: #95d0b2 }
+.cm-level_88 { background-color: #93d0b5 }
+.cm-level_89 { background-color: #92d1b9 }
+.cm-level_90 { background-color: #91d2be }
+.cm-level_91 { background-color: #8fd2c2 }
+.cm-level_92 { background-color: #8ed3c7 }
+.cm-level_93 { background-color: #8dd3cc }
+.cm-level_94 { background-color: #8bd4d1 }
+.cm-level_95 { background-color: #8ad3d5 }
+.cm-level_96 { background-color: #89ced5 }
+.cm-level_97 { background-color: #87c9d6 }
+.cm-level_98 { background-color: #86c4d7 }
+.cm-level_99 { background-color: #84bfd7 }
+.cm-level_100 { background-color: #83b9d8 } */
 
 .coeff_1_0 { background-color: #8b0000 }
 .coeff_0_9 { background-color: #a70c25 }
@@ -231,7 +341,7 @@ pre { font-size: 14px; }
 
 
 
-.cm-level_1 { background: rgba(223,130,17,0.8) }
+/* .cm-level_1 { background: rgba(223,130,17,0.8) }
 .cm-level_2 { background: rgba(198,118,36,0.8) }
 .cm-level_3 { background: rgba(173,107,55,0.8) }
 .cm-level_4 { background: rgba(148,96,75,0.8) }
@@ -241,7 +351,9 @@ pre { font-size: 14px; }
 .cm-level_8 { background: rgba(49,50,152,0.8) }
 .cm-level_9 { background: rgba(24,39,171,0.8) }
 .cm-level_10 { background: rgba(0,28,191,0.8) }
-.cm-level_11 { background: rgba(0,28,191,0.8) }
+.cm-level_11 { background: rgba(0,28,191,0.8) } */
+
+
 
 
 /* 
@@ -256,7 +368,7 @@ AD6B37
 1827AB
 001CBF */
 
-.cm-tag { 
+/* .cm-tag { 
     color: rgba(255,0,0,0.5);
     font-size:0.5em;
 }
@@ -270,11 +382,11 @@ AD6B37
 .cm-tag > .cm-level_7 { background-color: transparent !important; }
 .cm-tag > .cm-level_8 { background-color: transparent !important; }
 .cm-tag > .cm-level_9 { background-color: transparent !important; }
-.cm-tag > .cm-level_10 { background-color: transparent !important; }
+.cm-tag > .cm-level_10 { background-color: transparent !important; } */
 
-
+/* 
 .cm-style1 { color: red; }
-.cm-style2 { color: blue; }
+.cm-style2 { color: blue; } */
 
 
 

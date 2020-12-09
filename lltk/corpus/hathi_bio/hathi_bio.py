@@ -169,6 +169,12 @@ class HathiBio(Corpus):
 		return super().install(parts=parts,force=force,**attrs)
 
 
+	@property
+	def metadata(self):
+		meta=super().metadata
+		meta['genre']='Biography'
+		return meta#.query(f'{self.MIN_YEAR}<=year<{self.MAX_YEAR}')	
+
 
 
 

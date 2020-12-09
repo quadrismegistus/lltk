@@ -233,7 +233,7 @@ class InternetArchive(Corpus):
 		def _writegen():
 			for item in self.get_collection_ids(collection=collection,iter_as_items=True):
 				dx=item.metadata
-				print(dx)
+				#print(dx)
 				yield dx
 		tools.iter_move(self.path_metadata,prefix='bak/')
 		tools.writegen(self.path_metadata, _writegen)
@@ -275,7 +275,13 @@ class InternetArchive(Corpus):
 
 
 
-
+	@property
+	def metadata(self):
+		import numpy as np
+		meta=super().metadata
+		meta['year']=[int(str(x)[:4]) if str(x)[:4].isdigit() else np.nan for x in meta['date']]
+		meta['author']=meta['creator']
+		return meta
 
 
 

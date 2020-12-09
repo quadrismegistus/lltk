@@ -123,4 +123,5 @@ class GaleAmericanFiction(Corpus):
         meta=super().metadata
         meta['genre']='Fiction'
         meta['year']=[int(x[:4]) if x[:4].isdigit() else np.nan for x in meta.pub_date_start]
+        meta['title']=meta['full_title']
         return meta

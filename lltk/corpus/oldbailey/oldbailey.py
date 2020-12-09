@@ -80,3 +80,9 @@ class OldBailey(Corpus):
 	def __init__(self):
 		super(OldBailey,self).__init__('OldBailey',path_txt=self.PATH_TXT,path_xml=self.PATH_XML,path_metadata=self.PATH_METADATA,ext_xml=self.EXT_XML)
 		self.path = os.path.dirname(__file__)
+	@property
+	def metadata(self):
+		meta=super().metadata
+		meta['genre']='Trial'
+		meta['title']=''
+		return meta

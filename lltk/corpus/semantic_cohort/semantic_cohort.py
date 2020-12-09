@@ -5,13 +5,13 @@ from lltk.corpus import Corpus
 
 
 
-class TextNewCorpus(Text):
+class TextSemanticCohort(Text):
 	pass
 
 
 
-class NewCorpus(Corpus):
-	TEXT_CLASS=TextNewCorpus
+class SemanticCohort(Corpus):
+	TEXT_CLASS=TextSemanticCohort
 
 	def compile(self,**attrs):
 		"""
@@ -28,5 +28,4 @@ class NewCorpus(Corpus):
 		meta=super().metadata
 		# ?
 		return meta
-
 

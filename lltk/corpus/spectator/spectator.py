@@ -26,3 +26,9 @@ class Spectator(Corpus):
 			odx['title']=''
 			meta_ld+=[odx]
 		tools.write(self.path_metadata, meta_ld)
+
+	@property
+	def metadata(self):
+		meta=super().metadata
+		meta['genre']='Periodical'
+		return meta

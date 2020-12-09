@@ -1127,3 +1127,35 @@ class PlainText(Text):
 	def txt(self):
 		if self._txt: return self._txt
 		return self.text
+
+
+
+
+
+
+
+
+
+def save_freqs_json(obj):
+	ifnfn,ofnfn=obj
+	if not os.path.exists(ifnfn): return
+	if os.path.exists(ofnfn): return
+	
+	opath = os.path.dirname(ofnfn)
+	if not os.path.exists(opath): os.makedirs(opath)
+	
+	# read txt
+	with open(ifnfn) as f: txt=f.read()
+	
+	# tokenize
+	toks=tokenize_text(txt)
+	#print(len(toks),ofnfn)
+	
+	# count
+	tokd=dict(Counter(toks))
+	
+	# save
+	with open(ofnfn,'w') as of: json.dump(tokd,of)
+	
+	# return?
+	# return tokd

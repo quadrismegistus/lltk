@@ -189,34 +189,76 @@ path_root = hathi
 [HathiSermons]
 name = HathiSermons
 id = hathi_sermons
-desc = Volumes with "sermon" in title
+desc = Volumes with "sermon(s)" in title
 path_root = hathi_sermons
 path_python = hathi/hathi.py
 class_name = HathiSermons
+path_freqs = ../hathi/freqs
 
 [HathiLetters]
 name = HathiLetters
 id = hathi_letters
-desc = Volumes with "letters" in title
+desc = Volumes with "letter(s)" in title
 path_root = hathi_letters
 path_python = hathi/hathi.py
 class_name = HathiLetters
+path_freqs = ../hathi/freqs
 
 [HathiEssays]
 name = HathiEssays
 id = hathi_essays
-desc = Volumes with "essay" in title
+desc = Volumes with "essay(s)" in title
 path_root = hathi_essays
 path_python = hathi/hathi.py
 class_name = HathiEssays
+path_freqs = ../hathi/freqs
+
+[HathiStories]
+name = HathiStories
+id = hathi_stories
+desc = Volumes with "story/stories" in title
+path_root = hathi_stories
+path_python = hathi/hathi.py
+class_name = HathiStories
+path_freqs = ../hathi/freqs
 
 [HathiTreatises]
 name = HathiTreatises
 id = hathi_treatises
-desc = Volumes with "treatise" in title
+desc = Volumes with "treatise(s)" in title
 path_root = hathi_treatises
 path_python = hathi/hathi.py
 class_name = HathiTreatises
+path_freqs = ../hathi/freqs
+
+[HathiProclamations]
+name = HathiProclamations
+id = hathi_proclamations
+desc = Volumes with "proclamation(s)" in title
+path_root = hathi_proclamations
+path_python = hathi/hathi.py
+class_name = HathiProclamations
+path_freqs = ../hathi/freqs
+
+[HathiTales]
+name = HathiTales
+id = hathi_tales
+desc = Volumes with "tale(s)" in title
+path_root = hathi_tales
+path_python = hathi/hathi.py
+class_name = HathiTales
+path_freqs = ../hathi/freqs
+
+[HathiNovels]
+name = HathiNovels
+id = hathi_novels
+desc = Volumes with "novel(s)" in title
+path_root = hathi_novels
+path_python = hathi/hathi.py
+class_name = HathiNovels
+path_freqs = ../hathi/freqs
+
+
 
 [TedJDH]
 name = TedJDH
@@ -230,6 +272,7 @@ id = internet_archive
 desc = 19th Century Novels, curated by the U of Illinois and hosted on the Internet Archive
 link = https://archive.org/details/19thcennov?tab=about
 path_xml = meta_xml
+path_metadata = metadata.csv
 
 
 [txtLAB450]
@@ -322,3 +365,78 @@ path_python = lithist/lithist.py
 class_name = LitHistHathi
 path_metadata = metadata.LitHistHathi.txt
 is_meta = True
+
+
+
+
+
+[NewYorker]
+name = NewYorker
+id = new_yorker
+desc = New Yorker archives, 1925-2017
+link = --
+path_root = new_yorker
+path_txt = txt
+path_xml = 
+path_metadata = metadata.csv
+path_python = new_yorker.py
+class_name = NewYorker
+
+
+
+
+
+[JstorDFR]
+name = JstorDFR
+id = jstor_dfr
+desc = --
+link = --
+path_root = jstor_dfr
+path_txt = txt
+path_xml = 
+path_metadata = metadata.csv
+path_python = jstor_dfr.py
+class_name = JstorDFR
+
+
+
+[PMLA]
+name = PMLA
+id = pmla
+desc = --
+link = --
+path_root = pmla
+path_txt = txt
+path_xml = 
+path_metadata = metadata.csv
+path_python = jstor_dfr/jstor_dfr.py
+class_name = PMLA
+
+
+
+
+[FanFic]
+name = FanFic
+id = fanfic
+desc = --
+link = --
+path_root = fanfic
+path_txt = txt
+path_xml = 
+path_metadata = metadata.csv
+path_python = fanfic.py
+class_name = FanFic
+
+
+[SemanticCohort]
+name = SemanticCohort
+id = semantic_cohort
+desc = Corpus for "Semantic Cohort Method" (Literary Lab Pamphlet 4, 2012)
+link = --
+path_root = semantic_cohort
+path_txt = txt
+path_xml = 
+path_metadata = metadata.csv
+path_python = semantic_cohort.py
+class_name = SemanticCohort
+url_metadata = https://www.dropbox.com/s/f6imhtfzgpf7tvz/semantic_cohort_metadata.zip?dl=1

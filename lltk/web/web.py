@@ -291,36 +291,14 @@ def show_text_box_orig():
 
 
 def get_absconc_wordclasses(field2words):
-	# field_levels = [
-	# 	'CH.Concreteness.Consolidated.0.5',
-	# 	'CH.Concreteness.Consolidated.0.4',
-	# 	'CH.Concreteness.Consolidated.0.3',
-	# 	'CH.Concreteness.Consolidated.0.2',
-	# 	'CH.Concreteness.Consolidated.0.1',
-	# 	'CH.Abstractness.Consolidated.0.1',
-	# 	'CH.Abstractness.Consolidated.0.2',
-	# 	'CH.Abstractness.Consolidated.0.3',
-	# 	'CH.Abstractness.Consolidated.0.4',
-	# 	'CH.Abstractness.Consolidated.0.5',
-	# ]
-	field_levels = [
-		'AbsConc.Level.00',
-		'AbsConc.Level.01',
-		'AbsConc.Level.02',
-		'AbsConc.Level.03',
-		'AbsConc.Level.04',
-		'AbsConc.Level.05',
-		'AbsConc.Level.06',
-		'AbsConc.Level.07',
-		'AbsConc.Level.08',
-		'AbsConc.Level.09',
-		'AbsConc.Level.10'
-	]
+	import pickle
+	with open('/home/ryan/github/lltk/data/fields/data.abs_conc_levels.pickle','rb') as f:
+		field_levels=pickle.load(f)
 	res=[]
 	for i,fname in enumerate(field_levels):
-		fwords=field2words[fname]
+		fwords=field_levels[fname]
 		for fword in fwords:
-			res.append((fword,i))
+			res.append((fword,fname))
 	return res
 
 
@@ -331,10 +309,10 @@ def show_text_box(word2level={},text_default='',corpus=None,text_id=None,meta={}
 	if not word2level:
 		word2level=dict(
 			[
-				(w,i+1)
+				(w,i)
 				for w,i in wclasses
-				if w not in stopwords
-				#if w.isalpha() and w in field2words['REF.content_words'] and len(w)>3
+				if w not in stopwords and w.isalpha()
+				#and w in field2words['REF.content_words'] and len(w)>3
 			]
 		)
 
@@ -361,6 +339,7 @@ def edit_text(corpus_name,text_id):
 	meta_path = os.path.join(path_texts,text_id,'meta.json')
 	meta=json.load(open(meta_path))
 
+	
 	text_path = os.path.join(path_texts,text_id,'text.xml')
 	text_anno_path = os.path.join(path_texts,text_id,'text.anno.xml')
 	text_anno_path_bak = os.path.join(path_texts,text_id,'.text.anno.xml.bak')
@@ -376,6 +355,39 @@ def edit_text(corpus_name,text_id):
 		text_xml=''
 
 	return show_text_box(text_default=text_xml,corpus=corpus_name,text_id=text_id,meta=meta)
+
+@app.route('/edit2/<corpus_name>/<path:text_id>')
+def edit_text2(corpus_name,text_id):
+	# corpus_obj=lltk.load_corpus(corpus_name)
+	#text_obj=corpus_obj.TEXT_CLASS(text_id,corpus_obj)
+
+	#from lltk.tools.db import get_text_meta
+	#meta=get_text_meta(corpus_name,text_id)
+	import lltk
+	C=lltk.load(corpus_name)
+	t=C.textd[text_id]
+	text_path=t.path_txt
+	print(text_path,os.path.exists(text_path))
+	text_anno_path = text_path.replace('.xml','.anno.xml').replace('.txt','.anno.txt')
+	text_anno_path_bak = text_path.replace('.xml','.anno.xml.bak').replace('.txt','.anno.txt.bak')
+	meta=t.meta
+
+	if os.path.exists(text_anno_path):
+		with open(text_anno_path) as f:
+			text_xml = f.read()
+	elif os.path.exists(text_path):
+		with open(text_path) as f, open(text_anno_path,'w') as of:
+			text_xml = f.read()
+			of.write(text_xml)
+	else:
+		text_xml=''
+
+	return show_text_box(text_default=text_xml,corpus=corpus_name,text_id=text_id,meta=meta)
+
+@app.route('/edit/custom')
+def edit_text_custom():
+	return show_text_box()
+
 
 
 @app.route('/save/<corpus_name>/<path:text_id>',methods=['POST'])

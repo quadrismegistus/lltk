@@ -40,6 +40,17 @@ class TextEEBO_TCP(TextTCP):
 import os
 from lltk.corpus.tcp import TCP,TextSectionTCP
 
+def fix_genre(genre,title):
+    if genre in {'Verse'}: return genre
+    title_l=title.lower()
+    if 'essay' in title_l: return 'Essay'
+    if 'treatise' in title_l: return 'Treatise'
+    if 'sermon' in title_l: return 'Sermon'
+    if 'letters' in title_l: return 'Letters'
+    if 'proclamation' in title_l: return 'Government'
+    if 'parliament' in title_l: return 'Government'
+    return genre
+
 class EEBO_TCP(TCP):
 	"""
 	Steps for corpus generation
@@ -62,4 +73,5 @@ class EEBO_TCP(TCP):
 	@property
 	def metadata(self):
 		meta=super().metadata
+		#meta['genre']=[fix_genre(genre,title) for genre,title in zip(meta.genre, meta.title)]
 		return meta.query(f'{self.MIN_YEAR}<=year<{self.MAX_YEAR}')	

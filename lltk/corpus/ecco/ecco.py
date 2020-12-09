@@ -269,8 +269,6 @@ def clean_text(txt):
 
 
 
-
-
 ### CORPUS CLASSES
 
 import os
@@ -285,6 +283,20 @@ class ECCO_TCP(TCP):
 	TEXT_CLASS=TextECCO_TCP
 	TEXT_SECTION_CLASS=TextSectionTCP
 
+	@property
+	def metadata(self):
+		meta=super().metadata
+		return meta.query('1700<=year<1800')
+def fix_genre(genre,title):
+    if genre in {'Verse'}: return genre
+    title_l=title.lower()
+    if 'essay' in title_l: return 'Essay'
+    if 'treatise' in title_l: return 'Treatise'
+    if 'sermon' in title_l: return 'Sermon'
+    if 'letters' in title_l: return 'Letters'
+    if 'proclamation' in title_l: return 'Government'
+    if 'parliament' in title_l: return 'Government'
+    return genre
 
 class ECCO(Corpus):
 	TEXT_CLASS=TextECCO
@@ -309,6 +321,9 @@ class ECCO(Corpus):
 	@property
 	def metadata(self):
 		meta=super().metadata
+		meta['title']=meta['fullTitle']
+		meta['genre']='Print'
+		# meta['genre']=meta['title'].apply(lambda x: fix_genre('Print',x))
 		return meta.query(f'{self.year_start}<=year<{self.year_end}')
 
 	def __init__(self):

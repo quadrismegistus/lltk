@@ -56,6 +56,11 @@ class LitLab(Corpus):
 		super(LitLab,self).__init__('LitLab',path_txt=self.PATH_TXT,ext_txt=self.EXT_TXT,path_metadata=self.PATH_METADATA)
 		self.path = os.path.dirname(__file__)
 
+	@property
+	def metadata(self):
+		meta=super().metadata
+		return meta
+
 
 
 class LitLabCanon(CorpusMeta):

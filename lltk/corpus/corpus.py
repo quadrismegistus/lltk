@@ -3,6 +3,7 @@ from __future__ import print_function
 import os,codecs,gzip,random,time
 from pprint import pprint
 from lltk.tools import tools
+from lltk.text import save_freqs_json
 import six
 from six.moves import range
 from six.moves import zip
@@ -16,6 +17,7 @@ from tqdm import tqdm
 import random
 import json
 import pandas as pd
+import numpy as np
 
 from os.path import expanduser
 HOME=expanduser("~")
@@ -229,6 +231,7 @@ class Corpus(object):
 		# Set as attributes
 		for opt_name,opt_val in sorted(self.opts.items()):
 			# Set abs path
+			#if opt_name!='path_root' and opt_name.startswith('path_') and opt_val and type(opt_val)==str:
 			if opt_name!='path_root' and opt_name.startswith('path_') and opt_val and type(opt_val)==str:
 				#opt_val = os.path.join(path_root,opt_val) if not os.path.isabs(opt_val) else opt_val
 				opt_val_abs = get_path_abs(opt_val,sources=[path_root,'.'])
@@ -239,6 +242,8 @@ class Corpus(object):
 
 
 		path_python=get_python_path(self.opts.get('path_python'),path_root)
+		# if not hasattr(self,'path'): self.path=get_path_abs(self.path_root)
+		# print([self.path])
 		# print('>> root:',path_root)
 		# print('>> path_python:',path_python)
 		# print('>> PATH_CORPUS:',PATH_CORPUS)
@@ -284,7 +289,6 @@ class Corpus(object):
 	def idx(self):
 		if hasattr(self,'name_module'): return self.name_module
 		return os.path.splitext(os.path.split(__file__)[-1])[0]
-
 
 	@property
 	def Texts(self): return self.texts()
@@ -405,11 +409,29 @@ class Corpus(object):
 				f=getattr(text,method_name)
 				f(*cmd_args,**cmd_kwargs)
 
-	def save_freqs(self,force=False,slingshot=False,slingshot_n=None,slingshot_opts=''):
-		#print(slingshot,slingshot_n,slingshot_opts)
-		#slingshot_opts+=' -savedir _tmp_save_freqs -overwrite -savecsv %s' % self.get_path_freq_table()
-		#slingshot_opts+=' -nosave'
-		return self.slingshot_or_solo('save_freqs',force=force,slingshot=slingshot,slingshot_n=slingshot_n,slingshot_opts=slingshot_opts,force_slingshot=False)
+
+	def save_freqs(self,**attrs): #force=False,slingshot=False,slingshot_n=1,slingshot_opts=''):
+		objs = [
+			(t.path_txt,t.path_freqs)
+			for t in self.texts()
+		]
+		parallel=attrs.get('slingshot_n',1)
+		print('parallel',parallel)
+		tools.pmap(
+			save_freqs_json,
+			objs,
+			num_proc=parallel
+		)
+
+
+
+
+
+	# def save_freqs(self,force=False,slingshot=False,slingshot_n=None,slingshot_opts=''):
+	# 	#print(slingshot,slingshot_n,slingshot_opts)
+	# 	#slingshot_opts+=' -savedir _tmp_save_freqs -overwrite -savecsv %s' % self.get_path_freq_table()
+	# 	#slingshot_opts+=' -nosave'
+	# 	return self.slingshot_or_solo('save_freqs',force=force,slingshot=slingshot,slingshot_n=slingshot_n,slingshot_opts=slingshot_opts,force_slingshot=False)
 
 	def save_plain_text(self,force=False,slingshot=False,slingshot_n=None,slingshot_opts=''):
 		slingshot_opts+=' -nosave'
@@ -869,22 +891,22 @@ class Corpus(object):
 
 
 	def install_txt(self,**attrs):
-		attrs=self.command_prep(self.save_plain_text,attrs)
+		# attrs=self.command_prep(self.save_plain_text,attrs)
 		self.save_plain_text(**attrs)
 
 
 	def install_freqs(self,**attrs):
-		attrs=self.command_prep(self.save_freqs,attrs)
+		#attrs=self.command_prep(self.save_freqs,attrs)
 		self.save_freqs(**attrs)
 
 
 	def install_mfw(self,**attrs):
-		attrs=self.command_prep(self.save_mfw,attrs)
+		# attrs=self.command_prep(self.save_mfw,attrs)
 		self.save_mfw(**attrs)
 
 
 	def install_dtm(self,**attrs):
-		attrs=self.command_prep(self.save_dtm,attrs)
+		# attrs=self.command_prep(self.save_dtm,attrs)
 		self.save_dtm(**attrs)
 
 	def install(self,include=[],exclude=[],**attrs):
@@ -916,16 +938,16 @@ class Corpus(object):
 		if not hasattr(self,'_metadf'):
 			import pandas as pd
 			df=self._metadf=pd.DataFrame(self.meta)
-			#if add_paths:
-				#df['_path_txt']=[os.path.join(self.path_txt, idx + self.ext_txt) for idx in df['id']]
-				#df['_path_xml']=[os.path.join(self.path_xml, idx + self.ext_txt) for idx in df['id']]
-				#df['_path_txt']=[t.path_txt for t in self.texts()]
-				#df['_path_xml']=[t.path_xml for t in self.texts()]
+			for x in ['genre','title','year','author']:
+				if not x in df.columns:
+					df[x]=''			
 		return self._metadf
 
 	@property
 	def metadata(self):
-		return self.metadf
+		meta=self.metadf
+		meta['year']=meta['year'].apply(lambda y: int(str(y)[:4]) if str(y)[:4].isdigit() else np.nan)
+		return meta
 
 	@property
 	def df(self): return self.metadf
@@ -1488,7 +1510,7 @@ class Corpus(object):
 			self._matchd=match_corp2id2ids
 		return self._matchd
 
-	def match_records(self,corpus,match_by_id=False,match_by_title=True, title_match_cutoff=90, filter1={}, filter2={}, id_field_1='id',id_field_2='id',year_window=0):
+	def match_records(self,corpus,match_by_id=False,match_by_title=True, title_match_cutoff=70, filter1={}, filter2={}, id_field_1='id',id_field_2='id',year_window=10):
 		c1=self
 		c2=corpus
 
@@ -1496,68 +1518,54 @@ class Corpus(object):
 		texts2=[t for t in c2.texts() if not False in [t.meta[k]==v for k,v in list(filter2.items())]]
 
 		print('Matching from '+c1.name+' ('+str(len(texts1))+' texts)')
-		print('\t to '+c2.name+' ('+str(len(texts2))+' texts)')
+		print('to '+c2.name+' ('+str(len(texts2))+' texts)')
 		print()
 
 		matches={}
 
-
-		if match_by_id:
-			from collections import defaultdict
-			#id2t1=dict([(t.meta[id_field_1], t) for t in texts1])
-			#id2t2=dict([(t.meta[id_field_2], t) for t in texts2])
-			id2t1=defaultdict(list)
-			id2t2=defaultdict(list)
-			for t in texts1: id2t1[t.meta[id_field_1]].append(t)
-			for t in texts2: id2t2[t.meta[id_field_2]].append(t)
-
-			for i,(idx,t1) in enumerate(sorted(id2t1.items())):
-				#print i,idx #,t1.id,'...'
-				if idx in id2t2:
-					#print 'match!' #,t1.id,id2t2[idx].id
-					for t1 in id2t1[idx]:
-						for t2 in id2t2[idx]:
-							matches[t1.id]=[(t2.id,100,'Y')]
+		old=[]
 
 		if match_by_title:
 			from fuzzywuzzy import fuzz
-			for i,t1 in enumerate(texts1):
+			for i,t1 in enumerate(tqdm(texts1)):
 				if t1.id in matches: continue
-				#print i,t1.id,t1.title,'...'
+				title1=''.join(x for x in t1.title if x.isalpha() or x==' ')
+				author1=''.join(x for x in t1.author if x.isalpha() or x==' ')
 				for t2 in texts2:
 					if not t1.meta or not t2.meta: continue
 					if not t1.title.strip() or not t2.title.strip(): continue
-					#print '\t',i,t2.id,t2.corpus.name,t1.meta['year'],t2.meta['year'],t2.title,'...'
-					try:
-						if abs(float(t2.meta['year']) - float(t1.meta['year']))>year_window:
-							#print '>> skipping...'
+					if c1.name==c2.name and t1.id>=t2.id: continue
+					if year_window is not None:
+						try:
+							if abs(float(t2.meta['year']) - float(t1.meta['year']))>year_window:
+								continue
+						except (ValueError,TypeError) as e:
+							print("!!",e)
 							continue
-					except (ValueError,TypeError) as e:
-						# print "!!",e,
-						# print "!!",t1.meta
-						# print "!!",t2.meta
-						continue
-					mratio=fuzz.partial_ratio(t1.title, t2.title)
-					if mratio>title_match_cutoff:
+					title2=''.join(x for x in t2.title if x.isalpha() or x==' ')
+					author2=''.join(x for x in t2.author if x.isalpha() or x==' ')
+					mratio=fuzz.partial_ratio(title1.lower(), title2.lower())
+					mratio_author=fuzz.partial_ratio(author1.lower(), author2.lower())
+					if mratio>=title_match_cutoff:
 						if not t1.id in matches: matches[t1.id]=[]
 						matches[t1.id]+=[(t2.id,mratio,'')]
+						dx={
+							'id':t1.id,
+							'id2':t2.id,
+							'author':t1.author,
+							'author2':t2.author,
+							'title':t1.title,
+							'title2':t2.title,
+							'match_ratio':mratio,
+							'match_ratio_author':mratio_author,
+							'match_ismatch':''
+						}
+						old.append(dx)
+		
+		mdf=pd.DataFrame(old)
+		ofn=os.path.join(self.path_data,'matches.'+c1.name+'--'+c2.name+'.csv')
+		mdf.to_csv(ofn,index=False)
 
-		old=[]
-		for t1_id in matches:
-			matches[t1_id].sort(key=lambda _t: -_t[1])
-			for t2_id,mratio,is_match in matches[t1_id]:
-				dx={}
-				for k,v in list(c1.metad[t1_id].items()):
-					if not k in ['author','title','year','id']: continue
-					dx[k+'1']=v
-				for k,v in list(c2.metad[t2_id].items()):
-					if not k in ['author','title','year','id']: continue
-					dx[k+'2']=v
-				dx['match_ratio']=mratio
-				dx['match_ismatch']=is_match
-				old+=[dx]
-		from lltk import tools
-		tools.write2(os.path.join(self.path,'matches.'+c1.name+'--'+c2.name+'.txt'), old)
 
 	def copy_match_files(self,corpus,match_fn=None,copy_xml=True,copy_txt=True):
 		import shutil

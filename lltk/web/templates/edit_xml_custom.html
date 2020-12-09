@@ -1,0 +1,101 @@
+{% extends 'base.html' %}
+
+{% block head %}
+<title>Enter text</title>
+<!-- <script type="text/javascript" src="/static/rainbowvis.js"></script> -->
+<!-- <script src="/static/codemirror/lib/codemirror.js"></script> -->
+<!-- <link rel="stylesheet" href="/static/codemirror/lib/codemirror.css"> -->
+
+{% endblock %}
+
+
+{% block content %}
+
+
+<div id="editor" contenteditable="true"></div>
+
+<input type="submit" value="Recolor" id="color" onclick="recolor()" />
+<input type="submit" value="Save" id="savebutton" onclick="save_xml()" />
+
+
+
+<script>
+
+    word2level={{word2level|tojson}};
+    console.log(word2level)
+
+function esc(w) {
+    return w.split('<').join('&lt;').split('>').join('&gt;')
+}
+
+// Keyup event
+function get_text() {
+    content=$('#editor').html()
+    content=content.split('<div>').join('').split('<br>').join('').split('</div>').join('')
+    content=content.split('&amp;').join('&').replace(/<\/?span[^>]*>/g,"")
+    content=content.split('&lt;/p&gt;').join('&lt;/p&gt;\n')
+    content=content.split('&lt;p&gt;').join('\n&lt;p&gt;')
+    content=content.split('&hyphen;').join('-')
+    content=content.split('~~').join('\n\n')
+    // console.log(content);
+    return content
+}
+
+function recolor() {
+    console.log('!!')
+  // Space key pressed
+//   if (e.keyCode == 32){
+    var newHTML = "";
+    // Loop through words
+    
+    content=get_text()
+    content=content.split('~~').join('\n\n')
+    console.log(content)
+    
+    lines=content.split('\n\n')
+
+    lines.forEach(function(line) {
+        // console.log('line!',line)
+        if (line) {
+            words=line.split(/\b/) // #.replace(/[\s]+/g, " ").trim().split(" ")
+            console.log(words);
+            
+            words.forEach(function(word){
+                // console.log([word]);
+                word_l=word.toString().toLowerCase()
+                if (word_l in word2level) {
+                    newHTML += "<span class='cm-level cm-level_"+word2level[word_l]+"'>" + esc(word) + "</span>";
+                // } else if (word.includes('<') || word.includes('>')) {
+                    // console.log('oh no!!')
+                    // newHTML += "<span class='cm-style1'>" + esc(word) + "</span>";
+                } else {
+                    newHTML+=esc(word)
+                    // newHTML += "<span>"+esc(word)+"</span> "
+                }
+            });
+
+            newHTML+='<br/><br/>'
+        }
+    })
+    newHTML=newHTML.split('&lt;').join('<span class="cm-tag">&lt;')
+    newHTML=newHTML.split('&gt;').join('&gt;</span>')
+    $('#editor').html(newHTML);
+}
+
+
+$(function(){
+    txt=$('#editor').text()
+    // console.log([txt])
+    if (txt) {
+        recolor()
+    }
+})
+
+
+
+
+
+</script>
+
+
+{% endblock %}

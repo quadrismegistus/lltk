@@ -1,9 +1,15 @@
-import os
+import os,random
 import lltk
 from lltk import tools
 from lltk.text import Text
 from lltk.corpus import Corpus
-import json
+from lltk import tools
+import json,re
+import shutil
+import pandas as pd
+from htrc_features import Volume
+from urllib.error import HTTPError
+
 
 ########################################################################################################################
 # [Hathi]
@@ -226,7 +232,10 @@ class Hathi(Corpus):
 		"""
 		from tqdm import tqdm
 		
-		print('??',self.path_metadata)
+		if not os.path.exists(self.path_root): os.makedirs(self.path_root)
+		if not os.path.exists(self.path_home): os.makedirs(self.path_home)
+
+		
 		if not os.path.exists(self.path_metadata):
 			self.download_full_metadata()
 			print('>>',self.path_metadata)
@@ -242,86 +251,30 @@ class Hathi(Corpus):
 					dat=ln.split('\t')
 					title=dat[i_title]
 					if not title: continue
-					title=title.strip()
-					# print(dat)
-					# print(title)
-					# stop
-					match = False not in [(term in title) for term in self.SEARCH_TERMS]
+					title=title.strip().lower()
+					titlewords=set(re.findall(r"[\w']+|[.,!?;]", title))
+					match = bool(self.SEARCH_TERMS & titlewords)
 					if not match: continue
 					of.write(ln)
+				
+			# fix!
+			df=pd.read_csv(self.path_metadata,sep='\t',error_bad_lines=False)
+			df=df[df.lang.isin(self.LANGS)]
+			df['id']=df['htid'].apply(lambda x: x.split('.',1)[0]+'/'+x.split('.',1)[1])
+			df.to_csv(self.path_metadata)
+
+
 
 		# get IDs
 		print('>> loading metadata')
-		import pandas as pd
-		df=pd.read_csv(self.path_metadata,sep='\t',error_bad_lines=False)
-		df=df[df.lang.isin(self.LANGS)]
+		df=pd.read_csv(self.path_metadata,error_bad_lines=False)
+		df['year']=df['imprint'].apply(get_date)
+		df['period']=df['year']//1*1
+		ids=list(set(df.groupby('period').sample(n=10,replace=True).id))
+		random.shuffle(ids)
 
-		def compile_text(htid,by_page=False):
-			try:
-				from htrc_features import Volume
-				from urllib.error import HTTPError
-				
-				id_hash = tools.hash(htid)[:9]
-				id_split = '/'.join(tools.slice(id_hash,slice_length=3))
-				
-				id_text = f'''hathi/{id_split}''' #/{htid.replace('/','_')}'''
-				path_text = os.path.join(
-					lltk.load('Hathi').path_texts,
-					*id_text.split('/')[1:]
-				)
-				if os.path.exists(path_text) and os.listdir(path_text): return
-				# print('compiling!')
-				vol=Volume(htid)
-				vol_meta = vol.parser.meta
-				vol_df = vol.tokenlist(case=True,pos=False)
-				vol_df = vol_df.reset_index()
-
-				if not os.path.exists(path_text): os.makedirs(path_text)
-				# print(id_text)
-				# print(path_text)
-				path_meta=os.path.join(path_text,'meta.json')
-				vol_meta['_id']=id_text
-				vol_meta['_type']='volume'
-				vol_meta['htid']=htid
-				with open(path_meta,'w') as of:
-					json.dump(vol_meta,of,indent=4,sort_keys=True)
-
-				if by_page:
-
-					for page_num,page in vol_df.groupby('page'):
-						page_counts=dict(zip(page['token'],page['count']))
-						id_section = os.path.join(id_text,str(page_num).zfill(4))
-						path_section = os.path.join(path_text,str(page_num).zfill(4))
-						if not os.path.exists(path_section): os.makedirs(path_section)
-						path_section_freqs = os.path.join(path_section,'freqs.json')
-						with open(path_section_freqs,'w') as of:
-							json.dump(page_counts,of,indent=4,sort_keys=True)
-						path_section_meta = os.path.join(path_section,'meta.json')
-						with open(path_section_meta,'w') as of:
-							json.dump({
-								'page':page_num,
-								'_id':id_section,
-								'_type':'page'
-							},of,indent=4,sort_keys=True)
-				
-				# save total freqs too
-				vol_freqs=vol.term_volume_freqs(pos=False,case=True)
-				vol_freqs_d=dict(zip(vol_freqs['token'],vol_freqs['count']))
-				with open(os.path.join(path_text,'freqs.json'),'w') as of:
-					json.dump(vol_freqs_d, of)
-				vol_df.to_csv(os.path.join(path_text,'freqs.csv'))
-
-			except (HTTPError,FileNotFoundError,KeyError) as e:
-				print('!!',e)
-
-
-		# get IDs
-		#for htid in df.htid[:10]:
-		#	compile_text(htid)
-		htids=list(df.htid)
-		from p_tqdm import p_umap
-		p_umap(compile_text, htids, num_cpus=6)
-
+		# compile!
+		tools.pmap(compile_text, ids, num_proc=6)
 
 
 	def download(self,**attrs):
@@ -352,41 +305,190 @@ class Hathi(Corpus):
 		"""
 		return super().install(parts=parts,force=force,**attrs)
 
+def get_date(imprint):
+    for x in tools.ngram(str(imprint),4):
+        x=''.join(x)
+        if x.isdigit():
+            return int(x)
+
+class HathiSubcorpus(Hathi):
+	@property
+	def metadata(self):
+		meta=super().metadata
+		meta['genre']=self.GENRE
+		meta['year']=meta['imprint'].apply(get_date)
+		return meta
 
 
-
-
-class HathiSermons(Hathi):
+class HathiSermons(HathiSubcorpus):
 	ID='hathi_sermons'
 	NAME='HathiSermons'
-	SEARCH_TERMS=['sermon']
+	SEARCH_TERMS={'sermon','sermons'}
+	GENRE='Sermon'
 
 
-class HathiEssays(Hathi):
+class HathiProclamations(HathiSubcorpus):
+	ID='hathi_proclamations'
+	NAME='HathiProclamations'
+	SEARCH_TERMS={'proclamation','proclamation'}
+	GENRE='Proclamation'
+
+
+class HathiEssays(HathiSubcorpus):
 	ID='hathi_essays'
 	NAME='HathiEssays'
-	SEARCH_TERMS=['essay']
+	SEARCH_TERMS={'essay','essays'}
+	GENRE='Essay'
 
 
-
-class HathiLetters(Hathi):
+class HathiLetters(HathiSubcorpus):
 	ID='hathi_letters'
 	NAME='HathiLetters'
-	SEARCH_TERMS=['letters']
+	SEARCH_TERMS={'letter','letters'}
+	GENRE='Letters'
 
-
-class HathiTreatises(Hathi):
+class HathiTreatises(HathiSubcorpus):
 	ID='hathi_treatises'
 	NAME='HathiTreatises'
-	SEARCH_TERMS=['treatise']
+	SEARCH_TERMS={'treatise','treatises'}
+	GENRE='Treatise'
+
+
+class HathiTales(HathiSubcorpus):
+	ID='hathi_tales'
+	NAME='HathiTales'
+	SEARCH_TERMS={'tale','tales'}
+	GENRE='Tale'
+
+class HathiNovels(HathiSubcorpus):
+	ID='hathi_novels'
+	NAME='HathiNovels'
+	SEARCH_TERMS={'novel','novels'}
+	GENRE='Novel'
+
+class HathiStories(HathiSubcorpus):
+	ID='hathi_stories'
+	NAME='HathiStories'
+	SEARCH_TERMS={'story','stories'}
+	GENRE='Story'
+
+
+
+
+def compile_text(idx,by_page=False):
+	try:
+		path_freqs = os.path.join(lltk.load('Hathi').path_freqs,idx+'.json')
+		path_freqs_dir = os.path.dirname(path_freqs)
+		if os.path.exists(path_freqs): return
+		if not os.path.exists(path_freqs_dir):
+			try:
+				os.makedirs(path_freqs_dir)
+			except FileExistsError:
+				pass
+
+		# print('compiling!')
+		htid=idx.replace('/','.',1)
+		# print('Getting: ',htid)
+		vol=Volume(htid)
+		vol_freqs=vol.term_volume_freqs(pos=False,case=True)
+		vol_freqs_d=dict(zip(vol_freqs['token'],vol_freqs['count']))
+		with open(path_freqs,'w') as of:
+			json.dump(vol_freqs_d, of)
+
+	except (HTTPError,FileNotFoundError,KeyError) as e:
+		# print('!!',e)
+		pass
 
 
 
 
 
+# def recompile_text(htid,by_page=False):
+# 	id_hash = tools.hash(htid)[:9]
+# 	id_split = '/'.join(tools.slice(id_hash,slice_length=3))
+# 	id_text = f'''hathi/{id_split}''' #/{htid.replace('/','_')}'''
+# 	path_text = os.path.join(
+# 		lltk.load('Hathi').path_texts,
+# 		*id_text.split('/')[1:]
+# 	)
+
+# 	# old path
+# 	path_freqs=os.path.join(path_text,'freqs.json').replace('/home/ryan/lltk_data/corpora/hathi','/home/ryan/DH/backups/hathi')
+# 	if not os.path.exists(path_freqs): return
+
+# 	# get new path
+# 	htidx=htid.split('.',1)[0] + '/' + htid.split('.',1)[1]
+# 	new_path_freqs = os.path.join(lltk.load('Hathi').path_freqs, htidx+'.json')
+# 	if os.path.exists(new_path_freqs): return
+	
+# 	# save new
+# 	new_path_freqs_dir = os.path.dirname(new_path_freqs)
+# 	try:
+# 		if not os.path.exists(new_path_freqs_dir): os.makedirs(new_path_freqs_dir)
+# 	except FileExistsError:
+# 		pass
+# 	shutil.copyfile(path_freqs,new_path_freqs)
+# 	# print(path_freqs,'-->',new_path_freqs)
 
 
 
+# def compile_text(htid,by_page=False):
+# 	try:
+# 		from htrc_features import Volume
+# 		from urllib.error import HTTPError
+		
+# 		id_hash = tools.hash(htid)[:9]
+# 		id_split = '/'.join(tools.slice(id_hash,slice_length=3))
+		
+# 		id_text = f'''hathi/{id_split}''' #/{htid.replace('/','_')}'''
+# 		path_text = os.path.join(
+# 			lltk.load('Hathi').path_texts,
+# 			*id_text.split('/')[1:]
+# 		)
+# 		if os.path.exists(path_text) and os.listdir(path_text): return
+# 		# print('compiling!')
+# 		vol=Volume(htid)
+# 		vol_meta = vol.parser.meta
+# 		vol_df = vol.tokenlist(case=True,pos=False)
+# 		vol_df = vol_df.reset_index()
+
+# 		if not os.path.exists(path_text): os.makedirs(path_text)
+# 		# print(id_text)
+# 		# print(path_text)
+# 		path_meta=os.path.join(path_text,'meta.json')
+# 		vol_meta['_id']=id_text
+# 		vol_meta['_type']='volume'
+# 		vol_meta['htid']=htid
+# 		with open(path_meta,'w') as of:
+# 			json.dump(vol_meta,of,indent=4,sort_keys=True)
+
+# 		if by_page:
+
+# 			for page_num,page in vol_df.groupby('page'):
+# 				page_counts=dict(zip(page['token'],page['count']))
+# 				id_section = os.path.join(id_text,str(page_num).zfill(4))
+# 				path_section = os.path.join(path_text,str(page_num).zfill(4))
+# 				if not os.path.exists(path_section): os.makedirs(path_section)
+# 				path_section_freqs = os.path.join(path_section,'freqs.json')
+# 				with open(path_section_freqs,'w') as of:
+# 					json.dump(page_counts,of,indent=4,sort_keys=True)
+# 				path_section_meta = os.path.join(path_section,'meta.json')
+# 				with open(path_section_meta,'w') as of:
+# 					json.dump({
+# 						'page':page_num,
+# 						'_id':id_section,
+# 						'_type':'page'
+# 					},of,indent=4,sort_keys=True)
+		
+# 		# save total freqs too
+# 		vol_freqs=vol.term_volume_freqs(pos=False,case=True)
+# 		vol_freqs_d=dict(zip(vol_freqs['token'],vol_freqs['count']))
+# 		with open(os.path.join(path_text,'freqs.json'),'w') as of:
+# 			json.dump(vol_freqs_d, of)
+# 		vol_df.to_csv(os.path.join(path_text,'freqs.csv'))
+
+# 	except (HTTPError,FileNotFoundError,KeyError) as e:
+# 		print('!!',e)
 
 
 
