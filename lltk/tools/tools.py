@@ -130,9 +130,10 @@ def configure_prompt(default_config='config.txt',default_corpora='corpora',defau
 	if not os.path.isabs(default_corpora): default_corpora=os.path.join(PATH_LLTK_HOME,default_corpora)
 	if not os.path.isabs(default_manifest): default_manifest=os.path.join(PATH_LLTK_HOME,default_manifest)
 
-	path_config=input('>> Where should the config file be stored? [default: {default}]: '.format(default=default_config)).strip()
-	path_corpora=input('>> Where should corpora be stored? [default: {default}]: '.format(default=default_corpora)).strip()
-	path_manifest=input('>> Where should the corpus manifest be stored? [default: {default}] '.format(default=default_manifest)).strip()
+	#path_config=input('>> Where should the config file be stored? [default: {default}]: '.format(default=default_config)).strip()
+	#path_corpora=input('>> Where should corpora be stored? [default: {default}]: '.format(default=default_corpora)).strip()
+	#path_manifest=input('>> Where should the corpus manifest be stored? [default: {default}] '.format(default=default_manifest)).strip()
+	path_config,path_corpora,path_manifest=None,None,None
 
 	if not path_config: path_config=default_config
 	if not path_corpora: path_corpora=default_corpora
