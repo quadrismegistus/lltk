@@ -440,3 +440,4 @@ path_metadata = metadata.csv
 path_python = semantic_cohort.py
 class_name = SemanticCohort
 url_metadata = https://www.dropbox.com/s/f6imhtfzgpf7tvz/semantic_cohort_metadata.zip?dl=1
+url_data = https://www.dropbox.com/s/tnqna3bdsiovtnt/semantic_cohort_data.zip?dl=1
