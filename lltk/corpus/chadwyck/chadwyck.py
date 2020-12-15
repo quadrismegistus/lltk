@@ -165,7 +165,7 @@ def compile_text(fnfn):
             # if dob.isdigit(): author+='_'+str(dob)
         else:
             author = tools.noPunc(author)
-        author_id=Chadwyck.ID+'/'+author
+        author_id=author
 
         path_l_author=[author]
         path_author=os.path.join(PATH_CORPUS,Chadwyck.ID,'texts',*path_l_author)
@@ -193,7 +193,7 @@ def compile_text(fnfn):
             title[:50],
             book_meta.get('idref')
         ]
-        book_meta['_id']=Chadwyck.ID+'/'+ ('/'.join(path_l_book))
+        book_meta['_id']=('/'.join(path_l_book))
         book_meta['_id_author']=author_id
         book_meta['_type']='text'
 
@@ -274,8 +274,7 @@ class Chadwyck(Corpus):
 
         # print(fnfns)
         # return
-        print(len(fnfns),fnfns[:5])
-        res=tools.pmap(compile_text,fnfns,num_proc=4,desc=)
+        res=tools.pmap(compile_text,fnfns,num_proc=4,desc='Compiling texts')
         self.save_metadata_from_meta_jsons()
 
 

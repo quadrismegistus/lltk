@@ -401,19 +401,47 @@ class Corpus(object):
             for i,text in enumerate(tqdm(texts)):
                 f=getattr(text,method_name)
                 f(*cmd_args,**cmd_kwargs)
-
-
-    def save_freqs(self,num_proc=4): #force=False,slingshot=False,slingshot_n=1,slingshot_opts=''):
-        objs = [
+                
+    @property
+    def paths_txt(self):
+        return [
             path_txt 
             for t in self.texts()
             for path_txt in t.paths_txt
         ]
+    @property
+    def paths_xml(self):
+        return [
+            path_xml 
+            for t in self.texts()
+            for path_xml in t.paths_xml
+        ]
+    @property
+    def paths_freqs(self):
+        return [
+            p 
+            for t in self.texts()
+            for p in t.paths_freqs
+        ]
+
+        
+    def gen_freqs(self,num_proc=4): #force=False,slingshot=False,slingshot_n=1,slingshot_opts=''):
         tools.pmap(
             save_freqs_json,
-            objs,
-            num_proc=num_proc
+            self.paths_txt,
+            num_proc=num_proc,
+            desc='Generating frequency data'
         )
+    def gen_stanza(self,num_proc=4): #force=False,slingshot=False,slingshot_n=1,slingshot_opts=''):
+        from lltk.model.corenlp import parse
+        tools.pmap(
+            parse,
+            self.paths_txt,
+            num_proc=num_proc,
+            desc='Parsing sentences with stanza'
+        )
+        
+    
 
 
 
@@ -819,10 +847,15 @@ class Corpus(object):
         return
 
     def compile_download(self):
-        if not self.url_raw: return
+        
         if not os.path.exists(self.path_raw): os.makedirs(self.path_raw)
         ofnfn=os.path.join(self.path_raw+'.zip')
-        if not os.path.exists(ofnfn): tools.download(self.url_raw,ofnfn,overwrite=False,desc='Downloading raw data archive')
+        if not os.path.exists(ofnfn): 
+            if not hasattr(self,'url_raw') or not self.url_raw:
+                self.url_raw = input(f'Enter a download link to the raw data archive of {self.name}:\n').strip()
+                if not self.url_raw: return
+                
+            tools.download(self.url_raw,ofnfn,overwrite=False,desc='Downloading raw data archive')
         tools.unzip(ofnfn,self.path_raw,progress_desc='Unzipping raw zip')
         # os.unlink(ofnfn)
 
