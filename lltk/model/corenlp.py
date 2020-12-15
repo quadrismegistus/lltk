@@ -2,10 +2,9 @@ import os,pickle
 from tqdm import tqdm
 import stanza
 stanza.download('en')
-nlp = stanza.Pipeline('en',processors=processors)
+nlp = stanza.Pipeline('en',processors='tokenize,pos,lemma,depparse')
 
 def parse(path_txt,lang='en',processors='tokenize,pos,lemma,depparse'):
-    global nlp
     
     opath=path_txt.replace('.txt','.stanza')
     if os.path.exists(opath): return
