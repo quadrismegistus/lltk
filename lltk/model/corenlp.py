@@ -2,7 +2,7 @@ import os,pickle
 from tqdm import tqdm
 import stanza
 stanza.download('en')
-nlp = stanza.Pipeline(lang,processors=processors)
+nlp = stanza.Pipeline('en',processors=processors)
 
 def parse(path_txt,lang='en',processors='tokenize,pos,lemma,depparse'):
     global nlp
