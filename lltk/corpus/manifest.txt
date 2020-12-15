@@ -96,15 +96,7 @@ class_name = ECCO_LitLang
 name = ECCO_TCP
 desc = ECCO (curated by the Text Creation Partnership)
 id = ecco_tcp
-path_root = ecco
-path_python = ecco/ecco.py
-class_name = ECCO_TCP
-path_freqs=freqs_tcp
-path_txt = txt_tcp
-path_xml = xml_tcp
-path_header = headers_tcp
-path_schema = schemas_tcp
-path_metadata = metadata_tcp.txt
+url_raw = https://www.dropbox.com/s/aubdaixvc59d8o9/ecco_tcp_raw.zip?dl=1
 url_txt=https://www.dropbox.com/s/8sa4f6yqpz6ku3d/ecco_tcp_txt.zip?dl=1
 url_xml=https://www.dropbox.com/s/vtv2iw7ujtivqss/ecco_tcp_xml.zip?dl=1
 url_freqs=https://www.dropbox.com/s/sdf5pdyifnrulyk/ecco_tcp_freqs.zip?dl=1

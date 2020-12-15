@@ -54,23 +54,6 @@ class TextECCO(Text):
 
 
 
-class TextECCO_TCP(TextTCP):
-	@property
-	def meta_by_file(self):
-		if not hasattr(self,'_meta'):
-			fnfn=self.path_header
-			mtxt=codecs.open(fnfn,encoding='utf-8').read()
-			md=self.extract_metadata(mtxt)
-			md['fnfn_xml']=self.fnfn
-			md['id']=self.id
-			md['genre'],md['medium']=self.return_genre()
-			del md['notes']
-			self._meta=md
-		return self._meta
-
-
-
-
 
 class TextECCO_LitLang(Text):
 	@property
@@ -278,15 +261,6 @@ from lltk.corpus import Corpus
 from lltk.corpus.tcp import TCP
 
 
-class ECCO_TCP(TCP):
-	EXT_XML = '.xml'
-	TEXT_CLASS=TextECCO_TCP
-	TEXT_SECTION_CLASS=TextSectionTCP
-
-	@property
-	def metadata(self):
-		meta=super().metadata
-		return meta.query('1700<=year<1800')
 def fix_genre(genre,title):
     if genre in {'Verse'}: return genre
     title_l=title.lower()
