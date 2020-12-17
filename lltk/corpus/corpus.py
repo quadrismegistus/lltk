@@ -318,33 +318,8 @@ class Corpus(object):
 #         return None
         return metad.get('_id')
 
-    def get_text_ids(self,from_metadata=True,from_files=False,limit=False):
-        if not from_files and self.exists_metadata:
-            self._text_ids=[self.get_id_from_metad(d) for d in self.meta]
-        else:
-            ## Otherwise get the filenames from the main file directory
-            path,ext=self.path_txt,self.ext_txt
-            #print '>> looking for text IDs using files...'
-            if not path or not ext:
-                self._text_ids=[]
-            else:
-                # let's go recursive
-                fns=[]
-                for root, sub_folders, files in os.walk(path):
-                    for fn in files:
-                        if fn.endswith(ext):
-                            idx=os.path.join(root,fn).replace(path,'').replace(ext,'')
-                            if idx.startswith('/'): idx=idx[1:]
-                            fns+=[idx]
-                        if limit and len(fns)>=limit: break
-                    if limit and len(fns)>=limit: break
-
-                self._text_ids=fns
-
-
-
-
-        return self._text_ids
+    def get_text_ids(self,*x,**y):
+        return self.metadata.id
 
     @property
     def text_ids(self):
