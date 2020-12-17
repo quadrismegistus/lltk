@@ -1854,3 +1854,22 @@ def pmap(*x,**y):
     """
     # return as list
     return list(pmap_iter(*x,**y))
+
+
+
+def connect_gdrive(folders=['lltk_data','stanza_resources']):
+    # If google drive, connect folders
+    home_folders=folders
+    try:
+        gdrivefn='/content/drive'
+        from google.colab import drive
+        if not os.path.exists(gdrivefn):
+            drive.mount(gdrivefn)
+
+        for fldr in home_folders:
+            gfldr=os.path.join(gdrivefn,'MyDrive',fldr)
+            hfldr=os.path.expanduser(f'~/{fldr}')
+            if not os.path.exists(gfldr): os.makedirs(gfldr)
+            if not os.path.exists(hfldr): os.symlink(gfldr, hfldr)
+    except ImportError:
+        pass
