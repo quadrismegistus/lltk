@@ -134,6 +134,33 @@ class Text(object):
 
     
     @property
+    def stanza(self):
+        if not hasattr(self,'_stanza') or not self._stanza:
+            from tqdm import tqdm
+            import stanza,pickle    
+            self._stanza=l=[]
+            
+            paths=self.get_paths('text.stanza')
+            if not paths:
+                self.gen_stanza(num_proc=1)
+                paths=self.get_paths('text.stanza')
+                if not paths:
+                    return
+            
+            for fn in tqdm(paths,desc='Loading stanza'):
+                with open(fn,'rb') as f: datl=pickle.load(f)
+                ll=[]
+                for bstr in datl:
+                    try:
+                        ll+=[stanza.Document.from_serialized(bstr)]
+                    except Exception as e:
+                        ll+=[None]
+                fnid=os.path.dirname(fn.split('/texts/')[-1])
+                l.append((fnid, ll))
+        return self._stanza
+                
+    
+    @property
     def dom(self):
         import bs4
         return bs4.BeautifulSoup(self.get_text('text.xml'),'lxml')
@@ -182,10 +209,6 @@ class Text(object):
     def tokens(self): return list(self.tokenize())
     @property
     def counts(self): return self.count()
-    
-    
-    
-    
     
     ### Sections
     def sections_xml(self,divider_tag,text_section_class=None):
@@ -405,6 +428,9 @@ class Text(object):
             doc=nlp(txt)
 
         return doc
+    
+    def gen_stanza(self,**y):
+        self.corpus.gen_stanza(paths_txt=self.paths_txt,**y)
 
 
     def text_plain(self, force_xml=None):

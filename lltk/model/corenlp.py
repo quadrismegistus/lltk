@@ -16,7 +16,7 @@ def parse(path_txt,lang='en',processors='tokenize,pos,lemma,depparse'):
         try:
             para_obj = nlp(para)
             para_obj_b = para_obj.to_serialized()
-        except IndexError:
+        except:
             para_obj_b=b''
         paras_b+=[para_obj_b]
 
@@ -26,3 +26,5 @@ def parse(path_txt,lang='en',processors='tokenize,pos,lemma,depparse'):
     with open(opath,'wb') as of:
         #of.write(doc_b)
         pickle.dump(paras_b,of)
+        
+        

@@ -60,7 +60,7 @@ def hash(x):
 
 
 def config_obj2dict(config_obj,keys=['Default','User'],pathhack_root=LIT_ROOT,pathhack=True):
-    config_dict = {}
+    config_dict = {'PATH_TO_CORPORA':os.path.expanduser('~/lltk_data/corpora')}
 
     #dict([(k.upper(),v) for k,v in list(config[key].items())])
     for key in keys:

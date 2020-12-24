@@ -249,6 +249,11 @@ class Corpus(object):
 
 
     ### TEXT RELATED
+    def nlp(self,lang='en',processors='tokenize,pos,lemma,depparse'):
+        if not hasattr(self,'_nlp') or not self._nlp:
+            import stanza
+            self._nlp = stanza.Pipeline(lang,processors=processors)
+        return self._nlp
 
     @property
     def path_ext_texts(self):
@@ -407,11 +412,12 @@ class Corpus(object):
             num_proc=num_proc,
             desc='Generating frequency data'
         )
-    def gen_stanza(self,num_proc=4): #force=False,slingshot=False,slingshot_n=1,slingshot_opts=''):
+    def gen_stanza(self,paths_txt=None,num_proc=4):
+        if not paths_txt: paths_txt=self.paths_txt
         from lltk.model.corenlp import parse
         tools.pmap(
             parse,
-            self.paths_txt,
+            paths_txt,
             num_proc=num_proc,
             desc='Parsing sentences with stanza'
         )
