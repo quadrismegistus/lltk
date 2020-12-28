@@ -384,25 +384,13 @@ class Corpus(object):
                 
     @property
     def paths_txt(self):
-        return [
-            path_txt 
-            for t in self.texts()
-            for path_txt in t.paths_txt
-        ]
+        return self.get_paths('text.txt')
     @property
     def paths_xml(self):
-        return [
-            path_xml 
-            for t in self.texts()
-            for path_xml in t.paths_xml
-        ]
+        return self.get_paths('text.xml')
     @property
     def paths_freqs(self):
-        return [
-            p 
-            for t in self.texts()
-            for p in t.paths_freqs
-        ]
+        return self.get_paths('freqs.json')
 
         
     def gen_freqs(self,num_proc=4): #force=False,slingshot=False,slingshot_n=1,slingshot_opts=''):
@@ -421,6 +409,40 @@ class Corpus(object):
             num_proc=num_proc,
             desc='Parsing sentences with stanza'
         )
+
+    def get_path(self,fn,dirname=None,force=False):
+        if not dirname: dirname=self.path
+        path=os.path.join(dirname, fn)
+        pathgz=path+'.gz'
+        for p in [path,pathgz]:
+            if os.path.exists(p): return p
+        return None if not force else pat
+
+    def get_paths(self,fn,toplevel=False,bottomlevel=True,texttype=None):
+        # if toplevel exists, return that
+        if toplevel:
+            fnfn=self.get_path(fn)
+            if fnfn: return [fnfn]
+        
+        # otherwise loop
+        paths=[]
+        from tqdm import tqdm
+        for root,dirs,fns in sorted(tqdm(os.walk(self.path_texts))):
+            if fn in fns:
+                # if bottomlevel set and there are more folders here
+                if bottomlevel and dirs: continue
+        
+                # check if text type set
+                if texttype:
+                    metafn=os.path.join(root,'meta.json')
+                    if not os.path.exists(metafn): continue
+                    with open(metafn) as f:
+                        meta=json.load(f)
+                    if meta.get('_type')!=texttype: continue
+                
+                # otherwise append path
+                paths.append(os.path.join(root,fn))
+        return paths
         
     
 
