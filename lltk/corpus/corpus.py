@@ -411,43 +411,13 @@ class Corpus(object):
         )
 
     def get_path(self,fn,dirname=None,force=False):
-        if not dirname: dirname=self.path
-        path=os.path.join(dirname, fn)
-        pathgz=path+'.gz'
-        for p in [path,pathgz]:
-            if os.path.exists(p): return p
-        return None if not force else pat
+        dirname = self.path_texts if not dirname else dirname
+        return tools.get_path(fn,dirname=dirname,force=force)
 
-    def get_paths(self,fn,toplevel=False,bottomlevel=True,texttype=None):
-        # if toplevel exists, return that
-        if toplevel:
-            fnfn=self.get_path(fn)
-            if fnfn: return [fnfn]
-        
-        # otherwise loop
-        paths=[]
-        from tqdm import tqdm
-        for root,dirs,fns in sorted(tqdm(os.walk(self.path_texts))):
-            if fn in fns:
-                # if bottomlevel set and there are more folders here
-                if bottomlevel and dirs: continue
-        
-                # check if text type set
-                if texttype:
-                    metafn=os.path.join(root,'meta.json')
-                    if not os.path.exists(metafn): continue
-                    with open(metafn) as f:
-                        meta=json.load(f)
-                    if meta.get('_type')!=texttype: continue
-                
-                # otherwise append path
-                paths.append(os.path.join(root,fn))
-        return paths
-        
+    def get_paths(self,fn,dirname=None,toplevel=False,bottomlevel=True,texttype=None):
+        dirname = self.path_texts if not dirname else dirname
+        return tools.get_paths(fn,dirname=dirname,toplevel=toplevel,texttype=texttype)
     
-
-
-
 
 
     # def save_freqs(self,force=False,slingshot=False,slingshot_n=None,slingshot_opts=''):

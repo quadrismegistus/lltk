@@ -1813,7 +1813,39 @@ def remove_duplicates(seq,remove_empty=False):
     if not remove_empty: return l
     return [x for x in l if x]
 
+def get_path(fn,dirname,force=False):
+    if not dirname: dirname=self.path
+    path=os.path.join(dirname, fn)
+    pathgz=path+'.gz'
+    for p in [path,pathgz]:
+        if os.path.exists(p): return p
+    return None if not force else path
 
+def get_paths(fn,dirname,toplevel=False,bottomlevel=True,texttype=None):
+    # if toplevel exists, return that
+    if toplevel:
+        fnfn=get_path(fn,dirname)
+        if fnfn: return [fnfn]
+    
+    # otherwise loop
+    paths=[]
+    from tqdm import tqdm
+    for root,dirs,fns in sorted(tqdm(os.walk(dirname))):
+        if fn in fns:
+            # if bottomlevel set and there are more folders here
+            if bottomlevel and dirs: continue
+    
+            # check if text type set
+            if texttype:
+                metafn=os.path.join(root,'meta.json')
+                if not os.path.exists(metafn): continue
+                with open(metafn) as f:
+                    meta=json.load(f)
+                if meta.get('_type')!=texttype: continue
+            
+            # otherwise append path
+            paths.append(os.path.join(root,fn))
+    return paths
 
 
 

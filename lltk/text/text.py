@@ -43,38 +43,14 @@ class Text(object):
     ### PATHS
     
     # get path from id folder
-    def get_path(self,fn='text.txt',dirname=None,force=False):
-        if not dirname: dirname=self.path
-        path=os.path.join(dirname, fn)
-        pathgz=path+'.gz'
-        for p in [path,pathgz]:
-            if os.path.exists(p): return p
-        return None if not force else path
+    def get_path(self,fn,dirname=None,force=False):
+        dirname = self.path if not dirname else dirname
+        return tools.get_path(fn,dirname=dirname,force=force)
+
+    def get_paths(self,fn,dirname=None,toplevel=False,bottomlevel=True,texttype=None):
+        dirname = self.path if not dirname else dirname
+        return tools.get_paths(fn,dirname=dirname,toplevel=toplevel,texttype=texttype)
     
-    def get_paths(self,fn,toplevel=False,bottomlevel=True,texttype=None):
-        # if toplevel exists, return that
-        if toplevel:
-            fnfn=self.get_path(fn)
-            if fnfn: return [fnfn]
-        
-        # otherwise loop
-        paths=[]
-        for root,dirs,fns in sorted(os.walk(self.path)):
-            if fn in fns:
-                # if bottomlevel set and there are more folders here
-                if bottomlevel and dirs: continue
-        
-                # check if text type set
-                if texttype:
-                    metafn=os.path.join(root,'meta.json')
-                    if not os.path.exists(metafn): continue
-                    with open(metafn) as f:
-                        meta=json.load(f)
-                    if meta.get('_type')!=texttype: continue
-                
-                # otherwise append path
-                paths.append(os.path.join(root,fn))
-        return paths
     
     @property
     def path(self): return os.path.join(self.corpus.path_texts, self.id)       
