@@ -866,12 +866,13 @@ class Corpus(object):
 
 
     def install_metadata(self,**attrs):
-        force=attrs.get('force')
-        if force or not os.path.exists(self.path_metadata):
-            self.save_metadata(**self.command_prep(self.save_metadata,attrs))
-            self.save_additional_metadata(**self.command_prep(self.save_additional_metadata,attrs))
-        else:
-            print('>> metadata already exists:',self.path_metadata)
+        # force=attrs.get('force')
+        # if force or not os.path.exists(self.path_metadata):
+        #     self.save_metadata(**self.command_prep(self.save_metadata,attrs))
+        #     self.save_additional_metadata(**self.command_prep(self.save_additional_metadata,attrs))
+        # else:
+        #     print('>> metadata already exists:',self.path_metadata)
+        self.save_metadata_from_meta_jsons()
 
 
     def install_txt(self,**attrs):
@@ -2539,7 +2540,9 @@ def do_walk(args):
     if 'meta.json' in fns:
         with open(os.path.join(root,'meta.json')) as f:
             meta=json.load(f)
+            if not '_id' in meta: meta['_id']=root.split('/texts/')[-1]
             meta_type=meta.get('_type')
+            if '_type' in meta: del meta['_type']
         #metadatas[meta['_type']]+=[meta]
     return (meta_type,meta)
 

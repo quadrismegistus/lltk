@@ -433,3 +433,26 @@ path_python = semantic_cohort.py
 class_name = SemanticCohort
 url_metadata = https://www.dropbox.com/s/f6imhtfzgpf7tvz/semantic_cohort_metadata.zip?dl=1
 url_data = https://www.dropbox.com/s/tnqna3bdsiovtnt/semantic_cohort_data.zip?dl=1
+
+[Pavel]
+name = Pavel
+id = pavel
+desc = --
+link = --
+path_root = pavel
+path_txt = txt
+path_xml = 
+path_metadata = metadata.txt
+path_python = pavel.py
+class_name = Pavel
+
+
+
+
+[HistFic]
+name = HistFic
+id = histfic
+desc = --
+link = --
+
+
