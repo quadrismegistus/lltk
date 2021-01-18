@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+
+{% block head %}
+<title>{{text_meta['title']}}</title>
+<script type="text/javascript" src="/static/rainbowvis.js"></script>
+{% endblock %}
+
+
+{% block content %}
+<h3><i>{{text_meta['title']}}</i> [{{text_meta['year']}}], by {{text_meta['author']}}</h3>
+
+
+{%if data %}<h4>Data</h4>{%endif%}
+
+{% for datatype in g.sorted(data) %}
+<li><i>{{datatype}}</i>: {{data[datatype]}}</li>
+{% endfor %}
+
+
+{% autoescape false %}
+	{{text_html}}
+{% endautoescape %}
+
+
+<div id="legend"></div>
+
+{% if text_meta %}
+	<h4>Metadata</h4>
+	<table id='text_metadata'>
+		<tbody>
+	{% for k,v in text_meta.items() %}
+	{% if v %}
+		<tr>
+			<th>{{k}}</th>
+			<td>{{v}}</td>
+		</tr>
+	{% endif %}
+	{%endfor %}
+	</tbody>
+	</table>
+{%endif%}
+
+
+
+
+{% endblock %}

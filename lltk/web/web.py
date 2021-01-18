@@ -156,28 +156,28 @@ def load_fields():
 	now=time.time()
 	#word2fields=tools.get_word2fields(only_fields=ONLY_FIELDS)
 
-	import pickle
+	import pickle,json
 	from collections import defaultdict
 	word2fields=defaultdict(set)
 	# with open('../abstraction/words/data.all_fields.pickle','rb') as f:
-	#with open('data/data.fields.pickle','rb') as f:
+	# with open('data/data.fields.pickle','rb') as f:
 		# fields = pickle.load(f)
-	fields={}
-	for field_fn in os.listdir(path_fields):
-		if not field_fn.endswith('.txt'): continue
-		field_name=field_fn[:-4]
-		field_fnfn=os.path.join(path_fields,field_fn)
-		with open(field_fnfn) as f:
-			field_data=set(f.read().strip().split('\n'))
-			fields[field_name]=field_data
+	with open(os.path.expanduser('~/github/AbsLitHist/data/fields/data.vecfields.AbsConc.json')) as f:
+		fields = json.load(f)
+	# fields={}
+	# for field_fn in os.listdir(path_fields):
+	# 	if not field_fn.endswith('.txt'): continue
+	# 	field_name=field_fn[:-4]
+	# 	field_fnfn=os.path.join(path_fields,field_fn)
+	# 	with open(field_fnfn) as f:
+	# 		field_data=set(f.read().strip().split('\n'))
+	# 		fields[field_name]=field_data
 	
 
 	for field in sorted(fields):
-		if field in ONLY_FIELDS:
+		if 1: #field in ONLY_FIELDS:
 			for word in fields[field]:
 				word2fields[word]|={field}
-
-			#print(field)
 
 	print('done.',time.time()-now)
 	field2words=fields
@@ -194,23 +194,25 @@ def save_fields(word2fields):
 
 ### PAGE
 def show_text(text_obj, corpus_obj=None, meta={}, merge_line_breaks=False,modernize_spelling=MODERNIZE_SPELLING):
-	#from lltk.tools.freqs import get_word2fields,get_fields,measure_fields
+	from lltk.tools.freqs import get_word2fields,get_fields,measure_fields
 
-	#word2fields=load_fields()
+	field2words,word2fields=load_fields()
 	#save_fields(word2fields)
 
 	#import lltk
 	#english = lltk.load_english()
-	#stopwords = lltk.load_stopwords()
+	stopwords = lltk.load_stopwords()
+	stopwords|={'would'}
 
-	#for w in stopwords:
-	#	#print(w,'?')
-	#	if w in word2fields:
-	#		del word2fields[w]
+	for w in stopwords:
+		#print(w,'?')
+		if w in word2fields:
+			del word2fields[w]
 	only_pos=['n','j','v']
 	only_words=set([w for pos in only_pos for w in pos2words[pos]])
 
-	html,field_counts=text_obj.html(word2fields=word2fields,lim_words=None,only_words=only_words,modernize_spelling=modernize_spelling)
+	# html,field_counts=text_obj.html(word2fields=word2fields,lim_words=None,only_words=only_words,modernize_spelling=modernize_spelling)
+	html,field_counts=text_obj.html(word2fields=word2fields,lim_words=None,only_words=None,modernize_spelling=False)
 	#html=html.replace('</br>','</br></br>')
 
 	try:
@@ -227,29 +229,33 @@ def show_text(text_obj, corpus_obj=None, meta={}, merge_line_breaks=False,modern
 
 	print(sorted(field_counts.keys()))
 
+	data['Abs/Conc']=field_counts['AbsConc.Abs'] / field_counts['AbsConc.Conc']
+
+	print('data',data)
+
 	#data['Abstractness Ratio (Consolidated)']=field_counts['W2V.Consolidated.Abstract_njv'] / field_counts['W2V.Consolidated.Concrete_njv'] if field_counts['W2V.Consolidated.Concrete_njv'] else 0
-	data['Abstract words / 10 Concrete words (robust)']=field_counts['CH.Abstract.Robust'] / field_counts['CH.Concrete.Robust'] * 10 if field_counts['CH.Concrete.Robust'] else 0
-	data['Abstract words / 10 Concrete words (consolidated, njv)']=field_counts['W2V.Consolidated.Abstract_njv'] / field_counts['W2V.Consolidated.Concrete_njv'] * 10 if field_counts['W2V.Consolidated.Concrete_njv'] else 0
-	#data['Abs/Conc*10 (robust)']=data['Abstract/Concrete*10 (robust)']
-	data['Abstract words / 10 Concrete words (orig)']=field_counts['W2V.HGI.Abstract'] / field_counts['W2V.HGI.Concrete'] * 10 if field_counts['W2V.HGI.Concrete'] else 0
-	data['Abstract words / 10 Concrete words (all)']=field_counts['CH.Abstract.All'] / field_counts['CH.Concrete.All'] * 10 if field_counts['CH.Concrete.All'] else 0
-	data['Abstract words / 10 Concrete words (local)']=field_counts['CH.Abstract.%s' % period] / field_counts['CH.Concrete.%s' % period] * 10 if field_counts['CH.Concrete.%s' % period] else 0
-	to_median=data.keys()
-	data['Abstract words / 10 Concrete words (MEDIAN)']=round(np.median([data[x] for x in to_median if data[x]]),1)
+	# data['Abstract words / 10 Concrete words (robust)']=field_counts['CH.Abstract.Robust'] / field_counts['CH.Concrete.Robust'] * 10 if field_counts['CH.Concrete.Robust'] else 0
+	# data['Abstract words / 10 Concrete words (consolidated, njv)']=field_counts['W2V.Consolidated.Abstract_njv'] / field_counts['W2V.Consolidated.Concrete_njv'] * 10 if field_counts['W2V.Consolidated.Concrete_njv'] else 0
+	# #data['Abs/Conc*10 (robust)']=data['Abstract/Concrete*10 (robust)']
+	# data['Abstract words / 10 Concrete words (orig)']=field_counts['W2V.HGI.Abstract'] / field_counts['W2V.HGI.Concrete'] * 10 if field_counts['W2V.HGI.Concrete'] else 0
+	# data['Abstract words / 10 Concrete words (all)']=field_counts['CH.Abstract.All'] / field_counts['CH.Concrete.All'] * 10 if field_counts['CH.Concrete.All'] else 0
+	# data['Abstract words / 10 Concrete words (local)']=field_counts['CH.Abstract.%s' % period] / field_counts['CH.Concrete.%s' % period] * 10 if field_counts['CH.Concrete.%s' % period] else 0
+	# to_median=data.keys()
+	# data['Abstract words / 10 Concrete words (MEDIAN)']=round(np.median([data[x] for x in to_median if data[x]]),1)
 
-	data['Post-Norman words / 10 pre-Norman words']=field_counts['CP.postnorman_words'] / field_counts['CP.prenorman_words']*10 if field_counts['CP.prenorman_words'] else ''
+	# data['Post-Norman words / 10 pre-Norman words']=field_counts['CP.postnorman_words'] / field_counts['CP.prenorman_words']*10 if field_counts['CP.prenorman_words'] else ''
 
 
-	data['# Words (content)']=field_counts['REF.content_words']
-	data['# Words (english)']=field_counts['REF.english']
-	data['# Abstract words (Consolidated, njv)']=field_counts['W2V.Consolidated.Abstract_njv']
-	data['# Concrete words (Consolidated, njv)']=field_counts['W2V.Consolidated.Concrete_njv']
-	data['# Neutral words (Consolidated, njv)']=field_counts['W2V.Consolidated.Neither_njv']
+	# data['# Words (content)']=field_counts['REF.content_words']
+	# data['# Words (english)']=field_counts['REF.english']
+	# data['# Abstract words (Consolidated, njv)']=field_counts['W2V.Consolidated.Abstract_njv']
+	# data['# Concrete words (Consolidated, njv)']=field_counts['W2V.Consolidated.Concrete_njv']
+	# data['# Neutral words (Consolidated, njv)']=field_counts['W2V.Consolidated.Neither_njv']
 
-	data['% Poetic Diction (V1)'] = field_counts['CP.poetic_diction'] / field_counts['REF.english'] * 100 if field_counts['REF.english'] else ''
-	data['% Poetic Diction (V2)'] = field_counts['CP.poetic_diction_notspeech'] / field_counts['REF.english'] * 100 if field_counts['REF.english'] else ''
-	#data['% Poetic Diction (V3)'] = field_counts['CP.poetic_diction_mdw'] / (field_counts['CP.poetic_diction_mdw']+field_counts['CP.MDW.NotPoetic']) * 100 if (field_counts['CP.MDW.Poetic']+field_counts['CP.MDW.NotPoetic']) else ''
-	data['% Poetic Diction (V3b)'] = field_counts['CP.poetic_diction_mdw_eng'] / field_counts['REF.english'] * 100 if field_counts['REF.english'] else ''
+	# data['% Poetic Diction (V1)'] = field_counts['CP.poetic_diction'] / field_counts['REF.english'] * 100 if field_counts['REF.english'] else ''
+	# data['% Poetic Diction (V2)'] = field_counts['CP.poetic_diction_notspeech'] / field_counts['REF.english'] * 100 if field_counts['REF.english'] else ''
+	# #data['% Poetic Diction (V3)'] = field_counts['CP.poetic_diction_mdw'] / (field_counts['CP.poetic_diction_mdw']+field_counts['CP.MDW.NotPoetic']) * 100 if (field_counts['CP.MDW.Poetic']+field_counts['CP.MDW.NotPoetic']) else ''
+	# data['% Poetic Diction (V3b)'] = field_counts['CP.poetic_diction_mdw_eng'] / field_counts['REF.english'] * 100 if field_counts['REF.english'] else ''
 
 	for k,v in data.items():
 		if type(v)==float:
@@ -257,7 +263,7 @@ def show_text(text_obj, corpus_obj=None, meta={}, merge_line_breaks=False,modern
 
 	if merge_line_breaks: html=html.replace('<br/><br/>','<br/>')
 
-	return render_template('text2.html',
+	return render_template('text3.html',
 							corpus_name=corpus_name, corpus_obj=corpus_obj,
 							text_obj=text_obj, text_meta=meta, text_html=html,
 							data=data, period=period)

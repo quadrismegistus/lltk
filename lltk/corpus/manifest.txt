@@ -273,6 +273,8 @@ desc = 19th Century Novels, curated by the U of Illinois and hosted on the Inter
 link = https://archive.org/details/19thcennov?tab=about
 path_xml = meta_xml
 path_metadata = metadata.csv
+url_txt = https://www.dropbox.com/s/bs1ec7k9kk2jkrt/internet_archive_txt.zip?dl=1
+url_metadata = https://www.dropbox.com/s/yymc8t060eik7bt/internet_archive_metadata.zip?dl=1
 
 
 [txtLAB450]
@@ -441,3 +443,16 @@ path_python = semantic_cohort.py
 class_name = SemanticCohort
 url_metadata = https://www.dropbox.com/s/f6imhtfzgpf7tvz/semantic_cohort_metadata.zip?dl=1
 url_data = https://www.dropbox.com/s/tnqna3bdsiovtnt/semantic_cohort_data.zip?dl=1
+
+
+[CanonFiction]
+name = CanonFiction
+id = canon_fiction
+desc = --
+link = --
+path_root = canon_fiction
+path_txt = txt
+path_xml = 
+path_metadata = metadata.xls
+path_python = canon_fiction.py
+class_name = CanonFiction

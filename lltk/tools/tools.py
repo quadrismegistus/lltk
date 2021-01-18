@@ -107,7 +107,9 @@ def load_global_config(pathhack=True,prompt_for_base_conf=True):
 def load_default_config():
 	config=configparser.ConfigParser()
 	config.read(PATH_DEFAULT_CONF)
-	return config_obj2dict(config,pathhack_root=LIT_ROOT)
+	configd=config_obj2dict(config,pathhack_root=LIT_ROOT)
+	if not 'PATH_TO_CORPORA' in configd: configd['PATH_TO_CORPORA']=os.path.expanduser('~/lltk_data/corpora')
+	return configd
 
 def load_user_config():
 	config=configparser.ConfigParser()

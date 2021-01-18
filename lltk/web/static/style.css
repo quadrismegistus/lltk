@@ -49,6 +49,7 @@ h1 a { text-decoration: none; color: black; }
 
 
 
+
 .field_W2V_HGI_Abstract { font-weight: bold; background-color:#83b9d8; }
 .field_W2V_HGI_Concrete { text-decoration: underline; background-color:#f9b466; } */
 
@@ -63,6 +64,9 @@ h1 a { text-decoration: none; color: black; }
 */
 
 
+.field_AbsConc_Neither { text-decoration: none; font-weight: normal; background-color:silver; }
+.field_AbsConc_Conc { text-decoration: none; background-color:#f9b466; font-weight: normal; }
+.field_AbsConc_Abs { font-weight: normal; background-color:#83b9d8; text-decoration: none;}
 
 
 
