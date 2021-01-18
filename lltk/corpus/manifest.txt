@@ -272,7 +272,7 @@ id = internet_archive
 desc = 19th Century Novels, curated by the U of Illinois and hosted on the Internet Archive
 link = https://archive.org/details/19thcennov?tab=about
 path_xml = meta_xml
-path_metadata = metadata.csv
+path_metadata = metadata.txt
 url_txt = https://www.dropbox.com/s/bs1ec7k9kk2jkrt/internet_archive_txt.zip?dl=1
 url_metadata = https://www.dropbox.com/s/yymc8t060eik7bt/internet_archive_metadata.zip?dl=1
 
