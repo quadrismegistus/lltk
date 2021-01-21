@@ -218,6 +218,7 @@ class InternetArchive(Corpus):
 		This will download the txt files from IA.
 		"""
 		# make sure exists
+		import shutil
 		if not os.path.exists(self.path_txt): os.makedirs(self.path_txt)
 		os.chdir(self.path_txt)
 
@@ -226,13 +227,27 @@ class InternetArchive(Corpus):
 		id_list=self.get_collection_ids(collection=collection)
 
 		# download txt
-		for idx in enumerate(tqdm(id_list,position=1)):
+		for i,idx in enumerate(tqdm(id_list,position=1)):
+			if os.path.exists(idx+'.txt'): continue
 			ia.download(idx,silent=True,glob_pattern='*.txt',ignore_existing=True)
+			
+			# get files and rename]
+			if not os.path.exists(idx): continue
+			for fn in os.listdir(idx):
+				if not fn.endswith('.txt'): continue
+				fnfn=os.path.join(idx,fn)
+				os.rename(fnfn, idx+'.txt')
+			if os.path.exists(idx): shutil.rmtree(idx)
+
 
 	def compile_metadata(self,collection=DEFAULT_COLLECTION):
 		def _writegen():
 			for item in self.get_collection_ids(collection=collection,iter_as_items=True):
 				dx=item.metadata
+				try:
+					dx['id']=dx['identifier']+'/'+dx['identifier']+'_djvu'
+				except KeyError:
+					print('??? no identifier ???',dx,'\n')
 				#print(dx)
 				yield dx
 		tools.iter_move(self.path_metadata,prefix='bak/')
@@ -240,7 +255,7 @@ class InternetArchive(Corpus):
 
 	def compile(self):
 		self.compile_metadata()
-		self.compile_txt()
+		# self.compile_txt()
 
 
 	def download(self,**attrs):
