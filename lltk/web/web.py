@@ -2,6 +2,7 @@
 # monkey.patch_all()
 
 import os,sys
+
 path_self = os.path.realpath(__file__)
 path_code = os.path.abspath(os.path.join(path_self,'..','..','..'))
 path_code_data = os.path.join(path_code,'data')
@@ -13,6 +14,8 @@ sys.path.insert(0,path_code)
 
 MODERNIZE_SPELLING=False
 
+import pickle,json,time,gzip
+from collections import defaultdict,Counter
 import numpy as np
 from flask import Flask
 from flask import render_template, current_app, g, jsonify, request
@@ -149,39 +152,58 @@ def tokens():
 
 
 
+# def load_fields1():
+# 	## HEAVY LIFTING??
+# 	print('>> getting word2fields')
+# 	import time
+# 	now=time.time()
+# 	#word2fields=tools.get_word2fields(only_fields=ONLY_FIELDS)
+
+# 	import pickle,json
+# 	from collections import defaultdict
+# 	word2fields=defaultdict(set)
+# 	# with open('../abstraction/words/data.all_fields.pickle','rb') as f:
+# 	# with open('data/data.fields.pickle','rb') as f:
+# 		# fields = pickle.load(f)
+# 	with open(os.path.expanduser('~/github/AbsLitHist/data/fields/data.vecfields.AbsConc.json')) as f:
+# 		fields = json.load(f)
+# 	# fields={}
+# 	# for field_fn in os.listdir(path_fields):
+# 	# 	if not field_fn.endswith('.txt'): continue
+# 	# 	field_name=field_fn[:-4]
+# 	# 	field_fnfn=os.path.join(path_fields,field_fn)
+# 	# 	with open(field_fnfn) as f:
+# 	# 		field_data=set(f.read().strip().split('\n'))
+# 	# 		fields[field_name]=field_data
+	
+
+# 	for field in sorted(fields):
+# 		if 1: #field in ONLY_FIELDS:
+# 			for word in fields[field]:
+# 				word2fields[word]|={field}
+
+# 	print('done.',time.time()-now)
+# 	field2words=fields
+# 	return (field2words,word2fields)
+
+
 def load_fields():
 	## HEAVY LIFTING??
 	print('>> getting word2fields')
-	import time
 	now=time.time()
-	#word2fields=tools.get_word2fields(only_fields=ONLY_FIELDS)
 
-	import pickle,json
-	from collections import defaultdict
 	word2fields=defaultdict(set)
-	# with open('../abstraction/words/data.all_fields.pickle','rb') as f:
-	# with open('data/data.fields.pickle','rb') as f:
-		# fields = pickle.load(f)
-	with open(os.path.expanduser('~/github/AbsLitHist/data/fields/data.vecfields.AbsConc.json')) as f:
+	with gzip.open(os.path.expanduser('~/github/AbsLitHist/data/fields/data.vecfields.json.gz')) as f:
 		fields = json.load(f)
-	# fields={}
-	# for field_fn in os.listdir(path_fields):
-	# 	if not field_fn.endswith('.txt'): continue
-	# 	field_name=field_fn[:-4]
-	# 	field_fnfn=os.path.join(path_fields,field_fn)
-	# 	with open(field_fnfn) as f:
-	# 		field_data=set(f.read().strip().split('\n'))
-	# 		fields[field_name]=field_data
-	
-
 	for field in sorted(fields):
-		if 1: #field in ONLY_FIELDS:
+		#if 1: #field in ONLY_FIELDS:
+		if field.startswith('Abs-Conc.ALL.'):
 			for word in fields[field]:
 				word2fields[word]|={field}
-
 	print('done.',time.time()-now)
 	field2words=fields
 	return (field2words,word2fields)
+
 
 def save_fields(word2fields):
 	import pickle
@@ -195,24 +217,29 @@ def save_fields(word2fields):
 ### PAGE
 def show_text(text_obj, corpus_obj=None, meta={}, merge_line_breaks=False,modernize_spelling=MODERNIZE_SPELLING):
 	from lltk.tools.freqs import get_word2fields,get_fields,measure_fields
+	from pprint import pprint
 
 	field2words,word2fields=load_fields()
+	pprint(field2words.keys())
+
 	#save_fields(word2fields)
 
 	#import lltk
 	#english = lltk.load_english()
 	stopwords = lltk.load_stopwords()
-	stopwords|={'would'}
+	stopwords|={'would','yet','also'}
 
 	for w in stopwords:
 		#print(w,'?')
 		if w in word2fields:
 			del word2fields[w]
-	only_pos=['n','j','v']
+	# only_pos=['n','j','v']
+	only_pos=['n','j']
 	only_words=set([w for pos in only_pos for w in pos2words[pos]])
+	print('only words ->',len(only_words))
 
 	# html,field_counts=text_obj.html(word2fields=word2fields,lim_words=None,only_words=only_words,modernize_spelling=modernize_spelling)
-	html,field_counts=text_obj.html(word2fields=word2fields,lim_words=None,only_words=None,modernize_spelling=False)
+	html,field_counts=text_obj.html(word2fields=word2fields,lim_words=None,only_words=None,modernize_spelling=False,stopwords=stopwords)
 	#html=html.replace('</br>','</br></br>')
 
 	try:
@@ -229,7 +256,14 @@ def show_text(text_obj, corpus_obj=None, meta={}, merge_line_breaks=False,modern
 
 	print(sorted(field_counts.keys()))
 
-	data['Abs/Conc']=field_counts['AbsConc.Abs'] / field_counts['AbsConc.Conc']
+	for period in ['C17','C18','C19','C20','_median']:
+		data[f'Abs/Conc ({period})']=field_counts[f'Abs-Conc.ALL.Abs.{period}']/field_counts[f'Abs-Conc.ALL.Conc.{period}']*10
+
+	# data['Abs/Conc']=field_counts['AbsConc.Abs'] / field_counts['AbsConc.Conc'] * 10
+	# data['Abs/Conc_C17']=field_counts['AbsConc.Abs_C17'] / field_counts['AbsConc.Conc_C17'] * 10
+	# data['Abs/Conc_C18']=field_counts['AbsConc.Abs_C18'] / field_counts['AbsConc.Conc_C18'] * 10
+	# data['Abs/Conc_C19']=field_counts['AbsConc.Abs_C19'] / field_counts['AbsConc.Conc_C19'] * 10
+	# data['Abs/Conc_C20']=field_counts['AbsConc.Abs_C20'] / field_counts['AbsConc.Conc_C20'] * 10
 
 	print('data',data)
 

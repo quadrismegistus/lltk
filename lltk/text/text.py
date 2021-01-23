@@ -219,7 +219,7 @@ class Text(object):
 	def fast_counts(self):
 		return Counter(self.fast_tokens())
 
-	def html(self,word2fields={},bad_words={'[','Footnote'},bad_strs={'Kb'},fn_model_result=None,fn_model_coeffs=None,data={},only_words=set(),lim_words=None,modernize_spelling=False):
+	def html(self,word2fields={},bad_words={'[','Footnote'},bad_strs={'Kb'},fn_model_result=None,fn_model_coeffs=None,data={},only_words=set(),lim_words=None,modernize_spelling=False,stopwords=set()):
 
 		if False: #self.is_parsed_spacy:
 			html=self.html_spacy(word2fields=word2fields,bad_words=bad_words,bad_strs=bad_strs,fn_model_result=fn_model_result,fn_model_coeffs=fn_model_coeffs)
@@ -239,13 +239,15 @@ class Text(object):
 			if not w: continue
 
 			if w[0].isalpha():
-				field_counts.update(word2fields.get(w,[]))
-				if w in word2fields:
-					field_counts['has_field']+=1
+				# field_counts.update(word2fields.get(w,[]))
+				
 				fields=' '.join(['field_'+field.replace('.','_') for field in word2fields.get(w,[])])
-				if only_words and w not in only_words:
+				if (only_words and w not in only_words) or (stopwords and w in stopwords):
 					tag=word
 				elif fields:
+					if w in word2fields: field_counts['has_field']+=1
+					# print(w,word2fields.get(w,[]))
+					field_counts.update(word2fields.get(w,[]))
 					tag=u'<span class="{fields} word">{word}</span>'.format(fields=fields, word=word)
 				else:
 					tag=word

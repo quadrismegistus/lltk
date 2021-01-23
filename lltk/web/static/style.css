@@ -6,28 +6,10 @@ body {
 }
 
 #body { text-align: center; font-size:'16px';}
-#frame { max-width:666px; display: inline-block; }
+#frame { max-width:750px; display: inline-block; }
 
 /*  border-right:1px solid; border-left: 1px solid; */
 /* width */
-::-webkit-scrollbar {
-    width: 10px;
-  }
-  
-  /* Track */
-  ::-webkit-scrollbar-track {
-    background: #000000; 
-  }
-   
-  /* Handle */
-  ::-webkit-scrollbar-thumb {
-    background: rgba(136, 136, 136, 0.5); 
-  }
-  
-  /* Handle on hover */
-  ::-webkit-scrollbar-thumb:hover {
-    background: #555; 
-  }
 
 #header { text-align: center; }
 #content { text-align:left; margin:1em; font-size: 20px; }
@@ -64,11 +46,30 @@ h1 a { text-decoration: none; color: black; }
 */
 
 
-.field_AbsConc_Neither { text-decoration: none; font-weight: normal; background-color:silver; }
+/* .field_AbsConc_Neither { text-decoration: none; font-weight: normal; background-color:silver; }
 .field_AbsConc_Conc { text-decoration: none; background-color:#f9b466; font-weight: normal; }
-.field_AbsConc_Abs { font-weight: normal; background-color:#83b9d8; text-decoration: none;}
+.field_AbsConc_Abs { font-weight: normal; background-color:#83b9d8; text-decoration: none;} */
+
+.field_Abs-Conc_ALL_Neither__median { text-decoration: none; font-weight: normal; background-color:silver; }
+.field_Abs-Conc_ALL_Conc__median { text-decoration: none; background-color:#f9b466; font-weight: normal; }
+.field_Abs-Conc_ALL_Abs__median { font-weight: normal; background-color:#83b9d8; text-decoration: none;}
+
+/* 
+.field_Abs-Conc_ALL_Neither_C17 { text-decoration: none; font-weight: normal; background-color:silver; }
+.field_Abs-Conc_ALL_Conc_C17 { text-decoration: none; background-color:#f9b466; font-weight: normal; }
+.field_Abs-Conc_ALL_Abs_C17 { font-weight: normal; background-color:#83b9d8; text-decoration: none;}
+ */
 
 
+/* 
+.field_AbsConc_Neither_C17 { text-decoration: none; font-weight: normal; background-color:silver; }
+.field_AbsConc_Conc_C17 { text-decoration: none; background-color:#f9b466; font-weight: normal; }
+.field_AbsConc_Abs_C17 { font-weight: normal; background-color:#83b9d8; text-decoration: none;} */
+
+/* 
+.field_AbsConc_Neither_C19 { text-decoration: none; font-weight: normal; background-color:silver; }
+.field_AbsConc_Conc_C19 { text-decoration: none; background-color:#f9b466; font-weight: normal; }
+.field_AbsConc_Abs_C19 { font-weight: normal; background-color:#83b9d8; text-decoration: none;} */
 
 
 
