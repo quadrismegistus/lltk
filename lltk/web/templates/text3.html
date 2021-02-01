@@ -7,14 +7,49 @@
 
 
 {% block content %}
-<h3><i>{{text_meta['title']}}</i> [{{text_meta['year']}}], by {{text_meta['author']}}</h3>
+<!-- <h3><i>{{text_meta['title']}}</i> [{{text_meta['year']}}], by {{text_meta['author']}}</h3> -->
+<h3><i>{{text_meta['_lltk_']}}</i>
+<!-- 
+{% if text_meta %}
+<h4>Metadata</h4>
+<table id='text_metadata'>
+	<tbody>
+{% for k,v in text_meta.items() %}
+{% if v %}
+	<tr>
+		<th>{{k}}</th>
+		<td>{{v}}</td>
+	</tr>
+{% endif %}
+{%endfor %}
+</tbody>
+</table>
+{%endif%}
+ -->
+
 
 
 {%if data %}<h4>Data</h4>{%endif%}
 
+<small>
 {% for datatype in g.sorted(data) %}
-<li><i>{{datatype}}</i>: {{data[datatype]}}</li>
+
+<li><i>{{datatype}}</i>: 
+	{% if "abstractions" in datatype %}
+	<span class="abstractions">
+	{% elif "concretions" in datatype %}
+	<span class="concretions">
+	{% else %}
+	<span>
+	{%endif%}
+
+
+	{{data[datatype]}}</li>
+	</span>
 {% endfor %}
+</small>
+
+<h4>Text</h4>
 
 
 {% autoescape false %}
@@ -23,22 +58,6 @@
 
 
 <div id="legend"></div>
-
-{% if text_meta %}
-	<h4>Metadata</h4>
-	<table id='text_metadata'>
-		<tbody>
-	{% for k,v in text_meta.items() %}
-	{% if v %}
-		<tr>
-			<th>{{k}}</th>
-			<td>{{v}}</td>
-		</tr>
-	{% endif %}
-	{%endfor %}
-	</tbody>
-	</table>
-{%endif%}
 
 
 

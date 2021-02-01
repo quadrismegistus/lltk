@@ -219,6 +219,37 @@ class Text(object):
 	def fast_counts(self):
 		return Counter(self.fast_tokens())
 
+	# Corenlp
+	def parse_corenlp(self,**opt):
+		from lltk.model import corenlp
+		corenlp.annotate_path(self.path_txt)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 	def html(self,word2fields={},bad_words={'[','Footnote'},bad_strs={'Kb'},fn_model_result=None,fn_model_coeffs=None,data={},only_words=set(),lim_words=None,modernize_spelling=False,stopwords=set()):
 
 		if False: #self.is_parsed_spacy:
@@ -227,7 +258,7 @@ class Text(object):
 			return html,data
 
 		from collections import Counter
-		field_counts = Counter()
+		field_counts = {} #Counter()
 
 		tags=[]
 		#words=self.fast_tokens()
@@ -240,15 +271,17 @@ class Text(object):
 
 			if w[0].isalpha():
 				# field_counts.update(word2fields.get(w,[]))
-				
-				fields=' '.join(['field_'+field.replace('.','_') for field in word2fields.get(w,[])])
+				wfields=word2fields.get(w,[])
+				fieldstr=' '.join(['field_'+field.replace('.','_') for field in wfields])
 				if (only_words and w not in only_words) or (stopwords and w in stopwords):
 					tag=word
-				elif fields:
-					if w in word2fields: field_counts['has_field']+=1
-					# print(w,word2fields.get(w,[]))
-					field_counts.update(word2fields.get(w,[]))
-					tag=u'<span class="{fields} word">{word}</span>'.format(fields=fields, word=word)
+				elif fieldstr:
+					# if w in word2fields: field_counts['has_field']+=1
+					for fld in wfields:
+						if not fld in field_counts: field_counts[fld]=Counter()
+						field_counts[fld][w]+=1
+					#field_counts.update(word2fields.get(w,[]))
+					tag=f'<span class="{fieldstr} word">{word}</span>' #.format(fields=fields, word=word)
 				else:
 					tag=word
 				tags+=[tag]

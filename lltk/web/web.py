@@ -7,12 +7,12 @@ path_self = os.path.realpath(__file__)
 path_code = os.path.abspath(os.path.join(path_self,'..','..','..'))
 path_code_data = os.path.join(path_code,'data')
 path_fields = os.path.join(path_code_data,'fields')
-path_stopwords = os.path.join(path_code_data,'stopwords.gist.txt')
+path_stopwords = os.path.join(path_code_data,'stopwords.txt')
 os.environ['PYTHONPATH']=f'{path_code}:'+os.environ.get('PYTHONPATH','')
 sys.path.insert(0,path_code)
 
 
-MODERNIZE_SPELLING=False
+MODERNIZE_SPELLING=True
 
 import pickle,json,time,gzip
 from collections import defaultdict,Counter
@@ -215,31 +215,46 @@ def save_fields(word2fields):
 
 
 ### PAGE
-def show_text(text_obj, corpus_obj=None, meta={}, merge_line_breaks=False,modernize_spelling=MODERNIZE_SPELLING):
+def show_text(text_obj, corpus_obj=None, meta={}, merge_line_breaks=False,modernize_spelling=MODERNIZE_SPELLING,show_top_words=250):
 	from lltk.tools.freqs import get_word2fields,get_fields,measure_fields
 	from pprint import pprint
 
+	if not meta: meta=text_obj.meta
+	print('META -->',meta)
+
 	field2words,word2fields=load_fields()
-	pprint(field2words.keys())
+	# pprint(field2words.keys())
 
 	#save_fields(word2fields)
 
 	#import lltk
 	#english = lltk.load_english()
-	stopwords = lltk.load_stopwords()
-	stopwords|={'would','yet','also'}
+	#stopwords = lltk.load_stopwords()
+	#stopwords|={'would','yet','also'}
+	stopwords={w.strip() for w in open(path_stopwords).read().split() if w.strip() and not w.strip().startswith('#')}
+
+	
 
 	for w in stopwords:
 		#print(w,'?')
 		if w in word2fields:
 			del word2fields[w]
 	# only_pos=['n','j','v']
-	only_pos=['n','j']
-	only_words=set([w for pos in only_pos for w in pos2words[pos]])
-	print('only words ->',len(only_words))
+	only_pos={'n','j','v'}
+	# only_pos={'n','j'}
+	# only_pos={'n'}
+	# only_words=set([w for pos in only_pos for w in pos2words[pos]])
+	# print('only words ->',len(only_words))
+
+	## add non-content?
+	for pos in pos2words:
+		print(pos)
+		if pos in only_pos: continue
+		for w in pos2words[pos]:
+			stopwords|={w}
 
 	# html,field_counts=text_obj.html(word2fields=word2fields,lim_words=None,only_words=only_words,modernize_spelling=modernize_spelling)
-	html,field_counts=text_obj.html(word2fields=word2fields,lim_words=None,only_words=None,modernize_spelling=False,stopwords=stopwords)
+	html,field_counts=text_obj.html(word2fields=word2fields,lim_words=None,only_words=None,modernize_spelling=modernize_spelling,stopwords=stopwords)
 	#html=html.replace('</br>','</br></br>')
 
 	try:
@@ -255,9 +270,21 @@ def show_text(text_obj, corpus_obj=None, meta={}, merge_line_breaks=False,modern
 	data=OrderedDict()
 
 	print(sorted(field_counts.keys()))
+	fieldprefix='Abs-Conc.ALL'
 
 	for period in ['C17','C18','C19','C20','_median']:
-		data[f'Abs/Conc ({period})']=field_counts[f'Abs-Conc.ALL.Abs.{period}']/field_counts[f'Abs-Conc.ALL.Conc.{period}']*10
+		sum1=sum(field_counts[f'{fieldprefix}.Abs.{period}'].values())
+		sum2=sum(field_counts[f'{fieldprefix}.Conc.{period}'].values())
+		sum3=sum(field_counts[f'{fieldprefix}.Neither.{period}'].values())
+		data[f'Abs/Conc ({period})']=sum1/sum2 * 10
+
+		if period in {'_median'}:
+		# if period in {'C17','_median'}:
+			data[f'Top {show_top_words} abstractions ({period})'] = ', '.join(f'{w} ({c})' for w,c in field_counts[f'{fieldprefix}.Abs.{period}'].most_common(show_top_words))
+			data[f'Top {show_top_words} concretions ({period})'] = ', '.join(f'{w} ({c})' for w,c in field_counts[f'{fieldprefix}.Conc.{period}'].most_common(show_top_words))
+			data[f'Top {show_top_words} neutrals ({period})'] = ', '.join(f'{w} ({c})' for w,c in field_counts[f'{fieldprefix}.Neither.{period}'].most_common(show_top_words))
+	
+	### Other data
 
 	# data['Abs/Conc']=field_counts['AbsConc.Abs'] / field_counts['AbsConc.Conc'] * 10
 	# data['Abs/Conc_C17']=field_counts['AbsConc.Abs_C17'] / field_counts['AbsConc.Conc_C17'] * 10
@@ -265,7 +292,7 @@ def show_text(text_obj, corpus_obj=None, meta={}, merge_line_breaks=False,modern
 	# data['Abs/Conc_C19']=field_counts['AbsConc.Abs_C19'] / field_counts['AbsConc.Conc_C19'] * 10
 	# data['Abs/Conc_C20']=field_counts['AbsConc.Abs_C20'] / field_counts['AbsConc.Conc_C20'] * 10
 
-	print('data',data)
+	# print('data',data)
 
 	#data['Abstractness Ratio (Consolidated)']=field_counts['W2V.Consolidated.Abstract_njv'] / field_counts['W2V.Consolidated.Concrete_njv'] if field_counts['W2V.Consolidated.Concrete_njv'] else 0
 	# data['Abstract words / 10 Concrete words (robust)']=field_counts['CH.Abstract.Robust'] / field_counts['CH.Concrete.Robust'] * 10 if field_counts['CH.Concrete.Robust'] else 0
@@ -562,6 +589,9 @@ def run():
 word2pos=json.load(open(os.path.join(path_code_data,'word2pos.json')))
 pos2words=defaultdict(list)
 for word,pos in word2pos.items(): pos2words[pos[:1]]+=[word]
+# for word,pos in word2pos.items(): pos2words[pos]+=[word]
+
+print(sorted(pos2words.keys()))
 
 
 stopwords=set(open(path_stopwords).read().strip().split('\n'))

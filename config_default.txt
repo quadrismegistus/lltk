@@ -1,5 +1,8 @@
 [Default]
 
+# corenlp
+PATH_CORENLP = ~/lltk_data/tools/corenlp
+
 # Files for text processing
 PATH_TO_ENGLISH_WORDLIST = data/wordlist.aspell.net.with_caps.txt.gz
 PATH_TO_ENGLISH_STOPWORDS = data/stopwords.byu.txt.gz

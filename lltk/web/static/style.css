@@ -23,6 +23,11 @@ th,td { padding: 5px; }
 th { font-style: italic; font-weight: normal; }
 
 
+
+.abstractions { color: blue; }
+.concretions { color: orange; }
+
+
 h1 a { text-decoration: none; color: black; }
 
 

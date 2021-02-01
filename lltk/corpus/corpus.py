@@ -416,7 +416,7 @@ class Corpus(object):
 			for t in self.texts()
 		]
 		parallel=attrs.get('slingshot_n',1)
-		print('parallel',parallel)
+		# print('parallel',parallel)
 		tools.pmap(
 			save_freqs_json,
 			objs,
@@ -946,7 +946,7 @@ class Corpus(object):
 	@property
 	def metadata(self):
 		meta=self.metadf
-		meta['year']=meta['year'].apply(lambda y: int(str(y)[:4]) if str(y)[:4].isdigit() else np.nan)
+		# meta['year']=meta['year'].apply(lambda y: int(str(y)[:4]) if str(y)[:4].isdigit() else np.nan)
 		return meta
 
 	@property
@@ -1291,7 +1291,7 @@ class Corpus(object):
 
 	def save_mfw(self,**attrs): return self.gen_mfw(**attrs)
 
-	def gen_mfw(self,yearbin=None,year_min=None,year_max=None,include_freq=True,gen_total=False):
+	def gen_mfw(self,yearbin=None,year_min=None,year_max=None,include_freq=True,gen_total=False,by_ntext=False):
 		"""
 		From tokenize_texts()
 		"""
@@ -1315,7 +1315,9 @@ class Corpus(object):
 			for i,text in enumerate(tqdm(texts)):
 				#if not i%100: print '>>',i,len(texts),'...'
 				freqs = text.freqs(use_text_if_nec=False)
-				if freqs: countd.update(freqs)
+				if not freqs: continue
+				if by_ntext: freqs=dict((w,1) for w in freqs)
+				countd.update(freqs)
 
 			mfwfn1=os.path.splitext(self.path_mfw)[0]
 			path_mfw_period=mfwfn1+'.'+period+'.txt' if period!='all' else self.path_mfw
