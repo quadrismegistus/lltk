@@ -74,8 +74,8 @@ def annotate_path(path,num_proc=4,by_para=True,save=True,ofn=None,force=True,pro
         txt=f.read().strip()
         if txt:
             res = annotate(txt, num_proc=num_proc, by_para=by_para, progress=progress)
-    if not res: return {}
-    res = {'paragraphs':res}
+    if not res: return []
+    
 
     # save?
     if save:
@@ -101,3 +101,116 @@ def _do_annotate_paths(path,**opts):
 def annotate_paths(paths_txt):
     from lltk import tools
     return tools.pmap(_do_annotate_paths, paths_txt, num_proc=8)
+
+
+
+
+
+
+########
+
+class Core:
+    def __init__(self,json_dict,i=None,parent=None):
+        self.data = json_dict
+        self.i=i
+        self.parent=parent
+
+
+    @property
+    def ents(self):
+        return [
+            CoreEnt(ent,parent=self)
+            for sent in self.sentences
+            for ent in sent.entitymentions
+        ]
+
+    @property
+    def people(self):
+        return [ent for ent in self.ents if ent.data.get('ner')=='PERSON']
+
+
+class CoreEnt(Core):pass
+
+class CoreObj(Core):
+    def __init__(self,json_dict,i=None,parent=None):
+        self.data = json_dict
+        self.i=i
+        self.parent=parent
+        
+        # sentences
+        self.sentences = [
+            CoreSent(sent,i=i,parent=self)
+            for i,sent in enumerate(json_dict['sentences'])
+        ]
+        
+        # corefs
+        self.corefs = [
+            CoreCoref(coref,i=i,parent=self) 
+            for i,coref in enumerate(json_dict['corefs'])]
+        
+        # quotes
+        self.quotes = [
+            CoreQuote(quote,i=i,parent=parent)
+            for i,quote in enumerate(json_dict['quotes'])
+        ]
+
+
+class CoreSent(Core):
+    def __init__(self,json_dict,i=None,parent=None):
+        self.data=json_dict
+        self.i=i
+        self.parent=parent
+
+        # 
+        # ['index', 'paragraph', 'parse', 'basicDependencies', 'enhancedDependencies', 'enhancedPlusPlusDependencies', 'entitymentions', 'tokens']
+
+        for key,val in self.data.items(): setattr(self,key,val)
+
+
+class CoreCoref(Core):
+    def __init__(self,json_dict,i=None,parent=None):
+        self.data=json_dict
+        self.i=i
+        self.parent=parent
+
+
+class CoreQuote(Core):
+    def __init__(self,json_dict,i=None,parent=None):
+        self.data=json_dict
+        self.i=i
+        self.parent=parent
+
+
+
+class CoreDoc(Core):
+    def __init__(self,json_l):
+        self.data = json_l
+        self.objs = [
+            CoreObj(json_dict,i=i,parent=self) 
+            for i,json_dict in enumerate(self.data)
+            if json_dict
+        ]
+
+    @property
+    def sentences(self):
+        return [
+            sent
+            for obj in self.objs
+            for sent in obj.sentences
+        ]
+
+    
+
+
+
+
+
+def test():
+    egfn=os.path.expanduser('~/lltk_data/corpora/chadwyck/corenlp/Nineteenth-Century_Fiction/ncf0204.01/0022.json')
+    with open(egfn) as f:
+        egjson = json.load(f)
+    
+    doc = CoreDoc(egjson)
+
+    for ent in doc.ents:
+        print(ent.data)

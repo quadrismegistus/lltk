@@ -103,6 +103,9 @@ class Text(object):
 	def path_xml(self): return self.fnfn_xml
 
 	@property
+	def path_nlp(self): return os.path.splitext(self.path_txt.replace('/txt/','/corenlp/'))[0]+'.json'
+
+	@property
 	def path(self):
 		#if os.path.exists(self.path_txt): return self.path_txt
 		#if os.path.exists(self.path_xml): return self.path_xml
@@ -219,11 +222,18 @@ class Text(object):
 	def fast_counts(self):
 		return Counter(self.fast_tokens())
 
-	# Corenlp
+
+
+
+	# Corenlp ####
 	def parse_corenlp(self,**opt):
 		from lltk.model import corenlp
 		corenlp.annotate_path(self.path_txt)
 
+	
+
+
+	#####
 
 
 

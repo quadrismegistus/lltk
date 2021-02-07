@@ -240,7 +240,7 @@ def show_text(text_obj, corpus_obj=None, meta={}, merge_line_breaks=False,modern
 		if w in word2fields:
 			del word2fields[w]
 	# only_pos=['n','j','v']
-	only_pos={'n','j','v'}
+	only_pos={'n','j'}
 	# only_pos={'n','j'}
 	# only_pos={'n'}
 	# only_words=set([w for pos in only_pos for w in pos2words[pos]])
