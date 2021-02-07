@@ -59,13 +59,13 @@ def ner_parse_flair(txt):
                     incl_sent|={senti} 
     return res
 
-def ner_parse_stanza(txt):
+def ner_parse_stanza(txt,nlp=None):
     ### Return df of named entities and types
     import stanza
     from tqdm import tqdm
     import pandas as pd
 
-    nlp = stanza.Pipeline(lang='en', processors='tokenize,ner')
+    if nlp is None: nlp = stanza.Pipeline(lang='en', processors='tokenize,ner')
     
     #doc = nlp("Chris Manning teaches at Stanford University. He lives in the Bay Area.")
     #print(*[f'entity: {ent.text}\ttype: {ent.type}' for ent in doc.ents], sep='\n')
