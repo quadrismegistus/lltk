@@ -81,7 +81,10 @@ def ner_parse_stanza(txt,nlp=None):
     incl_sent=set()
     char_so_far=0
     for pi,para in enumerate(tqdm(para_txts,desc="Parsing paragraphs")):
-        pdoc = nlp(para)
+        try:
+            pdoc = nlp(para)
+        except:
+            continue
 
         for si,sentdoc in enumerate(pdoc.sentences):
             senti+=1
