@@ -80,10 +80,16 @@ def ner_parse_stanza(txt,nlp=None):
     senti=0
     incl_sent=set()
     char_so_far=0
-    for pi,para in enumerate(tqdm(para_txts,desc="Parsing paragraphs")):
+    # for pi,para in enumerate(tqdm(para_txts,desc="Parsing paragraphs")):
+    for pi,para in enumerate(para_txts):
         try:
             pdoc = nlp(para)
-        except:
+        except UserAbort:
+            return
+        except KeyboardInterrupt:
+            return
+        except Exception as e:
+            print(e)
             continue
 
         for si,sentdoc in enumerate(pdoc.sentences):
