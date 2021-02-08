@@ -84,12 +84,8 @@ def ner_parse_stanza(txt,nlp=None):
     for pi,para in enumerate(para_txts):
         try:
             pdoc = nlp(para)
-        except UserAbort:
-            return
-        except KeyboardInterrupt:
-            return
         except Exception as e:
-            print(e)
+            print('!!',e)
             continue
 
         for si,sentdoc in enumerate(pdoc.sentences):
