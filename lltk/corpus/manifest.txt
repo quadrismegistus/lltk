@@ -118,6 +118,10 @@ id = eebo_tcp
 path_root = eebo
 path_python = eebo/eebo.py
 class_name = EEBO_TCP
+url_metadata=https://www.dropbox.com/s/th2i7jvuxksb0ma/eebo_tcp_metadata.zip?dl=1
+url_freqs=https://www.dropbox.com/s/n2oocs233wh5edo/eebo_tcp_freqs.zip?dl=1
+url_txt=https://www.dropbox.com/s/otgqbs0vdli3gvb/eebo_tcp_txt.zip?dl=1
+url_xml=https://www.dropbox.com/s/1wui9qjhkzy8fnm/eebo_tcp_xml.zip?dl=1
 
 
 [ESTC]
