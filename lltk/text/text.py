@@ -890,8 +890,8 @@ class Text(object):
 					yield ln
 
 	def lines_txt(self):
-		if os.path.exists(self.fnfn_txt,errors='ignore'):
-			with open(self.fnfn_txt) as f:
+		if os.path.exists(self.fnfn_txt):
+			with open(self.fnfn_txt,errors='ignore') as f:
 				for ln in f:
 					yield ln
 		else:
@@ -1147,7 +1147,7 @@ def get_author_dates(author):
 	return (None,None)
 
 def tokenize_fast(line):
-	return re.findall("[A-Z]{2,}(?![a-z])|[A-Z][a-z]+(?=[A-Z])|[\'\w\-]+",line.lower())
+	return re.findall("[A-Z]{2,}(?![a-z])|[A-Z][a-z]+(?=[A-Z])|[\'\w\-]+",line)#.lower())
 
 def tokenize_text(txt):
 	from nltk import word_tokenize

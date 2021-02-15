@@ -187,22 +187,37 @@ def tokens():
 # 	return (field2words,word2fields)
 
 
+# def load_fields():
+# 	## HEAVY LIFTING??
+# 	print('>> getting word2fields')
+# 	now=time.time()
+
+# 	word2fields=defaultdict(set)
+# 	with gzip.open(os.path.expanduser('~/github/AbsLitHist/data/fields/data.vecfields.json.gz')) as f:
+# 		fields = json.load(f)
+# 	for field in sorted(fields):
+# 		#if 1: #field in ONLY_FIELDS:
+# 		if field.startswith('Abs-Conc.ALL.'):
+# 			for word in fields[field]:
+# 				word2fields[word]|={field}
+# 	print('done.',time.time()-now)
+# 	field2words=fields
+# 	return (field2words,word2fields)
+
 def load_fields():
-	## HEAVY LIFTING??
-	print('>> getting word2fields')
-	now=time.time()
+	import sys
+	#@HACK!!!
+	sys.path.append('/home/ryan/github/AbsLitHist')
+	from abslithist.words import get_fields
 
 	word2fields=defaultdict(set)
-	with gzip.open(os.path.expanduser('~/github/AbsLitHist/data/fields/data.vecfields.json.gz')) as f:
-		fields = json.load(f)
-	for field in sorted(fields):
-		#if 1: #field in ONLY_FIELDS:
-		if field.startswith('Abs-Conc.ALL.'):
-			for word in fields[field]:
-				word2fields[word]|={field}
-	print('done.',time.time()-now)
-	field2words=fields
-	return (field2words,word2fields)
+	fields=get_fields(fieldprefix='Abs-Conc.ALL',fieldsuffix=None)
+	for fld in fields:
+		for w in fields[fld]:
+			word2fields[w]|={fld}
+	return (fields,word2fields)
+
+
 
 
 def save_fields(word2fields):
