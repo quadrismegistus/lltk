@@ -387,6 +387,11 @@ def readgen_jsonl(fnfn):
 			yield dx
 
 
+def printm(x):
+    from IPython.display import display,Markdown
+    display(Markdown(x))
+
+
 def writegen(fnfn,generator,header=None,args=[],kwargs={},find_all_keys=False,total=None):
 	from tqdm import tqdm
 	import codecs,csv

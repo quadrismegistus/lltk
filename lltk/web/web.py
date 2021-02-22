@@ -207,7 +207,7 @@ def tokens():
 def load_fields():
 	import sys
 	#@HACK!!!
-	sys.path.append('/home/ryan/github/AbsLitHist')
+	sys.path.append('/home/ryan/github/abslithist')
 	from abslithist.words import get_fields
 
 	word2fields=defaultdict(set)
