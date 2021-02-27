@@ -3,6 +3,7 @@ from __future__ import print_function
 import os,codecs,gzip,random,time
 from pprint import pprint
 from lltk.tools import tools
+from lltk.tools import *
 from lltk.text import save_freqs_json
 import six
 from six.moves import range
@@ -127,6 +128,30 @@ def load_manifest(force=True,corpus_name=None):
 			MANIFEST[corpus]=cd
 
 	return MANIFEST if not corpus_name else MANIFEST.get(corpus_name,{})
+
+
+
+
+
+
+
+
+def get_dtm_freqs(obj):
+	path,words,dmeta = obj
+	dx={
+		**dict((w,c) for w,c in loadjson(path).items() if w in words),
+		**dmeta
+	}
+	return dx
+
+
+
+
+
+
+
+
+
 
 
 
@@ -412,15 +437,17 @@ class Corpus(object):
 
 	def save_freqs(self,**attrs): #force=False,slingshot=False,slingshot_n=1,slingshot_opts=''):
 		objs = [
-			(t.path_txt,t.path_freqs)
+			(t.path_txt,t.path_freqs,attrs.get('tokenizer'))
 			for t in self.texts()
 		]
-		parallel=attrs.get('slingshot_n',1)
+		# parallel=attrs.get('slingshot_n',1)
+		if not 'num_proc' in attrs and 'slingshot_n' in attrs:
+			attrs['num_proc']=attrs['slingshot_n']
 		# print('parallel',parallel)
 		tools.pmap(
 			save_freqs_json,
 			objs,
-			num_proc=parallel
+			**attrs
 		)
 
 
@@ -1034,9 +1061,12 @@ class Corpus(object):
 	# 			return pathd[size]
 	# 	return pathd[max(sizes)]
 
+	#@property
+	#def dtm(self):
+	#	return self.freqs(fpm=False)
+
 	@property
-	def dtm(self):
-		return self.freqs(fpm=False)
+	def dtm(self): return pd.read_feather(self.path_dtm).set_index('id')
 
 	def freqs(self,n=5000,toks=[],text_ids=None,sep='\t',encoding='utf-8',tf=False,fpm=False,z=False):
 		import time
@@ -1146,24 +1176,42 @@ class Corpus(object):
 		return df
 
 
-	def save_dtm(self,n=10000,words=None,only_english=False,path=None,index_attr='id'):
-		words = list(self.mfw(n=n,only_english=only_english)) if not words else words
-		path = self.get_path_freq_table(n=n,force=True) if not path else path
-		path_path = os.path.split(path)[0]
-		if not os.path.exists(path_path): os.makedirs(path_path)
+	def save_dtm(self,n=25000,num_proc=1):
+		words = set(list(self.mfw(n=n)))
 
-		texts=list(self.texts())
-		texts.sort(key=lambda t: t.id)
+		# get
+		ld = pmap(
+			get_dtm_freqs,
+			[(t.path_freqs,words,{'id':t.id}) for t in self.texts()],
+			num_proc=num_proc,
+			desc='Gathering frequencies'
+		)
 
-		def writegen():
-			for t in tqdm(texts):
-				tfreqs=t.freqs()
-				odx=dict((w,tfreqs.get(w,0)) for w in words)
-				odx['']=getattr(t,index_attr)
-				yield odx
+		# return
+		df = pd.DataFrame(ld).set_index('id').fillna(0)
+		# df.to_csv(self.path_dtm)
+		df.reset_index().to_feather(self.path_dtm)
+		return df
 
-		print(f'>> [{self.name}] building DTM (#words={n}): {path}')
-		tools.writegen(path, writegen, header=['']+words)
+
+	# def save_dtm(self,n=10000,words=None,only_english=False,path=None,index_attr='id'):
+	# 	words = list(self.mfw(n=n,only_english=only_english)) if not words else words
+	# 	path = self.get_path_freq_table(n=n,force=True) if not path else path
+	# 	path_path = os.path.split(path)[0]
+	# 	if not os.path.exists(path_path): os.makedirs(path_path)
+
+	# 	texts=list(self.texts())
+	# 	texts.sort(key=lambda t: t.id)
+
+	# 	def writegen():
+	# 		for t in tqdm(texts):
+	# 			tfreqs=t.freqs()
+	# 			odx=dict((w,tfreqs.get(w,0)) for w in words)
+	# 			odx['']=getattr(t,index_attr)
+	# 			yield odx
+
+	# 	print(f'>> [{self.name}] building DTM (#words={n}): {path}')
+	# 	tools.writegen(path, writegen, header=['']+words)
 
 	def freqs_async(self,words={},texts=[]):
 		import multiprocessing as mp
@@ -1177,6 +1225,10 @@ class Corpus(object):
 	@property
 	def path_mfw(self):
 		return os.path.join(self.path_data, 'mfw.txt')
+	@property
+	def path_dtm(self):
+		return os.path.join(self.path_data, 'dtm.ft')
+	
 	@property
 	def path_home(self):
 		return os.path.join(PATH_CORPUS,self.id)
@@ -2547,22 +2599,6 @@ def load_corpus(name_or_id,sources=[PATH_CORPUS,''],**input_kwargs):
 
 	class_obj.opts = opts
 	return class_obj
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

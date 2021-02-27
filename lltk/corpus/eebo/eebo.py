@@ -74,4 +74,4 @@ class EEBO_TCP(TCP):
 	def metadata(self):
 		meta=super().metadata
 		#meta['genre']=[fix_genre(genre,title) for genre,title in zip(meta.genre, meta.title)]
-		return meta.query(f'{self.MIN_YEAR}<=year<{self.MAX_YEAR}')	
+		return meta#.query(f'{self.MIN_YEAR}<=year<{self.MAX_YEAR}')	

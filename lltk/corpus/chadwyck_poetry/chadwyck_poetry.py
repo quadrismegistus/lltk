@@ -198,8 +198,44 @@ class ChadwyckPoetry(Corpus):
 		import numpy as np
 		meta=super().metadata
 		meta['genre']='Verse'
-		meta['year']=meta.author_dob.apply(lambda x: int(x)+30 if x.isdigit() else np.nan)
-		return meta.query(f'{self.MIN_YEAR}<=year<{self.MAX_YEAR}')
+		#meta['year']=meta.author_dob.apply(lambda x: int(x)+30 if x.isdigit() else np.nan)
+		meta['year']=meta.apply(decide_year_from_dob_and_dod,1)
+		return meta#.query(f'{self.MIN_YEAR}<=year<{self.MAX_YEAR}')
+
+
+def decide_year_from_dob_and_dod(row,addby=25):
+	import numpy as np
+
+	# has a dob?
+	try:
+		dob=int(row.author_dob)
+	except ValueError:
+		return np.nan
+	
+	# has a dod?
+	try:
+		dod=int(row.author_dod)
+	except ValueError:
+		return dob+addby
+	
+	# died before 25?
+	lifetime = dod - dob
+	if lifetime < addby:
+		return dod
+
+	# pub in lifetime?
+	try:
+		y1=int(row.y1)
+		if dob<y1<dod:
+			return y1
+	except ValueError:
+		pass
+	# # otherwise mid point?
+	# midpoint = lifetime // 2
+	# return dob + midpoint
+	return dob+addby
+
+
 
 
 class ChadwyckPoetrySample(ChadwyckPoetry):

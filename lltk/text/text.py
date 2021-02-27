@@ -1182,10 +1182,10 @@ class PlainText(Text):
 
 
 def save_freqs_json(obj):
-	ifnfn,ofnfn=obj
+	ifnfn,ofnfn,tokenizer=obj
 	if not os.path.exists(ifnfn): return
 	if os.path.exists(ofnfn): return
-	
+	if tokenizer is None: tokenizer=tokenize_text
 	opath = os.path.dirname(ofnfn)
 	if not os.path.exists(opath): os.makedirs(opath)
 	
@@ -1193,7 +1193,7 @@ def save_freqs_json(obj):
 	with open(ifnfn) as f: txt=f.read()
 	
 	# tokenize
-	toks=tokenize_text(txt)
+	toks=tokenizer(txt)
 	#print(len(toks),ofnfn)
 	
 	# count

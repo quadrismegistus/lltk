@@ -6,7 +6,7 @@ from six.moves import range
 from six.moves import zip
 from functools import reduce
 from smart_open import open
-import shutil,os
+import shutil,os,json,sys,pickle,random
 try:
 	input = raw_input
 except NameError:
@@ -42,6 +42,12 @@ def human_format(num):
 	# add more suffixes if you need them
 	return '%.0f%s' % (num, ['', 'K', 'M', 'B', 'T', 'P'][magnitude])
 
+def loadjson(fn):
+	try:
+		with open(fn) as f:
+			return json.load(f)
+	except FileNotFoundError:
+		return {}
 
 
 ### SET THE CONFIG
@@ -1788,8 +1794,7 @@ def remove_duplicates(seq,remove_empty=False):
 Simple mofo'n parallelism with progress bar. Born of frustration with p_tqdm.
 """
 
-
-def pmap_iter(func, objs, num_proc=6, use_threads=False, progress=True):
+def pmap_iter(func, objs, num_proc=4, use_threads=False, progress=True, desc=None, **y):
 	"""
 	Yields results of func(obj) for each obj in objs
 	Uses multiprocessing.Pool(num_proc) for parallelism.
@@ -1798,21 +1803,25 @@ def pmap_iter(func, objs, num_proc=6, use_threads=False, progress=True):
 	"""
 	
 	# imports
-	import multiprocessing as mp
 	from tqdm import tqdm
 	
 	# if parallel
-	if num_proc>1:
+	if desc: desc=f'{desc} [x{num_proc}]'
+	if num_proc>1 and len(objs)>1:
 		# create pool
-		pool=mp.Pool(num_proc) if not use_threads else mp.ThreadPool(num_proc)
+		import multiprocessing as mp
+		pool=mp.Pool(num_proc) if not use_threads else mp.pool.ThreadPool(num_proc)
 
 		# yield iter
-		iterr = pool.imap_unordered(func, objs)
-		for res in tqdm(iterr,total=len(objs)) if progress else iterr:
+		iterr = pool.imap(func, objs)
+		for res in tqdm(iterr,total=len(objs),desc=desc) if progress else iterr:
 			yield res
+
+		# Close the pool?
+		pool.close()
 	else:
 		# yield
-		for obj in tqdm(objs) if progress else objs:
+		for obj in (tqdm(objs,desc=desc) if progress else objs):
 			yield func(obj)
 
 def pmap(*x,**y):
@@ -1821,3 +1830,51 @@ def pmap(*x,**y):
 	"""
 	# return as list
 	return list(pmap_iter(*x,**y))
+
+
+
+def do_pmap_group(obj):
+	# unpack
+	func,group_df,group_key,group_name = obj
+	# load from cache?
+	if type(group_df)==str:
+		group_df=pd.read_pickle(group_df)
+	# run func
+	outdf=func(group_df)
+	# annotate with groupnames on way out
+	if type(group_name) not in {list,tuple}:group_name=[group_name]
+	for x,y in zip(group_key,group_name):
+		outdf[x]=y
+	# return
+	return outdf
+
+def pmap_groups(func,df_grouped,use_cache=True,**attrs):
+	import os,tempfile,pandas as pd
+	from tqdm import tqdm
+
+	# get index/groupby col name(s)
+	group_key=df_grouped.grouper.names
+	# if not using cache
+	# if not use_cache or attrs.get('num_proc',1)<2:
+	if not use_cache:
+		objs=[
+			(func,group_df,group_key,group_name)
+			for group_name,group_df in df_grouped
+		]
+	else:
+		objs=[]
+		tmpdir=tempfile.mkdtemp()
+		for i,(group_name,group_df) in enumerate(tqdm(list(df_grouped),desc='Preparing input')):
+			tmp_path = os.path.join(tmpdir, str(i)+'.pkl')
+			# print([i,group_name,tmp_path,group_df])
+			group_df.to_pickle(tmp_path)
+			objs+=[(func,tmp_path,group_key,group_name)]
+
+	return pd.concat(
+		pmap(
+			do_pmap_group,
+			objs,
+			**attrs
+		)
+	).set_index(group_key)
+
