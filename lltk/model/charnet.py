@@ -715,8 +715,8 @@ def draw_bokeh(g,
 #             tools="",
         
         title=title,
-        plot_width=666,
-        plot_height=666
+        plot_width=888,
+        plot_height=888
     )
 
     if pos_by=='geo':
@@ -736,11 +736,13 @@ def draw_bokeh(g,
     figopts['x_range']=Range1d(min_x - (range_x*range_fac),max_x + (range_x*range_fac))
     figopts['y_range']=Range1d(min_y - (range_y*range_fac),max_y + (range_y*range_fac))
     # else:
-        # figopts['x_range']=Range1d(min_x,max_x)
-        # figopts['y_range']=Range1d(min_x,max_y)
+    # figopts['x_range']=Range1d(min_x,max_x)
+    # figopts['y_range']=Range1d(min_x,max_y)
 
     # start fig
     plot = figure(**figopts)
+    plot.title.text_font_size = '18px'
+
     if pos_by=='geo':
         from bokeh.tile_providers import CARTODBPOSITRON, get_provider
         tile_provider = get_provider(CARTODBPOSITRON)
@@ -827,11 +829,11 @@ def draw_bokeh(g,
     node_labels = list(g.nodes())
     # source = ColumnDataSource({'x': x, 'y': y, 'name': [node_labels[i] for i in range(len(x))]})
     source = ColumnDataSource({'x':x,'y':y,'name':node_labels})
-    labels = LabelSet(x='x', y='y', text='name', source=source, background_fill_color='white', text_font_size='10px', background_fill_alpha=.7)
+    labels = LabelSet(x='x', y='y', text='name', source=source, background_fill_color='white', text_font_size='16px', background_fill_alpha=.7)
     plot.renderers.append(labels)
 
     
-    if save_to: export_png(plot, filename=save_to, webdriver=webdriver)
+    if save_to: export_png(plot, filename=save_to, webdriver=webdriver)#, width=999, height=999)
     if show_plot: show(plot)
 
 
@@ -893,15 +895,15 @@ def make_vid_from_folder(folder,ofn=None,fps=5):
     # get img files
     if not ofn:
         if folder.endswith(os.path.sep): folder=folder[:-1]
-        ofn=folder+'.avi'
+        ofn=folder+'.mp4'
         if os.path.exists(ofn): os.remove(ofn)
     
     image_files = [os.path.join(folder,img) for img in sorted(os.listdir(folder)) if img.endswith(".png")]
     clip = moviepy.video.io.ImageSequenceClip.ImageSequenceClip(image_files, fps=fps)
     try:
-        clip.write_videofile(ofn,codec='png',verbose=False,logger=None) #progress_bar=False)
+        clip.write_videofile(ofn,verbose=False,logger=None) #progress_bar=False)
     except Exception:
-        clip.write_videofile(ofn,codec='png',verbose=False,progress_bar=False)
+        clip.write_videofile(ofn,verbose=False,progress_bar=False)
 
     
     
@@ -1121,7 +1123,7 @@ def save_nets(
     pmap(
         do_save_nets,
         #random.sample(objs,i_max) if i_max else objs,
-        objs[:i_max],
+        objs[-i_max:],
         kwargs=dict(
             show_plot=False,
             pos_by=pos_by,
@@ -1134,6 +1136,7 @@ def save_nets(
             min_y=min_y,
             max_x=max_x,
             max_y=max_y,
+            range_fac=range_fac,
             **y
         ),
         desc=f'Saving graph images to {odir}',
