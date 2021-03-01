@@ -1123,7 +1123,7 @@ def save_nets(
     pmap(
         do_save_nets,
         #random.sample(objs,i_max) if i_max else objs,
-        objs[-i_max:],
+        objs[:i_max],
         kwargs=dict(
             show_plot=False,
             pos_by=pos_by,
