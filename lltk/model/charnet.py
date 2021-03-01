@@ -5,6 +5,8 @@ from pprint import pprint
 from tqdm import tqdm
 import numpy as np
 from lltk.tools import *
+import warnings
+warnings.filterwarnings('ignore')
 
 ###
 TITLES = {
@@ -729,12 +731,12 @@ def draw_bokeh(g,
     if pos_by=='geo' and not range_x: range_x=geo_default_range
     if pos_by=='geo' and not range_y: range_y=geo_default_range
     # print('!?!?',range_x,range_y,max_x,min_x,max_y,min_y)
-    if pos_by=='geo':
-        figopts['x_range']=Range1d(min_x - (range_x*range_fac),max_x + (range_x*range_fac))
-        figopts['y_range']=Range1d(min_y - (range_y*range_fac),max_y + (range_y*range_fac))
-    else:
-        figopts['x_range']=Range1d(min_x,max_x)
-        figopts['y_range']=Range1d(min_x,max_y)
+    # if pos_by=='geo':
+    figopts['x_range']=Range1d(min_x - (range_x*range_fac),max_x + (range_x*range_fac))
+    figopts['y_range']=Range1d(min_y - (range_y*range_fac),max_y + (range_y*range_fac))
+    # else:
+        # figopts['x_range']=Range1d(min_x,max_x)
+        # figopts['y_range']=Range1d(min_x,max_y)
 
     # start fig
     plot = figure(**figopts)
@@ -746,7 +748,6 @@ def draw_bokeh(g,
     # size?
     
     
-    size_opt = default_size
     if size_by is not None:
         size_opt = '_size'
         data_l = X = np.array([d.get(size_by,0) for n,d in g.nodes(data=True)])
@@ -784,7 +785,7 @@ def draw_bokeh(g,
     #Set edge opacity and width
     # network_graph.edge_renderer.glyph = MultiLine(line_alpha=0.5, line_width=1)
     network_graph.edge_renderer.data_source.data["line_width"] = [
-        (g.get_edge_data(a,b).get('weight',1) / weight_max_val * max_weight) + min_weight
+        ((g.get_edge_data(a,b).get('weight',1) / weight_max_val) * max_weight) + min_weight
         for a, b in g.edges()
     ]
     network_graph.edge_renderer.glyph.line_width = {'field': 'line_width'}
@@ -873,6 +874,341 @@ def condense_booknlp_output(df=None,url=None):
     newdf=pd.DataFrame(nameld).sort_values('Num',ascending=False).fillna('')
     newdf['Rank']=[i+1 for i,x in enumerate(newdf.index)]
     return newdf
+
+
+
+
+
+
+#### Graph Code ######
+
+
+def make_vid_from_folder(folder,ofn=None,fps=5):
+    import moviepy.video.io.ImageSequenceClip
+    from base64 import b64encode
+    from IPython.display import HTML
+
+    
+    # get img files
+    if not ofn:
+        if folder.endswith(os.path.sep): folder=folder[:-1]
+        ofn=folder+'.mp4'
+        if os.path.exists(ofn): os.remove(ofn)
+    
+    image_files = [os.path.join(folder,img) for img in sorted(os.listdir(folder)) if img.endswith(".png")]
+    clip = moviepy.video.io.ImageSequenceClip.ImageSequenceClip(image_files, fps=fps)
+    clip.write_videofile(ofn,verbose=False,logger=None) #progress_bar=False)
+
+    
+    
+    with open(ofn,'rb') as f: mp4=f.read()
+    data_url = "data:video/mp4;base64," + b64encode(mp4).decode()
+    htm=HTML("""
+    <video width=666 controls>
+        <source src="%s" type="video/mp4">
+    </video>
+    """ % data_url)
+    return ofn,htm
+
+def make_gif_from_folder(folder,ofn=None,fps=5):
+    import imageio
+    from IPython.display import HTML
+
+    images = []
+    # for fn in tqdm(sorted(os.listdir(folder)),desc='Building gif from images'):
+    for fn in sorted(os.listdir(folder)):#,desc='Building gif from images'):
+        if fn.endswith('.png'):
+            with open(os.path.join(folder,fn),'rb') as f:
+                images.append(imageio.imread(f))
+
+    if not ofn:
+        if folder.endswith(os.path.sep): folder=folder[:-1]
+        ofn=folder+'.gif'
+        if os.path.exists(ofn): os.remove(ofn)
+    imageio.mimsave(ofn, images, duration = 1/fps)
+    return ofn, HTML(f'''<img src="{ofn}" />''')
+
+def save_combo(idir_left, idir_right, odir, fps=5):
+    # combine images
+    combo_imgs(
+        idir_left,
+        idir_right,
+        odir
+    )
+    # make gif
+    #return make_gif_from_folder(odir,fps=fps)
+    return make_vid_from_folder(odir,fps=fps)
+
+
+def make_both(url,vnum,name,attrs_force={},attrs_geo={},fps=5):
+    default_attrs_force = dict(
+        pos_by='force',
+        odir=f'figures/charnet/{name}/force/{vnum}',
+        repos=False,
+        fudge_fac=0,
+        iterations=10000,
+        num_proc=1,
+#         i_max=10,
+        rescale=False,
+        save_gif=False,
+        name=name
+    )
+    
+    default_attrs_geo = dict(
+        pos_by='geo',
+        odir=f'figures/charnet/{name}/geo/{vnum}',
+        repos=True,
+#         i_max=10,
+        fudge_fac=0.1,
+        iterations=0,#1000,
+        num_proc=1,
+        rescale=False,
+        rescale_memory=45,
+        range_fac=0,
+        save_gif=False,
+        name=name
+    )
+    
+    newattrs_force = {**default_attrs_force, **attrs_force}
+    newattrs_geo = {**default_attrs_geo, **attrs_geo}
+    save_nets(url,**newattrs_force)
+    save_nets(url,**newattrs_geo)
+
+    combo_odir=newattrs_force['odir'].replace('/force/','/combo/')
+    return save_combo(
+        newattrs_geo['odir'],
+        newattrs_force['odir'],
+        combo_odir,
+        fps=fps
+    )
+    
+    
+    
+def do_save_nets(obj,*args,**kwargs):
+    g,obj_kwds=obj
+    kwds = {**kwargs, **obj_kwds}
+#     print(kwds.get('min_x'),kwds.get('max_x'))
+#     print(kwds.get('min_y'),kwds.get('max_y'))
+#     print()
+    draw_bokeh(
+        g,
+        **kwds
+    )
+
+def save_nets(
+        url,
+        bad_nodes=[],
+        odir='graph_imgs',
+        size_by='degree',
+        fps=5,
+        num_proc=1,
+        pos_by='force',
+        repos=False,
+        i_max=None,
+        fudge_fac=0,
+        rescale=False,
+        rescale_memory=50,
+        range_fac=0.5,
+        save_gif=True,
+        name='',
+        **y):
+    import shutil
+    from copy import deepcopy
+    if os.path.exists(odir): shutil.rmtree(odir)
+    if not os.path.exists(odir): os.makedirs(odir)
+
+    # overall pos
+    cnet = CharacterNetwork(is_directed=False)
+    cnet.parse_dynamic(url,bad_nodes=set(bad_nodes))
+    g=cnet.df2nx(t_min=None,t_max=None)#,i_max=i_max)
+#     print(g.nodes(),'!!!!!')
+
+    pos=dict(layout_graph(g,pos=None,pos_by=pos_by,**y).items())
+#     pos={}
+#     print(pos.keys(),'??')
+
+    if pos_by=='geo':
+        min_x,max_x = cnet.df_edges.merc_x.min(),cnet.df_edges.merc_x.max()
+        min_y,max_y = cnet.df_edges.merc_y.min(),cnet.df_edges.merc_y.max()
+        std_x,std_y=list(pd.DataFrame(pos).T.std())
+        fudge_x,fudge_y = std_x*fudge_fac, std_y*fudge_fac
+    else:
+        min_x=min(xy[0] for xy in pos.values())
+        max_x=max(xy[0] for xy in pos.values())
+        min_y=min(xy[1] for xy in pos.values())
+        max_y=max(xy[1] for xy in pos.values())
+        std_x,std_y,fudge_x,fudge_y=0,0,0,0
+#     min_x-=abs(fudge_x)
+#     max_x+=abs(fudge_x)
+#     min_y-=abs(fudge_y)
+#     max_y+=abs(fudge_y)
+    # return pos
+    
+#     print(min_x,max_x,min_y,max_y)
+    
+    timesteps=sorted(list(set(cnet.df_edges.i)))
+
+    size_max_val = cnet.df_nodes[size_by].max() if size_by else None
+    weight_max_val = max(d.get('weight',1) for a,b,d in g.edges(data=True))
+
+    # for t in tqdm(timesteps,f'Saving graph images to {odir}'):
+    objs = []
+
+    last_kwds={}
+    for i,row in tqdm(cnet.df_edges.sort_values('i').iterrows(),total=len(cnet.df_edges),desc=f'Generating graphs over time'):
+#     for i,row in cnet.df_edges.iterrows():#,total=len(cnet.df_edges),desc=f'Generating graphs over time'):
+        # title and fn
+        title=f'Interaction #{str(i+1).zfill(4)}: {row.source} to {row.target}'
+        if name: title=name.upper()+': '+title
+        if row.get('name'): title+=f' ({row["name"]})'
+        if row.get('setting'): title+=f', in {row.setting}'
+        if row.get('id'): title+=f'[t={row.id}]'
+        ofn=os.path.join(odir,f'graph.t_{str(i).zfill(4)}.png')
+        
+        # get graph        
+        g=deepcopy(cnet.df2nx(i_max=i))#.copy()
+        if repos:
+            #print('1',pos)
+            posnow=dict(layout_graph(g,pos=pos,pos_by=pos_by,fudge_fac=fudge_fac,**y).items())
+            pos=dict(pos.items())
+            for k,v in posnow.items(): pos[k]=v
+            #print('2',pos)
+            
+        obj_kwds = dict(
+            save_to=ofn,
+            title=title,
+            pos=dict(pos.items())
+        )
+            
+        if rescale and pos_by=='geo':
+            dfr=cnet.df_edges.iloc[:i+1] if i<rescale_memory else cnet.df_edges.iloc[i-rescale_memory:i+1]
+            obj_kwds['min_x'],obj_kwds['max_x'] = dfr.merc_x.min(),dfr.merc_x.max()
+            obj_kwds['min_y'],obj_kwds['max_y'] = dfr.merc_y.min(),dfr.merc_y.max()
+#             print(i,len(dfr))
+#             print(obj_kwds['min_x'],obj_kwds['max_x'])
+#             print(obj_kwds['min_y'],obj_kwds['max_y'])
+
+            if any([np.isnan(x) for k,x in obj_kwds.items() if k.startswith('min_') or k.startswith('max_')]):
+#                 print('reset')
+                obj_kwds['min_x'],obj_kwds['max_x']=min_x,max_x
+                obj_kwds['min_y'],obj_kwds['max_y']=min_y,max_y
+
+            
+            if obj_kwds['min_x']==obj_kwds['max_x']:
+#                 xj=std_x/2 if not fudge_x else (fudge_x*range_fac)
+                xj=std_x*range_fac
+                obj_kwds['min_x']-=xj
+                obj_kwds['max_x']+=xj
+            if obj_kwds['min_y']==obj_kwds['max_y']:
+                yj=std_y*range_fac
+                obj_kwds['min_y']-=yj
+                obj_kwds['max_y']+=yj
+            
+
+                #                 obj_kwds['min_x']=last_kwds
+
+                
+#             print(obj_kwds['min_x'],obj_kwds['max_x'])
+#             print(obj_kwds['min_y'],obj_kwds['max_y'])
+#             print()            
+    
+        objs += [(g,obj_kwds)]
+
+    pmap(
+        do_save_nets,
+        #random.sample(objs,i_max) if i_max else objs,
+        objs[:i_max],
+        kwargs=dict(
+            show_plot=False,
+            pos_by=pos_by,
+            size_by=size_by,
+            size_max_val=size_max_val,
+            weight_max_val=weight_max_val,
+            color_line_by='last_edge',
+            color_by='last_node',
+            min_x=min_x,
+            min_y=min_y,
+            max_x=max_x,
+            max_y=max_y,
+            **y
+        ),
+        desc=f'Saving graph images to {odir}',
+        num_proc=num_proc,
+        progress=True
+    )
+
+    # make gif?
+    if save_gif:
+        # return make_gif_from_folder(odir,fps=fps)
+        return make_vid_from_folder(odir,fps=fps)
+
+
+
+
+
+
+def combo_imgs(folder1, folder2, ofolder):
+    from PIL import Image
+
+    # fns
+    fns1=sorted([x for x in os.listdir(folder1) if x.endswith('.png')])
+    fns2=sorted([x for x in os.listdir(folder2) if x.endswith('.png')])
+    
+    for fn1,fn2 in tqdm(list(zip(fns1,fns2)),desc='Combining images'):
+        images = []
+        images+=[Image.open(os.path.join(folder1,fn1))]
+        images+=[Image.open(os.path.join(folder2,fn2))]
+        
+        widths, heights = zip(*(i.size for i in images))
+
+        total_width = sum(widths)
+        max_height = max(heights)
+
+        new_im = Image.new('RGB', (total_width, max_height))
+
+        x_offset = 0
+        for im in images:
+            new_im.paste(im, (x_offset,0))
+            x_offset += im.size[0]
+
+        if not os.path.exists(ofolder): os.makedirs(ofolder)
+        new_im.save(os.path.join(ofolder,fn1))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##############
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

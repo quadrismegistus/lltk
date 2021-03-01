@@ -22,3 +22,5 @@ flask_session
 gevent-websocket
 xlrd
 htrc-feature-reader
+geopy
+moviepy
