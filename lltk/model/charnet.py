@@ -893,15 +893,15 @@ def make_vid_from_folder(folder,ofn=None,fps=5):
     # get img files
     if not ofn:
         if folder.endswith(os.path.sep): folder=folder[:-1]
-        ofn=folder+'.mp4'
+        ofn=folder+'.avi'
         if os.path.exists(ofn): os.remove(ofn)
     
     image_files = [os.path.join(folder,img) for img in sorted(os.listdir(folder)) if img.endswith(".png")]
     clip = moviepy.video.io.ImageSequenceClip.ImageSequenceClip(image_files, fps=fps)
     try:
-        clip.write_videofile(ofn,verbose=False,logger=None) #progress_bar=False)
+        clip.write_videofile(ofn,codec='png',verbose=False,logger=None) #progress_bar=False)
     except Exception:
-        clip.write_videofile(ofn,verbose=False,progress_bar=False)
+        clip.write_videofile(ofn,codec='png',verbose=False,progress_bar=False)
 
     
     
