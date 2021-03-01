@@ -11,7 +11,9 @@ try:
 	input = raw_input
 except NameError:
 	pass
-
+import urllib, tempfile
+from datetime import datetime
+		
 
 from os.path import expanduser
 HOME=expanduser("~")
@@ -108,6 +110,28 @@ def load_global_config(pathhack=True,prompt_for_base_conf=True):
 
 	#print(CONFIG)
 	return CONFIG
+
+
+
+def get_url_or_path(url_or_path):
+	# download
+	path=None
+	print(f'Downloading URL ({url_or_path[:10]}...{url_or_path[-10:]})')
+	if url_or_path.startswith('http'):
+		
+		#with tempfile.TemporaryDirectory() as tmpdirname:
+		ext=url_or_path.split('output=',1)[-1].split('&',1)[0]
+		ext=os.path.splitext(ext) if '.' in ext else ext
+		tmpfn = os.path.join('/tmp/',f'dl.lltk.{datetime.now().timestamp()}.{ext}')
+		urllib.request.urlretrieve(url_or_path, tmpfn)
+		print(tmpfn)
+		return tmpfn
+	return url_or_path
+
+
+
+
+
 
 
 def load_default_config():
@@ -1790,11 +1814,19 @@ def remove_duplicates(seq,remove_empty=False):
 
 
 
-"""
-Simple mofo'n parallelism with progress bar. Born of frustration with p_tqdm.
-"""
 
-def pmap_iter(func, objs, num_proc=4, use_threads=False, progress=True, desc=None, **y):
+
+
+def pmap_df(df, func, num_proc=1):
+    df_split = np.array_split(df, num_proc)
+    df = pd.concat(pmap(func, df_split, num_proc=num_proc))
+    return df
+
+def pmap_do(inp):
+	func,obj,args,kwargs = inp
+	return func(obj,*args,**kwargs)
+
+def pmap_iter(func, objs, args=[], kwargs={}, num_proc=4, use_threads=False, progress=True, desc=None, **y):
 	"""
 	Yields results of func(obj) for each obj in objs
 	Uses multiprocessing.Pool(num_proc) for parallelism.
@@ -1806,23 +1838,29 @@ def pmap_iter(func, objs, num_proc=4, use_threads=False, progress=True, desc=Non
 	from tqdm import tqdm
 	
 	# if parallel
+	if not desc: desc=f'Mapping {func.__name__}()'
 	if desc: desc=f'{desc} [x{num_proc}]'
 	if num_proc>1 and len(objs)>1:
+
+		# real objects
+		objects = [(func,obj,args,kwargs) for obj in objs]
+
 		# create pool
 		import multiprocessing as mp
 		pool=mp.Pool(num_proc) if not use_threads else mp.pool.ThreadPool(num_proc)
 
 		# yield iter
-		iterr = pool.imap(func, objs)
+		iterr = pool.imap(pmap_do, objects)
 		for res in tqdm(iterr,total=len(objs),desc=desc) if progress else iterr:
 			yield res
 
 		# Close the pool?
 		pool.close()
+		pool.join()
 	else:
 		# yield
 		for obj in (tqdm(objs,desc=desc) if progress else objs):
-			yield func(obj)
+			yield func(obj,*args,**kwargs)
 
 def pmap(*x,**y):
 	"""
@@ -1870,6 +1908,10 @@ def pmap_groups(func,df_grouped,use_cache=True,**attrs):
 			group_df.to_pickle(tmp_path)
 			objs+=[(func,tmp_path,group_key,group_name)]
 
+	# desc?
+	if not attrs.get('desc'): attrs['desc']=f'Mapping {func.__name__}'
+
+
 	return pd.concat(
 		pmap(
 			do_pmap_group,
@@ -1877,4 +1919,3 @@ def pmap_groups(func,df_grouped,use_cache=True,**attrs):
 			**attrs
 		)
 	).set_index(group_key)
-

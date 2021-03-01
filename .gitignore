@@ -1,4 +1,6 @@
 notebooks/dev/
+notebooks/figures
+notebooks/graph_imgs
 
 *.pyc
 backups/
