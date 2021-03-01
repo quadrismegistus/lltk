@@ -686,6 +686,7 @@ def draw_bokeh(g,
     range_fac=0.5,
     geo_default_range=1000000,
     line_alpha=0.5,
+    webdriver=None,
     **attrs
 ):
     from bokeh.io import output_notebook, show, save
@@ -830,7 +831,7 @@ def draw_bokeh(g,
     plot.renderers.append(labels)
 
     
-    if save_to: export_png(plot, filename=save_to)
+    if save_to: export_png(plot, filename=save_to, webdriver=webdriver)
     if show_plot: show(plot)
 
 
