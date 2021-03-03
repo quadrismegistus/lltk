@@ -715,8 +715,8 @@ def draw_bokeh(g,
 #             tools="",
         
         title=title,
-        plot_width=888,
-        plot_height=888
+        plot_width=999,
+        plot_height=999
     )
 
     if pos_by=='geo':

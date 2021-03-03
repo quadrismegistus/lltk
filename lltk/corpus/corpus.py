@@ -202,6 +202,8 @@ def check_corpora(paths=['path_raw','path_xml','path_txt','path_freqs','path_met
 	#print(df)
 	#return df
 
+def corpus_names():
+	return sorted([cname for cname,cd in corpora(load=False)])
 
 
 def string_import(name):
