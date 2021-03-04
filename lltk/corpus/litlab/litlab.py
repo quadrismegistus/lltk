@@ -43,10 +43,10 @@ from lltk.corpus import CorpusMeta,name2corpus
 
 class LitLab(Corpus):
 	PATH_XML = 'litlab/_xml_litlab'
-	EXT_XML = '.xml.gz'
+	# EXT_XML = '.xml.gz'
 
 	PATH_TXT = 'litlab/_txt_litlab'
-	EXT_TXT = '.txt.gz'
+	# EXT_TXT = '.txt.gz'
 
 	PATH_METADATA='litlab/corpus-metadata.LitLab.xlsx'
 

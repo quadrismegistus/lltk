@@ -384,8 +384,7 @@ class HathiEngLit(Corpus):
 	def metadata(self):
 		import numpy as np
 		meta=super().metadata
-		if not 'year' in meta.columns:
-			meta['year']=[int(x) if x.isdigit() else np.nan for x in meta['startdate']]
+		meta['year']=[int(x) if x.isdigit() else np.nan for x in meta['startdate']]
 		return meta
 
 

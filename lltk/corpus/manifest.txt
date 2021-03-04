@@ -115,7 +115,7 @@ url_metadata=https://www.dropbox.com/s/xh991n4sohulczb/ecco_tcp_metadata.zip?dl=
 name = EEBO_TCP
 desc = Early English Books Online (curated by the Text Creation Partnership)
 id = eebo_tcp
-path_root = eebo
+path_root = eebo_tcp
 path_python = eebo/eebo.py
 class_name = EEBO_TCP
 url_metadata=https://www.dropbox.com/s/th2i7jvuxksb0ma/eebo_tcp_metadata.zip?dl=1

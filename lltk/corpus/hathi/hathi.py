@@ -205,7 +205,7 @@ class Hathi(Corpus):
 
 	def __init__(self,*x,**y):
 		super().__init__(*x,**y)
-		if not os.path.exists(self.path_root): os.makedirs(self.path_root)
+		# if not os.path.exists(self.path_root): os.makedirs(self.path_root)
 		self.path_metadata=os.path.join(self.path_root,'metadata.csv')
 
 	@property

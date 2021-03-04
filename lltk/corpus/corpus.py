@@ -442,6 +442,7 @@ class Corpus(object):
 			(t.path_txt,t.path_freqs,attrs.get('tokenizer'))
 			for t in self.texts()
 		]
+		print(objs[:10])
 		# parallel=attrs.get('slingshot_n',1)
 		if not 'num_proc' in attrs and 'slingshot_n' in attrs:
 			attrs['num_proc']=attrs['slingshot_n']

@@ -242,7 +242,7 @@ class InternetArchive(Corpus):
 
 	def compile_metadata(self,collection=DEFAULT_COLLECTION):
 		def _writegen():
-			for item in self.get_collection_ids(collection=collection,iter_as_items=True):
+			for item in tqdm(list(self.get_collection_ids(collection=collection,iter_as_items=True)),desc='Compiling metadata'):
 				dx=item.metadata
 				try:
 					dx['id']=dx['identifier']+'/'+dx['identifier']+'_djvu'

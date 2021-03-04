@@ -812,7 +812,7 @@ class Text(object):
 		opath = os.path.split(ofnfn)[0]
 		if not os.path.exists(opath): os.makedirs(opath)
 		if not force and os.path.exists(ofnfn) and os.stat(ofnfn).st_size:
-			#print('>> already tokenized:',self.id)
+			print('>> already tokenized:',self.id)
 			return self.freqs_json
 		else:
 			pass
