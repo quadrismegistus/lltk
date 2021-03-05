@@ -20,4 +20,4 @@ PATH_TO_BOOKNLP_BINARY= ../bin/book-nlp/runjava
 PATH_CLOUD_SHARE_CMD=bin/dropbox_uploader.sh share
 PATH_CLOUD_UPLOAD_CMD=bin/dropbox_uploader.sh upload
 PATH_CLOUD_LIST_CMD=bin/dropbox_uploader.sh list
-PATH_CLOUD_DEST = /Share/lltk_corpora
+PATH_CLOUD_DEST = /Share/llp_corpora

@@ -27,7 +27,7 @@ config = tools.config
 
 ZIP_PART_DEFAULTS={'txt','freqs','metadata','xml','data'}
 INSTALL_CMDS=['metadata','txt','freqs','mfw','dtm']
-DEST_LLTK_CORPORA=config.get('CLOUD_DEST','/Share/lltk_corpora')
+DEST_LLTK_CORPORA=config.get('CLOUD_DEST','/Share/llp_corpora')
 
 MANIFEST_REQUIRED_DATA=['name','id']
 
@@ -558,7 +558,7 @@ class Corpus(object):
 		import pandas as pd
 
 		#meta_ld=tools.read_ld(self.path_metadata,keymap={'*':str})
-		self._metadf=meta_df=tools.read_csv_with_pandas(self.path_metadata,dtype=None,low_memory=False,error_bad_lines=False).fillna('')
+		self._metadf=meta_df=tools.read_csv_with_pandas(self.path_metadata,dtype={'id':str},low_memory=False,error_bad_lines=False).fillna('')
 		self._metadf['corpus']=self.name
 		self._meta=meta_ld=meta_df.to_dict('records')
 		self._text_ids=[self.get_id_from_metad(d) for d in meta_ld]
@@ -2608,7 +2608,34 @@ def load_corpus(name_or_id,sources=[PATH_CORPUS,''],**input_kwargs):
 
 
 
-
+def gen_manifest(order=['id','name','desc','link']):
+	manifest = load_manifest()
+	cstringl=[]
+	for corpus,corpusd in sorted(manifest.items()):
+		manifestdefault = dict(MANIFEST_DEFAULTS.items())
+		# manifestdefault['name']=corpus
+		# manifestdefault['id']=corpus.lower()
+		manifestdefault['path_python']=corpusd['id']+'.py'
+		manifestdefault['path_root']=corpusd['id']
+		manifestdefault['class_name']=corpusd['name']
+		corpusd = dict(
+			(k,v)
+			for k,v in corpusd.items()
+			if manifestdefault.get(k)!=v
+		)
+		cstringl+=[f'[{corpus}]']
+		for x in order:
+			cstringl+=[f'{x} = {corpusd.get(x,"--")}']
+		for x in sorted(corpusd):
+			if x in set(order): continue
+			if not corpusd.get(x): continue
+			cstringl+=[f'{x} = {corpusd.get(x,"--")}']
+		cstringl+=['']
+	
+	txt='\n'.join(cstringl)
+	print(txt)
+	return txt
+		
 
 
 
