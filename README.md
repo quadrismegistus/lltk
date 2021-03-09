@@ -61,14 +61,8 @@ for text in texts_sample:             # loop over Text objects
     txt = text.txt                    # get plain text as string
     xml = text.xml                    # get xml as string
 
-    tokens = text.tokens              # get list of words (incl punct)
     words  = text.words               # get list of words (excl punct)
-    counts = text.word_counts         # get word counts as dictionary (from JSON if saved)
-    ocracc = text.ocr_accuracy        # get estimate of ocr accuracy
-
-    spacy_obj = text.spacy            # get a spacy text object
-    nltk_obj = text.nltk              # get an nltk text object
-    blob_obj = text.blob              # get a textblob object
+    counts = text.counts              # get word counts as dictionary (from JSON if saved)
 ```
 
 ## Corpus magic
@@ -76,35 +70,24 @@ for text in texts_sample:             # loop over Text objects
 Each corpus object can generate data about itself:
 
 ```python
-corpus.save_metadata()                # save metadata from xml files (if possible)
-corpus.save_plain_text()              # save plain text from xml (if possible)
-corpus.save_mfw()                     # save list of all words in corpus and their total  count
-corpus.save_freqs()                   # save counts as JSON files
-corpus.save_dtm()                     # save a document-term matrix with top N words
+corpus.preprocess_txt()               # save plain text from xml (if possible)
+corpus.preprocess_freqs()             # save counts as JSON files
+corpus.preprocess_mfw()               # save list of all words in corpus and their total  count
+corpus.preprocess_dtm()               # save a document-term matrix with top N words
 ```
 
 You can also run these commands in the terminal:
 
 ```
-lltk install my_corpus                 # this is equivalent to python above
-lltk install my_corpus -parallel 4     # but can access parallel processing with MPI/Slingshot
-lltk install my_corpus dtm             # run a specific step
+lltk preprocess my_corpus             # run all the steps above
 ```
 
 Generating this kind of data allows for easier access to things like:
 
 ```python
-mfw = corpus.mfw(n=10000)             # get the 10K most frequent words
-dtm = corpus.freqs(words=mfw)         # get a document-term matrix as a pandas dataframe
-```
-
-You can also build word2vec models:
-
-```python
-w2v_model = corpus.word2vec()         # get an lltk word2vec model object
-w2v_model.model()                     # run the modeling process
-w2v_model.save()                      # save the model somewhere
-gensim_model = w2v_model.gensim       # get the original gensim object
+# Most frequent words
+mfw = corpus.mfw()                   # get the 10K most frequent words as a list
+dtm = corpus.dtm()                   # get a document-term matrix as a pandas dataframe
 ```
 
 

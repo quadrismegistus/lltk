@@ -94,19 +94,23 @@ class Text(object):
 
 	def tokens(self,lower=True):
 		return self.TOKENIZER.__func__(self.txt.lower() if lower else self.txt)
+	@property
 	def words(self,lower=False):
 		tokens=[noPunc(w) for w in self.tokens(lower=lower)]
 		return [w for w in tokens if w]
 	def sents(self):
 		import nltk
 		return nltk.sent_tokenize(self.txt)
+	@property
 	def counts(self,*x,**y): return self.freqs(*x,**y)
 	def len():
 		return self.num_words()
+	@property
 	def tfs(self,*x,**y): 
-		counts=self.counts(*x,**y)
+		counts=self.freqs(*x,**y)
 		total=self.length
 		return dict((w,v/total) for w,v in counts.items())
+	@property
 	def fpm(self,*x,**y):
 		return dict((w,v*1000000) for w,v in self.tfs(*x,**y).items())
 	def num_words(self,keys=['num_words','length']):
