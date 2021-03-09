@@ -55,7 +55,9 @@ def induct_corpus(name_or_id_or_C):
 	check_move_file(ifn_ipynb,ofn_ipynb)
 	new_config={C.name: dict((k,str(v)) for k,v in sorted(manifestd.items()))}
 	write_manifest(PATH_MANIFEST_GLOBAL, path_manifests=[PATH_MANIFEST_GLOBAL],new_config=new_config)
-	
+
+def showcorp_readme():
+	return showcorp(public_only=True,is_public=None,link=True,show_local=False,maxcolwidth=None)
 
 def showcorp(**attrs):
 	return status_corpora_markdown(**attrs)
@@ -141,6 +143,7 @@ def fix_meta(metadf, badcols={'_llp_','_lltk_','corpus','index','id.1','url_word
 
 def clean_meta(meta):
 	# clean year?
+	meta=fix_meta(meta)
 	if 'year' in set(meta.columns):
 		newyears=pd.to_numeric(meta.year,errors='coerce',downcast='integer')
 	if False in [(x==y) for x,y in zip(meta.year, newyears)]:
@@ -544,7 +547,7 @@ def divide_texts_historically(texts,yearbin=10,yearmin=None,yearmax=None,min_len
 
 
 
-def load_corpus(name_or_id,manifestd={},load_meta=True,**input_kwargs):
+def load_corpus(name_or_id,manifestd={},load_meta=False,**input_kwargs):
 	if not manifestd: manifestd=load_corpus_manifest(name_or_id,make_path_abs=True)
 	# print('>> loading:',manifestd['path_python'])
 	module = imp.load_source(manifestd['id'], manifestd['path_python'])

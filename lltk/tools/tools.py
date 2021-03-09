@@ -1643,6 +1643,9 @@ class Bunch(object):
 	def __setattr__(self,attr,val):
 		sd=self.__dict__
 		sd[attr]=val
+	def __iter__(self):
+		for v in self.__dict__.values():
+			yield v
 
 
 

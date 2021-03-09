@@ -2,17 +2,36 @@ from lltk.imports import *
 
 ## utility funcs
 
+class AuthorBunch(Bunch):
+	def __iter__(self):
+		for v in self.__dict__.values():
+			if issubclass(v.__class__, Text):
+				yield v
+	@property
+	def ti(self): return list(self)
+	@property
+	def tl(self): return list(self)
+	@property
+	def ids(self): return [t.id for t in self]
+	@property
+	def id(self): return self.ids
+	
+	@property
+	def meta(self): return self.corpus.meta[self.corpus.meta.id.isin(set(self.ids))]
+	
+
+
 class Text(object):
-	def __init__(self,idx,corpus,meta={},lang=None):
+	def __init__(self,idx,corpus,meta={},lang=None,tokenizer=None):
 		self.id=idx
 		self.corpus=corpus
 		self.XML2TXT=self.corpus.XML2TXT
+		self.TOKENIZER=self.corpus.TOKENIZER if tokenizer is None else tokenizer
 		self.meta=meta
 		self.lang=self.corpus.LANG if lang is None else lang
 
 	# convenience
 	def __getattr__(self, name):
-		# is path?
 		if name.startswith('path_') and hasattr(self.corpus,name):
 			ptype=name[len('path_'):]
 			exttype=f'ext_{ptype}'.upper()
@@ -20,8 +39,11 @@ class Text(object):
 			ext=getattr(self.corpus,exttype)
 			cpath=getattr(self.corpus,name)
 			return os.path.join(cpath, self.id + ext)
-		# is meta?
-		return self.meta.get(name)
+		elif name in self.meta:
+			return self.meta[name]
+		else:
+			# Default behaviour
+			return object.__getattribute__(self, name)
 
 	# load text?
 	@property
@@ -59,33 +81,39 @@ class Text(object):
 		return save_freqs_json((self.path_txt,self.path_freqs,self.corpus.TOKENIZER.__func__))
 
 	def freqs(self,lower=True,modernize_spelling=None):
-		# save?
-		if not os.path.exists(self.path_freqs): self.save_freqs_json()
-		if not os.path.exists(self.path_freqs): return {}
-		with open(self.path_freqs) as f: freqs=Counter(json.load(f))
-		return filter_freqs(freqs)
+		if not hasattr(self,'_freqs') or not self._freqs:
+			# print('loading from file')
+			if not os.path.exists(self.path_freqs): self.save_freqs_json()
+			if not os.path.exists(self.path_freqs): return {}
+			with open(self.path_freqs) as f: freqs=Counter(json.load(f))
+			self._freqs=freqs
+		return filter_freqs(self._freqs,modernize=modernize_spelling,lower=lower)
 
+	@property
+	def length(self): return sum(self.freqs().values())
 
-	@property
-	def tokens(self):
-		return self.TOKENIZE.__func__(self.txt)
-	@property
-	def words(self):
-		return [noPunc(w) for w in self.tokens if noPunc(w)]
-	@property
+	def tokens(self,lower=True):
+		return self.TOKENIZER.__func__(self.txt.lower() if lower else self.txt)
+	def words(self,lower=False):
+		tokens=[noPunc(w) for w in self.tokens(lower=lower)]
+		return [w for w in tokens if w]
 	def sents(self):
 		import nltk
 		return nltk.sent_tokenize(self.txt)
-	@property
-	def counts(self):
-		return self.freqs()
-	
-	@property
+	def counts(self,*x,**y): return self.freqs(*x,**y)
+	def len():
+		return self.num_words()
+	def tfs(self,*x,**y): 
+		counts=self.counts(*x,**y)
+		total=self.length
+		return dict((w,v/total) for w,v in counts.items())
+	def fpm(self,*x,**y):
+		return dict((w,v*1000000) for w,v in self.tfs(*x,**y).items())
 	def num_words(self,keys=['num_words','length']):
 		for k in keys:
 			if k in self.meta:
 				return int(self.meta[k])
-		return len(self.tokens)
+		return sum(self.counts().values())
 	@property
 	def words_recognized(self):
 		global ENGLISH

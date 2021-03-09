@@ -21,10 +21,12 @@ class Corpus(object):
 	LANG='en'
 	XML2TXT = default_xml2txt
 
-	def __init__(self,load_meta=True,**attrs):
+	def __init__(self,load_meta=False,**attrs):
 		self._metadf=None
 		self._texts=None
 		self._textd=None
+		self._dtmd={}
+		self._mfwd={}
 		for k,v in attrs.items(): setattr(self,k,v)
 		if load_meta:
 			try:
@@ -34,23 +36,31 @@ class Corpus(object):
 	#####
 	# Metadata
 	####
+	@property
+	def t(self):
+		return random.choice(self.texts())
+
+	@property
+	def au(self): return self.authors
 
 	@property
 	def authors(self,authorkey='author',titlekey='title',idkey=COL_ID):
 		if not hasattr(self,'_authors') or not self._authors:
-			if self._metadf is None or self._textd is None: return Bunch()
+			if self._metadf is None or self._textd is None: 
+				self.load_metadata()
+				return self.authors
 
 			self._authors=au=Bunch()
+			# for author,authordf in tqdm(list(self._metadf.reset_index().groupby(authorkey)),desc='Creating author/title shortcut attributes'):
 			for author,authordf in self._metadf.reset_index().groupby(authorkey):
 				if not author.strip(): continue
 				akey=to_authorkey(author)
-				setattr(self._authors,akey,Bunch())
-				aobj=getattr(self._authors,akey)
+				aobj=AuthorBunch(corpus=self,name=author)
+				setattr(self._authors,akey,aobj)
 				for i,row in authordf.iterrows():
 					title=row[titlekey]
 					idx=row[idkey]
-					tkey=''.join(x.title() for x in tokenize(title))
-					tkey=tkey[:25]
+					tkey=zeropunc(''.join(x.title() for x in title[:30].split()))[:25]
 					tobj=self._textd.get(idx)
 					setattr(aobj,tkey,tobj)
 		return self._authors
@@ -63,10 +73,14 @@ class Corpus(object):
 				return pd.DataFrame() 
 			meta=read_df(self.path_metadata).fillna('')
 			if clean: meta=clean_meta(meta)
+			if self.year_start is not None and self.year_start.isdigit() and 'year' in meta.columns:
+				meta=meta.query(f'year>={self.year_start}')
+			if self.year_end is not None and self.year_end.isdigit() and 'year' in meta.columns:
+				meta=meta.query(f'year<={self.year_end}')
 			self._metadf=meta
 
 		# create text objects
-		if self._texts is None or self._textd is None:
+		if not self._texts or not self._textd:
 			self._texts,self._textd=[],{}
 			for i,row in self._metadf.iterrows():
 				idx=row[self.COL_ID] if self.COL_ID in row else row.index
@@ -78,7 +92,7 @@ class Corpus(object):
 				
 
 
-		self.authors
+		# self.authors
 		return self._metadf
 
 	@property
@@ -91,7 +105,12 @@ class Corpus(object):
 	# Get texts
 	def texts(self,text_ids=None):
 		if not self._texts: self.load_metadata()
-		return [t for t in self._texts if not text_ids or t.id in set(text_ids)]
+		return [
+			t
+			for t in self._texts
+			if text_ids is None
+			or t.id in set(text_ids)
+		]
 	
 	# Convenience
 	@property
@@ -431,21 +450,25 @@ class Corpus(object):
 	def dtm(self,words=[],n=DEFAULT_MFW_N,tf=False,tfidf=False,meta=False,**mfw_attrs):
 		if not words: words=self.mfw(n=n,**mfw_attrs)
 		wordkey=self.wordkey(words)
-		try:
-			dtm=read_df(self.path_dtm, key=wordkey)
-		except Exception:
-			dtm=self.preprocess_dtm(words=words,n=n,wordkey=wordkey)
-		
-		# reorder columns
-		# dtm = dtm.reindex(dtm.agg(agg).sort_values(ascending=False).index, axis=1)
+		if wordkey in self._dtmd:
+			dtm=self._dtmd[wordkey]
+		else:
+			try:
+				dtm=read_df(self.path_dtm, key=wordkey)
+			except Exception:
+				dtm=self.preprocess_dtm(words=words,n=n,wordkey=wordkey)
+		self._dtmd[wordkey]=dtm
+		dtm=dtm.set_index('id') if 'id' in set(dtm.columns) else dtm
 
 		if tf: dtm=dtm2tf(dtm)
 		if tfidf: dtm=dtm2tfidf(dtm)
 		if meta:
+			if type(meta) in {list,set}:
+				if not self.COL_ID in meta: meta=[self.COL_ID]+list(meta)
 			mdf=self.meta[meta] if type(meta) in {list,set} else self.meta
 			mdtm=mdf.merge(dtm,on='id',suffixes=('','_w'))
-			micols = mdf.reset_index().columns
-			dtm=mdtm.reset_index().set_index(list(micols))
+			micols = mdf.columns
+			dtm=mdtm.set_index(list(micols))
 		return dtm 
 
 
@@ -495,15 +518,18 @@ class Corpus(object):
 		if yearbin is None: yearbin=self.mfw_yearbin
 		if type(yearbin)==str: yearbin=int(yearbin)
 		key=self.mfwkey(yearbin,by_ntext,by_fpm)
-		try:
-			df=read_df(self.path_mfw, key=key)
-		except Exception:
-			df=self.preprocess_mfw(yearbin=yearbin,by_ntext=False,by_fpm=by_fpm,**attrs)
-
+		if key in self._mfwd:
+			df=self._mfwd[key]
+		else:
+			try:
+				df=read_df(self.path_mfw, key=key)
+			except Exception:
+				df=self.preprocess_mfw(yearbin=yearbin,by_ntext=False,by_fpm=by_fpm,**attrs)
 		if df is None:
 			self.log('Could not load or generate MFW')
 			return
 		df=df.fillna(0)
+		self._mfwd[key]=df
 
 		if excl_top:
 			df=df[df['rank']>=excl_top]
@@ -541,7 +567,9 @@ class Corpus(object):
 			df['ranks_avg']=df['rank']
 			df=df.sort_values(valtype,ascending=False)
 			df['rank']=[i+1 for i in range(len(df))]
-		return df.reset_index()
+		
+		dfr=df.reset_index()
+		return dfr
 
 
 
@@ -606,8 +634,7 @@ class Corpus(object):
 					estimate=estimate,
 					force=force,
 					verbose=verbose,
-					try_create_freqs=try_create_freqs,
-					tried_create_freqs=try_create_freqs
+					try_create_freqs=False
 				)
 			return pd.DataFrame()
 
@@ -634,8 +661,10 @@ class Corpus(object):
 		else:
 			odf=odf.reset_index().sort_values('rank')
 		#odf.to_csv(self.path_mfw.replace('.txt','.csv'))
-		save_df(odf, self.path_mfw, key=key)
-		return odf
+		dtm=odf
+		dtm = dtm[dtm.columns[1:] if set(dtm.columns) and dtm.columns[0]=='index' else dtm.columns]
+		save_df(dtm, self.path_mfw, key=key)
+		return dtm
 
 
 	def log(self,*x,**y):
@@ -699,7 +728,7 @@ class Corpus(object):
 
 		# df.to_csv(self.path_dtm)
 		# df.reset_index().to_feather(self.path_dtm)
-		save_df(dtm, self.path_dtm, key=wordkey)
+		save_df(dtm.reset_index(), self.path_dtm, key=wordkey)
 		return dtm
 
 

@@ -102,6 +102,8 @@ MANIFEST_DEFAULTS=dict(
 
 	license='',
 	license_type='',
+	year_start=None,
+	year_end=None
 )
 
 nlp=None

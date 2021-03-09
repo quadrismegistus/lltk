@@ -51,7 +51,7 @@ name = CanonFiction
 desc = Long history of fiction (Chadwyck + MarkMark + misc.)
 link = 
 public = 
-private = txt
+private = 
 path_metadata = metadata.xls
 license_type = Mixed
 
@@ -183,6 +183,9 @@ url_raw = https://www.dropbox.com/s/05qtu8r2xejqpkh/evans_tcp_raw.zip?dl=1
 url_txt = https://www.dropbox.com/s/ezen3zxyt9hzxxp/evans_tcp_txt.zip?dl=1
 url_xml = https://www.dropbox.com/s/yg7hjf536klg04c/evans_tcp_xml.zip?dl=1
 license_type = Free
+year_start = 1640
+year_end = 1810
+
 
 [FanFic]
 id = fanfic
