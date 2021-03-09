@@ -19,22 +19,7 @@ lltk show                             # show which corpora/data are available
 lltk install ECCO_TCP                 # download a corpus
 ```
 
-...or import your own:
-
-```
-lltk import                           # use the "import" command \
-  -path_txt mycorpus/txts             # a folder of txt files  (use -path_xml for xml) \
-  -path_metadata mycorpus/meta.xls    # a metadata csv/tsv/xls about those txt files \
-  -col_fn filename                    # filename in the metadata corresponding to the .txt filename
-```
-
-...or start a new one:
-
-```
-lltk create                            # then follow the interactive prompt
-```
-
-3) Then you can load the corpus in Python:
+3) Load the corpus in Python:
 
 ```python
 import lltk                            # import lltk as a python module
@@ -55,14 +40,23 @@ texts_sample = corpus.texts(df_sample.id)  # get Text objects for a specific lis
 
 ```python
 for text in texts_sample:             # loop over Text objects
+    # metadata access
     text_meta = text.meta             # get text metadata as dictionary
     author = text.author              # get common metadata as attributes    
 
+    # data access
     txt = text.txt                    # get plain text as string
     xml = text.xml                    # get xml as string
 
+    # simple nlp
     words  = text.words               # get list of words (excl punct)
+    sents = text.sents                # get list of sentences
     counts = text.counts              # get word counts as dictionary (from JSON if saved)
+
+    # other nlp
+    tnltk = text.nltk                 # get nltk Text object
+    tblob = text.blob                 # get TextBlob object
+    tstanza = text.stanza             # get list of stanza objects (one per para)
 ```
 
 ## Corpus magic
@@ -85,7 +79,6 @@ lltk preprocess my_corpus             # run all the steps above
 Generating this kind of data allows for easier access to things like:
 
 ```python
-# Most frequent words
 mfw = corpus.mfw()                   # get the 10K most frequent words as a list
 dtm = corpus.dtm()                   # get a document-term matrix as a pandas dataframe
 ```

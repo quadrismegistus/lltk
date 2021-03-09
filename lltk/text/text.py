@@ -154,7 +154,8 @@ class Text(object):
 				num_proc=num_proc)
 	def stanza(self,lang=None):
 		if lang is None: lang=self.lang
-		return do_parse_stanza(self.txt)
+		#return do_parse_stanza(self.txt)
+		return self.stanza_paras(lang=lang)
 
 	@property
 	def minhash(self):
