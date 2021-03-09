@@ -1,14 +1,4 @@
-# -*- coding: utf-8 -*-
-from __future__ import absolute_import
-from __future__ import print_function
-
-import codecs,os
-from lltk import tools
-from lltk.text.text import Text
-from lltk.corpus.corpus import Corpus
-import six
-
-
+from lltk.imports import *
 
 ### TEXT
 
@@ -114,28 +104,7 @@ class TextChadwyckDrama(Text):
 
 ### CORPUS
 class ChadwyckDrama(Corpus):
-	"""
-	Steps taking in bringing this corpus from raw to refined.
-
-	from lltk.corpus.chadwyck_drama import ChadwyckDrama
-	corpus = ChadwyckDrama()
-	corpus.gen_xml()
-	corpus.tokenize_texts()
-	corpus.save_metadata()
-	corpus.gen_mfw(yearbin=50,year_min=1600,year_max=2000)
-	corpus.gen_freq_table()
-	"""
-
 	TEXT_CLASS=TextChadwyckDrama
-	PATH_TXT = 'chadwyck_drama/_txt_chadwyck_drama'
-	PATH_XML = 'chadwyck_drama/_xml_chadwyck_drama'
-	PATH_RAW = '/Users/ryan/Dropbox/PHD/DH/corpora/chadwyck_drama/raw'
-	PATH_METADATA = 'chadwyck_drama/corpus-metadata.ChadwyckDrama.txt'
-	EXT_XML='.xml'
-
-	def __init__(self):
-		super(ChadwyckDrama,self).__init__('ChadwyckDrama',path_txt=self.PATH_TXT,path_xml=self.PATH_XML,path_metadata=self.PATH_METADATA,ext_xml=self.EXT_XML)
-		self.path = os.path.dirname(__file__)
 
 	def gen_xml(self, split_start='<poem>', split_end='</poem>', id_split_start='<ID>', id_split_end='</ID>'):
 		"""

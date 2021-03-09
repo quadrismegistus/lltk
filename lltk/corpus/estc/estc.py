@@ -1,15 +1,4 @@
-# -*- coding: utf-8 -*-
-from __future__ import absolute_import
-from __future__ import print_function
-
-
-import codecs,json,re
-from lltk import tools
-
-from lltk.text.text import Text
-from collections import defaultdict
-
-
+from lltk.imports import *
 
 class TextESTC(Text):
 	META_SEP=' | '
@@ -173,9 +162,6 @@ class ESTC(Corpus):
 	PATHS_TEXT_DATA = ['estc/_data_texts_estc/data.genre-predictions.ESTC.txt']
 	PATHS_REL_DATA = ['estc/_data_rels_estc/data.rel.reprintOf.exact-matches.ESTC.txt','estc/_data_rels_estc/data.rel.reprintOf.fuzzy-matches.ESTC.txt'] # ,'estc/_data_rels_estc/data.rel.reprintOf.ecco-text-matches.ESTC.txt'
 
-	def __init__(self):
-		super(ESTC,self).__init__('ESTC',path_txt=self.PATH_TXT,ext_txt=self.EXT_TXT,path_metadata=self.PATH_METADATA,paths_text_data=self.PATHS_TEXT_DATA,paths_rel_data=self.PATHS_REL_DATA)
-		self.path = os.path.dirname(__file__)
 
 	def save_metadata(self):
 		print('>> generating metadata...')

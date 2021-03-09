@@ -206,7 +206,7 @@ def to_lastname(name):
 	return name
 
 
-def xml2txt(xml, *x, OK={'p','l'}, BAD=[], body_tag='text', **args):
+def default_xml2txt(xml, *x, OK={'p','l'}, BAD=[], body_tag='text', **args):
 	#print '>> text_plain from stored XML file...'
 	import bs4
 	if '\n' not in xml and os.path.exists(xml):

@@ -1,12 +1,4 @@
-# -*- coding: utf-8 -*-
-from __future__ import absolute_import
-from __future__ import print_function
-
-import os,codecs,re
-from lltk.corpus.corpus import Corpus
-from lltk.text.text import Text
-from lltk import tools
-
+from lltk.imports import *
 
 
 ################
@@ -110,15 +102,8 @@ class TextGaleAmericanFiction(Text):
 
 class GaleAmericanFiction(Corpus):
     TEXT_CLASS=TextGaleAmericanFiction
-    EXT_XML='.xml'
-    EXT_TXT='.txt'
 
-    def __init__(self):
-        super(GaleAmericanFiction,self).__init__('GaleAmericanFiction')
-        self.path = os.path.dirname(__file__)
-
-    @property
-    def metadata(self):
+    def load_metadata(self):
         import numpy as np
         meta=super().metadata
         meta['genre']='Fiction'

@@ -2,16 +2,18 @@ from lltk.imports import *
 
 
 class TextNewCorpus(Text):
-	def xml2txt(self,xml_fn):
-		"""
-		Overwrite this if you have a custom function for parsing XML files to TXT files
-		"""
-		# This is the default function 
-		txt = super().xml2txt(xml_fn)
+	def text_plain(self,*x,**y):
+		# By default will load from file
+		txt=super().text_plain(*x,**y)
+		# Any last minute fixes here?
+		# txt = ...
 		return txt
 
+def xml2txt(xml_txt_or_fn,*x,**y):
+    return default_xml2txt(xml_txt_or_fn,*x,**y)
 
 class NewCorpus(Corpus):
+	XML2TXT = xml2txt
 	TEXT_CLASS=TextNewCorpus
 	COL_ID = 'id'
 

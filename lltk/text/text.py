@@ -3,11 +3,10 @@ from lltk.imports import *
 ## utility funcs
 
 class Text(object):
-	XML2TXT = xml2txt
-
 	def __init__(self,idx,corpus,meta={},lang=None):
 		self.id=idx
 		self.corpus=corpus
+		self.XML2TXT=self.corpus.XML2TXT
 		self.meta=meta
 		self.lang=self.corpus.LANG if lang is None else lang
 

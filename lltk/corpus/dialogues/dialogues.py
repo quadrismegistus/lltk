@@ -1,11 +1,4 @@
-# -*- coding: utf-8 -*-
-from __future__ import absolute_import
-
-
-
-#### TEXT CLASS
-import codecs,os
-from lltk.text.text import Text
+from lltk.imports import *
 
 class TextEnglishDialogues(Text):
 	STANZA_TAGS = ['stanza','versepara','pdiv']
@@ -61,35 +54,5 @@ class TextEnglishDialogues(Text):
 
 
 
-
-
-
-### CORPUS CLASS
-
-from lltk.corpus.corpus import Corpus
-import os,codecs,re
-from lltk import tools
-
 class EnglishDialogues(Corpus):
-	"""
-	Steps taking in bringing this corpus from raw to refined.
-	>> wrote meta_by_file() and text_plain() for TextEnglishDialogues
-
-	from lltk.corpus.dialogues import EnglishDialogues
-	corpus=EnglishDialogues()
-	corpus.tokenize_texts()
-	corpus.save_metadata()
-	corpus.gen_mfw(yearbin=50)
-	corpus.gen_freq_table(n=10000)
-	"""
-
 	TEXT_CLASS=TextEnglishDialogues
-	PATH_TXT = 'dialogues/_txt_corpus_english_dialogues'
-	PATH_XML = 'dialogues/_xml_corpus_english_dialogues'
-	#PATH_RAW = '/Volumes/Present/DH/corpora/chadwyck_poetry/raw'
-	PATH_METADATA = 'dialogues/corpus-metadata.EnglishDialogues.txt'
-	EXT_XML='.xml'
-
-	def __init__(self):
-		super(EnglishDialogues,self).__init__('EnglishDialogues',path_txt=self.PATH_TXT,path_xml=self.PATH_XML,path_metadata=self.PATH_METADATA,ext_xml=self.EXT_XML)
-		self.path = os.path.dirname(__file__)

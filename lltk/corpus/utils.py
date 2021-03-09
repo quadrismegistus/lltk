@@ -6,7 +6,7 @@ def corpora(load=True,load_meta=False,incl_meta_corpora=True):
 	manifest=load_manifest()
 	for corpus_name in sorted(manifest):
 		if not incl_meta_corpora and manifest[corpus_name]['is_meta']: continue
-		corpus_obj=load_corpus(corpus_name, manifestd=manifest[corpus_name], load_meta=load_meta) if load else manifest[corpus_name]
+		corpus_obj=load_corpus(corpus_name,load_meta=load_meta) if load else manifest[corpus_name]
 		# print(corpus_name, corpus_obj)
 		if corpus_obj is None: continue
 		yield (corpus_name, corpus_obj)
@@ -57,8 +57,8 @@ def induct_corpus(name_or_id_or_C):
 	write_manifest(PATH_MANIFEST_GLOBAL, path_manifests=[PATH_MANIFEST_GLOBAL],new_config=new_config)
 	
 
-def showcorp():
-	return print(status_corpora_markdown())
+def showcorp(maxcolwidth=45,link=False,public_only=False):
+	print(status_corpora_markdown(maxcolwidth=maxcolwidth,link=link,public_only=public_only))
 
 def status_corpora_markdown(maxcolwidth=45,link=False,public_only=False):
 	df=status_corpora(link=link,public_only=public_only).set_index('name')
@@ -72,6 +72,7 @@ def status_corpora(parts=['metadata','freqs','txt','xml','raw'],link=True,public
 		dx=defaultdict(str)
 		dx['name']=cname
 		dx['desc']=C.desc.strip() if (not link or not C.link.strip()) else f'[{C.desc.strip()}]({C.link.strip()})'
+		if not C.public and not C.private: continue
 		for pk in parts: dx[pk]=''
 		ppub = {x.strip() for x in C.public.split(',') if x.strip()}
 		for p in parts:
@@ -430,6 +431,7 @@ def load_corpus_manifest(name_or_id,manifestd={},make_path_abs=True):
 				if cd['id']==name_or_id:
 					manifestd=cd
 					break
+
 	if not manifestd: return {}
 
 	if not manifestd.get('id'): manifestd['id']=name_or_id
@@ -535,7 +537,8 @@ def divide_texts_historically(texts,yearbin=10,yearmin=None,yearmax=None,min_len
 
 
 def load_corpus(name_or_id,manifestd={},load_meta=True,**input_kwargs):
-	if not manifestd: manifestd=load_corpus_manifest(name_or_id)
+	if not manifestd: manifestd=load_corpus_manifest(name_or_id,make_path_abs=True)
+	# print('>> loading:',manifestd['path_python'])
 	module = imp.load_source(manifestd['id'], manifestd['path_python'])
 	class_class = getattr(module,manifestd['class_name'])
 	class_obj = class_class(load_meta=load_meta,**manifestd)

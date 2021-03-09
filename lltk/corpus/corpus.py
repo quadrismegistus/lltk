@@ -19,7 +19,7 @@ class Corpus(object):
 	TOKENIZER=tokenize
 	MODERNIZE=MODERNIZE_SPELLING
 	LANG='en'
-	XML2TXT = xml2txt
+	XML2TXT = default_xml2txt
 
 	def __init__(self,load_meta=True,**attrs):
 		self._metadf=None
@@ -314,7 +314,8 @@ class Corpus(object):
 			if v: ol+=[f'{xstr}: {v}']
 		print('\n'.join(ol))
 
-	def install(self, ask=True, urls={}, force=False, part=None, flatten=False, parts=DOWNLOAD_PART_DEFAULTS, unzip=True, **attrs):
+	def install(self, ask=True, urls={}, force=False, part=None, flatten=False, parts=None, unzip=True, **attrs):
+		if not parts: parts=DOWNLOAD_PART_DEFAULTS
 		if not part and parts:
 			for part in parts: self.install(ask=ask, urls=urls, part=part, parts=[], force=force, **attrs)
 			return
@@ -331,9 +332,10 @@ class Corpus(object):
 			if not os.path.exists(tmpfnfndir): os.makedirs(tmpfnfndir)
 			tools.download(url,tmpfnfn,desc=f'[{self.name}] Downloading {tmpfn}')
 		if unzip:
-			tools.unzip(tmpfnfn,self.path_raw,desc=f'[{self.name}] Unzipping {tmpfn}',flatten=flatten)
-			if os.path.exists(self.path_raw) and os.listdir(self.path_raw)==['raw']:
-				os.rename(os.path.join(self.path_raw,'raw'), self.path_raw)
+			opath=self.path_raw if part=='raw' else self.path_root
+			tools.unzip(tmpfnfn,opath,desc=f'[{self.name}] Unzipping {tmpfn}',flatten=flatten)
+			#if os.path.exists(self.path_raw) and os.listdir(self.path_raw)==['raw']:
+			#	os.rename(os.path.join(self.path_raw,'raw'), self.path_raw)
 
 	def path_zip(self,part):
 		return os.path.join(PATH_CORPUS_ZIP,f'{self.id}_{part}.zip')
@@ -359,7 +361,7 @@ class Corpus(object):
 		path=getattr(self,ppart)
 		if not os.path.exists(path): return False
 		if os.path.isdir(path) and not os.listdir(path): return False
-		print(part,ppart,path,os.path.exists(path))
+		# print(part,ppart,path,os.path.exists(path))
 		
 		return path
 
@@ -667,9 +669,10 @@ class Corpus(object):
 		if not wordkey: wordkey=self.wordkey(words)
 		if not force:
 			with pd.HDFStore(self.path_dtm) as store:
-				if verbose: self.log(f'DTM already saved for word key {wordkey}')
 				# for x in tqdm([None], desc='Loading cached DTM'): pass
-				if wordkey in store: return store[wordkey]
+				if wordkey in store:
+					if verbose: self.log(f'DTM already saved for word key {wordkey}')
+					return store[wordkey]
 
 		# get
 		objs = [

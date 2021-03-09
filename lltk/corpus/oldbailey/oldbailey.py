@@ -1,11 +1,4 @@
-# -*- coding: utf-8 -*-
-from __future__ import absolute_import
-from __future__ import print_function
-
-
-import codecs,os
-
-from lltk.text.text import Text
+from lltk.imports import *
 
 class TextOldBailey(Text):
 	STANZA_TAGS = ['stanza','versepara','pdiv']
@@ -50,39 +43,15 @@ class TextOldBailey(Text):
 
 
 
-
-
-from lltk.corpus.corpus import Corpus
-import os,codecs,re
-from lltk import tools
-
 class OldBailey(Corpus):
 	"""
     [This is the PARSED Old Bailey. Full one not implemented yet.]
-
-	Steps taking in bringing this corpus from raw to refined.
-	>> wrote meta_by_file() and text_plain() for TextEnglishDialogues
-
-	from lltk.corpus.oldbailey import OldBailey
-	corpus=OldBailey()
-	corpus.tokenize_texts()
-	corpus.save_metadata()
-	corpus.gen_mfw(yearbin=50)
-	corpus.gen_freq_table()
 	"""
 
 	TEXT_CLASS=TextOldBailey
-	PATH_TXT = 'oldbailey/_txt_parsed_old_bailey'
-	PATH_XML = 'oldbailey/_xml_parsed_old_bailey'
-	PATH_METADATA = 'oldbailey/corpus-metadata.OldBailey.xlsx'
-	EXT_XML='.xml'
 
-	def __init__(self):
-		super(OldBailey,self).__init__('OldBailey',path_txt=self.PATH_TXT,path_xml=self.PATH_XML,path_metadata=self.PATH_METADATA,ext_xml=self.EXT_XML)
-		self.path = os.path.dirname(__file__)
-	@property
-	def metadata(self):
-		meta=super().metadata
+	def load_metadata(self):
+		meta=super().load_metadata()
 		meta['genre']='Trial'
 		meta['title']=''
 		return meta

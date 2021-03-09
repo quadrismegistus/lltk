@@ -97,6 +97,7 @@ MANIFEST_DEFAULTS=dict(
 	path_data='data',
 	is_meta = '',
 	public='',
+	private='',
 	mfw_yearbin=False,
 )
 

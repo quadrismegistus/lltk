@@ -10,7 +10,7 @@ sys.path.insert(0,path_code)
 
 
 COMMANDS = [
-	dict(name='list', help='List names and descriptions of all corpora', takes_corpus_obj=False, group='Corpus status'),
+	dict(name='show', help='List names and descriptions of all corpora', takes_corpus_obj=False, group='Corpus status'),
 	dict(name='status', help='Get install/installation status for all corpora', takes_corpus_obj=False, group='Corpus status'),
 	dict(name='info', help='Get information about a corpus', takes_corpus_obj=True, group='Corpus status'),
 	dict(name='load', help='Load a corpus in interactive session', takes_corpus_obj=True, group='Downloading corpora'),
@@ -118,6 +118,7 @@ def main():
 	groups['import'].add_argument('-col_fn',help='Column in metadata to look for TXT or XML filename [default: %s]' % default_col_fn)
 	groups['import'].add_argument('-col_id',help='Column in metadata to look for ID (the TXT or XML filename, but without a filename extension) [default: %s]' % default_col_fn)
 
+	groups['show'].add_argument('-public',help='Show only public data [default: False]',default=False,action='store_true')
 
 	for cmd in PART_REFERRING_CMDS:
 		groups[cmd].add_argument('-parts',help='Name of data type (metadata/txt/xml/freqs/raw)',default='',nargs='?')
@@ -148,8 +149,9 @@ def main():
 
 
 	## SOLO COMMANDS
-	if args.cmd=='list':
-		print(status_corpora_markdown())
+	if args.cmd=='show':
+		showcorp(public_only=args.public is not False)
+
 
 	elif args.cmd=='status':
 		check_corpora()
@@ -188,6 +190,7 @@ def main():
 			_attrs = dict(list(vars(args).items()))
 			valid_args=set(valid_args_for(cmder))
 			_attrs = dict((k,v) for k,v in _attrs.items() if k in valid_args)
+			print(cmder, _attrs)
 			cmder(**_attrs)
 
 
@@ -200,8 +203,9 @@ def main():
 		elif args.cmd=='induct' and args.corpus:
 			induct_corpus(corpus)
 
-		elif args.cmd=='install' and args.corpus:
-			corpus.install(ask=not args.quiet,parts=parts if parts else ZIP_PART_DEFAULTS)
+		# elif args.cmd=='install' and args.corpus:
+		# 	print('hello')
+		# 	corpus.install(ask=not args.quiet,parts=parts if parts else ZIP_PART_DEFAULTS)
 
 		elif args.cmd=='upload' and args.corpus:
 			corpus.upload(ask=not args.quiet,parts=parts if parts else ZIP_PART_DEFAULTS)

@@ -144,7 +144,9 @@ name = ESTC
 desc = English Short Title Catalogue
 link = 
 path_txt = json
+public = 
 private = metadata
+license_type = Academic
 
 [EnglishDialogues]
 id = dialogues
@@ -155,6 +157,8 @@ url_freqs = https://www.dropbox.com/s/tji67pv89e61wd6/dialogues_freqs.zip?dl=1
 url_metadata = https://www.dropbox.com/s/lcudgwmxdpspsc9/dialogues_metadata.zip?dl=1
 url_xml = https://www.dropbox.com/s/u07u3mrrom3i9f5/dialogues_xml.zip?dl=1
 public = metadata,freqs,xml,raw
+license_type = Academic
+license = https://ota.bodleian.ox.ac.uk/repository/xmlui/page/licence-ota
 
 [EvansTCP]
 desc = Early American Fiction
@@ -168,12 +172,15 @@ url_metadata = https://www.dropbox.com/s/jr1j9i7wbz5uh0f/evans_tcp_metadata.zip?
 url_raw = https://www.dropbox.com/s/05qtu8r2xejqpkh/evans_tcp_raw.zip?dl=1
 url_txt = https://www.dropbox.com/s/ezen3zxyt9hzxxp/evans_tcp_txt.zip?dl=1
 url_xml = https://www.dropbox.com/s/yg7hjf536klg04c/evans_tcp_xml.zip?dl=1
+license_type = Free
 
 [FanFic]
 id = fanfic
 name = FanFic
-desc = 
+desc = Corpus of Harry Potter Fan Fiction
 link = 
+public =
+private =
 
 [GaleAmericanFiction]
 id = gale_amfic
@@ -183,6 +190,7 @@ link = https://www.gale.com/c/american-fiction-1774-1920
 url_freqs = https://www.dropbox.com/s/7tbwfcgbcincdi1/gale_amfic_freqs.zip?dl=1
 url_metadata = https://www.dropbox.com/s/9ysabqrrx05832u/gale_amfic_metadata.zip?dl=1
 public = metadata,freqs
+
 
 [GildedAge]
 id = gildedage
