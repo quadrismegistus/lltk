@@ -9,7 +9,7 @@ Literary Language Tool Kit (LLTK): corpora, models, and tools for the study of c
 Open a terminal and type:
 
 ```
-pip install git+https://github.com/quadrismegistus/lltk  
+pip install git+https://github.com/quadrismegistus/lltk@v2 
 ```
 
 2) Download an existing corpus...
