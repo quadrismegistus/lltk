@@ -1,4 +1,7 @@
-# constants
+import warnings
+warnings.filterwarnings('ignore')
+
+
 
 nlp=None
 ENGLISH=None
@@ -39,6 +42,7 @@ import plotnine as p9, pandas as pd
 from zipfile import ZipFile
 import shutil,zipfile
 import networkx as nx
+import six,shutil
 
 
 DEFAULT_CORPUS = 'TxtLab'
