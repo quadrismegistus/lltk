@@ -197,7 +197,7 @@ def main():
 		elif args.cmd=='zip' and args.corpus:
 			corpus.zip(ask=not args.quiet, parts=parts if parts else ZIP_PART_DEFAULTS)
 
-		elif args.cmd and args.corpus:
+		elif args.cmd=='induct' and args.corpus:
 			induct_corpus(corpus)
 
 		elif args.cmd=='upload' and args.corpus:

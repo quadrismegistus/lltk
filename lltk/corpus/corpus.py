@@ -323,7 +323,9 @@ class Corpus(object):
 			if not urls: urls=dict(self.urls())
 			url=urls.get(part)
 			if not url: return
-			self.mkdir_root()
+			# self.mkdir_root()
+			tmpfnfndir=os.path.dirname(tmpfnfn)
+			if not os.path.exists(tmpfnfndir): os.makedirs(tmpfnfndir)
 			tools.download(url,tmpfnfn,desc=f'[{self.name}] Downloading {tmpfn}')
 		if unzip:
 			tools.unzip(tmpfnfn,self.path_raw,desc=f'[{self.name}] Unzipping {tmpfn}',flatten=flatten)
