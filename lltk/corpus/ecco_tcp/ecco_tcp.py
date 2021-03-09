@@ -43,7 +43,7 @@ class ECCO_TCP(TCP):
     @property
     def metadata(self):
         meta=super().metadata
-        return meta.query('1700<=year<1800')
+        return meta#.query('1700<=year<1800')
 
     @property
     def path_hdr(self):

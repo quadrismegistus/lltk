@@ -47,8 +47,15 @@ def induct_corpus(name_or_id_or_C):
 	ofn_ipynb=os.path.join(PATH_TO_CORPUS_CODE, C.id, os.path.basename(C.path_notebook))
 	# print(ifn_py,'-->',ofn_py)
 	# print(ifn_ipynb,'-->',ofn_ipynb)
-	check_copy_file(ifn_py,ofn_py)
-	check_copy_file(ifn_ipynb,ofn_ipynb)
+	# check_move_file(ifn_py,ofn_py)
+	# check_move_file(ifn_ipynb,ofn_ipynb)
+	manifestd=load_corpus_manifest_unique(C.id,C.name)
+	if not manifestd: return
+	check_move_file(ifn_py,ofn_py)
+	check_move_file(ifn_ipynb,ofn_ipynb)
+	new_config={C.name: dict((k,str(v)) for k,v in sorted(manifestd.items()))}
+	write_manifest(PATH_MANIFEST_GLOBAL, path_manifests=[PATH_MANIFEST_GLOBAL],new_config=new_config)
+	
 
 def showcorp():
 	return print(status_corpora_markdown())
@@ -394,8 +401,26 @@ def get_python_path(path_python,path_root):
 
 
 #### LOAD CORPUS FROM MANIFEST
+def load_corpus_manifest_defaults(id,name):
+	manifestd=dict(MANIFEST_DEFAULTS.items())
+	manifestd['id']=id
+	manifestd['name']=name
+	manifestd['path_python']=id+'.py'
+	manifestd['class_name']=name
+	return manifestd
 
-def load_corpus_manifest(name_or_id,manifestd={}):
+def load_corpus_manifest_unique(id,name):
+	defaultd=load_corpus_manifest_defaults(id,name)
+	totald=load_corpus_manifest(id,make_path_abs=False)
+	filterd={}
+	filterd['id']=id
+	filterd['name']=name
+	for k,v in totald.items():
+		if defaultd.get(k)!=v:
+			filterd[k]=v
+	return filterd
+
+def load_corpus_manifest(name_or_id,manifestd={},make_path_abs=True):
 	if not manifestd:
 		manifest=load_manifest(name_or_id)
 		if name_or_id in manifest:
@@ -409,34 +434,51 @@ def load_corpus_manifest(name_or_id,manifestd={}):
 
 	if not manifestd.get('id'): manifestd['id']=name_or_id
 	if not manifestd.get('path_root'): manifestd['path_root']=manifestd['id']
-	if not os.path.isabs(manifestd.get('path_root')):
-		manifestd['path_root']=os.path.join(PATH_CORPUS,manifestd['path_root'])
-
+	
+	path_root_abs = os.path.join(PATH_CORPUS,manifestd['path_root']) if not os.path.isabs(manifestd['path_root']) else manifestd['path_root']
+	if make_path_abs: manifestd['path_root']=path_root_abs
+	
 	# get id
 	corpus_id=manifestd.get('id')
 	if not corpus_id: return
 	corpus_name=manifestd.get('name','').strip()
-	if not corpus_name:
-		corpus_name=manifestd['name']=corpus_id.replace('_',' ').title().replace(' ','')
-	# get full python path
+	if not corpus_name: corpus_name=manifestd['name']=corpus_id.replace('_',' ').title().replace(' ','')
 	path_python=manifestd.get('path_python','').strip()
 	if not path_python: path_python=corpus_id+'.py'
-	manifestd['path_python'] = path_python = get_python_path(path_python, manifestd['path_root'])
-	
+	path_python = get_python_path(path_python, manifestd['path_root'])
+	if make_path_abs: manifestd['path_python'] = path_python
 	if not manifestd.get('class_name'): manifestd['class_name']=manifestd['name']
-
-
 	# abspath the paths
-	for k,v in manifestd.items():
-		if k.startswith('path_'):
-			if type(v)==str and v and not os.path.isabs(v):
-				manifestd[k]=os.path.join(manifestd['path_root'], v)
+	if make_path_abs:
+		for k,v in manifestd.items():
+			if k.startswith('path_'):
+				if type(v)==str and v and not os.path.isabs(v):
+					manifestd[k]=os.path.join(manifestd['path_root'], v)
 	
 	return manifestd
 
+def write_manifest(ofn, path_manifests=PATH_MANIFESTS, new_config={}):
+	import collections,configparser
+	
+	config = configparser.ConfigParser()
+	for path in path_manifests:
+		if not os.path.exists(path): continue
+		config.read(path)
+	if new_config:
+		for name,named in new_config.items():
+			config[name]=named
 
+	# sort
+	# Order the content of each section alphabetically
+	# for section in config._sections:
+		# config._sections[section] = collections.OrderedDict(sorted(config._sections[section].items(), key=lambda t: t[0]))
+	# Order all sections alphabetically
+	config._sections = collections.OrderedDict(sorted(config._sections.items(), key=lambda t: t[0] ))
 
-def load_manifest(force=True,corpus_name=None):
+	with open(ofn, 'w') as configfile:
+		config.write(configfile)
+
+def load_manifest(force=True,corpus_name=None,path_manifests=PATH_MANIFESTS):
 	if MANIFEST and not force: return MANIFEST
 
 	# read config
@@ -444,7 +486,7 @@ def load_manifest(force=True,corpus_name=None):
 	import configparser
 	config = configparser.ConfigParser()
 	config_d={}
-	for path in PATH_MANIFESTS:
+	for path in path_manifests:
 		if not os.path.exists(path): continue
 		config.read(path)
 

@@ -1812,10 +1812,21 @@ def check_copy_file(src,dst):
 	try:
 		if check_make_dir(os.path.dirname(dst)):
 			if input(f'\nSave\n    {src}\nto\n    {dst}\n[Y/n] ').strip()!='n':
-				# shutil.copyfile(src,dst)
+				shutil.copyfile(src,dst)
 				print('\n>> saved:',dst,'\n')
 	except (KeyboardInterrupt,EOFError) as e:
 		return False
+
+def check_move_file(src,dst):
+	try:
+		if check_make_dir(os.path.dirname(dst)):
+			if input(f'\nMove\n    {src}\nto\n    {dst}\n[Y/n] ').strip()!='n':
+				shutil.copyfile(src,dst)
+				os.unlink(src)
+				print('\n>> renamed:',dst,'\n')
+	except (KeyboardInterrupt,EOFError) as e:
+		return False
+
 
 def check_make_dirs(paths,consent=True):
 	l=[]
