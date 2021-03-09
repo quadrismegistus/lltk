@@ -11,6 +11,7 @@ xlrd
 htrc-feature-reader
 geopy
 moviepy
-tables
+tables==3.5.1
 tabulate
 pycurl
+numpy==1.16.2
