@@ -26,8 +26,11 @@ class Corpus(object):
 		self._texts=None
 		self._textd=None
 		for k,v in attrs.items(): setattr(self,k,v)
-		if load_meta: self.load_metadata()
-
+		if load_meta:
+			try:
+				self.load_metadata()
+			except Exception:
+				pass
 	#####
 	# Metadata
 	####

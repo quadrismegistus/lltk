@@ -395,15 +395,17 @@ def get_python_path(path_python,path_root):
 
 #### LOAD CORPUS FROM MANIFEST
 
-def load_corpus_manifest(name_or_id):
-	manifest=load_manifest(name_or_id)
-	if name_or_id in manifest:
-		manifestd=manifest[name_or_id]
-	else:
-		for cname,cd in manifest.items():
-			if cd['id']==name_or_id:
-				manifestd=cd
-				break
+def load_corpus_manifest(name_or_id,manifestd={}):
+	if not manifestd:
+		manifest=load_manifest(name_or_id)
+		if name_or_id in manifest:
+			manifestd=manifest[name_or_id]
+		else:
+			for cname,cd in manifest.items():
+				if cd['id']==name_or_id:
+					manifestd=cd
+					break
+	if not manifestd: return {}
 
 	if not manifestd.get('id'): manifestd['id']=name_or_id
 	if not manifestd.get('path_root'): manifestd['path_root']=manifestd['id']
