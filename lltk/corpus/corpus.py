@@ -316,6 +316,7 @@ class Corpus(object):
 
 	def install(self, ask=True, urls={}, force=False, part=None, flatten=False, parts=None, unzip=True, **attrs):
 		if not parts: parts=DOWNLOAD_PART_DEFAULTS
+		if type(parts)==str: parts=[p.strip().lower() for p in parts.split(',')]
 		if not part and parts:
 			for part in parts: self.install(ask=ask, urls=urls, part=part, parts=[], force=force, **attrs)
 			return
@@ -346,6 +347,7 @@ class Corpus(object):
 
 	def preprocess(self,parts=PREPROC_CMDS,verbose=True,**attrs):
 		if not parts: parts=PREPROC_CMDS
+		if type(parts)==str: parts=[p.strip().lower() for p in parts.split(',')]
 		for part in parts:
 			fname='preprocess_'+part
 			if not hasattr(self,fname): continue

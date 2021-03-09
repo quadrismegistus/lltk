@@ -57,33 +57,41 @@ def induct_corpus(name_or_id_or_C):
 	write_manifest(PATH_MANIFEST_GLOBAL, path_manifests=[PATH_MANIFEST_GLOBAL],new_config=new_config)
 	
 
-def showcorp(maxcolwidth=45,link=False,public_only=False):
-	print(status_corpora_markdown(maxcolwidth=maxcolwidth,link=link,public_only=public_only))
+def showcorp(**attrs):
+	return status_corpora_markdown(**attrs)
 
-def status_corpora_markdown(maxcolwidth=45,link=False,public_only=False):
-	df=status_corpora(link=link,public_only=public_only).set_index('name')
+def status_corpora_markdown(maxcolwidth=45,**attrs):
+	df=status_corpora(**attrs).set_index('name')
 	for col in df.columns:
 		df[col]=df[col].apply(lambda x: str(x)[:maxcolwidth])
 	return df.to_markdown()
 
-def status_corpora(parts=['metadata','freqs','txt','xml','raw'],link=True,public_only=True):
+def status_corpora(parts=['metadata','freqs','txt','xml','raw'],link=True,public_only=True,show_local=True,is_public=None):
 	ld=[]
 	for cname,C in corpora(load=True,incl_meta_corpora=False):
 		dx=defaultdict(str)
 		dx['name']=cname
 		dx['desc']=C.desc.strip() if (not link or not C.link.strip()) else f'[{C.desc.strip()}]({C.link.strip()})'
+		dx['license']=C.license_type if (not link or not C.license) else f'[{C.license_type.strip()}]({C.license.strip()})'
 		if not C.public and not C.private: continue
+		if is_public is True and not C.public: continue
+		if is_public is False and C.public: continue
 		for pk in parts: dx[pk]=''
 		ppub = {x.strip() for x in C.public.split(',') if x.strip()}
+		privpub = {x.strip() for x in C.private.split(',') if x.strip()}
 		for p in parts:
-			ppath=C.has_data(p)
-			if not link and ppath and (not public_only or p in ppub):
-				dx[p]='✓'
+			if public_only and p in privpub:
+				dx[p]='☂'
 			else:
-				url=C.has_url(p)
-				if url and (not public_only or p in ppub):
-					dx[p]+='↓' if not link else f'[↓]({url})'
-		# if not ppub and public_only: dx['raw']='☂'
+				ppath=C.has_data(p)
+				if show_local and ppath:
+					dx[p]='✓'
+				else:
+					url=C.has_url(p)
+					if url:
+						if not public_only or p in ppub:
+							dx[p]+='↓' if not link else f'[↓]({url})'
+			
 		ld.append(dx)
 	return pd.DataFrame(ld).fillna('')
 

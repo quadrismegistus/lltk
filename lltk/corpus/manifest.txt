@@ -13,17 +13,17 @@ name = BPO
 desc = British Periodicals Online
 link = https://proquest.libguides.com/britishperiodicals
 public = 
-private = raw
+private = raw,metadata
 license_type = Commercial
 
 [CLMET]
 id = clmet
 name = CLMET
 desc = Corpus of Late Modern English Texts
-link = https://perswww.kuleuven.be/~u0044428/clmet.htm
+link = https://perswww.kuleuven.be/~u0044428/clmet3_0.htm
 ext_xml = .txt
-public = 
-private = raw
+public = metadata,freqs
+private = txt,xml
 license = https://ota.bodleian.ox.ac.uk/repository/xmlui/page/licence-ota
 license_type = Academic
 
@@ -33,7 +33,7 @@ name = COCA
 desc = Corpus of Contemporary American English
 link = https://www.english-corpora.org/coca/
 public = 
-private = raw
+private = metadata,raw,freqs,txt
 license_type = Commercial
 
 [COHA]
@@ -42,8 +42,18 @@ name = COHA
 desc = Corpus of Historical American English
 link = https://www.english-corpora.org/coha/
 public = 
-private = raw
+private = metadata,raw,freqs,txt
 license_type = Commercial
+
+[CanonFiction]
+id = canon_fiction
+name = CanonFiction
+desc = Long history of fiction (Chadwyck + MarkMark + misc.)
+link = 
+public = 
+private = txt
+path_metadata = metadata.xls
+license_type = Mixed
 
 [Chadwyck]
 id = chadwyck
@@ -51,24 +61,24 @@ name = Chadwyck
 desc = Chadwyck-Healey Fiction Collections
 public = metadata,freqs
 link = http://collections.chadwyck.co.uk/marketing/list_of_all.jsp
-private = raw
-license_type = Commercial
+private = raw,txt,xml
+license_type = Mixed
 
 [ChadwyckDrama]
 id = chadwyck_drama
 name = ChadwyckDrama
 desc = Chadwyck-Healey Drama Collections
 link = http://collections.chadwyck.co.uk/marketing/list_of_all.jsp
-license_type = Commercial
-private = raw
+license_type = Mixed
+private = raw,txt,xml,metadata,freqs
 
 [ChadwyckPoetry]
 id = chadwyck_poetry
 name = ChadwyckPoetry
 desc = Chadwyck-Healey Poetry Collections
 link = http://collections.chadwyck.co.uk/marketing/list_of_all.jsp
-private = raw
-license_type = Commercial
+private = raw,txt,xml,metadata,freqs
+license_type = Mixed
 
 [Chicago]
 id = chicago
@@ -99,10 +109,10 @@ url_xml = https://www.dropbox.com/s/jy0o1cy37wioqqv/dta_xml.zip?dl=1
 id = dialnarr
 name = DialNarr
 desc = Dialogue and Narration separated in Chadwyck-Healey Novels
-link = 
+link = https://doi.org/10.1093/llc/fqx031
 public = metadata,freqs
 private = txt
-licence_type = Mixed
+license_type = Academic
 
 [ECCO]
 id = ecco
@@ -110,7 +120,7 @@ name = ECCO
 desc = Eighteenth Century Collections Online
 link = https://www.gale.com/intl/primary-sources/eighteenth-century-collections-online
 public = 
-private = raw
+private = raw,txt,xml,metadata,freqs
 license_type = Commercial
 
 [ECCO_TCP]
@@ -182,6 +192,7 @@ link =
 public =
 private =
 
+
 [GaleAmericanFiction]
 id = gale_amfic
 name = GaleAmericanFiction
@@ -190,114 +201,141 @@ link = https://www.gale.com/c/american-fiction-1774-1920
 url_freqs = https://www.dropbox.com/s/7tbwfcgbcincdi1/gale_amfic_freqs.zip?dl=1
 url_metadata = https://www.dropbox.com/s/9ysabqrrx05832u/gale_amfic_metadata.zip?dl=1
 public = metadata,freqs
+private = txt,raw
+license_type = Academic
+
 
 
 [GildedAge]
 id = gildedage
 name = GildedAge
 desc = U.S. Fiction of the Gilded Age
-link = 
+link = https://doi.org/10.1093/llc/fqv066
 url_metadata = https://www.dropbox.com/s/fg605k0cnebf70i/gildedage_metadata.zip?dl=1
 url_txt = https://www.dropbox.com/s/qnwbx488ftepuno/gildedage_txt.zip?dl=1
 public = metadata,txt,freqs
+license_type = Academic
+
 
 [Hathi]
 id = hathi
 name = Hathi
 desc = Hathi Trust Research Center
-link = 
+link = https://www.hathitrust.org/
 url_full_metadata = https://www.hathitrust.org/filebrowser/download/297178
-public = metadata,freqs
+#public = metadata,freqs
+license_type = Academic
+
 
 [HathiBio]
 id = hathi_bio
 name = HathiBio
 desc = Biographies from Hathi Trust
-link = 
+link = https://www.ideals.illinois.edu/handle/2142/99554
 url_metadata = https://www.dropbox.com/s/wth2i53gg0tq18a/hathi_bio_metadata.zip?dl=1
 public = metadata,freqs
+license_type = Academic
+
 
 [HathiEngLit]
 id = hathi_englit
 name = HathiEngLit
-desc = English Literature corpus from Hathi Trust
-link = 
+desc = Fiction, drama, verse word frequencies from Hathi Trust
+link = https://wiki.htrc.illinois.edu/display/COM/Word+Frequencies+in+English-Language+Literature
 url_freqs = https://www.dropbox.com/s/jm858ej78x7h0vk/hathi_englit_freqs.zip?dl=1
 url_metadata = https://www.dropbox.com/s/gnwuwkpy4jybr5r/hathi_englit_metadata.zip?dl=1
 public = metadata,freqs
+license_type = Academic
+
 
 [HathiEssays]
 id = hathi_essays
 name = HathiEssays
-desc = Volumes with "essay(s)" in title
-link = 
+desc = Hathi Trust volumes with "essay(s)" in title
+link = https://catalog.hathitrust.org/Search/Home
 path_freqs = ../hathi/freqs
 path_python = hathi/hathi.py
 public = metadata,freqs
+license_type = Academic
+
 
 [HathiLetters]
 id = hathi_letters
 name = HathiLetters
-desc = Volumes with "letter(s)" in title
-link = 
+desc = Hathi Trust volumes with "letter(s)" in title
+link = https://catalog.hathitrust.org/Search/Home
 path_freqs = ../hathi/freqs
 path_python = hathi/hathi.py
 public = metadata,freqs
+license_type = Academic
+
 
 [HathiNovels]
 id = hathi_novels
 name = HathiNovels
-desc = Volumes with "novel(s)" in title
-link = 
+desc = Hathi Trust volumes with "novel(s)" in title
+link = https://catalog.hathitrust.org/Search/Home
 path_freqs = ../hathi/freqs
 path_python = hathi/hathi.py
 public = metadata,freqs
+license_type = Academic
+
 
 [HathiProclamations]
 id = hathi_proclamations
 name = HathiProclamations
-desc = Volumes with "proclamation(s)" in title
-link = 
+desc = Hathi Trust volumes with "proclamation(s)" in title
+link = https://catalog.hathitrust.org/Search/Home
 path_freqs = ../hathi/freqs
 path_python = hathi/hathi.py
 public = metadata,freqs
+license_type = Academic
+
 
 [HathiSermons]
 id = hathi_sermons
 name = HathiSermons
-desc = Volumes with "sermon(s)" in title
-link = 
+desc = Hathi Trust volumes with "sermon(s)" in title
+link = https://catalog.hathitrust.org/Search/Home
 path_freqs = ../hathi/freqs
 path_python = hathi/hathi.py
 public = metadata,freqs
+license_type = Academic
+
 
 [HathiStories]
 id = hathi_stories
 name = HathiStories
-desc = Volumes with "story/stories" in title
-link = 
+desc = Hathi Trust volumes with "story/stories" in title
+link = https://catalog.hathitrust.org/Search/Home
 path_freqs = ../hathi/freqs
 path_python = hathi/hathi.py
 public = metadata,freqs
+license_type = Academic
+
 
 [HathiTales]
 id = hathi_tales
 name = HathiTales
-desc = Volumes with "tale(s)" in title
-link = 
+desc = Hathi Trust volumes with "tale(s)" in title
+link = https://catalog.hathitrust.org/Search/Home
 path_freqs = ../hathi/freqs
 path_python = hathi/hathi.py
 public = metadata,freqs
 url_metadata = https://www.dropbox.com/s/hig9r9igcxp95sy/hathi_tales_metadata.zip?dl=1
+license_type = Academic
+
 
 [HathiTreatises]
 id = hathi_treatises
 name = HathiTreatises
-desc = Volumes with "treatise(s)" in title
-link = 
+desc = Hathi Trust volumes with "treatise(s)" in title
+link = https://catalog.hathitrust.org/Search/Home
 path_freqs = ../hathi/freqs
 path_python = hathi/hathi.py
 public = metadata,freqs
+license_type = Academic
+
 
 [InternetArchive]
 id = internet_archive
@@ -308,41 +346,54 @@ path_xml = meta_xml
 url_metadata = https://www.dropbox.com/s/yymc8t060eik7bt/internet_archive_metadata.zip?dl=1
 url_txt = https://www.dropbox.com/s/bs1ec7k9kk2jkrt/internet_archive_txt.zip?dl=1
 public = metadata,freqs,txt
+license_type = Free
+
 
 [LitLab]
 id = litlab
 name = LitLab
 desc = Literary Lab Corpus of 18th and 19th Century Novels
-link = 
+link = https://litlab.stanford.edu/LiteraryLabPamphlet11.pdf
 url_metadata = https://www.dropbox.com/s/ruur7jrckhm8nqz/litlab_metadata.zip?dl=1
 public = metadata,freqs
+private = txt
+license_type = Academic
+
 
 [MarkMark]
 id = markmark
 name = MarkMark
 desc = Mark Algee-Hewitt's and Mark McGurl's 20th Century Corpus
-link = 
+link = https://litlab.stanford.edu/LiteraryLabPamphlet8.pdf
 url_freqs = https://www.dropbox.com/s/xbjugeqndquph55/markmark_freqs.zip?dl=1
 url_metadata = https://www.dropbox.com/s/y5r316u8fzorx3g/markmark_metadata.zip?dl=1
-url_txt = https://www.dropbox.com/s/47olbuj3esqa6yf/markmark_txt.zip?dl=1
 public = metadata,freqs
+private = txt
+license_type = Academic
+
 
 [NewYorker]
 id = new_yorker
 name = NewYorker
 desc = New Yorker archives, 1925-2017
 link = 
+public = 
+private =
+license_type = Academic
+
 
 [OldBailey]
 id = oldbailey
 name = OldBailey
 desc = Old Bailey Online
-link = 
+link = https://www.oldbaileyonline.org/
 url_freqs = https://www.dropbox.com/s/rwgt7q1f6pl65jh/oldbailey_freqs.zip?dl=1
 url_metadata = https://www.dropbox.com/s/zc6osrvsgp0n1m4/oldbailey_metadata.zip?dl=1
 url_txt = https://www.dropbox.com/s/yjsjnk4eyprifem/oldbailey_txt.zip?dl=1
 url_xml = https://www.dropbox.com/s/90bsbu7re5tnbtp/oldbailey_xml.zip?dl=1
 public = metadata,freqs,txt,xml
+license_type = Free
+license = https://creativecommons.org/licenses/by-nc/4.0/
 
 [PMLA]
 id = pmla
@@ -351,62 +402,75 @@ desc =
 link = 
 path_python = jstor_dfr/jstor_dfr.py
 public = 
+private =
+license_type = Academic
 
 [RavenGarside]
 id = ravengarside
 name = RavenGarside
 desc = Raven & Garside's Bibliography of English Novels, 1770-1830
-link = 
-public = metadata
+link = https://catalog.hathitrust.org/Record/004098100
+public = 
+private = metadata
 path_metadata = metadata.xlsx
-url_metadata = https://www.dropbox.com/s/w358lp0tx8rx0gk/ravengarside_metadata.zip?dl=1
+license_type = Academic
 
 [SOTU]
 id = sotu
 name = SOTU
 desc = State of the Union Addresses
-link = 
+link = https://www.kaggle.com/rtatman/state-of-the-union-corpus-1989-2017
 url_freqs = https://www.dropbox.com/s/34gz1aifsot65fw/sotu_freqs.zip?dl=1
 url_txt = https://www.dropbox.com/s/w73qio0thhfzdpx/sotu_txt.zip?dl=1
+url_metadata = https://www.dropbox.com/s/6gyueael6smbxyg/sotu_metadata.zip?dl=1
 public = metadata,freqs,txt
+license_type = Free
+
 
 [Sellars]
 id = sellars
 name = Sellars
 desc = 19th Century Texts compiled by Jordan Sellars
-link = 
+link = http://journalofdigitalhumanities.org/1-2/the-emergence-of-literary-diction-by-ted-underwood-and-jordan-sellers/
 url_freqs = https://www.dropbox.com/s/k293ip4wrswhl8j/sellars_freqs.zip?dl=1
 url_metadata = https://www.dropbox.com/s/7mos2k5qx8bdc1l/sellars_metadata.zip?dl=1
 url_txt = https://www.dropbox.com/s/j7e5my3s20n3xq4/sellars_txt.zip?dl=1
 public = metadata,freqs,txt
+license_type = Free
+
 
 [SemanticCohort]
 id = semantic_cohort
 name = SemanticCohort
-desc = Corpus for "Semantic Cohort Method" (Literary Lab Pamphlet 4, 2012)
-link = 
+desc = Corpus used in "Semantic Cohort Method" (2012)
+link = https://litlab.stanford.edu/LiteraryLabPamphlet8.pdf
 url_data = https://www.dropbox.com/s/tnqna3bdsiovtnt/semantic_cohort_data.zip?dl=1
 url_metadata = https://www.dropbox.com/s/f6imhtfzgpf7tvz/semantic_cohort_metadata.zip?dl=1
-public = metadata,freqs,txt,data
+public = metadata,data
+license_type = Free
+
 
 [Spectator]
 id = spectator
 name = Spectator
 desc = The Spectator (1711-1714)
-link = 
+link = http://www.gutenberg.org/ebooks/12030
 url_freqs = https://www.dropbox.com/s/sil5q31833rz4n0/spectator_freqs.zip?dl=1
 url_metadata = https://www.dropbox.com/s/3cw2lcza68djzj1/spectator_metadata.zip?dl=1
 url_txt = https://www.dropbox.com/s/goj6xbom3qnv5u5/spectator_txt.zip?dl=1
 public = metadata,freqs,txt
+license_type = Free
+
 
 [TedJDH]
 id = tedjdh
 name = TedJDH
-desc = From Ted Underwood & Jordan Sellars, "Emergence of Literary Diction", Journal of Digital Humanities (2012)
-link = 
+desc = Corpus used in "Emergence of Literary Diction" (2012)
+link = http://journalofdigitalhumanities.org/1-2/the-emergence-of-literary-diction-by-ted-underwood-and-jordan-sellers/
 url_metadata = https://www.dropbox.com/s/ibjl7x0eyyz5zm6/tedjdh_metadata.zip?dl=1
 url_txt = https://www.dropbox.com/s/8ug3h24h5bggnx7/tedjdh_txt.zip?dl=1
 public = metadata,freqs,txt
+license_type = Free
 
 [TxtLab]
 id = txtlab
@@ -418,4 +482,4 @@ url_metadata = https://www.dropbox.com/s/eh33qy6bcm7rvcp/txtlab_metadata.zip?dl=
 url_raw = https://github.com/christofs/txtlab450/archive/master.zip
 url_txt = https://www.dropbox.com/s/q4bm4yf76zgumi6/txtlab_txt.zip?dl=1
 public = metadata,freqs,txt,raw
-
+license_type = Free
