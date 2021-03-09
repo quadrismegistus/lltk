@@ -6,7 +6,10 @@ def corpora(load=True,load_meta=False,incl_meta_corpora=True):
 	manifest=load_manifest()
 	for corpus_name in sorted(manifest):
 		if not incl_meta_corpora and manifest[corpus_name]['is_meta']: continue
-		corpus_obj=load_corpus(corpus_name,load_meta=load_meta) if load else manifest[corpus_name]
+		try:
+			corpus_obj=load_corpus(corpus_name,load_meta=load_meta) if load else manifest[corpus_name]
+		except Exception:
+			continue
 		# print(corpus_name, corpus_obj)
 		if corpus_obj is None: continue
 		yield (corpus_name, corpus_obj)
