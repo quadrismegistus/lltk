@@ -200,8 +200,10 @@ def main():
 		elif args.cmd=='induct' and args.corpus:
 			induct_corpus(corpus)
 
+		elif args.cmd=='install' and args.corpus:
+			corpus.install(ask=not args.quiet,parts=parts if parts else ZIP_PART_DEFAULTS)
+
 		elif args.cmd=='upload' and args.corpus:
-			corpus = load_corpus(args.corpus)
 			corpus.upload(ask=not args.quiet,parts=parts if parts else ZIP_PART_DEFAULTS)
 
 		elif args.cmd=='share' and args.corpus:

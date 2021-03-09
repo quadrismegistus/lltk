@@ -57,5 +57,6 @@ class ECCO_TCP(TCP):
 
     def load_metadata(self,*x,**y):
         meta=super().load_metadata(*x,**y)
-        meta['pubcity']=meta.pubplace.apply(lambda x: zeropunc(x).strip().split()[0])
+        if 'pubplace' in meta.columns:
+            meta['pubcity']=meta.pubplace.apply(lambda x: zeropunc(x).strip().split()[0])
         return meta
