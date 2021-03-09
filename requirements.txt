@@ -13,3 +13,4 @@ geopy
 moviepy
 tables
 tabulate
+pycurl
