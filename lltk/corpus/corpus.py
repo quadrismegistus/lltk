@@ -56,7 +56,7 @@ class Corpus(object):
 		if self._metadf is None:	
 			# meta=read_df(self.path_metadata).set_index(self.COL_ID,drop=False).fillna('')
 			if not os.path.exists(self.path_metadata):
-				print(f'!!! No metadata file exists at {self.path_metadata}')
+				# print(f'!!! No metadata file exists at {self.path_metadata}')
 				return pd.DataFrame() 
 			meta=read_df(self.path_metadata).fillna('')
 			if clean: meta=clean_meta(meta)
@@ -541,8 +541,10 @@ class Corpus(object):
 	def mfw(self,*x,**y):
 		y['keep_periods']=False
 		df=self.mfw_df(*x,**y)
-		return list(df.word)
-
+		try:
+			return list(df.word)
+		except Exception:
+			return []
 
 
 	def preprocess_mfw(self,
@@ -556,7 +558,8 @@ class Corpus(object):
 			n=None,
 			estimate=True,
 			force=False,
-			verbose=False
+			verbose=False,
+			try_create_freqs=True
 		):
 		"""
 		From tokenize_texts()
@@ -581,9 +584,25 @@ class Corpus(object):
 				ptdx={col_group:period, 'path_freqs':t.path_freqs}
 				paths_freqs.append(ptdx)
 		if not len(paths_freqs):
-			if verbose:
-				self.log('No freqs files found to generate MFW')
-			return
+			if verbose: self.log('No freqs files found to generate MFW')
+			if try_create_freqs:
+				self.preprocess_freqs()
+				return self.preprocess_mfw(
+					yearbin=yearbin,
+					year_min=year_min,
+					year_max=year_max,
+					by_ntext=by_ntext,
+					by_fpm=by_fpm,
+					num_proc=num_proc,
+					col_group=col_group,
+					n=n,
+					estimate=estimate,
+					force=force,
+					verbose=verbose,
+					try_create_freqs=try_create_freqs,
+					tried_create_freqs=try_create_freqs
+				)
+			return pd.DataFrame()
 
 		pathdf=pd.DataFrame(paths_freqs)
 		# run
