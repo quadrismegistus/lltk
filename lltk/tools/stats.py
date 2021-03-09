@@ -144,3 +144,22 @@ def linreg(X, Y):
 	#print "R^2= %g" % RR
 	#print "s^2= %g" % ss
 	return a, b, RR
+
+
+def dtm2tf(df_dtm):
+    # rows
+    rowsums = df_dtm.sum(axis='rows')
+    # divide by rows
+    return df_dtm / rowsums
+
+
+def dtm2tfidf(dtm):
+    import numpy as np,pandas as pd
+    dtm_tf = dtm2tf(dtm)
+
+    # idf
+    num_docs = len(dtm_tf)
+    num_docs_per_word = dtm_tf[dtm_tf>0].count()
+    idf=np.log10(num_docs / num_docs_per_word)
+
+    return dtm_tf.apply(lambda x: x * idf,axis='columns')

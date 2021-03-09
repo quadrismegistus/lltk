@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import
 
-from lltk.text import Text
-from lltk.corpus import Corpus
+from lltk.text.text import Text
+from lltk.corpus.corpus import Corpus
 import os
 
 class TextBPO(Text):

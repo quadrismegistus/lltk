@@ -1,6 +1,6 @@
 import os
-from lltk.text import Text
-from lltk.corpus import Corpus
+from lltk.text.text import Text
+from lltk.corpus.corpus import Corpus
 import tarfile
 import bs4
 import lltk

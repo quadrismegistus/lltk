@@ -2,8 +2,8 @@ import os,json,bs4
 import numpy as np
 
 import lltk
-from lltk.text import Text
-from lltk.corpus import Corpus
+from lltk.text.text import Text
+from lltk.corpus.corpus import Corpus
 from zipfile import ZipFile
 from tqdm import tqdm
 import shutil
@@ -85,7 +85,7 @@ class JstorDFR(Corpus):
 		# ?
 		return meta
 
-	def install_metadata(self,**attrs):
+	def preprocess_metadata(self,**attrs):
 		import pandas as pd
 		objs=[]
 		for root,dirs,fns in os.walk(self.path_xml_meta):

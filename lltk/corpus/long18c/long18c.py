@@ -2,8 +2,8 @@ from __future__ import absolute_import
 from __future__ import print_function
 # -*- coding: utf-8 -*-
 
-from lltk.corpus import Corpus
-from lltk.text import Text
+from lltk.corpus.corpus import Corpus
+from lltk.text.text import Text
 import os
 
 class Long18C(Corpus):

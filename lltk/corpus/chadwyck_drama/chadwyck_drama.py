@@ -4,8 +4,8 @@ from __future__ import print_function
 
 import codecs,os
 from lltk import tools
-from lltk.text import Text
-from lltk.corpus import Corpus
+from lltk.text.text import Text
+from lltk.corpus.corpus import Corpus
 import six
 
 

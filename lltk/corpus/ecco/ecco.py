@@ -1,78 +1,9 @@
-from __future__ import absolute_import
-from __future__ import print_function
-# -*- coding: utf-8 -*-
+from lltk.imports import *
 
-### TEXT CLASSES
 
-import os,codecs
-from lltk import tools
-
-from lltk.text import Text
-from lltk.corpus.tcp import TextTCP,TextSectionTCP
 
 
 class TextECCO(Text):
-	@property
-	def title(self):
-		return self.meta['fullTitle']
-
-	@property
-	def author(self):
-		author1=self.meta.get('author','')
-		if author1: return author1
-		return self.meta.get('marcName','')
-
-	@property
-	def length(self):
-		try:
-			return float(self.meta['num_words_adorn'])
-		except (ValueError,KeyError) as e:
-			return 0
-
-	@property
-	def year_first_pub(self):
-		opts=['year']
-		for k in self.meta:
-			if 'cluster_first_pub' in k:
-				opts+=[k]
-		vals = []
-		for x in opts:
-			try:
-				v=int(self.meta[x])
-				vals+=[v]
-			except ValueError:
-				pass
-		if not vals: return None
-		return min(vals)
-
-	def text_plain(self,root_dir='/Volumes/sherlock/ecco/'): # root_dir=None):  ### SETTING DEFAULT TO SHERLOCK: NOTICE OF HARDWIRING
-		if not root_dir: root_dir=self.corpus.path_txt
-		fnfn = os.path.join(root_dir, self.id, 'txt', self.id.split('/')[-1]+'.clean.txt')
-		if not os.path.exists(fnfn): return
-		return codecs.open(fnfn,encoding='utf-8').read()
-
-
-
-
-class TextECCO_TCP(TextTCP):
-	@property
-	def meta_by_file(self):
-		if not hasattr(self,'_meta'):
-			fnfn=self.path_header
-			mtxt=codecs.open(fnfn,encoding='utf-8').read()
-			md=self.extract_metadata(mtxt)
-			md['fnfn_xml']=self.fnfn
-			md['id']=self.id
-			md['genre'],md['medium']=self.return_genre()
-			del md['notes']
-			self._meta=md
-		return self._meta
-
-
-
-
-
-class TextECCO_LitLang(Text):
 	@property
 	def meta_by_file(self):
 		if not hasattr(self,'_meta'):
@@ -261,137 +192,11 @@ class TextECCO_LitLang(Text):
 		return plain_text
 
 
-def clean_text(txt):
-	txt=txt.replace(u'\u2223','') # weird kind of | character
-	txt=txt.replace(u'\u2014','-- ') # em dash
-	return txt
 
-
-
-
-### CORPUS CLASSES
-
-import os
-from lltk import tools
-
-from lltk.corpus import Corpus
-from lltk.corpus.tcp import TCP
-
-
-class ECCO_TCP(TCP):
-	EXT_XML = '.xml'
-	TEXT_CLASS=TextECCO_TCP
-	TEXT_SECTION_CLASS=TextSectionTCP
-
-	@property
-	def metadata(self):
-		meta=super().metadata
-		return meta.query('1700<=year<1800')
-def fix_genre(genre,title):
-    if genre in {'Verse'}: return genre
-    title_l=title.lower()
-    if 'essay' in title_l: return 'Essay'
-    if 'treatise' in title_l: return 'Treatise'
-    if 'sermon' in title_l: return 'Sermon'
-    if 'letters' in title_l: return 'Letters'
-    if 'proclamation' in title_l: return 'Government'
-    if 'parliament' in title_l: return 'Government'
-    return genre
 
 class ECCO(Corpus):
 	TEXT_CLASS=TextECCO
-	PATH_TXT = 'ecco/_txt_ecco'
-	EXT_TXT='.txt'
-	PATH_METADATA = 'ecco/corpus-metadata.ECCO.txt'
-	PATHS_REL_DATA = ['ecco/_data_rels_ecco/data.rel.reprintOf.txt','ecco/_data_rels_ecco/data.rel.nextVolOf.txt']
-	#PATHS_REL_DATA = ['ecco/_data_rels_ecco/data.rel.nextVolOf.txt']
-	PATHS_TEXT_DATA = ['ecco/_data_texts_ecco/data.etc_text_info.ECCO.txt', 'ecco/_data_texts_ecco/data.estc+tcp.ECCO.txt']
-	#PATH_FREQ_TABLE = 'ecco/freqs/data.freqs.ECCO.worddb.table.txt.gz'
-	PATH_FREQ_TABLE = {
-						25000:'ecco/freqs/data.freqs.ECCO.worddb.table.txt.gz',
-						10000: 'ecco/freqs/data.freqs.ECCO.worddb.table.10000MFW.txt.gz',
-						5000: 'ecco/freqs/data.freqs.ECCO.worddb.table.5000MFW.txt.gz',
-						1000: 'ecco/freqs/data.freqs.ECCO.worddb.table.1000MFW.txt.gz'
-						}
-
-
-	year_start=1700
-	year_end=1800
-
-	@property
-	def metadata(self):
-		meta=super().metadata
-		meta['title']=meta['fullTitle']
-		meta['genre']='Print'
-		# meta['genre']=meta['title'].apply(lambda x: fix_genre('Print',x))
-		return meta.query(f'{self.year_start}<=year<{self.year_end}')
-
-	def __init__(self):
-		super(ECCO,self).__init__('ECCO',path_txt=None,ext_txt=None,path_metadata=self.PATH_METADATA,paths_rel_data=self.PATHS_REL_DATA,paths_text_data=self.PATHS_TEXT_DATA,path_freq_table=self.PATH_FREQ_TABLE)
-		self.path = os.path.dirname(__file__)
-
-	def match_estc(self):
-		from lltk.corpus.estc import ESTC
-		estc=ESTC()
-		self.match_records(estc, id_field_1='ESTCID', id_field_2='id_estc', match_by_id=True, match_by_title=False)
-
-
-
-
-
-
-class ECCO_LitLang(Corpus):
-	TEXT_CLASS=TextECCO_LitLang
-	PATH_XML = 'ecco/_xml_ecco_litlang'
-	PATH_TXT = 'ecco/_txt_ecco_litlang'
-	PATH_INDEX = 'ecco/_index_ecco_litlang'
 	EXT_XML = '.xml.gz'
-	PATH_METADATA = 'ecco/corpus-metadata.ECCO_LitLang.xlsx'
-
-
-	def __init__(self):
-		super(ECCO_LitLang,self).__init__('ECCO_LitLang',path_txt=self.PATH_TXT,path_metadata=self.PATH_METADATA)
-		self.tcp = ECCO_TCP()
-		self.path = os.path.dirname(__file__)
-
-	# def texts(self,text_ids=None):
-	# 	if not hasattr(self,'_texts'):
-	# 		if not text_ids: text_ids=self.text_ids
-	# 		self._texts=[TextECCO(idx,self) for idx in text_ids]
-	# 	return self._texts
-
-	def save_metadata(self):
-		print('>> generating metadata...')
-		texts = self.texts()
-		num_texts = len(texts)
-
-		def meta(text):
-			return text.meta
-
-		def writegen():
-			from gevent.pool import Pool
-			pool=Pool(50)
-			for metad in pool.imap(meta,texts):
-				yield metad
-
-		tools.writegen('corpus-metadata.'+self.name+'.txt', writegen)
-
-
-	@property
-	def text_ids_by_fn(self):
-		if not hasattr(self, '_text_ids'):
-			fns=[]
-			for folder in os.listdir(self.path_xml):
-				path_folder = os.path.join(self.path_xml,folder)
-				if os.path.isdir(path_folder):
-					for fn in os.listdir(path_folder):
-						fnx = os.path.join(folder,fn).replace(self.ext_xml,'')
-						fns+=[fnx]
-			self._text_ids=fns
-		return self._text_ids
-
-	def mfw(self,**attrs): return self.tcp.mfw(**attrs)
-
 
 	def match_estc(self):
 		from lltk.corpus.estc import ESTC

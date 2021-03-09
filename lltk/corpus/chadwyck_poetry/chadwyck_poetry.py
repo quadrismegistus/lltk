@@ -10,7 +10,7 @@ META_KEYS = ['_path', 'a1', 'alias', 'aliasinv', 'anote', 'argument', 'attauth',
 ### TEXT CLASS
 import codecs,os
 from lltk import tools
-from lltk.text import Text
+from lltk.text.text import Text
 from lltk.tools import get_spelling_modernizer,modernize_spelling_in_txt
 
 STANZA_TAGS = ['stanza','versepara','pdiv']
@@ -114,7 +114,7 @@ class TextChadwyckPoetry(Text):
 
 
 ### CORPUS CLASS
-from lltk.corpus import Corpus
+from lltk.corpus.corpus import Corpus
 import os,codecs,re
 from lltk import tools
 

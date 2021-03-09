@@ -3,9 +3,9 @@ from __future__ import absolute_import
 
 import os
 
-from lltk.corpus import Corpus
+from lltk.corpus.corpus import Corpus
 import codecs
-from lltk.text import Text
+from lltk.text.text import Text
 
 class GildedAge(Corpus):
 	PATH_TXT = 'gildedage/_txt_gildedage'

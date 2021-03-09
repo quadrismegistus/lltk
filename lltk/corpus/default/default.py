@@ -1,5 +1,5 @@
 import os
-from lltk.corpus import Corpus
+from lltk.corpus.corpus import Corpus
 
 class PlainTextCorpus(Corpus):
 	pass

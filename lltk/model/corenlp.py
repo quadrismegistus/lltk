@@ -25,7 +25,7 @@ def get_path_corenlp():
     path = lltk.config.get('PATH_CORENLP',PATH_CORENLP_DEFAULT)
     return path
 
-def install():
+def preprocess():
     try:
         import stanza
     except ImportError:

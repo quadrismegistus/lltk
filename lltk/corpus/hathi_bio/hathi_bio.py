@@ -1,6 +1,6 @@
 import os
-from lltk.text import Text
-from lltk.corpus import Corpus
+from lltk.text.text import Text
+from lltk.corpus.corpus import Corpus
 from tqdm import tqdm
 from lltk import tools
 import gzip,tarfile,sys
@@ -157,7 +157,7 @@ class HathiBio(Corpus):
 		self.compile_data(parallel=attrs.get('parallel'), sbatch=attrs.get('sbatch'))
 
 
-	def install(self,parts=['metadata','txt','freqs','mfw','dtm'],force=False,**attrs):
+	def preprocess(self,parts=['metadata','txt','freqs','mfw','dtm'],force=False,**attrs):
 		"""
 		This function is used to boot the corpus, taking it from its raw (just downloaded) to refined condition:
 			- metadata: Save metadata (if necessary)

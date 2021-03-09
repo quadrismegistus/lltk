@@ -1,34 +1,18 @@
-from __future__ import absolute_import
-# -*- coding: utf-8 -*-
-
-#### TEXT CLASS
-import codecs,os
-from lltk import tools
-from lltk.text import Text,text_plain_from_xml,clean_text
-from lltk.corpus import PATH_CORPUS
+from lltk.imports import *
 
 BAD={'figdesc','head','edit','note','l'}
 OK={'p'}
 
-class TextChadwyck(Text):
 
-	@property
-	def genre(self): return 'Fiction'
-
-	@property
-	def nation(self):
-		return 'American' if 'America' in self.id else 'British'
-
-	def text_plain_from_xml(self,txt=None,**attrs):
-		if not txt: txt=self.text_xml
-		return text_plain_from_xml(txt,body_tag='doc',BAD=BAD,OK=OK)
+def xml2txt_chadwyck(xml):
+	return xml2txt(xml,
+		OK=OK,
+		BAD=BAD,
+		body_tag='doc'
+	)
 
 
-def test_split():
-	raw=open(os.path.join(PATH_CORPUS,Chadwyck.ID,'raw','Eighteenth-Century_Fiction','sterne.01.new')).read()
-	for x in split_raw_xml_into_chapters(raw):
-		print(x)
-		print('\n\n')
+class TextChadwyck(Text): pass
 
 
 def split_raw_xml_into_chapters(xml_str,chapter_tags=['div5','div4','div3','div2','div1','div0'],para_tag='p',verse_tag='l',keep_verse=True,modernize_spelling=True):
@@ -146,100 +130,63 @@ def get_meta_from_raw_xml(xml_str,xml_fn):
 
 def compile_text(obj):
 	fnfn,idx,path_corpus = obj
-
-	import sys
-	sys.setrecursionlimit(10000000)
-
-
-	import json
-	chapters_meta=[]
+	old=[]
 	with open(fnfn) as f:
 		xml_str=f.read()
-
 		# overall meta
 		book_meta = get_meta_from_raw_xml(xml_str,fnfn)
 		if not book_meta.get('idref'):
 			print('missing id:',book_meta)
 			return []
-
-	
-		for chapter_meta,chapter_raw,chapter_xml,chapter_txt in split_raw_xml_into_chapters(xml_str):
-			# print(chapter_meta)
-			all_meta = {**book_meta, **chapter_meta}
-
-			# get id
-			chapid=str(chapter_meta.get('index',0)).zfill(4)
-			#path_text=path_chap=os.path.join(path_book,chapid)
-			#if not os.path.exists(path_text): os.makedirs(path_text)
-			fullidx = os.path.join(idx,chapid)
-
-			all_meta['id']=fullidx
-
-
-			# write meta, xml, txt
-			path_txt = os.path.join(path_corpus, 'txt', idx, chapid +'.txt')
-			path_raw = os.path.join(path_corpus, 'sgm', idx, chapid +'.sgm')
-			path_xml = os.path.join(path_corpus, 'xml', idx, chapid +'.xml')
-
-			for x in [path_txt, path_raw, path_xml]:
-				xdir = os.path.dirname(x)
-				if not os.path.exists(xdir): os.makedirs(xdir)
-
-			with open(path_txt,'w') as of: of.write(chapter_txt)
-			with open(path_raw,'w') as of: of.write(chapter_raw)
-			with open(path_xml,'w') as of: of.write(chapter_xml)
-
-			chapters_meta+=[all_meta]
-	return chapters_meta
+		book_meta['id']=idx
+		path_xml = os.path.join(path_corpus, 'xml', idx+'.xml')
+		opath = os.path.dirname(path_xml)
+		if not os.path.exists(opath):
+			try:
+				os.makedirs(opath)
+			except FileExistsError:
+				pass
+		with open(path_xml,'w') as of: of.write(xml_str)
+		old.append(book_meta)
+	return old
 	
 
 
 ### CORPUS CLASS
-from lltk.corpus import Corpus
+from lltk.corpus.corpus import Corpus
 class Chadwyck(Corpus):
-	ID='chadwyck'
 	TEXT_CLASS=TextChadwyck
-	PATH_TXT = 'chadwyck/_txt_chadwyck'
-	PATH_XML = 'chadwyck/_xml_chadwyck'
-	PATH_METADATA = 'chadwyck/corpus-metadata.Chadwyck.xlsx'
-	EXT_XML='.xml'
-	EXT_TXT='.txt'
-
-	def __init__(self):
-		super(Chadwyck,self).__init__('Chadwyck',path_txt=self.PATH_TXT,path_xml=self.PATH_XML,path_metadata=self.PATH_METADATA,ext_xml=self.EXT_XML,ext_txt=self.EXT_TXT)
-		self.path = os.path.dirname(__file__)
+	XML2TXT=xml2txt_chadwyck
 
 	# compile from raw
 	def compile(self,raw_ext='.new',**y):
 		import pandas as pd
-
 		# make sure I have it
-		self.compile_get_raw()
-
+		self.compile_download()
 		# walk
 		fnfns=[]
 		ids=[]
 		for (root,dirs,files) in os.walk(self.path_raw, topdown=False):
 			for fn in files:
-				# print(fn)
 				if not fn.endswith(raw_ext): continue
 				fnfn=os.path.join(root,fn)
 				fnfns+=[fnfn]
 				ids+=[os.path.splitext(fnfn.split('/raw/')[-1])[0]]
-		
-		# print(fnfns)
-		# return
-		objs = [(fnfn,idx,self.path_home) for fnfn,idx in zip(fnfns,ids)]
-		
-		res_lld=tools.pmap(compile_text,objs,num_proc=4)
+		objs = [
+			(fnfn,idx,self.path_home)
+			for fnfn,idx in zip(fnfns,ids)
+		]
+		res_lld=tools.pmap(compile_text,objs,num_proc=DEFAULT_NUM_PROC)
 		res_ld = [d for ld in res_lld for d in ld]
-		# all_meta=[chap_meta for meta in res for chap_meta in meta]
-		# tools.write2(self.path_metadata,all_meta)
-
-		# compile metadata
-		res_df = pd.DataFrame(res_ld).set_index('id').to_csv(self.path_metadata)
-
-
+		res_df = pd.DataFrame(res_ld).set_index('id')
+		res_df = fix_meta(res_df)
+		
+		# Some adds/fixes
+		res_df['nation']=res_df.reset_index().id.apply(lambda idx: 'American' if 'America' in idx else 'British')
+		
+		save_df(res_df, self.path_metadata)
+		# res_df=pd.DataFrame(res_ld)
+		return res_df
 
 def sens_sens():
 	return Chadwyck().textd['Nineteenth-Century_Fiction/ncf0204.08']

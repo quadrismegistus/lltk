@@ -1,7 +1,7 @@
 from __future__ import absolute_import
 import os
-from lltk.corpus import Corpus
-from lltk.text import Text
+from lltk.corpus.corpus import Corpus
+from lltk.text.text import Text
 
 
 

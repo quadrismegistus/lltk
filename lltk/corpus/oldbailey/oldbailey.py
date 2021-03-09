@@ -5,7 +5,7 @@ from __future__ import print_function
 
 import codecs,os
 
-from lltk.text import Text
+from lltk.text.text import Text
 
 class TextOldBailey(Text):
 	STANZA_TAGS = ['stanza','versepara','pdiv']
@@ -52,7 +52,7 @@ class TextOldBailey(Text):
 
 
 
-from lltk.corpus import Corpus
+from lltk.corpus.corpus import Corpus
 import os,codecs,re
 from lltk import tools
 

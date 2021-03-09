@@ -1,7 +1,7 @@
 from __future__ import absolute_import
 
-from lltk.corpus import Corpus,load_corpus
-from lltk.text import Text
+from lltk.corpus.corpus import Corpus,load_corpus
+from lltk.text.text import Text
 import os
 
 """
@@ -17,7 +17,7 @@ class LitHist(Corpus):
 """
 
 
-from lltk.corpus import CorpusMeta,name2corpus
+from lltk.corpus.corpus import CorpusMeta,name2corpus
 import os
 
 def lithist_load_corpus(name,medium={},genre={}):

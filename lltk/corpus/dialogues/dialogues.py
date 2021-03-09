@@ -5,7 +5,7 @@ from __future__ import absolute_import
 
 #### TEXT CLASS
 import codecs,os
-from lltk.text import Text
+from lltk.text.text import Text
 
 class TextEnglishDialogues(Text):
 	STANZA_TAGS = ['stanza','versepara','pdiv']
@@ -66,7 +66,7 @@ class TextEnglishDialogues(Text):
 
 ### CORPUS CLASS
 
-from lltk.corpus import Corpus
+from lltk.corpus.corpus import Corpus
 import os,codecs,re
 from lltk import tools
 

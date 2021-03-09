@@ -1,6 +1,6 @@
 import os
-from lltk.text import Text
-from lltk.corpus import Corpus
+from lltk.text.text import Text
+from lltk.corpus.corpus import Corpus
 
 ########################################################################################################################
 # [SOTU]
@@ -215,7 +215,7 @@ class SOTU(Corpus):
 		"""
 		return super().download(**attrs)
 
-	def install(self,parts=['metadata','txt','freqs','mfw','dtm'],force=False,**attrs):
+	def preprocess(self,parts=['metadata','txt','freqs','mfw','dtm'],force=False,**attrs):
 		"""
 		This function is used to boot the corpus, taking it from its raw (just downloaded) to refined condition:
 			- metadata: Save metadata (if necessary)

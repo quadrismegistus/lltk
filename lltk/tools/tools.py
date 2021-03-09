@@ -1,21 +1,6 @@
-from __future__ import absolute_import
-from __future__ import print_function
-import codecs,configparser,os,re
-import six
-from six.moves import range
-from six.moves import zip
-from functools import reduce
-from smart_open import open
-import shutil,os,json,sys,pickle,random
-try:
-	input = raw_input
-except NameError:
-	pass
-import urllib, tempfile
-from datetime import datetime
-		
+from lltk.imports import *
+import six,shutil
 
-from os.path import expanduser
 HOME=expanduser("~")
 LLTK_ROOT = LIT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
@@ -34,6 +19,23 @@ PATH_DEFAULT_CONF=os.path.abspath(os.path.join(LIT_ROOT,'..','config_default.txt
 
 PATH_MANIFEST_GLOBAL = os.path.join(LIT_ROOT,'corpus','manifest.txt')
 #print(PATH_MANIFEST_GLOBAL, os.path.exists(PATH_MANIFEST_GLOBAL))
+
+
+
+
+
+
+
+def which(pgm):
+	path=os.getenv('PATH')
+	for p in path.split(os.path.pathsep):
+		p=os.path.join(p,pgm)
+		if os.path.exists(p) and os.access(p,os.X_OK):
+			return p
+
+
+
+
 
 def human_format(num):
 	magnitude = 0
@@ -54,7 +56,7 @@ def loadjson(fn):
 
 ### SET THE CONFIG
 
-def hash(x):
+def hashstr(x):
 	import hashlib
 	return hashlib.sha224(str(x).encode('utf-8')).hexdigest()
 
@@ -247,8 +249,8 @@ def get_stopwords(include_rank=None):
 	if include_rank and type(include_rank)==int:
 		sw2={d['word'] for d in worddb() if int(d['rank'])<=include_rank}
 		sw1|=sw2
-	sw1|={'i','me','my','you','we','us','our','they','them','she','he','her','hers','his','him'}
-	return sw1
+	# sw1|={'i','me','my','you','we','us','our','they','them','she','he','her','hers','his','him'}
+	return {w for w in sw1 if w}
 
 def get_english_wordlist():
 	ENG_PATH = config.get('PATH_TO_ENGLISH_WORDLIST')
@@ -277,6 +279,51 @@ def get_spelling_modernizer():
 			d[old]=new
 	return d
 
+
+def save_df(df,ofn,move_prev=False,index=None,key=''):
+	import pandas as pd
+	if os.path.exists(ofn) and move_prev: iter_move(ofn)
+	ext = os.path.splitext(ofn.replace('.gz',''))[-1][1:]
+	if index is None: index=type(df.index) != pd.RangeIndex
+
+	if ext=='csv':
+		df.to_csv(ofn,index=index)
+	elif ext in {'xls','xlsx'}:
+		df.to_excel(ofn)
+	elif ext in {'txt','tsv'}:
+		df.to_csv(ofn,index=index,sep='\t')
+	elif ext=='ft':
+		if index: df=df.reset_index()
+		df.to_feather(ofn)
+	elif ext=='pkl':
+		df.to_pickle(ofn)
+	elif ext=='h5':
+		df.to_hdf(ofn, key=key)
+	else:
+		raise Exception(f'[save_df()] What kind of df is this: {ofn}')
+
+
+def read_df(ifn,key=''):
+	import pandas as pd
+	ext = os.path.splitext(ifn.replace('.gz',''))[-1][1:]
+	if ext=='csv':
+		return pd.read_csv(ifn)
+	elif ext in {'xls','xlsx'}:
+		return pd.read_excel(ifn)
+	elif ext in {'txt','tsv'}:
+		return pd.read_csv(ifn,sep='\t')
+	elif ext=='ft':
+		return pd.read_feather(ifn)
+	elif ext=='pkl':
+		return pd.read_pickle(ifn)
+	elif ext=='h5':
+		return pd.read_hdf(ifn, key=key)
+	else:
+		raise Exception(f'[save_df()] What kind of df is this: {ifn}')
+
+
+
+
 def get_ocr_corrections():
 	PATH_TO_ENGLISH_OCR_CORRECTION_RULES = config.get('PATH_TO_ENGLISH_OCR_CORRECTION_RULES')
 	if not PATH_TO_ENGLISH_OCR_CORRECTION_RULES: raise Exception('!! PATH_TO_ENGLISH_OCR_CORRECTION_RULES not set in config.txt')
@@ -303,7 +350,7 @@ def iter_move(fn,force=False,prefix=''):
 		iter_dir=os.path.dirname(iter_fn)
 		if not os.path.exists(iter_dir): os.makedirs(iter_dir)
 		shutil.move(fn,iter_fn)
-		print(f'>> moved: {fn} --> {iter_fn}')
+		# print(f'>> moved: {fn} --> {iter_fn}')
 
 def iter_filename(fnfn,force=False,prefix=''):
 	if os.path.exists(fnfn) or force:
@@ -418,8 +465,8 @@ def readgen_jsonl(fnfn):
 
 
 def printm(x):
-    from IPython.display import display,Markdown
-    display(Markdown(x))
+	from IPython.display import display,Markdown
+	display(Markdown(x))
 
 
 def writegen(fnfn,generator,header=None,args=[],kwargs={},find_all_keys=False,total=None):
@@ -1075,9 +1122,12 @@ def noPunc(token):
 	from string import punctuation
 	return token.strip(punctuation)
 
-def zeroPunc(s):
+def zeropunc(s,spaces_ok=False):
+	# ok={' '} if spaces_ok else {}
 	import string
 	return s.translate(str.maketrans('', '', string.punctuation))
+	# return ''.join(x for x in s if x.isalpha() or x in ok)
+
 
 def now(now=None):
 	import datetime as dt
@@ -1464,7 +1514,7 @@ def download_wget(url, save_to):
 	os.rename(fn,save_to_fn)
 	print('\n>> saved:',save_to)
 
-def download(url,save_to,overwrite=False):
+def download(url,save_to,overwrite=False,desc=''):
 	# ValueError: unknown url type: '%22https%3A//www.dropbox.com/s/wz3igeqzx3uu5j1/markmark.zip?dl=1"'
 	#url='https://' + url.split('//',1)[-1].replace('"','')
 	#return download_wget(url,save_to)
@@ -1473,9 +1523,9 @@ def download(url,save_to,overwrite=False):
 	#return download_tqdm2(url,save_to)
 	#return download_curl(url,save_to)
 	try:
-		return download_pycurl(url,save_to)
+		return download_pycurl(url,save_to,desc=desc)
 	except (ImportError,ModuleNotFoundError) as e:
-		return download_wget(url,save_to)
+		return download_wget(url,save_to,desc=desc)
 
 def download_curl(url,save_to):
 	save_to_dir,save_to_fn=os.path.split(save_to)
@@ -1508,7 +1558,7 @@ def download_tqdm2(url, save_to):
 
 
 
-def download_pycurl(url, save_to):
+def download_pycurl(url, save_to,desc=''):
 	# from: https://gist.github.com/etheleon/882d6a9a64c064d4202ccd59f6c0b533
 
 	import os
@@ -1528,7 +1578,7 @@ def download_pycurl(url, save_to):
 
 	def do_download(url, local, *, safe=True):
 		rv = False
-		with tqdm(desc=url, total=1, unit='b', unit_scale=True) as progress:
+		with tqdm(desc=url if not desc else desc, total=1, unit='b', unit_scale=True) as progress:
 			xfer = XferInfoDl(url, progress)
 			if safe:
 				local_tmp = local + '.tmp'
@@ -1585,6 +1635,40 @@ def download_pycurl(url, save_to):
 
 
 
+class Bunch(object):
+	def __init__(self, **adict):
+		self.__dict__.update(adict)
+	def __getattr__(self,attr):
+		return self.__dict__.get(attr,'')
+	def __setattr__(self,attr,val):
+		sd=self.__dict__
+		sd[attr]=val
+
+
+
+def ppath(path):
+	import os
+	return path.replace(
+		os.path.expanduser('~'),
+		'~'
+	)
+
+
+def untar(fname,dest='.',overwrite=False,progress=True,progress_desc=None,**attrs):
+	import tarfile
+	from tqdm import tqdm
+
+
+	mode='r:'
+	if not progress_desc: progress_desc=f'Extracting {os.path.basename(fname)}'
+	if fname.endswith("tar.gz") or fname.endswith("tgz"): mode+='gz'
+	with tarfile.open(fname, "r:gz") as tar:
+		members=tar.getnames()
+		iterr=tqdm(members,desc=progress_desc) if progress else members
+		for member in iterr:
+			ofnfn=os.path.join(dest,member)
+			if not overwrite and os.path.exists(ofnfn): continue
+			tar.extract(member,dest)
 
 
 
@@ -1602,16 +1686,28 @@ def download_tqdm(url, save_to):
 
 	return save_to
 
-def unzip(zipfn, dest='.', flatten=False, overwrite=False, replace_in_filenames={}):
+
+def extract(fn,*x,**attrs):
+	if fn.endswith('zip'):
+		unzip(fn,*x,**attrs)
+	elif fn.endswith('tar') or fn.endswith('tgz') or fn.endswith('tar.gz'):
+		untar(fn,*x,**attrs)
+
+
+
+
+def unzip(zipfn, dest='.', flatten=False, overwrite=False, replace_in_filenames={},desc='',progress=True):
 	from zipfile import ZipFile
 	from tqdm import tqdm
 
 	# Open your .zip file
+	if not desc: desc=f'Extracting {os.path.basename(zipfn)}'
 	with ZipFile(zipfn) as zip_file:
 		namelist=zip_file.namelist()
 
 		# Loop over each file
-		for member in tqdm(iterable=namelist, total=len(namelist)):
+		iterr=tqdm(iterable=namelist, total=len(namelist),desc=desc) if progress else namelist
+		for member in iterr:
 			# Extract each file to another directory
 			# If you want to extract to current working directory, don't specify path
 			filename = os.path.basename(member)
@@ -1674,6 +1770,7 @@ def cloud_share_all():
 
 
 def check_make_dir(path,consent=True,default='y'):
+	if os.path.exists(path) and os.path.isdir(path): return True
 	if os.path.splitext(path)[0]!=path: return # return if a filename, not a dirname
 	path=os.path.abspath(path)
 	if not os.path.exists(path) and os.path.splitext(path)[0]==path:
@@ -1683,6 +1780,8 @@ def check_make_dir(path,consent=True,default='y'):
 		if ans=='y':
 			print('   creating:',path)
 			os.makedirs(path)
+			return True
+	return False
 
 def symlink(path,link_to,default='y'):
 	# symlink?
@@ -1709,7 +1808,14 @@ def symlink(path,link_to,default='y'):
 				if os.path.exists(link_to): os.remove(link_to)
 				os.symlink(path, link_to)
 
-
+def check_copy_file(src,dst):
+	try:
+		if check_make_dir(os.path.dirname(dst)):
+			if input(f'\nSave\n    {src}\nto\n    {dst}\n[Y/n] ').strip()!='n':
+				# shutil.copyfile(src,dst)
+				print('\n>> saved:',dst,'\n')
+	except (KeyboardInterrupt,EOFError) as e:
+		return False
 
 def check_make_dirs(paths,consent=True):
 	l=[]
@@ -1817,16 +1923,16 @@ def remove_duplicates(seq,remove_empty=False):
 
 
 
-def pmap_df(df, func, num_proc=1):
-    df_split = np.array_split(df, num_proc)
-    df = pd.concat(pmap(func, df_split, num_proc=num_proc))
-    return df
+def pmap_df(df, func, num_proc=DEFAULT_NUM_PROC):
+	df_split = np.array_split(df, num_proc)
+	df = pd.concat(pmap(func, df_split, num_proc=num_proc))
+	return df
 
 def pmap_do(inp):
 	func,obj,args,kwargs = inp
 	return func(obj,*args,**kwargs)
 
-def pmap_iter(func, objs, args=[], kwargs={}, num_proc=4, use_threads=False, progress=True, desc=None, **y):
+def pmap_iter(func, objs, args=[], kwargs={}, num_proc=DEFAULT_NUM_PROC, use_threads=False, progress=True, desc=None, **y):
 	"""
 	Yields results of func(obj) for each obj in objs
 	Uses multiprocessing.Pool(num_proc) for parallelism.
@@ -1835,8 +1941,13 @@ def pmap_iter(func, objs, args=[], kwargs={}, num_proc=4, use_threads=False, pro
 	"""
 	
 	# imports
+	import multiprocessing as mp
 	from tqdm import tqdm
 	
+	# check num proc
+	num_cpu = mp.cpu_count()
+	if num_proc>num_cpu: num_proc=num_cpu
+
 	# if parallel
 	if not desc: desc=f'Mapping {func.__name__}()'
 	if desc: desc=f'{desc} [x{num_proc}]'
@@ -1846,12 +1957,12 @@ def pmap_iter(func, objs, args=[], kwargs={}, num_proc=4, use_threads=False, pro
 		objects = [(func,obj,args,kwargs) for obj in objs]
 
 		# create pool
-		import multiprocessing as mp
 		pool=mp.Pool(num_proc) if not use_threads else mp.pool.ThreadPool(num_proc)
 
 		# yield iter
 		iterr = pool.imap(pmap_do, objects)
-		for res in tqdm(iterr,total=len(objs),desc=desc) if progress else iterr:
+		
+		for res in tqdm(iterr,total=len(objects),desc=desc) if progress else iterr:
 			yield res
 
 		# Close the pool?
@@ -1871,14 +1982,15 @@ def pmap(*x,**y):
 
 
 
-def do_pmap_group(obj):
+def do_pmap_group(obj,*x,**y):
+	import pandas as pd
 	# unpack
 	func,group_df,group_key,group_name = obj
 	# load from cache?
 	if type(group_df)==str:
 		group_df=pd.read_pickle(group_df)
 	# run func
-	outdf=func(group_df)
+	outdf=func(group_df,*x,**y)
 	# annotate with groupnames on way out
 	if type(group_name) not in {list,tuple}:group_name=[group_name]
 	for x,y in zip(group_key,group_name):
@@ -1886,7 +1998,7 @@ def do_pmap_group(obj):
 	# return
 	return outdf
 
-def pmap_groups(func,df_grouped,use_cache=True,**attrs):
+def pmap_groups(func,df_grouped,use_cache=True,num_proc=DEFAULT_NUM_PROC,**attrs):
 	import os,tempfile,pandas as pd
 	from tqdm import tqdm
 
@@ -1894,7 +2006,7 @@ def pmap_groups(func,df_grouped,use_cache=True,**attrs):
 	group_key=df_grouped.grouper.names
 	# if not using cache
 	# if not use_cache or attrs.get('num_proc',1)<2:
-	if not use_cache:
+	if not use_cache or len(df_grouped)<2 or num_proc<2:
 		objs=[
 			(func,group_df,group_key,group_name)
 			for group_name,group_df in df_grouped
@@ -1916,6 +2028,25 @@ def pmap_groups(func,df_grouped,use_cache=True,**attrs):
 		pmap(
 			do_pmap_group,
 			objs,
+			num_proc=num_proc,
 			**attrs
 		)
 	).set_index(group_key)
+
+
+
+def plot_distro(x,data,y='..count..'):
+	import plotnine as p9
+	fig=p9.ggplot(p9.aes(x=x,y=y), data=data)
+	fig+=p9.geom_density()
+	return fig
+
+
+
+
+
+
+
+### UTILS
+
+

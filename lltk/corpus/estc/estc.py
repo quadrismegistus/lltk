@@ -6,7 +6,7 @@ from __future__ import print_function
 import codecs,json,re
 from lltk import tools
 
-from lltk.text import Text
+from lltk.text.text import Text
 from collections import defaultdict
 
 
@@ -137,7 +137,7 @@ class TextESTC(Text):
 
 ## CORPUS ##
 
-from lltk.corpus import Corpus
+from lltk.corpus.corpus import Corpus
 from collections import defaultdict,Counter
 import os
 from lltk import tools

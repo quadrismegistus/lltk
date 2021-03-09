@@ -1,8 +1,8 @@
 from __future__ import absolute_import
 # -*- coding: utf-8 -*-
 
-from lltk.corpus import Corpus
-from lltk.text import Text
+from lltk.corpus.corpus import Corpus
+from lltk.text.text import Text
 import os
 
 class RavenGarside(Corpus):

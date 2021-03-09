@@ -1,6 +1,6 @@
 from __future__ import absolute_import
 ### TEXT CLASS
-from lltk.text import Text
+from lltk.text.text import Text
 
 class TextCLMET(Text):
 	genre2Genre={u'Drama':'Drama',
@@ -33,7 +33,7 @@ class TextCLMET(Text):
 
 
 ### CORPUS CLASS
-from lltk.corpus import Corpus
+from lltk.corpus.corpus import Corpus
 import os
 
 class CLMET(Corpus):

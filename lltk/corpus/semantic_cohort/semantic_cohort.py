@@ -1,7 +1,7 @@
 import os
 import lltk
-from lltk.text import Text
-from lltk.corpus import Corpus
+from lltk.text.text import Text
+from lltk.corpus.corpus import Corpus
 
 
 
