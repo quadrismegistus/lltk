@@ -531,7 +531,7 @@ class Corpus(object):
 			yearbin=None,
 			by_ntext=False,
 			n_by_period=None,
-			keep_periods=False,
+			keep_periods=True,
 			n_agg='median',
 			min_count=None,
 			col_group='period',
