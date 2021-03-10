@@ -473,7 +473,7 @@ class Corpus(object):
 			mdf=self.metadf[meta] if type(meta) in {list,set} else self.metadf
 			mdtm=mdf.merge(dtm,on='id',suffixes=('','_w'),how='right')
 			micols = mdf.columns
-			dtm=mdtm.set_index('id')#list(micols))
+			dtm=mdtm.set_index(list(micols))
 		return dtm.fillna(na) 
 
 	def mdw(self,groupby,words=[],texts=None,tfidf=True,keep_null_cols=False,remove_zeros=True,agg='median',**mfw_attrs):
