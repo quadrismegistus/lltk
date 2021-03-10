@@ -622,6 +622,7 @@ class Corpus(object):
 		if only_pos and keep_pos is not False:
 			w2pdf=get_word2pos_df(lang=self.lang)
 			w2pdf['pos0']=w2pdf['pos'].apply(lambda x: x[0] if type(x)==str and x else '')
+			# w2pdf['pos'],w2pdf['pos0']=w2pdf['pos0'],w2pdf['pos']
 			dfr=dfr.merge(w2pdf,on='word')
 			
 
