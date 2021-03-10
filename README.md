@@ -9,54 +9,10 @@ Literary Language Tool Kit (LLTK): corpora, models, and tools for the study of c
 ```python
 # install
 !pip install -qU git+https://github.com/quadrismegistus/lltk@v2
-```
 
-```python
-# terminal commands
-!lltk -h
-```
-
-    ## Literary Language Toolkit (LLTK) configuration
-    >> saved: /root/lltk_data/config.txt
-    >> saved: /root/lltk_data/manifest.txt
-    usage: lltk [-h] [-quiet]
-                {show,status,info,load,web,create,import,compile,install,preprocess,zip,upload,share,induct,links,configure}
-                ...
-    
-    positional arguments:
-      {show,status,info,load,web,create,import,compile,install,preprocess,zip,upload,share,induct,links,configure}
-        show                List names and descriptions of all corpora
-        status              Get install/installation status for all corpora
-        info                Get information about a corpus
-        load                Load a corpus in interactive session
-        web                 Run web server
-        create              Create a corpus with LLTK
-        import              Import an existing corpus into LLTK
-        compile             Compile corpus from sources
-        install             Download files of corpus (TXT/XML/metadata/data)
-        preprocess          Run a sweep of text mining routines
-        zip                 Zip and archive a corpus
-        upload              Upload to a cloud the zip archives
-        share               Get cloud share links for a corpus
-        induct              Induct corpus into hall of corpora
-        links               Get cloud share links for all corpora
-        configure           Check LLTK configuration
-    
-    optional arguments:
-      -h, --help            show this help message and exit
-      -quiet                No interactive mode
-
-
-
-```python
-# or load lltk for use within python
+# load lltk for use within python
 import lltk
-```
 
-## Load corpus
-
-
-```python
 # show corpora in markdown
 lltk.show()
 ```
@@ -101,7 +57,6 @@ lltk.show()
 ```python
 # load a corpus: e.g. the txtLAB450 dataset of 450 En/Fr/Ger novels  
 corpus = lltk.load('TxtLab')
-```
 
     [TxtLab] Downloading txtlab_metadata.zip: 17.4kb [00:00, 20.2kb/s]                            
     [TxtLab] Unzipping txtlab_metadata.zip: 100%|██████████| 1/1 [00:00<00:00, 696.84it/s]
@@ -109,7 +64,7 @@ corpus = lltk.load('TxtLab')
     [TxtLab] Unzipping txtlab_freqs.zip: 100%|██████████| 410/410 [00:00<00:00, 638.10it/s]
     [TxtLab] Downloading txtlab_txt.zip: 95.1Mb [00:01, 55.9Mb/s]                            
     [TxtLab] Unzipping txtlab_txt.zip: 100%|██████████| 410/410 [00:02<00:00, 145.80it/s]
-
+```
 
 ## Accessing metadata
 
@@ -118,8 +73,6 @@ corpus = lltk.load('TxtLab')
 # metadata as dataframe
 corpus.meta
 ```
-
-
 
 
 <div>
@@ -405,14 +358,6 @@ smpl
 corpus.meta['language'].value_counts().plot.pie()
 ```
 
-
-
-
-    <matplotlib.axes._subplots.AxesSubplot at 0x7f130e65b2d0>
-
-
-
-
 ![png](notebooks/README3_files/README3_12_1.png)
 
 
@@ -423,13 +368,6 @@ corpus.meta['gender'].value_counts().plot.pie()
 ```
 
 
-
-
-    <matplotlib.axes._subplots.AxesSubplot at 0x7f13082faad0>
-
-
-
-
 ![png](notebooks/README3_files/README3_13_1.png)
 
 
@@ -438,18 +376,6 @@ corpus.meta['gender'].value_counts().plot.pie()
 # Distribution of years per language
 corpus.meta.groupby('language').year.plot.density()
 ```
-
-
-
-
-    language
-    English    AxesSubplot(0.125,0.125;0.775x0.755)
-    French     AxesSubplot(0.125,0.125;0.775x0.755)
-    German     AxesSubplot(0.125,0.125;0.775x0.755)
-    Name: year, dtype: object
-
-
-
 
 ![png](notebooks/README3_files/README3_14_1.png)
 
@@ -462,17 +388,10 @@ corpus.meta.groupby('language').year.plot.density()
 ```python
 # Most frequent words overall
 corpus.mfw_df()
-```
 
     [TxtLab] Counting overall most frequent words (MFW) [x2]: 100%|██████████| 410/410 [00:08<00:00, 46.07it/s]
-
-
     [TxtLab] Saving MFW to ~/lltk_data/corpora/txtlab/data/mfw/c28e0310dd87.ft
-
-
-    https://www.dropbox.com/s/cq1xb85yaysezx4/lltk_default_data.zip?dl=1: 5.51Mb [00:01, 4.28Mb/s]                           
-    Extracting default.zip: 100%|██████████| 6/6 [00:00<00:00, 203.63it/s]
-
+```
 
 
 
@@ -634,8 +553,8 @@ english_texts = [t for t in corpus.texts() if t.language=='English']
 top_noun_by_period = corpus.mfw_df(
     texts=english_texts,               # specify texts (otherwise all)
     # how words work
-    only_pos = {'n*'},       # only part(s) of speech (Penn Treebank, n*)
-    n=100,                            # Specify number of top words
+    only_pos = {'n*'},                 # only part(s) of speech (Penn Treebank, n*)
+    n=100,                             # Specify number of top words
     by_ntext=False,                    # Count number of documents not number of words
     by_fpm=True,                       # Count by within-text relative sums
     min_count=None,                    # Minimum count of word
@@ -654,15 +573,6 @@ top_noun_by_period = corpus.mfw_df(
 )
 top_noun_by_period
 ```
-
-    Preparing input: 100%|██████████| 4/4 [00:00<00:00, 591.41it/s]
-    [TxtLab] Counting most frequent words across 50-year periods [x2]: 100%|██████████| 4/4 [00:03<00:00,  1.14it/s]
-
-
-    [TxtLab] Saving MFW to ~/lltk_data/corpora/txtlab/data/mfw/ef55ccd9f738.ft
-
-
-
 
 
 <div>
@@ -827,24 +737,17 @@ p9.ggplot(
 
 
 
-
-    <ggplot: (8732488923829)>
-
-
-
 ## Document-term matrix
 
 
 ```python
 # Get a document-term matrix
 corpus.dtm()
-```
 
     [TxtLab] Assembling document-term matrix (DTM) [x2]: 100%|██████████| 410/410 [00:05<00:00, 77.52it/s]
-
-
     [TxtLab] Saving DTM to ~/lltk_data/corpora/txtlab/data/dtm/9f91f08c231d.ft
 
+```
 
 
 
@@ -1979,19 +1882,6 @@ tfs = corpus.dtm(
 fpms = tfs * 1000000
 fpms
 ```
-
-    [TxtLab] Counting overall most frequent words (MFW) [x2]: 100%|██████████| 150/150 [00:02<00:00, 50.90it/s]
-
-
-    [TxtLab] Saving MFW to ~/lltk_data/corpora/txtlab/data/mfw/f255d7172013.ft
-
-
-    [TxtLab] Assembling document-term matrix (DTM) [x2]: 100%|██████████| 410/410 [00:01<00:00, 252.35it/s]
-
-
-    [TxtLab] Saving DTM to ~/lltk_data/corpora/txtlab/data/dtm/c57986f3d751.ft
-
-
 
 
 
@@ -4325,20 +4215,6 @@ corpus.mdw(
     pos_only={'n*'}
 )
 ```
-
-    [TxtLab] Counting overall most frequent words (MFW) [x2]: 100%|██████████| 95/95 [00:02<00:00, 46.59it/s]
-
-
-    [TxtLab] Saving MFW to ~/lltk_data/corpora/txtlab/data/mfw/a99524ffbe99.ft
-
-
-    [TxtLab] Assembling document-term matrix (DTM) [x2]: 100%|██████████| 410/410 [00:03<00:00, 115.30it/s]
-
-
-    [TxtLab] Saving DTM to ~/lltk_data/corpora/txtlab/data/dtm/945cea91ef27.ft
-
-
-
 
 
 <div>
