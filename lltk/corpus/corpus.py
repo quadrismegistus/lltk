@@ -460,7 +460,7 @@ class Corpus(object):
 
 
 	def dtm(self,words=[],texts=None,n=DEFAULT_MFW_N,tf=False,tfidf=False,meta=False,na=0.0,**mfw_attrs):
-		dtm=self.preprocess_dtm(words=words,n=n)
+		dtm=self.preprocess_dtm(words=words,n=n,**mfw_attrs)
 		dtm=dtm.set_index('id') if 'id' in set(dtm.columns) else dtm
 		if texts is not None:
 			dtm=dtm.loc[to_textids(texts)]
@@ -541,6 +541,7 @@ class Corpus(object):
 			min_periods=None,
 			by_fpm=False,
 			only_pos=set(),
+			force=False,
 			**attrs):
 		
 		# gen if not there?
@@ -556,6 +557,7 @@ class Corpus(object):
 			col_group=col_group,
 			force=False,
 			try_create_freqs=True,
+			**attrs
 		)
 		if df is None:
 			self.log('Could not load or generate MFW')
@@ -649,7 +651,8 @@ class Corpus(object):
 			force=False,
 			verbose=True,
 			try_create_freqs=True,
-			pos=set()
+			pos=set(),
+			**attrs
 		):
 		"""
 		From tokenize_texts()
