@@ -78,6 +78,33 @@ def status_corpora_markdown(maxcolwidth=45,link=False,**attrs):
 			df[col]=df[col].apply(lambda x: str(x)[:maxcolwidth])
 	return df.to_markdown()
 
+
+
+
+def install(cname_or_id_or_C,*x,**y):
+	C=lltk.load(cname_or_id_or_C) if type(cname_or_id_or_C)==str else cname_or_id_or_C
+	return C.install(*x,**y)
+def preprocess(cname_or_id_or_C,*x,**y):
+	C=lltk.load(cname_or_id_or_C) if type(cname_or_id_or_C)==str else cname_or_id_or_C
+	return C.preprocess(*x,**y)
+def zip(cname_or_id_or_C,*x,**y):
+	C=lltk.load(cname_or_id_or_C) if type(cname_or_id_or_C)==str else cname_or_id_or_C
+	return C.zip(*x,**y)
+def upload(cname_or_id_or_C,*x,**y):
+	C=lltk.load(cname_or_id_or_C) if type(cname_or_id_or_C)==str else cname_or_id_or_C
+	return C.upload(*x,**y)
+def share(cname_or_id_or_C,*x,**y):
+	C=lltk.load(cname_or_id_or_C) if type(cname_or_id_or_C)==str else cname_or_id_or_C
+	return C.upload(*x,**y)
+
+
+
+
+
+
+
+
+
 def status_corpora(parts=['metadata','freqs','txt','xml','raw'],link=True,public_only=True,show_local=True,is_public=None):
 	ld=[]
 	for cname,C in corpora(load=True,incl_meta_corpora=False):
