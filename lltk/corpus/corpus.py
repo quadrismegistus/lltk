@@ -527,6 +527,7 @@ class Corpus(object):
 
 	def mfw_df(self,
 			n=None,
+			words=None,
 			texts=None,
 			yearbin=None,
 			by_ntext=False,
@@ -551,6 +552,7 @@ class Corpus(object):
 		if type(yearbin)==str: yearbin=int(yearbin)
 		df = self.preprocess_mfw(
 			n=n,
+			words=words,
 			texts=texts,
 			yearbin=yearbin,
 			by_ntext=by_ntext,
@@ -564,6 +566,8 @@ class Corpus(object):
 			self.log('Could not load or generate MFW')
 			return
 		df=df.fillna(0)
+
+		if words is not None: df=df[df.word.isin(words)]
 
 		if excl_top:
 			df=df[df['rank']>=excl_top]
@@ -651,6 +655,7 @@ class Corpus(object):
 
 	def preprocess_mfw(self,
 			texts=None,
+			words=None,
 			yearbin=None,
 			year_min=None,
 			year_max=None,
@@ -658,7 +663,6 @@ class Corpus(object):
 			by_fpm=False,
 			num_proc=DEFAULT_NUM_PROC,
 			col_group='period',
-			n=None,
 			estimate=True,
 			force=False,
 			verbose=True,
