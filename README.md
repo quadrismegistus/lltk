@@ -135,7 +135,7 @@ Key to the table:
 
 ```python
 # Return most frequent words as dataframe
-C.mfw_df(
+corpus.mfw_df(
     n=None,                            # Number of top words overall
     by_ntext=False,                    # Count number of documents not number of words
     by_fpm=False,                      # Count by within-text relative sums
@@ -158,7 +158,7 @@ C.mfw_df(
 ### Document term matrix
 
 ```python
-C.dtm(
+corpus.dtm(
     words=[],                          # words to use in DTM
     n=25000,                           # if not `words`, how many mfw?
     texts=None,                        # set texts to use explicitly, otherwise use all
@@ -172,7 +172,7 @@ C.dtm(
 ### Most distinctive words
 
 ```python
-C.mdw(                                 
+corpus.mdw(                                 
     groupby,                           # metadata categorical variable to group by
     words=[],                          # explicitly set words to use
     texts=None,                        # explicitly set texts to use
