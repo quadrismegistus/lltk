@@ -145,17 +145,27 @@ def linreg(X, Y):
 	#print "s^2= %g" % ss
 	return a, b, RR
 
+def reset_index(df):
+	'''Returns DataFrame with index as columns'''
+	index_df = df.index.to_frame(index=False)
+	df = df.reset_index(drop=True)
+	#  In merge is important the order in which you pass the dataframes
+	# if the index contains a Categorical. 
+	# pd.merge(df, index_df, left_index=True, right_index=True) does not work
+	return pd.merge(index_df, df, left_index=True, right_index=True)
 
-def dtm2tf(df_dtm):
+
+def to_tf(df_dtm):
     # rows
-    rowsums = df_dtm.sum(axis='rows')
+    dfq=df_dtm.select_dtypes('number')
+    rowsums = dfq.sum(axis='rows')
     # divide by rows
-    return df_dtm / rowsums
+    return dfq / rowsums
 
 
-def dtm2tfidf(dtm):
+def to_tfidf(dtm):
     import numpy as np,pandas as pd
-    dtm_tf = dtm2tf(dtm)
+    dtm_tf = to_tf(dtm)
 
     # idf
     num_docs = len(dtm_tf)
@@ -163,3 +173,8 @@ def dtm2tfidf(dtm):
     idf=np.log10(num_docs / num_docs_per_word)
 
     return dtm_tf.apply(lambda x: x * idf,axis='columns')
+
+def to_mdw(grouped_dtm,agg='median'):
+    df = grouped_dtm.agg(agg).T
+    df=reset_index(df).rename({0:'word'},axis=1)#.set_index('word')
+    return df.set_index('word')

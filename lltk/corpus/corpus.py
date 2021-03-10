@@ -464,8 +464,8 @@ class Corpus(object):
 		if texts is not None:
 			dtm=dtm.loc[to_textids(texts)]
 
-		if tf: dtm=dtm2tf(dtm)
-		if tfidf: dtm=dtm2tfidf(dtm)
+		if tf: dtm=to_tf(dtm)
+		if tfidf: dtm=to_tfidf(dtm)
 		if meta:
 			if type(meta) in {list,set}:
 				if not self.COL_ID in meta: meta=[self.COL_ID]+list(meta)
@@ -475,6 +475,17 @@ class Corpus(object):
 			dtm=mdtm.set_index('id')#list(micols))
 		return dtm 
 
+	def mdw(self,groupby,words=[],texts=None,tfidf=True,keep_null_cols=False,remove_zeros=True,agg='median'):
+		if not keep_null_cols: texts=self.meta.loc[[bool(x) for x in self.meta[groupby]]]
+		
+		df=self.dtm(words=words,texts=texts,tfidf=tfidf, meta=[groupby]).groupby(groupby)
+		df=to_mdw(df,agg=agg)
+		# for col in df.columns:
+		# 	if not col:
+		# 		df=df.drop(col,axis=1)
+		df=df.sort_values(list(df.columns)[0],ascending=False)
+		if remove_zeros: df=df[df.sum(axis=1)>0]
+		return df
 
 	@property
 	def path_mfw(self):

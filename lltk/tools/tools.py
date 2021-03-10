@@ -1634,14 +1634,7 @@ def download_pycurl(url, save_to,desc=''):
 
 def in_jupyter(): return sys.argv[-1].endswith('json')
 
-def reset_index(df):
-	'''Returns DataFrame with index as columns'''
-	index_df = df.index.to_frame(index=False)
-	df = df.reset_index(drop=True)
-	#  In merge is important the order in which you pass the dataframes
-	# if the index contains a Categorical. 
-	# pd.merge(df, index_df, left_index=True, right_index=True) does not work
-	return pd.merge(index_df, df, left_index=True, right_index=True)
+
 
 def printx(x):
 	printm(x) if in_jupyter() else print(x)
