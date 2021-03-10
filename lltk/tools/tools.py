@@ -208,10 +208,10 @@ def configure_prompt(default_config='config.txt',default_corpora='corpora',defau
 	# for k,v in load_default_config().items(): newconfig[k]=v
 	for k,v in load_user_config().items(): newconfig[k]=v
 	for k,v in var2path.items(): newconfig[k]=v
-	for k,v in newconfig.items():
+	# for k,v in newconfig.items():
 		# from lltk import PATH_LLTK_CODE_HOME
 		# if PATH_LLTK_CODE_HOME in v: v=v.replace(PATH_LLTK_CODE_HOME+os.path.sep,'')
-		newconfig[k]=v.replace(os.path.expanduser('~'),'~')
+		# newconfig[k]=v.replace(os.path.expanduser('~'),'~')
 
 
 	config_obj['User'] = newconfig
