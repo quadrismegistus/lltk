@@ -119,11 +119,8 @@ Key to the table:
 ## Examples
 
 ```python
-!lltk install txtlab
-!lltk preprocess txtlab
-
-
-
-
-
-!lltk preprocess txtlab
+import lltk
+C=lltk.load('dialnarr')
+C.mfw()
+C.dtm()
+```

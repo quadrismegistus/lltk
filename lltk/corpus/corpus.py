@@ -65,7 +65,7 @@ class Corpus(object):
 					setattr(aobj,tkey,tobj)
 		return self._authors
 
-	def load_metadata(self,clean=True,add_text_col=True,text_col='_text'):
+	def load_metadata(self,clean=True,add_text_col=False,text_col='_text'):
 		if self._metadf is None:	
 			# meta=read_df(self.path_metadata).set_index(self.COL_ID,drop=False).fillna('')
 			if not os.path.exists(self.path_metadata):
@@ -470,7 +470,7 @@ class Corpus(object):
 			if type(meta) in {list,set}:
 				if not self.COL_ID in meta: meta=[self.COL_ID]+list(meta)
 			mdf=self.meta[meta] if type(meta) in {list,set} else self.meta
-			mdtm=mdf.merge(dtm,on='id',suffixes=('','_w'))
+			mdtm=mdf.merge(dtm,on='id',suffixes=('','_w'),how='right')
 			micols = mdf.columns
 			dtm=mdtm.set_index('id')#list(micols))
 		return dtm 
