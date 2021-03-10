@@ -116,3 +116,14 @@ Key to the table:
 | TxtLab              | [A multilingual dataset of 450 novels](https://txtlab.org/2016/01/txtlab450-a-data-set-of-multilingual-novels-for-teaching-and-research)                                  | Free                                                                        | [↓](https://www.dropbox.com/s/eh33qy6bcm7rvcp/txtlab_metadata.zip?dl=1)              | [↓](https://www.dropbox.com/s/56azeswx0omjum2/txtlab_freqs.zip?dl=1)              | [↓](https://www.dropbox.com/s/q4bm4yf76zgumi6/txtlab_txt.zip?dl=1)           |                                                                       | [↓](https://github.com/christofs/txtlab450/archive/master.zip)        |
 
 
+## Examples
+
+```python
+!lltk install txtlab
+!lltk preprocess txtlab
+
+
+
+
+
+!lltk preprocess txtlab
