@@ -34,13 +34,9 @@ mfw = corpus.mfw()                       # get the 10K most frequent words as a 
 dtm = corpus.dtm()                       # get a document-term matrix as a pandas dataframe
 dtm = corpus.dtm(tfidf=True)             # get DTM as tf-idf
 mdw = corpus.mdw('gender')               # get most distinctive words for a metadata group
-```
 
-4) Play with text objects:
-
-```python
-# Text objects
-text = corpus.t                          # get a random Text object from corpus
+# get text objects
+text = corpus.t                          # get a random text object from corpus
 texts = corpus.texts()                   # get a list of corpus's text objects
 texts_smpl = corpus.texts(smpl.id)       # get text objects for list of ids
 
@@ -48,7 +44,11 @@ texts_smpl = corpus.texts(smpl.id)       # get text objects for list of ids
 corpus.au                                # initialize magic
 author = corpus.au.Radcliffe             # hit "tab" after typing e.g. "Rad" to autocomplete 
 radcliffe = corpus.au.Radcliffe.ti       # get text objects for last name Radcliffe 
+```
 
+4) Play with text objects:
+
+```python
 # Loop over texts
 for text in corpus.texts():              # loop over Text objects
     # metadata access
