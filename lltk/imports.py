@@ -123,6 +123,9 @@ PATH_LLTK_HOME = os.path.join(HOME,'lltk_data')
 PATH_CORPUS = config.get('PATH_TO_CORPORA', os.path.join(PATH_LLTK_HOME,'corpora') )
 PATH_CORPUS_ZIP = os.path.join(PATH_CORPUS, 'lltk_corpora')
 PATH_TO_CORPUS_CODE = config.get('PATH_TO_CORPUS_CODE', os.path.join(PATH_HERE,'corpus') )
+PATH_TO_DATA_CODE = os.path.abspath(os.path.join(PATH_TO_CORPUS_CODE,'..','..','data'))
+PATH_LLTK_CODE_HOME = os.path.abspath(os.path.join(PATH_TO_CORPUS_CODE,'..','..'))
+PATH_LLTK_REPO = os.path.abspath(os.path.join(PATH_TO_CORPUS_CODE,'..','..','..'))
 
 DEFAULT_PATH_TO_MANIFEST = os.path.join(PATH_LLTK_HOME,'manifest.txt')
 PATH_MANIFEST=os.path.join(PATH_TO_CORPUS_CODE,'manifest.txt')
@@ -159,3 +162,23 @@ from lltk.corpus.corpus import *
 
 
 
+# corenlp
+PATH_CORENLP = '~/lltk_data/tools/corenlp'
+
+# Files for text processing
+PATH_TO_ENGLISH_WORDLIST = 'data/default/wordlist.aspell.net.with_caps.txt.gz'
+PATH_TO_ENGLISH_STOPWORDS = 'data/default/stopwords.onix.txt.gz'
+PATH_TO_ENGLISH_SPELLING_MODERNIZER = 'data/default/spelling_variants_from_morphadorner.txt.gz'
+PATH_TO_ENGLISH_OCR_CORRECTION_RULES = 'data/default/CorrectionRules.txt.gz'
+PATH_TO_ENGLISH_WORD2POS = 'data/default/word2pos.json.gz'
+
+
+# BookNLP?
+PATH_TO_BOOKNLP_BINARY= 'bin/book-nlp/runjava'
+
+
+# uploaders
+PATH_CLOUD_SHARE_CMD='bin/dropbox_uploader.sh share'
+PATH_CLOUD_UPLOAD_CMD='bin/dropbox_uploader.sh upload'
+PATH_CLOUD_LIST_CMD='bin/dropbox_uploader.sh list'
+PATH_CLOUD_DEST = '/Share/llp_corpora'

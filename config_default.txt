@@ -10,11 +10,9 @@ PATH_TO_ENGLISH_SPELLING_MODERNIZER = data/default/spelling_variants_from_morpha
 PATH_TO_ENGLISH_OCR_CORRECTION_RULES = data/default/CorrectionRules.txt.gz
 PATH_TO_ENGLISH_WORD2POS = data/default/word2pos.json.gz
 
-PATH_TO_WORDDB = data/data.worddb.2019.txt.gz
-PATH_TO_FIELDS = data/data.fields.txt.gz
 
 # BookNLP?
-PATH_TO_BOOKNLP_BINARY= ../bin/book-nlp/runjava
+PATH_TO_BOOKNLP_BINARY= bin/book-nlp/runjava
 
 
 # uploaders

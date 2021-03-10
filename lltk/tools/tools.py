@@ -21,7 +21,7 @@ PATH_MANIFEST_GLOBAL = os.path.join(LIT_ROOT,'corpus','manifest.txt')
 #print(PATH_MANIFEST_GLOBAL, os.path.exists(PATH_MANIFEST_GLOBAL))
 
 
-
+PATH_LLTK_REPO=os.path.abspath(os.path.join(LLTK_ROOT,'..'))
 
 
 
@@ -86,12 +86,13 @@ def load_config(pathhack=True,prompt_for_base_conf=True):
 	for f in [load_default_config,load_global_config,load_user_config]:
 		for k,v in f().items(): CONFIG[k.upper()]=v
 
-	#print('>> loaded config:',CONFIG)
+	# print('>> loaded config:',CONFIG)
 	return CONFIG
 
 
 
 def load_global_config(pathhack=True,prompt_for_base_conf=True):
+	# from lltk import PATH_LLTK_REPO
 	#CONFIG_PATHS = [PATH_DEFAULT_CONF]
 	CONFIG_PATHS=[]
 	CONFIG_PATHS += [os.path.join(LIT_ROOT,'config_local.txt')]
@@ -106,7 +107,8 @@ def load_global_config(pathhack=True,prompt_for_base_conf=True):
 		config = configparser.ConfigParser()
 		config.read(config_path)
 
-		for k,v in config_obj2dict(config,pathhack_root=config_path).items():
+		# for k,v in config_obj2dict(config,pathhack_root=config_path).items():
+		for k,v in config_obj2dict(config,pathhack_root=PATH_LLTK_REPO).items():
 			CONFIG[k]=v
 
 
@@ -139,8 +141,10 @@ def get_url_or_path(url_or_path):
 def load_default_config():
 	config=configparser.ConfigParser()
 	config.read(PATH_DEFAULT_CONF)
-	configd=config_obj2dict(config,pathhack_root=LIT_ROOT)
-	if not 'PATH_TO_CORPORA' in configd: configd['PATH_TO_CORPORA']=os.path.expanduser('~/lltk_data/corpora')
+	configd=config_obj2dict(config,pathhack_root=LIT_ROOT,pathhack=False)
+	if not 'PATH_TO_CORPORA' in configd: configd['PATH_TO_CORPORA']='~/lltk_data/corpora'
+	configd=dict((k,v.replace(os.path.expanduser('~'),'~')) for k,v in configd.items())
+	# if not 'PATH_TO_CORPORA' in configd: configd['PATH_TO_CORPORA']=os.path.expanduser('~/lltk_data/corpora')
 	return configd
 
 def load_user_config():
@@ -173,32 +177,37 @@ def configure_prompt(default_config='config.txt',default_corpora='corpora',defau
 	if not path_corpora: path_corpora=default_corpora
 	if not path_manifest: path_manifest=default_manifest
 
-	path_config=path_config.replace('~',HOME)
-	path_corpora=path_corpora.replace('~',HOME)
-	path_manifest=path_manifest.replace('~',HOME)
+	# path_config=path_config.replace('~',HOME)
+	# path_corpora=path_corpora.replace('~',HOME)
+	# path_manifest=path_manifest.replace('~',HOME)
 
 	var2path = {}
 	var2path['PATH_TO_CORPORA'] = path_corpora
 	var2path['PATH_TO_MANIFEST'] = path_manifest
 
-	for var,path in var2path.items():
-		var2path[var] = path = path.replace('~',HOME)  #os.path.expanduser(path)
-
-		# make dir if needed
-		if not os.path.exists(path):
-			if os.path.splitext(path)[0]==path:
-				os.makedirs(path)
-			else:
-				dirname=os.path.dirname(path)
-				if not os.path.exists(dirname):
-					os.makedirs(dirname)
+	# for var,path in var2path.items():
+		# var2path[var] = path = path.replace('~',HOME)  #os.path.expanduser(path)
+		# # make dir if needed
+		# if not os.path.exists(path):
+		# 	if os.path.splitext(path)[0]==path:
+		# 		os.makedirs(path)
+		# 	else:
+		# 		dirname=os.path.dirname(path)
+		# 		if not os.path.exists(dirname):
+		# 			os.makedirs(dirname)
 
 	config_obj = configparser.ConfigParser()
 
 	newconfig={} #dict(load_config())
-	for k,v in load_default_config().items(): newconfig[k]=v
+	# for k,v in load_default_config().items(): newconfig[k]=v
+	for k,v in load_user_config().items(): newconfig[k]=v
 	for k,v in var2path.items(): newconfig[k]=v
-	for k,v in newconfig.items(): newconfig[k]=v.replace(os.path.expanduser('~'),'~')
+	for k,v in newconfig.items():
+		from lltk import PATH_LLTK_CODE_HOME
+		if PATH_LLTK_CODE_HOME in v: v=v.replace(PATH_LLTK_CODE_HOME+os.path.sep,'')
+		newconfig[k]=v.replace(os.path.expanduser('~'),'~')
+
+
 	config_obj['User'] = newconfig
 
 	with open(path_config,'w') as of:
@@ -296,11 +305,12 @@ def get_spelling_modernizer(lang='en'):
 
 def get_word2pos(lang='en'):
 	global WORD2POS
+	from lltk import PATH_LLTK_CODE_HOME
 	if lang in WORD2POS: return WORD2POS[lang]
 	if lang=='en':
 		path = config.get('PATH_TO_ENGLISH_WORD2POS')
 		if not path: raise Exception('!! PATH_TO_ENGLISH_WORD2POS not set in config.txt')
-		if not os.path.isabs(path): path=os.path.join(LIT_ROOT,path)
+		if not os.path.isabs(path): path=os.path.join(PATH_LLTK_REPO,path)
 		if os.path.exists(path):
 			with xopen(path) as f:
 				print(path,f)
