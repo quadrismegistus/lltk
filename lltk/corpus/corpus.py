@@ -542,6 +542,7 @@ class Corpus(object):
 			by_fpm=False,
 			only_pos=set(),
 			force=False,
+			keep_pos=None,
 			**attrs):
 		
 		# gen if not there?
@@ -589,6 +590,8 @@ class Corpus(object):
 					if posx.endswith('*') and wpos.startswith(posx[:-1]): return True
 				return False
 			df=df[df.word.apply(word_ok)]
+			# df['pos']=df.word.replace(w2p)
+			# df['pos0']=df.pos.apply(lambda x: x[0] if x else '')
 
 		## now pivot
 		dfi=df.reset_index()
@@ -614,6 +617,14 @@ class Corpus(object):
 		# dfr=df.reset_index()
 		# odf = odf[odf.columns[1:] if set(odf.columns) and odf.columns[0]=='index' else odf.columns]
 		dfr=df#.reset_index() if not 'id' in df
+
+		## add back pos?
+		if only_pos and keep_pos is not False:
+			w2pdf=get_word2pos_df(lang=self.lang)
+			w2pdf['pos0']=w2pdf['pos'].apply(lambda x: x[0] if type(x)==str and x else '')
+			dfr=dfr.join(w2pdf)
+			
+
 		return dfr
 
 

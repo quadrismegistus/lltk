@@ -334,6 +334,11 @@ def get_spelling_modernizer(lang='en'):
 			SPELLINGD[lang]=d
 	return SPELLINGD[lang]
 
+def get_word2pos_df(lang='en'):
+	w2p=get_word2pos(lang=lang)
+	df=pd.DataFrame(w2p.items(),columns=['word','pos']).set_index('word')
+	return df
+
 
 def get_word2pos(lang='en'):
 	global WORD2POS
