@@ -9,67 +9,69 @@ Literary Language Tool Kit (LLTK): corpora, models, and tools for the study of c
 Open a terminal and type:
 
 ```
-pip install git+https://github.com/quadrismegistus/lltk@v2 
+pip install git+https://github.com/quadrismegistus/lltk@v2
 ```
 
-2) Download an existing corpus...
-
-```
-lltk show                             # show which corpora/data are available
-lltk install ECCO_TCP                 # download and install a corpus
-lltk preprocess ECCO_TCP              # optional: preprocess common calculations (xml2txt,freqs,mfw,dtm)
-```
-
-3) Load the corpus in Python:
+2) Show existing corpora:
 
 ```python
-import lltk                          # import lltk as a python module
-corpus = lltk.load('ECCO_TCP')       # load the corpus by name or ID
+import lltk
+lltk.show()                              # or in terminal: lltk show 
+```
+
+3) Load a corpus in Python:
+
+```python
+# Load/install a corpus
+corpus = lltk.load('ECCO_TCP')           # load the corpus by name or ID
 
 # Metadata
 meta = corpus.meta                       # metadata as data frame
 meta_smpl = meta.query('1770<year<1830') # easy query access         
 
 # Data
-mfw = corpus.mfw()                   # get the 10K most frequent words as a list
-dtm = corpus.dtm()                   # get a document-term matrix as a pandas dataframe
+mfw = corpus.mfw()                       # get the 10K most frequent words as a list
+dtm = corpus.dtm()                       # get a document-term matrix as a pandas dataframe
 
 # Text objects
-texts = corpus.texts()               # get a convenient Text object for each text
-texts_smpl = corpus.texts(smpl.id)   # get Text object for list of ids
-text = corpus.t                      # get a random Text object
+texts = corpus.texts()                   # get a convenient Text object for each text
+texts_smpl = corpus.texts(smpl.id)       # get Text object for list of ids
+text = corpus.t                          # get a random Text object
 
 # Magic attributes
-author = corpus.au.Wollstonecraft    # hit "tab" after typing e.g. "Wol" to autocomplte 
-texts_wollst = corpus.au.Wollstonecraft.ti # get text objects for last name Wollstonecraft 
+author = corpus.au.Radcliffe             # hit "tab" after typing e.g. "Rad" to autocomplete 
+texts_wollst = corpus.au.Radcliffe.ti    # get text objects for last name Radcliffe 
+```
 
-# Loop over text objects
-for text in corpus.texts():           # loop over Text objects
+4) Play with text objects:
+
+```python
+for text in corpus.texts():              # loop over Text objects
     # metadata access
-    text_meta = text.meta             # get text metadata as dictionary
-    author = text.author              # get common metadata as attributes    
+    text_meta = text.meta                # get text metadata as dictionary
+    author = text.author                 # get common metadata as attributes    
 
     # data access
-    txt = text.txt                    # get plain text as string
-    xml = text.xml                    # get xml as string
+    txt = text.txt                       # get plain text as string
+    xml = text.xml                       # get xml as string
 
     # simple nlp
-    words  = text.words               # get list of words (excl punct)
-    sents = text.sents                # get list of sentences
-    counts = text.counts              # get word counts as dictionary (from JSON if saved)
+    words  = text.words                  # get list of words (excl punct)
+    sents = text.sents                   # get list of sentences
+    counts = text.counts                 # get word counts as dictionary (from JSON if saved)
 
     # other nlp
-    tnltk = text.nltk                 # get nltk Text object
-    tblob = text.blob                 # get TextBlob object
-    tstanza = text.stanza             # get list of stanza objects (one per para)
+    tnltk = text.nltk                    # get nltk Text object
+    tblob = text.blob                    # get TextBlob object
+    tstanza = text.stanza                # get list of stanza objects (one per para)
 ```
 
 
 ## Available corpora
 
 Key to the table:
-* ↓: Open data made available for download
-* ☂: Closed data made available only through institutional access/subscription
+* ↓: Open data available for download
+* ☂: Closed data available only through institutional access/subscription
 * ↓ and ☂: Some data open (e.g. metadata, freqs) and some closed (e.g. txt,xml,raw)  
 
 | name                | desc                                                                                                                                                                      | license                                                                     | metadata                                                                             | freqs                                                                             | txt                                                                          | xml                                                                   | raw                                                                   |
@@ -116,17 +118,3 @@ Key to the table:
 | TxtLab              | [A multilingual dataset of 450 novels](https://txtlab.org/2016/01/txtlab450-a-data-set-of-multilingual-novels-for-teaching-and-research)                                  | Free                                                                        | [↓](https://www.dropbox.com/s/eh33qy6bcm7rvcp/txtlab_metadata.zip?dl=1)              | [↓](https://www.dropbox.com/s/56azeswx0omjum2/txtlab_freqs.zip?dl=1)              | [↓](https://www.dropbox.com/s/q4bm4yf76zgumi6/txtlab_txt.zip?dl=1)           |                                                                       | [↓](https://github.com/christofs/txtlab450/archive/master.zip)        |
 
 
-## Examples
-
-```python
-#set up
-import lltk
-C.show()
-
-# load/install
-C=lltk.load('OldBailey')
-
-# use
-C.mfw()
-C.dtm()
-```
