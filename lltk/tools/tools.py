@@ -293,7 +293,7 @@ def save_df(df,ofn,move_prev=False,index=None,key=''):
 	elif ext in {'txt','tsv'}:
 		df.to_csv(ofn,index=index,sep='\t')
 	elif ext=='ft':
-		if index: df=df.reset_index()
+		# if index: df=df.reset_index()
 		df.to_feather(ofn)
 	elif ext=='pkl':
 		df.to_pickle(ofn)

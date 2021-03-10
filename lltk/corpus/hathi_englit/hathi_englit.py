@@ -380,10 +380,9 @@ class HathiEngLit(Corpus):
 		"""
 		return super().install(parts=parts,force=force,**attrs)
 
-	@property
-	def metadata(self):
+	def load_metadata(self,*x,**y):
 		import numpy as np
-		meta=super().metadata
+		meta=super().load_metadata()
 		meta['year']=[int(x) if x.isdigit() else np.nan for x in meta['startdate']]
 		return meta
 

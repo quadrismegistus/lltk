@@ -70,12 +70,11 @@ class NewYorker(Corpus):
 		df.to_csv(self.path_metadata,index=False)
 		print('>> saved:',self.path_metadata)
 
-	@property
-	def metadata(self):
+	def load_metadata(self,*x,**y):
 		"""
 		Magic attribute loading metadata, and doing any last minute customizing
 		"""
-		meta=super().metadata
+		meta=super().load_metadata()
 		meta['genre']='Periodical'
 		meta['title']=meta['date']
 		meta['author']='The New Yorker'

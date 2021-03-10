@@ -20,12 +20,11 @@ class FanFic(Corpus):
 		"""
 		return self.download(**attrs)
 
-	@property
-	def metadata(self):
+	def load_metadata(self,*x,**y):
 		"""
 		Magic attribute loading metadata, and doing any last minute customizing
 		"""
-		meta=super().metadata
+		meta=super().load_metadata()
 		meta['genre']='FanFiction'
 		meta['year']=meta['published'].apply(lambda x: x.split('/')[-1])
 		meta['year']=meta['year'].apply(lambda y: int('20'+str(y)) if int(str(y)[0])<5 else int('19'+str(y)))

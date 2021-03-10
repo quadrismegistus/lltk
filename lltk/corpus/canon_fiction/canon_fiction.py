@@ -53,6 +53,6 @@ class CanonFiction(Corpus):
 		df[header].to_csv(meta_fn,index=False)
 
 	def load_metadata(self):
-		meta=super().metadata
+		meta=super().load_metadata()
 		meta['genre']='Fiction'
 		return meta

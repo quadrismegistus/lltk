@@ -22,8 +22,7 @@ class EEBO_TCP(TCP):
 	TEXT_CLASS=TextEEBO_TCP
 	EXT_XML = '.headed.xml.gz'
 
-	@property
-	def metadata(self):
-		meta=super().metadata
+	def load_metadata(self,*x,**y):
+		meta=super().load_metadata()
 		#meta['genre']=[fix_genre(genre,title) for genre,title in zip(meta.genre, meta.title)]
 		return meta#.query(f'{self.MIN_YEAR}<=year<{self.MAX_YEAR}')	

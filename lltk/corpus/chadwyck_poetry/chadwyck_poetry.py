@@ -193,10 +193,9 @@ class ChadwyckPoetry(Corpus):
 	def word2vec_by_period(self,year_min=1500,year_max=2000,**attrs):
 		return super(ChadwyckPoetry,self).word2vec_by_period(year_min=year_min,year_max=year_max,**attrs)
 
-	@property
-	def metadata(self):
+	def load_metadata(self,*x,**y):
 		import numpy as np
-		meta=super().metadata
+		meta=super().load_metadata()
 		meta['genre']='Verse'
 		#meta['year']=meta.author_dob.apply(lambda x: int(x)+30 if x.isdigit() else np.nan)
 		meta['year']=meta.apply(decide_year_from_dob_and_dod,1)

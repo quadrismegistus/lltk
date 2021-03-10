@@ -76,12 +76,11 @@ class JstorDFR(Corpus):
 					with open(opath,'w') as of:
 							json.dump(dx,of)
 
-	@property
-	def metadata(self):
+	def load_metadata(self,*x,**y):
 		"""
 		Magic attribute loading metadata, and doing any last minute customizing
 		"""
-		meta=super().metadata
+		meta=super().load_metadata()
 		# ?
 		return meta
 
@@ -129,9 +128,8 @@ def parse_meta_from_xml(xmlfnfn):
 
 
 class PMLA(JstorDFR):
-	@property
-	def metadata(self):
-		meta=super().metadata
+	def load_metadata(self,*x,**y):
+		meta=super().load_metadata()
 		meta['title']=meta['article-title']
 		meta['author']=meta['surname']
 		meta['genre']='Journal'

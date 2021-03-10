@@ -20,12 +20,11 @@ class SemanticCohort(Corpus):
 		"""
 		return self.download(**attrs)
 
-	@property
-	def metadata(self):
+	def load_metadata(self,*x,**y):
 		"""
 		Magic attribute loading metadata, and doing any last minute customizing
 		"""
-		meta=super().metadata
+		meta=super().load_metadata()
 		# ?
 		return meta
 

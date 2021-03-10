@@ -98,9 +98,8 @@ class Chicago(Corpus):
 		df=pd.DataFrame(text_ld)
 		df.to_csv(self.path_metadata, sep='\t')
 
-	@property
-	def metadata(self):
-		meta=super().metadata
+	def load_metadata(self,*x,**y):
+		meta=super().load_metadata()
 		meta['genre']='Fiction'
 		meta['id']=[str(x).zfill(8) for x in meta.id]
 		return meta

@@ -98,10 +98,9 @@ class InternetArchive(Corpus):
 
 
 
-	@property
-	def metadata(self):
+	def load_metadata(self,*x,**y):
 		import numpy as np
-		meta=super().metadata
+		meta=super().load_metadata()
 		meta['year']=[int(str(x)[:4]) if str(x)[:4].isdigit() else np.nan for x in meta['date']]
 		meta['author']=meta['creator']
 		return meta

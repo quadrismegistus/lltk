@@ -312,9 +312,8 @@ def get_date(imprint):
             return int(x)
 
 class HathiSubcorpus(Hathi):
-	@property
-	def metadata(self):
-		meta=super().metadata
+	def load_metadata(self,*x,**y):
+		meta=super().load_metadata()
 		meta['genre']=self.GENRE
 		meta['year']=meta['imprint'].apply(get_date)
 		return meta

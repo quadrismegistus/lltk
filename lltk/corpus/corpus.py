@@ -73,9 +73,9 @@ class Corpus(object):
 				return pd.DataFrame() 
 			meta=read_df(self.path_metadata).fillna('')
 			if clean: meta=clean_meta(meta)
-			if self.year_start is not None and self.year_start.isdigit() and 'year' in meta.columns:
+			if self.year_start is not None and str(self.year_start).isdigit() and 'year' in meta.columns:
 				meta=meta.query(f'year>={self.year_start}')
-			if self.year_end is not None and self.year_end.isdigit() and 'year' in meta.columns:
+			if self.year_end is not None and str(self.year_end).isdigit() and 'year' in meta.columns:
 				meta=meta.query(f'year<={self.year_end}')
 			self._metadf=meta
 
@@ -100,7 +100,7 @@ class Corpus(object):
 		if self._metadf is None: self.load_metadata()
 		return self._metadf if self._metadf is not None else pd.DataFrame()
 	@property
-	def metadata(self): return self.meta
+	def metadata(self,*x,**y): return self.meta
 
 	# Get texts
 	def texts(self,text_ids=None):
@@ -130,7 +130,7 @@ class Corpus(object):
 	#### PROCESSING
 	#################
 
-	def preprocess_txt(self,force=False,num_proc=DEFAULT_NUM_PROC,verbose=False,**attrs): #force=False,slingshot=False,slingshot_n=1,slingshot_opts=''):
+	def preprocess_txt(self,force=False,num_proc=DEFAULT_NUM_PROC,verbose=True,**attrs): #force=False,slingshot=False,slingshot_n=1,slingshot_opts=''):
 		if not self._texts: return
 		paths = [(t.path_xml,t.path_txt) for t in self.texts() if t.path_xml and os.path.exists(t.path_xml)]
 		if not paths:
@@ -152,7 +152,7 @@ class Corpus(object):
 			**attrs
 		)
 
-	def preprocess_freqs(self,force=False,kwargs={},verbose=False,**attrs): #force=False,slingshot=False,slingshot_n=1,slingshot_opts=''):
+	def preprocess_freqs(self,force=False,kwargs={},verbose=True,**attrs): #force=False,slingshot=False,slingshot_n=1,slingshot_opts=''):
 		objs = [
 			(t.path_txt,t.path_freqs,self.TOKENIZER.__func__)
 			for t in self.texts()
@@ -214,7 +214,7 @@ class Corpus(object):
 				# print('orig paths',list(paths)[:5])
 				# print('ok paths',list(acceptable_paths)[:5])
 				paths = list(set(paths) & acceptable_paths)
-			except AttributeError:
+			except Exception:
 				pass
 			return paths
 			
@@ -450,16 +450,7 @@ class Corpus(object):
 
 
 	def dtm(self,words=[],texts=None,n=DEFAULT_MFW_N,tf=False,tfidf=False,meta=False,**mfw_attrs):
-		if not words: words=self.mfw(n=n,**mfw_attrs)
-		wordkey=self.wordkey(words)
-		if wordkey in self._dtmd:
-			dtm=self._dtmd[wordkey]
-		else:
-			try:
-				dtm=read_df(self.path_dtm, key=wordkey)
-			except Exception:
-				dtm=self.preprocess_dtm(words=words,n=n,wordkey=wordkey)
-		self._dtmd[wordkey]=dtm
+		dtm=self.preprocess_dtm(words=words,n=n)
 		dtm=dtm.set_index('id') if 'id' in set(dtm.columns) else dtm
 		if texts is not None:
 			dtm=dtm.loc[to_textids(texts)]
@@ -487,15 +478,24 @@ class Corpus(object):
 		if remove_zeros: df=df[df.sum(axis=1)>0]
 		return df
 
+	# @property
+	# def path_mfw(self):
+	# 	if not os.path.exists(self.path_data): os.makedirs(self.path_data)
+	# 	return os.path.join(self.path_data, 'mfw.h5')
+	# @property
+	# def path_dtm(self):
+	# 	if not os.path.exists(self.path_data): os.makedirs(self.path_data)
+	# 	return os.path.join(self.path_data, 'dtm.h5')
 	@property
 	def path_mfw(self):
-		if not os.path.exists(self.path_data): os.makedirs(self.path_data)
-		return os.path.join(self.path_data, 'mfw.h5')
+		path_mfw=os.path.join(self.path_data,'mfw')
+		if not os.path.exists(path_mfw): os.makedirs(path_mfw)
+		return path_mfw
 	@property
 	def path_dtm(self):
-		if not os.path.exists(self.path_data): os.makedirs(self.path_data)
-		return os.path.join(self.path_data, 'dtm.h5')
-	
+		path_dtm=os.path.join(self.path_data,'dtm')
+		if not os.path.exists(path_dtm): os.makedirs(path_dtm)
+		return path_dtm
 	@property
 	def path_home(self):
 		return os.path.join(PATH_CORPUS,self.id)
@@ -531,19 +531,19 @@ class Corpus(object):
 		# gen if not there?
 		if yearbin is None: yearbin=self.mfw_yearbin
 		if type(yearbin)==str: yearbin=int(yearbin)
-		key=self.mfwkey(yearbin,by_ntext,by_fpm)
-		if key in self._mfwd:
-			df=self._mfwd[key]
-		else:
-			try:
-				df=read_df(self.path_mfw, key=key)
-			except Exception:
-				df=self.preprocess_mfw(yearbin=yearbin,by_ntext=False,by_fpm=by_fpm,**attrs)
+		df = self.preprocess_mfw(
+			n=n,
+			yearbin=yearbin,
+			by_ntext=by_ntext,
+			by_fpm=by_fpm,
+			col_group=col_group,
+			force=False,
+			try_create_freqs=True
+		)
 		if df is None:
 			self.log('Could not load or generate MFW')
 			return
 		df=df.fillna(0)
-		self._mfwd[key]=df
 
 		if excl_top:
 			df=df[df['rank']>=excl_top]
@@ -607,7 +607,7 @@ class Corpus(object):
 			n=None,
 			estimate=True,
 			force=False,
-			verbose=False,
+			verbose=True,
 			try_create_freqs=True
 		):
 		"""
@@ -616,11 +616,18 @@ class Corpus(object):
 		if yearbin is None: yearbin=self.mfw_yearbin
 		if type(yearbin)==str: yearbin=int(yearbin)
 		key=self.mfwkey(yearbin,by_ntext,by_fpm)
+		if key in self._mfwd: return self._mfwd[key]
+		keyfn=os.path.join(self.path_mfw,key+'.ft')
+		
 		if not force:
-			with pd.HDFStore(self.path_mfw) as store:
-				if key in store:
-					if verbose: self.log(f'MFW already saved for key {key}')
-					return store[key]
+			if os.path.exists(keyfn):
+				# if verbose: self.log(f'MFW is cached for key {key}')
+				if verbose: self.log(f'Loading MFW from {ppath(keyfn)}')
+				return read_df(keyfn)
+			# with pd.HDFStore(self.path_mfw) as store:
+			# 	if key in store:
+			# 		if verbose: self.log(f'MFW already saved for key {key}')
+			# 		return store[key]
 
 		texts=[t for t in self.texts() if (not year_min or t.year>=year_min) and (not year_max or t.year<year_max)]
 		period2texts = divide_texts_historically(yearbin=yearbin,texts=texts)
@@ -677,10 +684,11 @@ class Corpus(object):
 		else:
 			odf=odf.reset_index().sort_values('rank')
 		#odf.to_csv(self.path_mfw.replace('.txt','.csv'))
-		dtm=odf
-		dtm = dtm[dtm.columns[1:] if set(dtm.columns) and dtm.columns[0]=='index' else dtm.columns]
-		save_df(dtm, self.path_mfw, key=key)
-		return dtm
+		odf = odf[odf.columns[1:] if set(odf.columns) and odf.columns[0]=='index' else odf.columns]
+		if verbose: self.log(f'Saving MFW to {ppath(keyfn)}')
+		save_df(odf, keyfn)
+		self._mfwd[key]=odf
+		return odf
 
 
 	def log(self,*x,**y):
@@ -693,8 +701,7 @@ class Corpus(object):
 
 	def mfwkey(self,yearbin,by_ntext,by_fpm):
 		if type(yearbin)==str: yearbin=int(yearbin)
-		return str((yearbin, int(by_ntext), int(by_fpm)))
-
+		return hashstr(str((yearbin, int(by_ntext), int(by_fpm))))[:12]
 
 	def wordkey(self,words):
 		return hashstr('|'.join(sorted(list(words))))[:12]
@@ -706,7 +713,7 @@ class Corpus(object):
 			wordkey=None,
 			sort_cols_by='sum',
 			force=False,
-			verbose=False,
+			verbose=True,
 			**attrs
 		):
 		
@@ -714,12 +721,13 @@ class Corpus(object):
 		if not words: words=self.mfw(n=n,num_proc=num_proc,force=force,**attrs)
 		wordset = set(words)
 		if not wordkey: wordkey=self.wordkey(words)
+		if wordkey in self._dtmd: return self._dtmd[wordkey]
+		keyfn=os.path.join(self.path_dtm,wordkey+'.ft')
 		if not force:
-			with pd.HDFStore(self.path_dtm) as store:
-				# for x in tqdm([None], desc='Loading cached DTM'): pass
-				if wordkey in store:
-					if verbose: self.log(f'DTM already saved for word key {wordkey}')
-					return store[wordkey]
+			if os.path.exists(keyfn):
+				# if verbose: self.log(f'DTM already saved for key {key}')
+				if verbose: self.log(f'Loading DTM from {ppath(keyfn)}')
+				return read_df(keyfn)
 
 		# get
 		objs = [
@@ -744,7 +752,9 @@ class Corpus(object):
 
 		# df.to_csv(self.path_dtm)
 		# df.reset_index().to_feather(self.path_dtm)
-		save_df(dtm.reset_index(), self.path_dtm, key=wordkey)
+		if verbose: self.log(f'Saving DTM to {ppath(keyfn)}')
+		save_df(dtm.reset_index(), keyfn)
+		self._dtmd[wordkey]=dtm
 		return dtm
 
 
