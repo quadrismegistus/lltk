@@ -213,6 +213,11 @@ def configure_prompt(default_config='config.txt',default_corpora='corpora',defau
 
 	config_obj['User'] = newconfig
 
+
+	for x in [path_config,PATH_BASE_CONF,path_manifest]:
+		if not os.path.exists(os.path.dirname(x)):
+			os.makedirs(os.path.dirname(x))
+	
 	with open(path_config,'w') as of:
 		config_obj.write(of)
 		print('>> saved:',path_config)
