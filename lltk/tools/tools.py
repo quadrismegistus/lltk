@@ -1632,8 +1632,11 @@ def download_pycurl(url, save_to,desc=''):
 	## main of function
 	do_download(url, save_to)
 
+def in_jupyter(): return sys.argv[-1].endswith('json')
 
 
+def printx(x):
+	printm(x) if in_jupyter() else print(x)
 
 class Bunch(object):
 	def __init__(self, **adict):

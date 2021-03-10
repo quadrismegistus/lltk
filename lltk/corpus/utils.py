@@ -2,6 +2,12 @@ from lltk.imports import *
 
 ### Accessing corpora
 
+def show():
+	if in_jupyter():
+		printm(showcorp(link=True))
+	else:
+		print(showcorp(link=False))
+
 def corpora(load=True,load_meta=False,incl_meta_corpora=True):
 	manifest=load_manifest()
 	for corpus_name in sorted(manifest):
@@ -65,10 +71,11 @@ def showcorp_readme():
 def showcorp(**attrs):
 	return status_corpora_markdown(**attrs)
 
-def status_corpora_markdown(maxcolwidth=45,**attrs):
-	df=status_corpora(**attrs).set_index('name')
+def status_corpora_markdown(maxcolwidth=45,link=False,**attrs):
+	df=status_corpora(link=link,**attrs).set_index('name')
 	for col in df.columns:
-		df[col]=df[col].apply(lambda x: str(x)[:maxcolwidth])
+		if not link and maxcolwidth:
+			df[col]=df[col].apply(lambda x: str(x)[:maxcolwidth])
 	return df.to_markdown()
 
 def status_corpora(parts=['metadata','freqs','txt','xml','raw'],link=True,public_only=True,show_local=True,is_public=None):
