@@ -578,7 +578,8 @@ def divide_texts_historically(texts,yearbin=10,yearmin=None,yearmax=None,min_len
 				if yearmin and year<yearmin: continue
 				if yearmax and year>=yearmax: continue
 				ybin = year // yearbin * yearbin
-				ybinstr = f'{ybin}-{ybin+yearbin}'
+				# ybinstr = f'{ybin}-{ybin+yearbin}'
+				ybinstr=ybin
 				grp[ybinstr]+=[t]
 			except ValueError:
 				continue

@@ -137,7 +137,7 @@ corpus.mfw_df(
     yearbin=None,                      # Average relative counts across `yearbin` periods
     col_group='period',                # Which column to periodize on
     n_by_period=None,                  # Number of top words per period
-    keep_periods=False,                # Keep periods in output dataframe
+    keep_periods=True,                # Keep periods in output dataframe
     n_agg='median',                    # How to aggregate across periods
     min_periods=None,                  # minimum number of periods a word must appear in
 
