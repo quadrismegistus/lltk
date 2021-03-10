@@ -577,8 +577,8 @@ class Corpus(object):
 				if not wpos: return False
 				for posx in only_pos:
 					# print(posx,wpos,only_pos)
-					if wpos.startswith(posx):
-						return True
+					if posx==wpos: return True
+					if posx.endswith('*') and wpos.startswith(posx[:-1]): return True
 				return False
 			df=df[df.word.apply(word_ok)]
 
