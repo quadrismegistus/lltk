@@ -623,7 +623,7 @@ class Corpus(object):
 		dfr=df#.reset_index() if not 'id' in df
 
 		## add back pos?
-		if only_pos and keep_pos is not False:
+		if keep_pos is not False:
 			w2pdf=get_word2pos_df(lang=self.lang)
 			w2pdf['pos0']=w2pdf['pos'].apply(lambda x: x[0] if type(x)==str and x else '')
 			# w2pdf['pos'],w2pdf['pos0']=w2pdf['pos0'],w2pdf['pos']
@@ -728,7 +728,6 @@ class Corpus(object):
 				num_proc=num_proc,
 				kwargs={
 					'by_ntext':by_ntext,
-					'n':n,
 					'estimate':estimate,
 					'by_fpm':by_fpm,
 					'progress':yearbin is False,
