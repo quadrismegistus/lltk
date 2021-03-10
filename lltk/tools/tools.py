@@ -87,6 +87,9 @@ def load_config(pathhack=True,prompt_for_base_conf=True):
 		for k,v in f().items(): CONFIG[k.upper()]=v
 
 	# print('>> loaded config:',CONFIG)
+	for k,v in CONFIG.items():
+		if v.strip().startswith('~'):
+			v=os.path.join(os.path.expanduser('~'),v.strip()[1:])
 	return CONFIG
 
 
