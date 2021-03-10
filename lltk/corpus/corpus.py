@@ -460,7 +460,7 @@ class Corpus(object):
 
 
 	def dtm(self,words=[],texts=None,n=DEFAULT_MFW_N,tf=False,tfidf=False,meta=False,na=0.0,**mfw_attrs):
-		dtm=self.preprocess_dtm(words=words,n=n,**mfw_attrs)
+		dtm=self.preprocess_dtm(texts=texts, words=words,n=n,**mfw_attrs)
 		dtm=dtm.set_index('id') if 'id' in set(dtm.columns) else dtm
 		if texts is not None:
 			dtm=dtm.loc[to_textids(texts)]
@@ -764,6 +764,7 @@ class Corpus(object):
 		return hashstr('|'.join(sorted(list(words))))[:12]
 	def preprocess_dtm(
 			self,
+			texts=None,
 			words=[],
 			n=DEFAULT_MFW_N,
 			num_proc=DEFAULT_NUM_PROC,
@@ -775,7 +776,7 @@ class Corpus(object):
 		):
 		
 		
-		if not words: words=self.mfw(n=n,num_proc=num_proc,force=force,**attrs)
+		if not words: words=self.mfw(texts=texts,n=n,num_proc=num_proc,force=force,**attrs)
 		wordset = set(words)
 		# print(len(wordset))
 		if not wordkey: wordkey=self.wordkey(words)
