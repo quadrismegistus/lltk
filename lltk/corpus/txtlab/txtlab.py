@@ -83,8 +83,9 @@ class TxtLab(Corpus):
 
 	def load_metadata(self):
 		meta=super().load_metadata()
-		meta['year']=meta['date']
-		meta=clean_meta(meta)
+		if 'date' in meta.columns and not 'year' in meta.columns:
+			meta['year']=meta['date']
+			meta=clean_meta(meta)
 		return meta
 
 

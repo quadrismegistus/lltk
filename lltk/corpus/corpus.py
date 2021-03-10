@@ -563,7 +563,7 @@ class Corpus(object):
 			stopwords=get_stopwords()
 			df=df[~df.word.isin(stopwords)]
 
-		if min_count: df = df[df.count>=min_count]
+		if min_count: df = df[df['count']>=min_count]
 
 		if min_periods and min_periods>1:
 			num_periods_per_word = df[df['count']>0].groupby('word').size()
