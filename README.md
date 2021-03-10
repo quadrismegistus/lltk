@@ -75,20 +75,7 @@ corpus.meta
 ```
 
 
-<div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
 
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
@@ -252,7 +239,7 @@ corpus.meta
   </tbody>
 </table>
 <p>450 rows × 9 columns</p>
-</div>
+
 
 
 
@@ -265,21 +252,6 @@ smpl
 
 
 
-
-<div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
@@ -346,7 +318,6 @@ smpl
     </tr>
   </tbody>
 </table>
-</div>
 
 
 
@@ -388,28 +359,16 @@ corpus.meta.groupby('language').year.plot.density()
 ```python
 # Most frequent words overall
 corpus.mfw_df()
+```
 
     [TxtLab] Counting overall most frequent words (MFW) [x2]: 100%|██████████| 410/410 [00:08<00:00, 46.07it/s]
     [TxtLab] Saving MFW to ~/lltk_data/corpora/txtlab/data/mfw/c28e0310dd87.ft
-```
 
 
 
 
-<div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
 
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
 
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
@@ -537,7 +496,7 @@ corpus.mfw_df()
   </tbody>
 </table>
 <p>9234 rows × 7 columns</p>
-</div>
+
 
 
 
@@ -575,20 +534,7 @@ top_noun_by_period
 ```
 
 
-<div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
 
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
@@ -716,7 +662,7 @@ top_noun_by_period
   </tbody>
 </table>
 <p>393 rows × 7 columns</p>
-</div>
+
 
 
 
@@ -743,29 +689,15 @@ p9.ggplot(
 ```python
 # Get a document-term matrix
 corpus.dtm()
+```
 
     [TxtLab] Assembling document-term matrix (DTM) [x2]: 100%|██████████| 410/410 [00:05<00:00, 77.52it/s]
     [TxtLab] Saving DTM to ~/lltk_data/corpora/txtlab/data/dtm/9f91f08c231d.ft
 
-```
 
 
 
 
-<div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
@@ -1865,7 +1797,7 @@ corpus.dtm()
   </tbody>
 </table>
 <p>410 rows × 9234 columns</p>
-</div>
+
 
 
 
@@ -1885,20 +1817,7 @@ fpms
 
 
 
-<div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
 
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
@@ -3011,7 +2930,7 @@ fpms
   </tbody>
 </table>
 <p>150 rows × 1000 columns</p>
-</div>
+
 
 
 
@@ -3041,20 +2960,7 @@ tfidfs
 
 
 
-<div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
 
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
@@ -4154,7 +4060,7 @@ tfidfs
   </tbody>
 </table>
 <p>150 rows × 1000 columns</p>
-</div>
+
 
 
 
@@ -4217,20 +4123,6 @@ corpus.mdw(
 ```
 
 
-<div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
@@ -4303,7 +4195,7 @@ corpus.mdw(
   </tbody>
 </table>
 <p>5919 rows × 2 columns</p>
-</div>
+
 
 
 
