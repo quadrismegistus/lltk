@@ -556,6 +556,10 @@ def load_manifest(force=True,corpus_name=None,path_manifests=PATH_MANIFESTS):
 			except KeyError:
 				continue
 
+			for k,v in cd.items():
+				if str(v).strip().startswith('~'):
+					cd[k]=rpath(str(v).strip())
+			
 			MANIFEST[corpus]=cd
 
 	return MANIFEST if not corpus_name else MANIFEST.get(corpus_name,{})

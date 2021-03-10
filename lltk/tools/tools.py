@@ -1716,6 +1716,12 @@ def ppath(path):
 		os.path.expanduser('~'),
 		'~'
 	)
+def rpath(path):
+	import os
+	return path.replace(
+		'~'
+		os.path.expanduser('~'),
+	)
 
 
 def untar(fname,dest='.',overwrite=False,progress=True,progress_desc=None,**attrs):
