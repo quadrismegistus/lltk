@@ -81,7 +81,11 @@ class TxtLab(Corpus):
 		save_df(df[header],self.path_metadata,index=False)
 
 
-
+	def load_metadata(self):
+		meta=super().load_metadata()
+		meta['year']=meta['date']
+		meta=clean_meta(meta)
+		return meta
 
 
 

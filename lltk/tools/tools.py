@@ -1515,14 +1515,8 @@ def download_wget(url, save_to):
 	os.rename(fn,save_to_fn)
 	print('\n>> saved:',save_to)
 
-def download(url,save_to,overwrite=False,desc=''):
-	# ValueError: unknown url type: '%22https%3A//www.dropbox.com/s/wz3igeqzx3uu5j1/markmark.zip?dl=1"'
-	#url='https://' + url.split('//',1)[-1].replace('"','')
-	#return download_wget(url,save_to)
-	#return download_tqdm(url,save_to)
-	if not overwrite and os.path.exists(save_to): return
-	#return download_tqdm2(url,save_to)
-	#return download_curl(url,save_to)
+def download(url,save_to,force=False,desc=''):
+	if not force and os.path.exists(save_to): return
 	try:
 		return download_pycurl(url,save_to,desc=desc)
 	except (ImportError,ModuleNotFoundError) as e:

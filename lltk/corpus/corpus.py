@@ -355,7 +355,7 @@ class Corpus(object):
 			# self.mkdir_root()
 			tmpfnfndir=os.path.dirname(tmpfnfn)
 			if not os.path.exists(tmpfnfndir): os.makedirs(tmpfnfndir)
-			tools.download(url,tmpfnfn,desc=f'[{self.name}] Downloading {tmpfn}')
+			tools.download(url,tmpfnfn,desc=f'[{self.name}] Downloading {tmpfn}',force=force)
 		if unzip:
 			opath=self.path_raw if part=='raw' else self.path_root
 			tools.unzip(tmpfnfn,opath,desc=f'[{self.name}] Unzipping {tmpfn}',flatten=flatten)
