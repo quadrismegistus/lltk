@@ -13,6 +13,9 @@ if not 'lltk.py' in os.listdir(LLTK_ROOT):
 #print('LLTK root:',LIT_ROOT)
 
 PATH_LLTK_HOME = os.path.join(HOME,'lltk_data')
+PATH_LLTK_HOME_DATA = os.path.join(HOME,'lltk_data','data')
+PATH_DEFAULT_DATA = os.path.join(PATH_LLTK_HOME_DATA,'default.zip')
+URL_DEFAULT_DATA='https://www.dropbox.com/s/cq1xb85yaysezx4/lltk_default_data.zip?dl=1'
 
 PATH_BASE_CONF=os.path.join(HOME,'.lltk_config')
 PATH_DEFAULT_CONF=os.path.abspath(os.path.join(LIT_ROOT,'..','config_default.txt'))
@@ -23,6 +26,7 @@ PATH_MANIFEST_GLOBAL = os.path.join(LIT_ROOT,'corpus','manifest.txt')
 
 PATH_LLTK_REPO=os.path.abspath(os.path.join(LLTK_ROOT,'..'))
 
+URL_DEFAULT_DATA='https://www.dropbox.com/s/cq1xb85yaysezx4/lltk_default_data.zip?dl=1'
 
 
 
@@ -147,7 +151,8 @@ def load_default_config():
 	configd=config_obj2dict(config,pathhack_root=LIT_ROOT,pathhack=False)
 	for k,v in  configd.items():
 		if not os.path.isabs(v):
-			configd[k]=os.path.join(PATH_LLTK_REPO,v)
+			# configd[k]=os.path.join(PATH_LLTK_REPO,v)
+			configd[k]=os.path.join(PATH_LLTK_HOME,v)
 	if not 'PATH_TO_CORPORA' in configd: configd['PATH_TO_CORPORA']='~/lltk_data/corpora'
 	# configd=dict((k,v.replace(os.path.expanduser('~'),'~')) for k,v in configd.items())
 	# if not 'PATH_TO_CORPORA' in configd: configd['PATH_TO_CORPORA']=os.path.expanduser('~/lltk_data/corpora')
@@ -280,7 +285,8 @@ def get_stopwords(lang='en',include_rank=None):
 		from lltk import PATH_TO_ENGLISH_STOPWORDS
 		path = config.get('PATH_TO_ENGLISH_STOPWORDS',PATH_TO_ENGLISH_STOPWORDS)
 		if not path: raise Exception('!! PATH_TO_ENGLISH_STOPWORDS not set in config.txt')
-		if not os.path.isabs(path): path=os.path.join(PATH_LLTK_REPO,path)
+		if not os.path.isabs(path): path=os.path.join(PATH_LLTK_HOME,path)
+		if not os.path.exists(path): download_default_data(path)
 		if os.path.exists(path):
 			with xopen(path) as f: sw1=set(f.read().strip().split('\n'))
 			if include_rank and type(include_rank)==int:
@@ -296,7 +302,8 @@ def get_wordlist(lang='en'):
 		from lltk import PATH_TO_ENGLISH_WORDLIST
 		path = config.get('PATH_TO_ENGLISH_WORDLIST',PATH_TO_ENGLISH_WORDLIST)
 		if not path: raise Exception('!! PATH_TO_ENGLISH_WORDLIST not set in config.txt')
-		if not os.path.isabs(path): path=os.path.join(PATH_LLTK_REPO,path)
+		if not os.path.isabs(path): path=os.path.join(PATH_LLTK_HOME,path)
+		if not os.path.exists(path): download_default_data(path)
 		if os.path.exists(path):
 			with xopen(path) as f:
 				WORDLISTS[lang]=set(f.read().strip().split('\n'))
@@ -309,7 +316,8 @@ def get_spelling_modernizer(lang='en'):
 		from lltk import PATH_TO_ENGLISH_SPELLING_MODERNIZER
 		path = config.get('PATH_TO_ENGLISH_SPELLING_MODERNIZER',PATH_TO_ENGLISH_SPELLING_MODERNIZER)
 		if not path: raise Exception('!! PATH_TO_ENGLISH_SPELLING_MODERNIZER not set in config.txt')
-		if not os.path.isabs(path): path=os.path.join(PATH_LLTK_REPO,path)
+		if not os.path.isabs(path): path=os.path.join(PATH_LLTK_HOME,path)
+		if not os.path.exists(path): download_default_data(path)
 		if os.path.exists(path):
 			#print('>> getting spelling modernizer from %s...' % SPELLING_MODERNIZER_PATH)
 			d={}
@@ -335,12 +343,21 @@ def get_word2pos(lang='en'):
 		from lltk import PATH_TO_ENGLISH_WORD2POS
 		path = config.get('PATH_TO_ENGLISH_WORD2POS',PATH_TO_ENGLISH_WORD2POS)
 		if not path: raise Exception('!! PATH_TO_ENGLISH_WORD2POS not set in config.txt')
-		if not os.path.isabs(path): path=os.path.join(PATH_LLTK_REPO,path)
+		if not os.path.isabs(path): path=os.path.join(PATH_LLTK_HOME,path)
+		if not os.path.exists(path): download_default_data(path)
 		if os.path.exists(path):
 			with xopen(path) as f:
 				# print(path,f)
 				WORD2POS[lang]=json.load(f)
 	return WORD2POS[lang]
+
+def download_default_data(path):
+	if not os.path.exists(os.path.dirname(PATH_DEFAULT_DATA)):
+		os.makedirs(os.path.dirname(PATH_DEFAULT_DATA))
+	if path and not os.path.exists(path) and '/default/' in path:
+		download(URL_DEFAULT_DATA, PATH_DEFAULT_DATA)
+		unzip(PATH_DEFAULT_DATA,os.path.dirname(PATH_DEFAULT_DATA))
+	
 
 def get_ocr_corrections(lang='en'):
 	global OCRCORREX
@@ -349,16 +366,18 @@ def get_ocr_corrections(lang='en'):
 		d={}
 		from lltk import PATH_TO_ENGLISH_OCR_CORRECTION_RULES
 		path = config.get('PATH_TO_ENGLISH_OCR_CORRECTION_RULES',PATH_TO_ENGLISH_OCR_CORRECTION_RULES)
-		if not os.path.isabs(path): path=os.path.join(PATH_LLTK_REPO, path)
-		with xopen(path) as f:
-			for ln in f:
-				ln=ln.strip()
-				if not ln: continue
-				try:
-					old,new,count=ln.split('\t')
-				except ValueError:
-					continue
-				d[old]=new
+		if not os.path.isabs(path): path=os.path.join(PATH_LLTK_HOME, path)
+		if not os.path.exists(path): download_default_data(path)
+		if os.path.exists(path):
+			with xopen(path) as f:
+				for ln in f:
+					ln=ln.strip()
+					if not ln: continue
+					try:
+						old,new,count=ln.split('\t')
+					except ValueError:
+						continue
+					d[old]=new
 		OCRCORREX[lang]=d
 	return OCRCORREX[lang]
 

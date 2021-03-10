@@ -125,7 +125,7 @@ PATH_CORPUS_ZIP = os.path.join(PATH_CORPUS, 'lltk_corpora')
 PATH_TO_CORPUS_CODE = config.get('PATH_TO_CORPUS_CODE', os.path.join(PATH_HERE,'corpus') )
 PATH_TO_DATA_CODE = os.path.abspath(os.path.join(PATH_TO_CORPUS_CODE,'..','..','data'))
 PATH_LLTK_CODE_HOME = os.path.abspath(os.path.join(PATH_TO_CORPUS_CODE,'..','..'))
-PATH_LLTK_REPO = os.path.abspath(os.path.join(PATH_TO_CORPUS_CODE,'..','..','..'))
+# PATH_LLTK_REPO = os.path.abspath(os.path.join(PATH_TO_CORPUS_CODE,'..','..','..'))
 
 DEFAULT_PATH_TO_MANIFEST = os.path.join(PATH_LLTK_HOME,'manifest.txt')
 PATH_MANIFEST=os.path.join(PATH_TO_CORPUS_CODE,'manifest.txt')
