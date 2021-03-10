@@ -37,15 +37,15 @@ class TextChadwyckPoetry(Text):
 	def year(self):
 		return self.year_author_is_30
 
-	@property
-	def meta(self,force_author_dob=True,plus_years=30):
-		meta=super(TextChadwyckPoetry,self).meta
-		meta['year']
-		try:
-			meta['year']=int(str(meta['author_dob'])[:4])+plus_years
-		except ValueError:
-			meta['year']=0
-		return meta
+	# @property
+	# def meta(self,force_author_dob=True,plus_years=30):
+	# 	meta=super(TextChadwyckPoetry,self).meta
+	# 	meta['year']
+	# 	try:
+	# 		meta['year']=int(str(meta['author_dob'])[:4])+plus_years
+	# 	except ValueError:
+	# 		meta['year']=0
+	# 	return meta
 
 	@property
 	def meta_by_file(self):

@@ -623,7 +623,9 @@ class Corpus(object):
 			if os.path.exists(keyfn):
 				# if verbose: self.log(f'MFW is cached for key {key}')
 				if verbose: self.log(f'Loading MFW from {ppath(keyfn)}')
-				return read_df(keyfn)
+				df=read_df(keyfn)
+				self._mfwd[key]=df
+				return df
 			# with pd.HDFStore(self.path_mfw) as store:
 			# 	if key in store:
 			# 		if verbose: self.log(f'MFW already saved for key {key}')
@@ -727,7 +729,9 @@ class Corpus(object):
 			if os.path.exists(keyfn):
 				# if verbose: self.log(f'DTM already saved for key {key}')
 				if verbose: self.log(f'Loading DTM from {ppath(keyfn)}')
-				return read_df(keyfn)
+				df=read_df(keyfn)
+				self._dtmd[wordkey]=df
+				return df
 
 		# get
 		objs = [

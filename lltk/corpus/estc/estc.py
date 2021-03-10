@@ -169,10 +169,10 @@ class ESTC(Corpus):
 		num_texts = len(texts)
 		estc_ids_in_ecco = set(open('/Users/ryan/DH/18C/titles/estc/estc_ids_in_ecco.txt').read().split())
 
-		def meta(text):
-			dx=text.meta_by_file
-			dx['in_ecco']=dx['id_estc'] in estc_ids_in_ecco
-			return dx
+		# def meta(text):
+		# 	dx=text.meta_by_file
+		# 	dx['in_ecco']=dx['id_estc'] in estc_ids_in_ecco
+		# 	return dx
 
 		def writegen():
 			for i,t in enumerate(self.texts()):
