@@ -8,7 +8,7 @@ Literary Language Tool Kit (LLTK): corpora, models, and tools for the study of c
 
 ```python
 # install
-!pip install -qU git+https://github.com/quadrismegistus/lltk@v2
+!pip install -qU git+https://github.com/quadrismegistus/lltk
 
 # load lltk for use within python
 import lltk
