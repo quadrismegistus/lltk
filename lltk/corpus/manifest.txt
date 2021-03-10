@@ -355,8 +355,9 @@ name = InternetArchive
 desc = 19th Century Novels, curated by the U of Illinois and hosted on the Internet Archive
 link = https://archive.org/details/19thcennov?tab=about
 path_xml = meta_xml
-url_metadata = https://www.dropbox.com/s/yymc8t060eik7bt/internet_archive_metadata.zip?dl=1
 url_txt = https://www.dropbox.com/s/bs1ec7k9kk2jkrt/internet_archive_txt.zip?dl=1
+url_metadata = https://www.dropbox.com/s/yymc8t060eik7bt/internet_archive_metadata.zip?dl=1
+url_freqs = https://www.dropbox.com/s/eofh9npy5x7qn5o/internet_archive_freqs.zip?dl=1
 public = metadata,freqs,txt
 license_type = Free
 
