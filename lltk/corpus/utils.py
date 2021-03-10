@@ -2,11 +2,11 @@ from lltk.imports import *
 
 ### Accessing corpora
 
-def show():
+def show(link=None,*x,**y):
 	if in_jupyter():
-		printm(showcorp(link=True))
+		printm(showcorp(link=True if link is None else link,**y))
 	else:
-		print(showcorp(link=False))
+		print(showcorp(link=False if link is None else link,**y))
 
 def corpora(load=True,load_meta=False,incl_meta_corpora=True):
 	manifest=load_manifest()
@@ -91,6 +91,8 @@ def status_corpora(parts=['metadata','freqs','txt','xml','raw'],link=True,public
 		for pk in parts: dx[pk]=''
 		ppub = {x.strip() for x in C.public.split(',') if x.strip()}
 		privpub = {x.strip() for x in C.private.split(',') if x.strip()}
+		
+		
 		for p in parts:
 			if public_only and p in privpub:
 				dx[p]='☂'

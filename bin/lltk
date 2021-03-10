@@ -120,6 +120,7 @@ def main():
 
 	groups['show'].add_argument('-public',help='Show only public data [default: False]',default=False,action='store_true')
 	groups['show'].add_argument('-links',help='Show links in markdown [default: False]',default=False,action='store_true')
+	groups['show'].add_argument('-nolocal',help='Do not display data on machine [default: False]',default=False,action='store_true')
 
 	for cmd in PART_REFERRING_CMDS:
 		groups[cmd].add_argument('-parts',help='Name of data type (metadata/txt/xml/freqs/raw)',default='',nargs='?')
@@ -151,10 +152,11 @@ def main():
 
 	## SOLO COMMANDS
 	if args.cmd=='show':
-		print(showcorp(
-			public_only=args.public is not False,
-			link=args.links is not False
-		))
+		show(
+			public_only=args.public is True,
+			link=args.links is not False,
+			show_local=not args.public,
+		)
 
 
 	elif args.cmd=='status':
