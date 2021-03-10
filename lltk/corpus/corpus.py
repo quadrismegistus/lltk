@@ -131,6 +131,7 @@ class Corpus(object):
 	#################
 
 	def preprocess_txt(self,force=False,num_proc=DEFAULT_NUM_PROC,verbose=False,**attrs): #force=False,slingshot=False,slingshot_n=1,slingshot_opts=''):
+		if not self._texts: return
 		paths = [(t.path_xml,t.path_txt) for t in self.texts() if t.path_xml and os.path.exists(t.path_xml)]
 		if not paths:
 			if verbose: self.log('No XML files to produce plain text files from')
