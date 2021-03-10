@@ -1,6 +1,10 @@
 from lltk.imports import *
 
-
+def fixpath(path):
+	if type(path)==str and path and '~' in path:
+		path=path.split('~')[-1]
+		path=os.path.join(os.path.expanduser('~'), path[1:])
+	return path
 
 
 
@@ -27,7 +31,9 @@ class Corpus(object):
 		self._textd=None
 		self._dtmd={}
 		self._mfwd={}
-		for k,v in attrs.items(): setattr(self,k,v)
+		for k,v in attrs.items():
+			if k.startswith('path_'): v=fixpath(v)
+			setattr(self,k,v)
 		if load_meta:
 			try:
 				self.load_metadata()
