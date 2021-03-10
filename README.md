@@ -16,30 +16,35 @@ pip install git+https://github.com/quadrismegistus/lltk@v2
 
 ```
 lltk show                             # show which corpora/data are available
-lltk install ECCO_TCP                 # download a corpus
+lltk install ECCO_TCP                 # download and install a corpus
+lltk preprocess ECCO_TCP              # optional: preprocess common calculations (xml2txt,freqs,mfw,dtm)
 ```
 
 3) Load the corpus in Python:
 
 ```python
-import lltk                            # import lltk as a python module
-corpus = lltk.load('ECCO_TCP')         # load the corpus by name or ID
-```
+import lltk                          # import lltk as a python module
+corpus = lltk.load('ECCO_TCP')       # load the corpus by name or ID
 
-...and play with convenient Corpus objects...
+# Metadata
+meta = corpus.meta                       # metadata as data frame
+meta_smpl = meta.query('1770<year<1830') # easy query access         
 
-```python
-df = corpus.metadata                       # get corpus metadata as a pandas dataframe
-df_sample=df.query('1740 < year < 1780')   # do a quick query on the metadata
+# Data
+mfw = corpus.mfw()                   # get the 10K most frequent words as a list
+dtm = corpus.dtm()                   # get a document-term matrix as a pandas dataframe
 
-texts = corpus.texts()                     # get a convenient Text object for each text
-texts_sample = corpus.texts(df_sample.id)  # get Text objects for a specific list of IDs
-```
+# Text objects
+texts = corpus.texts()               # get a convenient Text object for each text
+texts_smpl = corpus.texts(smpl.id)   # get Text object for list of ids
+text = corpus.t                      # get a random Text object
 
-...and Text objects:
+# Magic attributes
+author = corpus.au.Wollstonecraft    # hit "tab" after typing e.g. "Wol" to autocomplte 
+texts_wollst = corpus.au.Wollstonecraft.ti # get text objects for last name Wollstonecraft 
 
-```python
-for text in texts_sample:             # loop over Text objects
+# Loop over text objects
+for text in corpus.texts():           # loop over Text objects
     # metadata access
     text_meta = text.meta             # get text metadata as dictionary
     author = text.author              # get common metadata as attributes    
@@ -57,30 +62,6 @@ for text in texts_sample:             # loop over Text objects
     tnltk = text.nltk                 # get nltk Text object
     tblob = text.blob                 # get TextBlob object
     tstanza = text.stanza             # get list of stanza objects (one per para)
-```
-
-## Corpus magic
-
-Each corpus object can generate data about itself:
-
-```python
-corpus.preprocess_txt()               # save plain text from xml (if possible)
-corpus.preprocess_freqs()             # save counts as JSON files
-corpus.preprocess_mfw()               # save list of all words in corpus and their total  count
-corpus.preprocess_dtm()               # save a document-term matrix with top N words
-```
-
-You can also run these commands in the terminal:
-
-```
-lltk preprocess my_corpus             # run all the steps above
-```
-
-Generating this kind of data allows for easier access to things like:
-
-```python
-mfw = corpus.mfw()                   # get the 10K most frequent words as a list
-dtm = corpus.dtm()                   # get a document-term matrix as a pandas dataframe
 ```
 
 
