@@ -17,6 +17,8 @@ import lltk
 lltk.show()
 ```
 
+LLTK has built in functionality for the following corpora. Some (🌞) are freely downloadable from the links below or the LLTK interface. Some of them (☂) require first accessing the raw data through your institutional or other subscription. Some corpora have a mixture, with some data open through fair research use (e.g. metadata, freqs) and some closed (e.g. txt, xml, raw).
+
 
 | name                | desc                                                                                                                                                                      | license                                                                     | metadata                                                                           | freqs                                                                           | txt                                                                           | xml                                                                    | raw                                                                    |
 |:--------------------|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:----------------------------------------------------------------------------|:-----------------------------------------------------------------------------------|:--------------------------------------------------------------------------------|:------------------------------------------------------------------------------|:-----------------------------------------------------------------------|:-----------------------------------------------------------------------|
@@ -58,13 +60,6 @@ lltk.show()
 # load a corpus: e.g. the txtLAB450 dataset of 450 En/Fr/Ger novels  
 corpus = lltk.load('TxtLab')
 ```
-
-    [TxtLab] Downloading txtlab_metadata.zip: 17.4kb [00:00, 20.2kb/s]                            
-    [TxtLab] Unzipping txtlab_metadata.zip: 100%|██████████| 1/1 [00:00<00:00, 696.84it/s]
-    [TxtLab] Downloading txtlab_freqs.zip: 21.4Mb [00:01, 16.2Mb/s]                            
-    [TxtLab] Unzipping txtlab_freqs.zip: 100%|██████████| 410/410 [00:00<00:00, 638.10it/s]
-    [TxtLab] Downloading txtlab_txt.zip: 95.1Mb [00:01, 55.9Mb/s]                            
-    [TxtLab] Unzipping txtlab_txt.zip: 100%|██████████| 410/410 [00:02<00:00, 145.80it/s]
 
 ## Accessing metadata
 
@@ -360,12 +355,6 @@ corpus.meta.groupby('language').year.plot.density()
 # Most frequent words overall
 corpus.mfw_df()
 ```
-
-    [TxtLab] Counting overall most frequent words (MFW) [x2]: 100%|██████████| 410/410 [00:08<00:00, 46.07it/s]
-    [TxtLab] Saving MFW to ~/lltk_data/corpora/txtlab/data/mfw/c28e0310dd87.ft
-
-
-
 
 
 
@@ -690,10 +679,6 @@ p9.ggplot(
 # Get a document-term matrix
 corpus.dtm()
 ```
-
-    [TxtLab] Assembling document-term matrix (DTM) [x2]: 100%|██████████| 410/410 [00:05<00:00, 77.52it/s]
-    [TxtLab] Saving DTM to ~/lltk_data/corpora/txtlab/data/dtm/9f91f08c231d.ft
-
 
 
 
