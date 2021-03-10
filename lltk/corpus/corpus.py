@@ -65,7 +65,7 @@ class Corpus(object):
 					setattr(aobj,tkey,tobj)
 		return self._authors
 
-	def load_metadata(self,clean=True,add_text_col=False,text_col='_text'):
+	def load_metadata(self,clean=True,add_text_col=True,text_col='_text'):
 		if self._metadf is None:	
 			# meta=read_df(self.path_metadata).set_index(self.COL_ID,drop=False).fillna('')
 			if not os.path.exists(self.path_metadata):
@@ -109,7 +109,7 @@ class Corpus(object):
 			t
 			for t in self._texts
 			if text_ids is None
-			or t.id in set(text_ids)
+			or t.id in set(to_textids(text_ids))
 		]
 	
 	# Convenience
@@ -339,7 +339,7 @@ class Corpus(object):
 		if type(parts)==str: parts=[p.strip().lower() for p in parts.split(',')]
 		if not part and parts:
 			for part in parts: self.install(ask=ask, urls=urls, part=part, parts=[], force=force, **attrs)
-			return
+			return self
 		if not part: return
 		opath=getattr(self,f'path_{part}')
 		tmpfnfn=self.path_zip(part)
@@ -357,6 +357,7 @@ class Corpus(object):
 			tools.unzip(tmpfnfn,opath,desc=f'[{self.name}] Unzipping {tmpfn}',flatten=flatten)
 			#if os.path.exists(self.path_raw) and os.listdir(self.path_raw)==['raw']:
 			#	os.rename(os.path.join(self.path_raw,'raw'), self.path_raw)
+		return self
 
 	def path_zip(self,part):
 		return os.path.join(PATH_CORPUS_ZIP,f'{self.id}_{part}.zip')
@@ -448,7 +449,7 @@ class Corpus(object):
 	### FREQS
 
 
-	def dtm(self,words=[],n=DEFAULT_MFW_N,tf=False,tfidf=False,meta=False,**mfw_attrs):
+	def dtm(self,words=[],texts=None,n=DEFAULT_MFW_N,tf=False,tfidf=False,meta=False,**mfw_attrs):
 		if not words: words=self.mfw(n=n,**mfw_attrs)
 		wordkey=self.wordkey(words)
 		if wordkey in self._dtmd:
@@ -460,6 +461,8 @@ class Corpus(object):
 				dtm=self.preprocess_dtm(words=words,n=n,wordkey=wordkey)
 		self._dtmd[wordkey]=dtm
 		dtm=dtm.set_index('id') if 'id' in set(dtm.columns) else dtm
+		if texts is not None:
+			dtm=dtm.loc[to_textids(texts)]
 
 		if tf: dtm=dtm2tf(dtm)
 		if tfidf: dtm=dtm2tfidf(dtm)
@@ -469,7 +472,7 @@ class Corpus(object):
 			mdf=self.meta[meta] if type(meta) in {list,set} else self.meta
 			mdtm=mdf.merge(dtm,on='id',suffixes=('','_w'))
 			micols = mdf.columns
-			dtm=mdtm.set_index(list(micols))
+			dtm=mdtm.set_index('id')#list(micols))
 		return dtm 
 
 

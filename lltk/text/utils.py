@@ -171,7 +171,17 @@ def save_tokenize_text(text,ofolder=None,force=False):
 	#assert 1 == 2
 
 
+def to_textids(l,col_id='id'):
+	import pandas as pd
+	from lltk import Text
 
+	if issubclass(l.__class__, pd.DataFrame) and col_id in set(l.columns):
+		return list(l[col_id])
+	
+	return [
+		x.id if issubclass(l.__class__, Text) else x
+		for x in l
+	]
 
 def clean_text(txt):
 	replacements={

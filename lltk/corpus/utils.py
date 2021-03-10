@@ -2,8 +2,8 @@ from lltk.imports import *
 
 ### Accessing corpora
 
-def show(link=None,*x,**y):
-	if in_jupyter():
+def show(link=None,m=True,*x,**y):
+	if in_jupyter() and m:
 		printm(showcorp(link=True if link is None else link,**y))
 	else:
 		print(showcorp(link=False if link is None else link,**y))
@@ -82,19 +82,19 @@ def status_corpora_markdown(maxcolwidth=45,link=False,**attrs):
 
 
 def install(cname_or_id_or_C,*x,**y):
-	C=lltk.load(cname_or_id_or_C) if type(cname_or_id_or_C)==str else cname_or_id_or_C
+	C=load_corpus(cname_or_id_or_C) if type(cname_or_id_or_C)==str else cname_or_id_or_C
 	return C.install(*x,**y)
 def preprocess(cname_or_id_or_C,*x,**y):
-	C=lltk.load(cname_or_id_or_C) if type(cname_or_id_or_C)==str else cname_or_id_or_C
+	C=load_corpus(cname_or_id_or_C) if type(cname_or_id_or_C)==str else cname_or_id_or_C
 	return C.preprocess(*x,**y)
-def zip(cname_or_id_or_C,*x,**y):
-	C=lltk.load(cname_or_id_or_C) if type(cname_or_id_or_C)==str else cname_or_id_or_C
+def zipcorpus(cname_or_id_or_C,*x,**y):
+	C=load_corpus(cname_or_id_or_C) if type(cname_or_id_or_C)==str else cname_or_id_or_C
 	return C.zip(*x,**y)
 def upload(cname_or_id_or_C,*x,**y):
-	C=lltk.load(cname_or_id_or_C) if type(cname_or_id_or_C)==str else cname_or_id_or_C
+	C=load_corpus(cname_or_id_or_C) if type(cname_or_id_or_C)==str else cname_or_id_or_C
 	return C.upload(*x,**y)
 def share(cname_or_id_or_C,*x,**y):
-	C=lltk.load(cname_or_id_or_C) if type(cname_or_id_or_C)==str else cname_or_id_or_C
+	C=load_corpus(cname_or_id_or_C) if type(cname_or_id_or_C)==str else cname_or_id_or_C
 	return C.upload(*x,**y)
 
 
@@ -185,9 +185,9 @@ def clean_meta(meta):
 	meta=fix_meta(meta)
 	if 'year' in set(meta.columns):
 		newyears=pd.to_numeric(meta.year,errors='coerce',downcast='integer')
-	if False in [(x==y) for x,y in zip(meta.year, newyears)]:
-		meta['year_orig']=meta.year
-	meta['year']=newyears
+		if False in {(x==y) for x,y in zip(meta.year, newyears)}:
+			meta['year_orig']=meta.year
+		meta['year']=newyears
 	return meta
 
 
@@ -586,13 +586,15 @@ def divide_texts_historically(texts,yearbin=10,yearmin=None,yearmax=None,min_len
 
 
 
-def load_corpus(name_or_id,manifestd={},load_meta=False,**input_kwargs):
+def load_corpus(name_or_id,manifestd={},load_meta=False,install_if_nec=False,**input_kwargs):
 	if not manifestd: manifestd=load_corpus_manifest(name_or_id,make_path_abs=True)
 	# print('>> loading:',manifestd['path_python'])
 	module = imp.load_source(manifestd['id'], manifestd['path_python'])
 	class_class = getattr(module,manifestd['class_name'])
-	class_obj = class_class(load_meta=load_meta,**manifestd)
-	return class_obj
+	C = class_class(load_meta=load_meta,**manifestd)
+	if install_if_nec and (C.meta is None or not len(C.meta)):
+		return C.install(**input_kwargs)
+	return C
 
 
 
@@ -725,6 +727,6 @@ def do_gen_mfw_grp(group,*x,**y):
 
 
 
-# Add new name for function
-load = load_corpus
+def load(name_or_id,load_meta=True,install_if_nec=True,**y):
+	return load_corpus(name_or_id,load_meta=load_meta,install_if_nec=install_if_nec,**y)
 #################################################################

@@ -1722,7 +1722,11 @@ def unzip(zipfn, dest='.', flatten=False, overwrite=False, replace_in_filenames=
 			for k,v in replace_in_filenames.items(): target_fnfn = target_fnfn.replace(k,v)
 			if not overwrite and os.path.exists(target_fnfn): continue
 			target_dir = os.path.dirname(target_fnfn)
-			if not os.path.exists(target_dir): os.makedirs(target_dir)
+			try:
+				if not os.path.exists(target_dir): os.makedirs(target_dir)
+			except FileExistsError:
+				pass
+			
 			with zip_file.open(member) as source, open(target_fnfn,'wb') as target:
 				shutil.copyfileobj(source, target)
 
