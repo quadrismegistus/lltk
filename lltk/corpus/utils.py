@@ -122,7 +122,7 @@ def status_corpora(parts=['metadata','freqs','txt','xml','raw'],link=True,public
 		
 		for p in parts:
 			if public_only and p in privpub:
-				dx[p]='☂'
+				dx[p]='☂️'
 			else:
 				ppath=C.has_data(p)
 				if show_local and ppath:
@@ -131,7 +131,7 @@ def status_corpora(parts=['metadata','freqs','txt','xml','raw'],link=True,public
 					url=C.has_url(p)
 					if url:
 						if not public_only or p in ppub:
-							dx[p]+='🌣' if not link else f'[🌣]({url})'
+							dx[p]+='🌞' if not link else f'[🌞]({url})'
 			
 		ld.append(dx)
 	return pd.DataFrame(ld).fillna('')
