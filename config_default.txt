@@ -4,10 +4,11 @@
 PATH_CORENLP = ~/lltk_data/tools/corenlp
 
 # Files for text processing
-PATH_TO_ENGLISH_WORDLIST = data/wordlist.aspell.net.with_caps.txt.gz
-PATH_TO_ENGLISH_STOPWORDS = data/stopwords.txt
-PATH_TO_ENGLISH_SPELLING_MODERNIZER = data/spelling_variants_from_morphadorner.txt.gz
-PATH_TO_ENGLISH_OCR_CORRECTION_RULES = data/CorrectionRules.txt.gz
+PATH_TO_ENGLISH_WORDLIST = data/default/wordlist.aspell.net.with_caps.txt.gz
+PATH_TO_ENGLISH_STOPWORDS = data/default/stopwords.onix.txt.gz
+PATH_TO_ENGLISH_SPELLING_MODERNIZER = data/default/spelling_variants_from_morphadorner.txt.gz
+PATH_TO_ENGLISH_OCR_CORRECTION_RULES = data/default/CorrectionRules.txt.gz
+PATH_TO_ENGLISH_WORD2POS = data/default/word2pos.json.gz
 
 PATH_TO_WORDDB = data/data.worddb.2019.txt.gz
 PATH_TO_FIELDS = data/data.fields.txt.gz

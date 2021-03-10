@@ -269,7 +269,7 @@ class Word2Vec(Model):
 
 	def remove_non_english(self):
 		from lltk import tools
-		eng = tools.get_english_wordlist()
+		eng = tools.get_wordlist(lang=self.corpus.lang)
 		logging.info('>> removing non-english words...')
 		self.limit_vocab(words=eng)
 

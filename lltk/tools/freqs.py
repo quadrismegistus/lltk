@@ -71,10 +71,10 @@ def get_fields0(fnfn=None,only_fields={},only_pos={},word2fields={}):
 
 	return field2words
 
-def get_word2pos(worddb=None, word_col='word', pos_col='pos_byu'):
-	from .tools import worddf
-	df=worddf()
-	return dict(zip(df[word_col],df[pos_col]))
+# def get_word2pos(worddb=None, word_col='word', pos_col='pos_byu'):
+# 	from .tools import worddf
+# 	df=worddf()
+# 	return dict(zip(df[word_col],df[pos_col]))
 
 def get_word2fields(fnfn=None,only_fields={},only_pos={'n','v','r','j'}):
 	word2fields=defaultdict(set)

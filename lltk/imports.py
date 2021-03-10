@@ -28,7 +28,7 @@ import re,configparser
 from datetime import datetime
 import urllib, tempfile
 from os.path import expanduser
-
+from xopen import xopen
 
 from tqdm import tqdm
 from pprint import pprint
@@ -52,7 +52,7 @@ ROOT = os.path.dirname(os.path.realpath(__file__))
 
 import warnings,six,shutil
 warnings.filterwarnings('ignore')
-SPELLING_VARIANT_PATH=os.path.join(ROOT,'data/spelling_variants_from_morphadorner.txt')
+# SPELLING_VARIANT_PATH=os.path.join(ROOT,'data/spelling_variants_from_morphadorner.txt')
 
 HOME=os.path.expanduser("~")
 MODERNIZE_SPELLING=False
@@ -104,7 +104,8 @@ MANIFEST_DEFAULTS=dict(
 	license='',
 	license_type='',
 	year_start=None,
-	year_end=None
+	year_end=None,
+	lang='en'
 )
 
 nlp=None

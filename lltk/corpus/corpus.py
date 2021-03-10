@@ -515,7 +515,8 @@ class Corpus(object):
 	# MFW
 	#########
 
-
+	# pos?
+	
 
 
 	def mfw_df(self,
@@ -533,6 +534,7 @@ class Corpus(object):
 			valtype='fpm',
 			min_periods=None,
 			by_fpm=False,
+			only_pos=set(),
 			**attrs):
 		
 		# gen if not there?
@@ -547,7 +549,7 @@ class Corpus(object):
 			by_fpm=by_fpm,
 			col_group=col_group,
 			force=False,
-			try_create_freqs=True
+			try_create_freqs=True,
 		)
 		if df is None:
 			self.log('Could not load or generate MFW')
@@ -568,7 +570,17 @@ class Corpus(object):
 			if num_periods_per_word.max()>1:
 				ok_words=set(num_periods_per_word[num_periods_per_word>=min_periods].index)
 				df=df[df.word.isin(ok_words)]
-
+		if only_pos:
+			w2p=get_word2pos(lang=self.lang)
+			def word_ok(w):
+				wpos=w2p.get(w.lower())
+				if not wpos: return False
+				for posx in only_pos:
+					# print(posx,wpos,only_pos)
+					if wpos.startswith(posx):
+						return True
+				return False
+			df=df[df.word.apply(word_ok)]
 
 		## now pivot
 		dfi=df.reset_index()
@@ -630,7 +642,8 @@ class Corpus(object):
 			estimate=True,
 			force=False,
 			verbose=True,
-			try_create_freqs=True
+			try_create_freqs=True,
+			pos=set()
 		):
 		"""
 		From tokenize_texts()
@@ -642,80 +655,76 @@ class Corpus(object):
 		texts=[t for t in texts if (not year_min or t.year>=year_min) and (not year_max or t.year<year_max)]
 		
 		key=self.mfwkey(yearbin,by_ntext,by_fpm,texts)
-		if key in self._mfwd: return self._mfwd[key]
 		keyfn=os.path.join(self.path_mfw,key+'.ft')
 		
-		if not force:
-			if os.path.exists(keyfn):
-				# if verbose: self.log(f'MFW is cached for key {key}')
-				if verbose: self.log(f'Loading MFW from {ppath(keyfn)}')
-				df=read_df(keyfn)
-				self._mfwd[key]=df
-				return df
-			# with pd.HDFStore(self.path_mfw) as store:
-			# 	if key in store:
-			# 		if verbose: self.log(f'MFW already saved for key {key}')
-			# 		return store[key]
-
-		period2texts = divide_texts_historically(yearbin=yearbin,texts=texts)
-		old=[]
-		paths_freqs=[]
-		for period,texts in sorted(period2texts.items()):
-			period_paths_freqs=[]
-			for i,t in enumerate(texts):
-				if not os.path.exists(t.path_freqs): continue
-				ptdx={col_group:period, 'path_freqs':t.path_freqs}
-				paths_freqs.append(ptdx)
-		if not len(paths_freqs):
-			if verbose: self.log('No freqs files found to generate MFW')
-			if try_create_freqs:
-				self.preprocess_freqs()
-				return self.preprocess_mfw(
-					yearbin=yearbin,
-					year_min=year_min,
-					year_max=year_max,
-					by_ntext=by_ntext,
-					by_fpm=by_fpm,
-					num_proc=num_proc,
-					col_group=col_group,
-					n=n,
-					estimate=estimate,
-					force=force,
-					verbose=verbose,
-					try_create_freqs=False
-				)
-			return pd.DataFrame()
-
-		pathdf=pd.DataFrame(paths_freqs)
-		# run
-		odf = pmap_groups(
-			do_gen_mfw_grp,
-			pathdf.groupby(col_group),
-			num_proc=num_proc,
-			kwargs={
-				'by_ntext':by_ntext,
-				'n':n,
-				'estimate':estimate,
-				'by_fpm':by_fpm,
-				'progress':yearbin is False,
-				'desc':f'[{self.name}] Counting overall most frequent words (MFW)',
-				'num_proc':num_proc if yearbin is False else 1
-			},
-			desc=f'[{self.name}] Counting most frequent words across {yearbin}-year periods',
-			progress=yearbin is not False
-		)
-		if odf is None or not len(odf): return pd.DataFrame()
-		 
-		if yearbin is not False:
-			odf=odf.reset_index().sort_values(['period','rank'])
+		if key in self._mfwd: return self._mfwd[key]
+		
+		if not force and os.path.exists(keyfn):
+			# if verbose: self.log(f'MFW is cached for key {key}')
+			if verbose: self.log(f'Loading MFW from {ppath(keyfn)}')
+			df=read_df(keyfn)
+			self._mfwd[key]=df
+			# return df
 		else:
-			odf=odf.reset_index().sort_values('rank')
-		#odf.to_csv(self.path_mfw.replace('.txt','.csv'))
-		odf = odf[odf.columns[1:] if set(odf.columns) and odf.columns[0]=='index' else odf.columns]
-		if verbose: self.log(f'Saving MFW to {ppath(keyfn)}')
-		save_df(odf, keyfn)
-		self._mfwd[key]=odf
-		return odf
+			period2texts = divide_texts_historically(yearbin=yearbin,texts=texts)
+			old=[]
+			paths_freqs=[]
+			for period,texts in sorted(period2texts.items()):
+				period_paths_freqs=[]
+				for i,t in enumerate(texts):
+					if not os.path.exists(t.path_freqs): continue
+					ptdx={col_group:period, 'path_freqs':t.path_freqs}
+					paths_freqs.append(ptdx)
+			if not len(paths_freqs):
+				if verbose: self.log('No freqs files found to generate MFW')
+				if try_create_freqs:
+					self.preprocess_freqs()
+					return self.preprocess_mfw(
+						yearbin=yearbin,
+						year_min=year_min,
+						year_max=year_max,
+						by_ntext=by_ntext,
+						by_fpm=by_fpm,
+						num_proc=num_proc,
+						col_group=col_group,
+						n=n,
+						estimate=estimate,
+						force=force,
+						verbose=verbose,
+						try_create_freqs=False
+					)
+				return pd.DataFrame()
+
+			pathdf=pd.DataFrame(paths_freqs)
+			# run
+			odf = pmap_groups(
+				do_gen_mfw_grp,
+				pathdf.groupby(col_group),
+				num_proc=num_proc,
+				kwargs={
+					'by_ntext':by_ntext,
+					'n':n,
+					'estimate':estimate,
+					'by_fpm':by_fpm,
+					'progress':yearbin is False,
+					'desc':f'[{self.name}] Counting overall most frequent words (MFW)',
+					'num_proc':num_proc if yearbin is False else 1
+				},
+				desc=f'[{self.name}] Counting most frequent words across {yearbin}-year periods',
+				progress=yearbin is not False
+			)
+			if odf is None or not len(odf): return pd.DataFrame()
+			
+			if yearbin is not False:
+				odf=odf.reset_index().sort_values(['period','rank'])
+			else:
+				odf=odf.reset_index().sort_values('rank')
+			#odf.to_csv(self.path_mfw.replace('.txt','.csv'))
+			odf = odf[odf.columns[1:] if set(odf.columns) and odf.columns[0]=='index' else odf.columns]
+			if verbose: self.log(f'Saving MFW to {ppath(keyfn)}')
+			save_df(odf, keyfn)
+			self._mfwd[key]=odf
+		return self._mfwd[key]
 
 
 	def log(self,*x,**y):

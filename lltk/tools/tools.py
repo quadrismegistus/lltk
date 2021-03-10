@@ -234,50 +234,99 @@ config=load_config()
 
 WORDDB_FN = config.get('PATH_TO_WORDDB')
 
-ENGLISH=None
+from collections import defaultdict
+WORDLISTS=defaultdict(set)
+OCRCORREX=defaultdict(dict)
+WORD2POS=defaultdict(dict)
+STOPWORDS=defaultdict(set)
+SPELLINGD=defaultdict(dict)
 
 import sys
 import csv
 #csv.field_size_limit(sys.maxsize)
 
-def get_stopwords(include_rank=None):
-	STOPWORDS_PATH = config.get('PATH_TO_ENGLISH_STOPWORDS')
-	if not STOPWORDS_PATH: raise Exception('!! PATH_TO_ENGLISH_STOPWORDS not set in config.txt')
-	if not STOPWORDS_PATH.startswith(os.path.sep): STOPWORDS_PATH=os.path.join(LIT_ROOT,STOPWORDS_PATH)
-	#sw1=set(codecs.open(STOPWORDS_PATH,encoding='utf-8').read().strip().split('\n'))
-	sw1=set(open(STOPWORDS_PATH).read().strip().split('\n'))
-	if include_rank and type(include_rank)==int:
-		sw2={d['word'] for d in worddb() if int(d['rank'])<=include_rank}
-		sw1|=sw2
-	# sw1|={'i','me','my','you','we','us','our','they','them','she','he','her','hers','his','him'}
-	return {w for w in sw1 if w}
+def get_stopwords(lang='en',include_rank=None):
+	global STOPWORDS
+	if lang in STOPWORDS: return STOPWORDS[lang]
+	if lang=='en':
+		STOPWORDS_PATH = config.get('PATH_TO_ENGLISH_STOPWORDS')
+		if not STOPWORDS_PATH: raise Exception('!! PATH_TO_ENGLISH_STOPWORDS not set in config.txt')
+		if not STOPWORDS_PATH.startswith(os.path.sep): STOPWORDS_PATH=os.path.join(LIT_ROOT,STOPWORDS_PATH)
+		with xopen(STOPWORDS_PATH) as f: sw1=set(f.read().strip().split('\n'))
+		if include_rank and type(include_rank)==int:
+			sw2={d['word'] for d in worddb() if int(d['rank'])<=include_rank}
+			sw1|=sw2
+		STOPWORDS[lang]={w for w in sw1 if w}
+	return STOPWORDS[lang]
 
-def get_english_wordlist():
-	ENG_PATH = config.get('PATH_TO_ENGLISH_WORDLIST')
-	if not ENG_PATH: raise Exception('!! PATH_TO_ENGLISH_WORDLIST not set in config.txt')
-	if not ENG_PATH.startswith(os.path.sep): ENG_PATH=os.path.join(LIT_ROOT,ENG_PATH)
-	#print('loading english from %s' % ENG_PATH)
-	#return set(codecs.open(ENG_PATH,encoding='utf-8').read().strip().split('\n'))
-	return set(open(ENG_PATH).read().strip().split('\n'))
+def get_wordlist(lang='en'):
+	global WORDLISTS
+	if lang in WORDLISTS: return WORDLISTS[lang]
+	if lang=='en':
+		ENG_PATH = config.get('PATH_TO_ENGLISH_WORDLIST')
+		if not ENG_PATH: raise Exception('!! PATH_TO_ENGLISH_WORDLIST not set in config.txt')
+		if not ENG_PATH.startswith(os.path.sep): ENG_PATH=os.path.join(LIT_ROOT,ENG_PATH)
+		with xopen(ENG_PATH) as f:
+			WORDLISTS[lang]=set(f.read().strip().split('\n'))
+	return WORDLISTS[lang]
 
-def get_spelling_modernizer():
-	SPELLING_MODERNIZER_PATH = config.get('PATH_TO_ENGLISH_SPELLING_MODERNIZER')
-	if not SPELLING_MODERNIZER_PATH: raise Exception('!! PATH_TO_ENGLISH_SPELLING_MODERNIZER not set in config.txt')
-	if not SPELLING_MODERNIZER_PATH.startswith(os.path.sep): SPELLING_MODERNIZER_PATH=os.path.join(LIT_ROOT,SPELLING_MODERNIZER_PATH)
+def get_spelling_modernizer(lang='en'):
+	global SPELLINGD
+	if lang in SPELLINGD: return SPELLINGD[lang]
+	if lang=='en':
+		SPELLING_MODERNIZER_PATH = config.get('PATH_TO_ENGLISH_SPELLING_MODERNIZER')
+		if not SPELLING_MODERNIZER_PATH: raise Exception('!! PATH_TO_ENGLISH_SPELLING_MODERNIZER not set in config.txt')
+		if not SPELLING_MODERNIZER_PATH.startswith(os.path.sep): SPELLING_MODERNIZER_PATH=os.path.join(LIT_ROOT,SPELLING_MODERNIZER_PATH)
 
-	#print('>> getting spelling modernizer from %s...' % SPELLING_MODERNIZER_PATH)
-	d={}
-	#with codecs.open(SPELLING_MODERNIZER_PATH,encoding='utf-8') as f:
-	with open(SPELLING_MODERNIZER_PATH) as f:
-		for ln in f:
-			ln=ln.strip()
-			if not ln: continue
-			try:
-				old,new=ln.split('\t')
-			except ValueError:
-				continue
-			d[old]=new
-	return d
+		#print('>> getting spelling modernizer from %s...' % SPELLING_MODERNIZER_PATH)
+		d={}
+		#with codecs.open(SPELLING_MODERNIZER_PATH,encoding='utf-8') as f:
+		with xopen(SPELLING_MODERNIZER_PATH) as f:
+			for ln in f:
+				ln=ln.strip()
+				if not ln: continue
+				try:
+					old,new=ln.split('\t')
+				except ValueError:
+					continue
+				d[old]=new
+		SPELLINGD[lang]=d
+	return SPELLINGD[lang]
+
+
+def get_word2pos(lang='en'):
+	global WORD2POS
+	if lang in WORD2POS: return WORD2POS[lang]
+	if lang=='en':
+		path = config.get('PATH_TO_ENGLISH_WORD2POS')
+		if not path: raise Exception('!! PATH_TO_ENGLISH_WORD2POS not set in config.txt')
+		if not os.path.isabs(path): path=os.path.join(LIT_ROOT,path)
+		if os.path.exists(path):
+			with xopen(path) as f:
+				print(path,f)
+				WORD2POS[lang]=json.load(f)
+	return WORD2POS[lang]
+
+def get_ocr_corrections(lang='en'):
+	global OCRCORREX
+	if lang in OCRCORREX: return OCRCORREX[lang]
+	if lang=='en':
+		d={}
+		PATH_TO_ENGLISH_OCR_CORRECTION_RULES = config.get('PATH_TO_ENGLISH_OCR_CORRECTION_RULES')
+		if not PATH_TO_ENGLISH_OCR_CORRECTION_RULES: raise Exception('!! PATH_TO_ENGLISH_OCR_CORRECTION_RULES not set in config.txt')
+		if not PATH_TO_ENGLISH_OCR_CORRECTION_RULES.startswith(os.path.sep): PATH_TO_ENGLISH_OCR_CORRECTION_RULES=os.path.join(LIT_ROOT,PATH_TO_ENGLISH_OCR_CORRECTION_RULES)
+		with xopen(PATH_TO_ENGLISH_OCR_CORRECTION_RULES) as f:
+			for ln in f:
+				ln=ln.strip()
+				if not ln: continue
+				try:
+					old,new,count=ln.split('\t')
+				except ValueError:
+					continue
+				d[old]=new
+		OCRCORREX[lang]=d
+	return OCRCORREX[lang]
+
 
 
 def save_df(df,ofn,move_prev=False,index=None,key=''):
@@ -324,27 +373,6 @@ def read_df(ifn,key='',**attrs):
 
 
 
-
-def get_ocr_corrections():
-	PATH_TO_ENGLISH_OCR_CORRECTION_RULES = config.get('PATH_TO_ENGLISH_OCR_CORRECTION_RULES')
-	if not PATH_TO_ENGLISH_OCR_CORRECTION_RULES: raise Exception('!! PATH_TO_ENGLISH_OCR_CORRECTION_RULES not set in config.txt')
-	if not PATH_TO_ENGLISH_OCR_CORRECTION_RULES.startswith(os.path.sep): PATH_TO_ENGLISH_OCR_CORRECTION_RULES=os.path.join(LIT_ROOT,PATH_TO_ENGLISH_OCR_CORRECTION_RULES)
-
-	#print('>> getting corrections from %s...' % PATH_TO_ENGLISH_OCR_CORRECTION_RULES)
-	d={}
-
-
-	with open(PATH_TO_ENGLISH_OCR_CORRECTION_RULES) as f:
-		for ln in f:
-			ln=ln.strip()
-			if not ln: continue
-			try:
-				old,new,count=ln.split('\t')
-			except ValueError:
-				continue
-			d[old]=new
-	return d
-
 def iter_move(fn,force=False,prefix=''):
 	if os.path.exists(fn):
 		iter_fn=iter_filename(fn,force=force,prefix=prefix)
@@ -366,25 +394,24 @@ def iter_filename(fnfn,force=False,prefix=''):
 	return fnfn
 
 
-def measure_ocr_accuracy(txt_or_tokens):
-	global ENGLISH
+def measure_ocr_accuracy(txt_or_tokens,lang='en'):
+	wordlist=get_wordlist(lang=lang)
 	if type(txt_or_tokens) in [str,six.text_type]:
 		tokens=tokenize(txt_or_tokens)
 	elif type(txt_or_tokens) in [tuple,list]:
 		tokens=list(txt_or_tokens)
 	else:
 		raise Exception("Function `measure_ocr_accuracy(txt_or_tokens)` must take text string or list of tokens.")
-
-	if not ENGLISH: ENGLISH = get_english_wordlist()
-
 	numwords=float(len(tokens))
-	numenglish=len([tok for tok in tokens if tok in ENGLISH])
-	return numenglish/numwords
+	numrecog=len([tok for tok in tokens if tok in wordlist or tok.lower() in wordlist])
+	return numrecog/numwords
 
 
 def tokenize(txt):
-	from nltk import word_tokenize
-	return word_tokenize(txt)
+	# from nltk import word_tokenize
+	# return word_tokenize(txt)
+	from lltk.text.utils import tokenize as f
+	return f(txt)
 
 
 

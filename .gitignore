@@ -18,10 +18,7 @@ model/_models_word2vec/
 #data/data.worddb*
 data/fields*
 data/*
-!data/stopwords.txt
-!data/wordlist.aspell.net.with_caps.txt.gz
-!data/spelling_variants_from_morphadorner.txt.gz
-!data/CorrectionRules.txt.gz
+!data/default
 
 .ipynb_checkpoints
 .pypirc

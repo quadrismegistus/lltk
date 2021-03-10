@@ -6,6 +6,7 @@ bounter
 internetarchive
 bs4
 lxml
+xopen
 nbimporter
 nbformat
 pandas

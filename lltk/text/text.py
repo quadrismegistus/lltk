@@ -28,7 +28,7 @@ class Text(object):
 		self.XML2TXT=self.corpus.XML2TXT
 		self.TOKENIZER=self.corpus.TOKENIZER if tokenizer is None else tokenizer
 		self.meta=meta
-		self.lang=self.corpus.LANG if lang is None else lang
+		self.lang=self.corpus.lang if lang is None else lang
 
 	# convenience
 	def __getattr__(self, name):
@@ -120,12 +120,11 @@ class Text(object):
 		return sum(self.counts().values())
 	@property
 	def words_recognized(self):
-		global ENGLISH
-		if not ENGLISH: ENGLISH=get_english_wordlist()
-		return [w for w in self.words if w in ENGLISH]
+		wordlist=get_wordlist(lang=self.lang)
+		return [w for w in self.words if w in wordlist or w.lower() in wordlist]
 	@property
 	def ocr_accuracy(self):
-		return float(len(self.words_recognized)) / len(self.words)
+		return float(len(self.words_recognized)) / len(self.words) if len(self.words) else np.nan
 
 
 

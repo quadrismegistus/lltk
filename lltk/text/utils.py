@@ -1,5 +1,25 @@
 from lltk.imports import *
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 def do_parse_stanza(obj):
 	txt,lang=obj
 	nlp=get_stanza_nlp(lang=lang)
@@ -75,7 +95,7 @@ def phrase2variants(phrase):
 
 
 def load_english():
-	return get_english_wordlist()
+	return get_wordlist(lang='en')
 
 
 
