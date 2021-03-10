@@ -304,6 +304,7 @@ def save_df(df,ofn,move_prev=False,index=None,key=''):
 
 
 def read_df(ifn,key=''):
+	if not os.path.exists(ifn): return
 	import pandas as pd
 	ext = os.path.splitext(ifn.replace('.gz',''))[-1][1:]
 	if ext=='csv':

@@ -670,6 +670,8 @@ class Corpus(object):
 			desc=f'[{self.name}] Counting most frequent words across {yearbin}-year periods',
 			progress=yearbin is not False
 		)
+		if odf is None or not len(odf): return pd.DataFrame()
+		 
 		if yearbin is not False:
 			odf=odf.reset_index().sort_values(['period','rank'])
 		else:
