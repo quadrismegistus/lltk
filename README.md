@@ -6,7 +6,7 @@ Literary Language Tool Kit (LLTK): corpora, models, and tools for the study of c
 
 1) Install:
 
-Open a Jupyter/Colab notebook and type:
+Open a terminal or Jupyter/Colab notebook and type:
 
 ```
 pip install -qU git+https://github.com/quadrismegistus/lltk@v2
