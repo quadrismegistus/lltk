@@ -63,6 +63,9 @@ public = metadata,freqs
 link = http://collections.chadwyck.co.uk/marketing/list_of_all.jsp
 private = raw,txt,xml
 license_type = Mixed
+url_freqs = https://www.dropbox.com/s/syluxyz1mcx5495/chadwyck_freqs.zip?dl=1
+url_metadata = https://www.dropbox.com/s/byqbi8sik255469/chadwyck_metadata.zip?dl=1
+
 
 [ChadwyckDrama]
 id = chadwyck_drama
