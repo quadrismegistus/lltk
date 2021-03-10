@@ -9,7 +9,11 @@ Literary Language Tool Kit (LLTK): corpora, models, and tools for the study of c
 ```python
 # install
 !pip install -qU git+https://github.com/quadrismegistus/lltk
+```
 
+## Use
+
+```python
 # load lltk for use within python
 import lltk
 
@@ -55,17 +59,14 @@ LLTK has built in functionality for the following corpora. Some (🌞) are freel
 | TxtLab              | [A multilingual dataset of 450 novels](https://txtlab.org/2016/01/txtlab450-a-data-set-of-multilingual-novels-for-teaching-and-research)                                  | Free                                                                        | [🌞](https://www.dropbox.com/s/eh33qy6bcm7rvcp/txtlab_metadata.zip?dl=1)           | [🌞](https://www.dropbox.com/s/56azeswx0omjum2/txtlab_freqs.zip?dl=1)           | [🌞](https://www.dropbox.com/s/q4bm4yf76zgumi6/txtlab_txt.zip?dl=1)           |                                                                        | [🌞](https://github.com/christofs/txtlab450/archive/master.zip)        |
 
 
+## Corpus object
+
 
 ```python
-# load a corpus: e.g. the txtLAB450 dataset of 450 En/Fr/Ger novels  
+# load corpus (will download/install it if nec.)
 corpus = lltk.load('TxtLab')
-```
 
-## Accessing metadata
-
-
-```python
-# metadata as dataframe
+# show its metadata as dataframe
 corpus.meta
 ```
 
@@ -346,7 +347,7 @@ corpus.meta.groupby('language').year.plot.density()
 ![png](notebooks/README3_files/README3_14_1.png)
 
 
-## Accessing data
+## Computing text data
 
 ### Most frequent words (MFW)
 
