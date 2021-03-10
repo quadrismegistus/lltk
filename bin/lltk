@@ -220,8 +220,8 @@ def main():
 			corpus.share() if corpus is not None else share_corpora()
 
 		elif args.cmd=='load':
-			pythonexec = 'python' if which('ipython') else 'python'
-			cmds=['import lltk',f"C=lltk.load('{args.corpus}')"]#,'C.info()']
+			pythonexec = 'ipython' if which('ipython') else 'python'
+			cmds=['import lltk',f"C = corpus = lltk.load('{args.corpus}')"]#,'C.info()']
 			cmdstr='; '.join(cmds)
 			cmd=f'{pythonexec} -i -c "{cmdstr}"'
 			print('\n' + ('\n'.join(cmds)) + '\n')
