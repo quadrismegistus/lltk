@@ -77,12 +77,12 @@ class Corpus(object):
 				meta=meta.query(f'year>={self.year_start}')
 			if self.year_end is not None and str(self.year_end).isdigit() and 'year' in meta.columns:
 				meta=meta.query(f'year<={self.year_end}')
-			self._metadf=meta
+			self._metadf=meta.set_index('id')
 
 		# create text objects
 		if not self._texts or not self._textd:
 			self._texts,self._textd=[],{}
-			for i,row in self._metadf.iterrows():
+			for i,row in self._metadf.reset_index().iterrows():
 				idx=row[self.COL_ID] if self.COL_ID in row else row.index
 				t=self.TEXT_CLASS(idx,self,meta=dict(row))
 				self._texts.append(t)
@@ -99,6 +99,10 @@ class Corpus(object):
 	def meta(self):
 		if self._metadf is None: self.load_metadata()
 		return self._metadf if self._metadf is not None else pd.DataFrame()
+	@property
+	def metadf(self):
+		return self.meta.reset_index() if len(self.meta) else self.meta
+	
 	@property
 	def metadata(self,*x,**y): return self.meta
 
@@ -449,7 +453,7 @@ class Corpus(object):
 	### FREQS
 
 
-	def dtm(self,words=[],texts=None,n=DEFAULT_MFW_N,tf=False,tfidf=False,meta=False,**mfw_attrs):
+	def dtm(self,words=[],texts=None,n=DEFAULT_MFW_N,tf=False,tfidf=False,meta=False,na=0.0,**mfw_attrs):
 		dtm=self.preprocess_dtm(words=words,n=n)
 		dtm=dtm.set_index('id') if 'id' in set(dtm.columns) else dtm
 		if texts is not None:
@@ -460,16 +464,18 @@ class Corpus(object):
 		if meta:
 			if type(meta) in {list,set}:
 				if not self.COL_ID in meta: meta=[self.COL_ID]+list(meta)
-			mdf=self.meta[meta] if type(meta) in {list,set} else self.meta
+			mdf=self.metadf[meta] if type(meta) in {list,set} else self.metadf
 			mdtm=mdf.merge(dtm,on='id',suffixes=('','_w'),how='right')
 			micols = mdf.columns
 			dtm=mdtm.set_index('id')#list(micols))
-		return dtm 
+		return dtm.fillna(na) 
 
-	def mdw(self,groupby,words=[],texts=None,tfidf=True,keep_null_cols=False,remove_zeros=True,agg='median'):
-		if not keep_null_cols: texts=self.meta.loc[[bool(x) for x in self.meta[groupby]]]
+	def mdw(self,groupby,words=[],texts=None,tfidf=True,keep_null_cols=False,remove_zeros=True,agg='median',**mfw_attrs):
+		texts=self.metadf[self.metadf.id.isin(to_textids(texts))] if texts is not None else self.metadf
+		if not keep_null_cols: 
+			texts=texts.loc[[bool(x) for x in texts[groupby]]]
 		
-		df=self.dtm(words=words,texts=texts,tfidf=tfidf, meta=[groupby]).groupby(groupby)
+		df=self.dtm(words=words,texts=texts,tfidf=tfidf, meta=[groupby],**mfw_attrs).groupby(groupby)
 		df=to_mdw(df,agg=agg)
 		# for col in df.columns:
 		# 	if not col:
@@ -514,6 +520,7 @@ class Corpus(object):
 
 	def mfw_df(self,
 			n=None,
+			texts=None,
 			yearbin=None,
 			by_ntext=False,
 			n_by_period=None,
@@ -530,9 +537,11 @@ class Corpus(object):
 		
 		# gen if not there?
 		if yearbin is None: yearbin=self.mfw_yearbin
+		if n is None: n=self.mfw_n
 		if type(yearbin)==str: yearbin=int(yearbin)
 		df = self.preprocess_mfw(
 			n=n,
+			texts=texts,
 			yearbin=yearbin,
 			by_ntext=by_ntext,
 			by_fpm=by_fpm,
@@ -582,7 +591,9 @@ class Corpus(object):
 			df=df.sort_values(valtype,ascending=False)
 			df['rank']=[i+1 for i in range(len(df))]
 		
-		dfr=df.reset_index()
+		# dfr=df.reset_index()
+		# odf = odf[odf.columns[1:] if set(odf.columns) and odf.columns[0]=='index' else odf.columns]
+		dfr=df#.reset_index() if not 'id' in df
 		return dfr
 
 
@@ -591,12 +602,23 @@ class Corpus(object):
 		y['keep_periods']=False
 		df=self.mfw_df(*x,**y)
 		try:
-			return list(df.word)
+			return list(df.reset_index().word)
 		except Exception:
 			return []
 
 
+
+	def to_texts(self,texts):
+		if issubclass(texts.__class__, pd.DataFrame) and self.COL_ID in set(texts.reset_index().columns):
+			return [self.textd[idx] for idx in texts.reset_index()[self.COL_ID]]
+		# print(type(texts), texts)
+		return [
+			x if (Text in x.__class__.mro()) else self.textd[x]
+			for x in texts
+		]
+
 	def preprocess_mfw(self,
+			texts=None,
 			yearbin=None,
 			year_min=None,
 			year_max=None,
@@ -615,7 +637,11 @@ class Corpus(object):
 		"""
 		if yearbin is None: yearbin=self.mfw_yearbin
 		if type(yearbin)==str: yearbin=int(yearbin)
-		key=self.mfwkey(yearbin,by_ntext,by_fpm)
+		texts=self.texts() if texts is None else texts
+		texts=self.to_texts(texts)
+		texts=[t for t in texts if (not year_min or t.year>=year_min) and (not year_max or t.year<year_max)]
+		
+		key=self.mfwkey(yearbin,by_ntext,by_fpm,texts)
 		if key in self._mfwd: return self._mfwd[key]
 		keyfn=os.path.join(self.path_mfw,key+'.ft')
 		
@@ -631,7 +657,6 @@ class Corpus(object):
 			# 		if verbose: self.log(f'MFW already saved for key {key}')
 			# 		return store[key]
 
-		texts=[t for t in self.texts() if (not year_min or t.year>=year_min) and (not year_max or t.year<year_max)]
 		period2texts = divide_texts_historically(yearbin=yearbin,texts=texts)
 		old=[]
 		paths_freqs=[]
@@ -701,9 +726,10 @@ class Corpus(object):
 	# DTM
 	###################################
 
-	def mfwkey(self,yearbin,by_ntext,by_fpm):
+	def mfwkey(self,yearbin,by_ntext,by_fpm,texts):
 		if type(yearbin)==str: yearbin=int(yearbin)
-		return hashstr(str((yearbin, int(by_ntext), int(by_fpm))))[:12]
+		tids=tuple(sorted(to_textids(texts)))
+		return hashstr(str((yearbin, int(by_ntext), int(by_fpm), tids)))[:12]
 
 	def wordkey(self,words):
 		return hashstr('|'.join(sorted(list(words))))[:12]
@@ -722,6 +748,7 @@ class Corpus(object):
 		
 		if not words: words=self.mfw(n=n,num_proc=num_proc,force=force,**attrs)
 		wordset = set(words)
+		# print(len(wordset))
 		if not wordkey: wordkey=self.wordkey(words)
 		if wordkey in self._dtmd: return self._dtmd[wordkey]
 		keyfn=os.path.join(self.path_dtm,wordkey+'.ft')
@@ -739,6 +766,7 @@ class Corpus(object):
 			for t in self.texts()
 			if os.path.exists(t.path_freqs) and len(wordset) and t.id
 		]
+		
 		if not objs:
 			if verbose: self.log(f'No frequency files found to generate DTM. Run preprocess_freqs()?')
 			return

@@ -46,6 +46,7 @@ link = https://www.english-corpora.org/coha/
 public = 
 private = metadata,raw,freqs,txt
 license_type = Commercial
+mfw_n=10000
 
 [CanonFiction]
 id = canon_fiction

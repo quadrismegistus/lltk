@@ -54,7 +54,7 @@ def preproc(C):
 
 res=lltk.pmap(
     preproc,
-    Cs[3:],
+    Cs[5:],
     num_proc=1
 )
 

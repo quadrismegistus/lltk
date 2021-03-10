@@ -173,7 +173,7 @@ def share_corpora():
 
 
 
-def fix_meta(metadf, badcols={'_llp_','_lltk_','corpus','index','id.1','url_wordcount','url_text','sheetname'},order=['id','author','title','year']):
+def fix_meta(metadf, badcols={'_llp_','_lltk_','corpus','index','id.1','url_wordcount','url_text','sheetname','filename'},order=['id','author','title','year']):
 	prefixcols = [col for col in order if col in set(metadf.columns)]
 	badcols|=set(prefixcols)
 	newcols = prefixcols+[col for col in metadf.columns if not col in badcols and not col.startswith('Unnamed:')]

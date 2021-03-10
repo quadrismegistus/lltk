@@ -99,6 +99,7 @@ MANIFEST_DEFAULTS=dict(
 	public='',
 	private='',
 	mfw_yearbin=False,
+	mfw_n=25000,
 
 	license='',
 	license_type='',
