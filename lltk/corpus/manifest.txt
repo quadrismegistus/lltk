@@ -442,14 +442,14 @@ public = metadata,freqs,txt
 license_type = Free
 
 
-[Sellars]
-id = sellars
-name = Sellars
-desc = 19th Century Texts compiled by Jordan Sellars
+[Sellers]
+id = sellers
+name = Sellers
+desc = 19th Century Texts compiled by Jordan Sellers
 link = http://journalofdigitalhumanities.org/1-2/the-emergence-of-literary-diction-by-ted-underwood-and-jordan-sellers/
-url_freqs = https://www.dropbox.com/s/k293ip4wrswhl8j/sellars_freqs.zip?dl=1
-url_metadata = https://www.dropbox.com/s/7mos2k5qx8bdc1l/sellars_metadata.zip?dl=1
-url_txt = https://www.dropbox.com/s/j7e5my3s20n3xq4/sellars_txt.zip?dl=1
+url_freqs = https://www.dropbox.com/s/k293ip4wrswhl8j/sellers_freqs.zip?dl=1
+url_metadata = https://www.dropbox.com/s/7mos2k5qx8bdc1l/sellers_metadata.zip?dl=1
+url_txt = https://www.dropbox.com/s/j7e5my3s20n3xq4/sellers_txt.zip?dl=1
 public = metadata,freqs,txt
 license_type = Free
 

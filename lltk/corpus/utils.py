@@ -131,13 +131,13 @@ def status_corpora(parts=['metadata','freqs','txt','xml','raw'],link=True,public
 					url=C.has_url(p)
 					if url:
 						if not public_only or p in ppub:
-							dx[p]+='↓' if not link else f'[↓]({url})'
+							dx[p]+='🌣' if not link else f'[🌣]({url})'
 			
 		ld.append(dx)
 	return pd.DataFrame(ld).fillna('')
 
 
-
+#↓
 def status_corpora_readme():
 	df=status_corpora(link=False,public_only=True)
 	df['name']=df.name.apply(lambda name: f'[{name}](lltk/lltk/corpus/{name})')
@@ -173,7 +173,7 @@ def share_corpora():
 
 
 
-def fix_meta(metadf, badcols={'_llp_','_lltk_','corpus','index','id.1','url_wordcount','url_text'},order=['id','author','title','year']):
+def fix_meta(metadf, badcols={'_llp_','_lltk_','corpus','index','id.1','url_wordcount','url_text','sheetname'},order=['id','author','title','year']):
 	prefixcols = [col for col in order if col in set(metadf.columns)]
 	badcols|=set(prefixcols)
 	newcols = prefixcols+[col for col in metadf.columns if not col in badcols and not col.startswith('Unnamed:')]

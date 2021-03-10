@@ -3,7 +3,7 @@ import os
 from lltk.corpus.corpus import Corpus
 from lltk.text.text import Text
 
-class TextSellars(Text):
+class TextSellers(Text):
 	@property
 	def medium(self):
 		if self.genre in {'Drama'}:
@@ -14,5 +14,5 @@ class TextSellars(Text):
 			return 'Prose'
 
 
-class Sellars(Corpus):
-	TEXT_CLASS=TextSellars
+class Sellers(Corpus):
+	TEXT_CLASS=TextSellers

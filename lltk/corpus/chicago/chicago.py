@@ -6,13 +6,7 @@ from lltk.text.text import Text
 import os
 
 
-class TextChicago(Text):
-	@property
-	def id(self):
-		idx=super().id
-		if type(idx)!=str or len(idx)!=8:
-			idx=str(int(idx)).zfill(8)
-		return idx
+class TextChicago(Text): pass
 
 class Chicago(Corpus):
 	TEXT_CLASS=TextChicago
@@ -101,5 +95,5 @@ class Chicago(Corpus):
 	def load_metadata(self,*x,**y):
 		meta=super().load_metadata()
 		meta['genre']='Fiction'
-		meta['id']=[str(x).zfill(8) for x in meta.id]
+		meta['id']=[str(int(x)).zfill(8) for x in meta.id]
 		return meta

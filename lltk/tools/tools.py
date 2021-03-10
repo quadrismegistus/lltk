@@ -303,22 +303,22 @@ def save_df(df,ofn,move_prev=False,index=None,key=''):
 		raise Exception(f'[save_df()] What kind of df is this: {ofn}')
 
 
-def read_df(ifn,key=''):
+def read_df(ifn,key='',**attrs):
 	if not os.path.exists(ifn): return
 	import pandas as pd
 	ext = os.path.splitext(ifn.replace('.gz',''))[-1][1:]
 	if ext=='csv':
-		return pd.read_csv(ifn)
+		return pd.read_csv(ifn,**attrs)
 	elif ext in {'xls','xlsx'}:
-		return pd.read_excel(ifn)
+		return pd.read_excel(ifn,**attrs)
 	elif ext in {'txt','tsv'}:
-		return pd.read_csv(ifn,sep='\t')
+		return pd.read_csv(ifn,sep='\t',**attrs)
 	elif ext=='ft':
-		return pd.read_feather(ifn)
+		return pd.read_feather(ifn,**attrs)
 	elif ext=='pkl':
-		return pd.read_pickle(ifn)
+		return pd.read_pickle(ifn,**attrs)
 	elif ext=='h5':
-		return pd.read_hdf(ifn, key=key)
+		return pd.read_hdf(ifn, key=key,**attrs)
 	else:
 		raise Exception(f'[save_df()] What kind of df is this: {ifn}')
 
@@ -1728,6 +1728,8 @@ def unzip(zipfn, dest='.', flatten=False, overwrite=False, replace_in_filenames=
 				if not os.path.exists(target_dir): os.makedirs(target_dir)
 			except FileExistsError:
 				pass
+			except FileNotFoundError:
+				continue
 			
 			with zip_file.open(member) as source, open(target_fnfn,'wb') as target:
 				shutil.copyfileobj(source, target)

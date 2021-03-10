@@ -57,7 +57,7 @@ class LitHist(CorpusMeta):
 	CORPORA=[
 		'Chadwyck','ChadwyckPoetry','ChadwyckDrama',
 		'ECCO_TCP','EEBO_TCP', #,'ECCO_TCP_in_Sections','EEBO_TCP_in_Sections' (too many files)
-		'Sellars',   # 'TedJDH' (replicated in Sellars + ECCO_TCP)
+		'Sellers',   # 'TedJDH' (replicated in Sellers + ECCO_TCP)
 		'DialNarr', #LitLab (too noisy),
 		'MarkMark','Chicago','GildedAge',
 		'COHA','COCA','CLMET','OldBailey','EnglishDialogues',
@@ -87,7 +87,7 @@ class LitHistProse(LitHist):
 		'Chadwyck',
 		#'ECCO_TCP','EEBO_TCP', #,
 		'ECCO_TCP_in_Sections','EEBO_TCP_in_Sections', # (too many files)
-		'Sellars',   # 'TedJDH' (replicated in Sellars + ECCO_TCP)
+		'Sellers',   # 'TedJDH' (replicated in Sellers + ECCO_TCP)
 		'MarkMark','Chicago',
 		'COHA','Spectator']
 
@@ -110,7 +110,7 @@ class LitHistProse(LitHist):
 
 
 class LitHistAuthors(CorpusMeta):
-	CORPORA={'Chadwyck','ChadwyckPoetry','ChadwyckDrama','COHA','ECCO_TCP','EEBO_TCP'} #,'Sellars','CLMET','Spectator','Chicago','MarkMark'}
+	CORPORA={'Chadwyck','ChadwyckPoetry','ChadwyckDrama','COHA','ECCO_TCP','EEBO_TCP'} #,'Sellers','CLMET','Spectator','Chicago','MarkMark'}
 	YEAR_AUTHOR_30_MIN=1500
 
 	def __init__(self, name='LitHistAuthors',corpora=None):

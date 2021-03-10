@@ -308,8 +308,10 @@ class Hathi(Corpus):
 def get_date(imprint):
     for x in tools.ngram(str(imprint),4):
         x=''.join(x)
-        if x.isdigit():
-            return int(x)
+		try:
+			return int(x)
+		except Exception:
+			return x
 
 class HathiSubcorpus(Hathi):
 	def load_metadata(self,*x,**y):

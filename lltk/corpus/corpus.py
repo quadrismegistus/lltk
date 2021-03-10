@@ -71,7 +71,7 @@ class Corpus(object):
 			if not os.path.exists(self.path_metadata):
 				# print(f'!!! No metadata file exists at {self.path_metadata}')
 				return pd.DataFrame() 
-			meta=read_df(self.path_metadata).fillna('')
+			meta=read_df(self.path_metadata, dtype={'id':str}).fillna('')
 			if clean: meta=clean_meta(meta)
 			if self.year_start is not None and str(self.year_start).isdigit() and 'year' in meta.columns:
 				meta=meta.query(f'year>={self.year_start}')
