@@ -277,48 +277,53 @@ def get_stopwords(lang='en',include_rank=None):
 	global STOPWORDS
 	if lang in STOPWORDS: return STOPWORDS[lang]
 	if lang=='en':
-		STOPWORDS_PATH = config.get('PATH_TO_ENGLISH_STOPWORDS',PATH_TO_ENGLISH_STOPWORDS)
-		if not STOPWORDS_PATH: raise Exception('!! PATH_TO_ENGLISH_STOPWORDS not set in config.txt')
-		if not STOPWORDS_PATH.startswith(os.path.sep): STOPWORDS_PATH=os.path.join(PATH_LLTK_REPO,STOPWORDS_PATH)
-		with xopen(STOPWORDS_PATH) as f: sw1=set(f.read().strip().split('\n'))
-		if include_rank and type(include_rank)==int:
-			sw2={d['word'] for d in worddb() if int(d['rank'])<=include_rank}
-			sw1|=sw2
-		STOPWORDS[lang]={w for w in sw1 if w}
+		from lltk import PATH_TO_ENGLISH_STOPWORDS
+		path = config.get('PATH_TO_ENGLISH_STOPWORDS',PATH_TO_ENGLISH_STOPWORDS)
+		if not path: raise Exception('!! PATH_TO_ENGLISH_STOPWORDS not set in config.txt')
+		if not os.path.isabs(path): path=os.path.join(PATH_LLTK_REPO,path)
+		if os.path.exists(path):
+			with xopen(path) as f: sw1=set(f.read().strip().split('\n'))
+			if include_rank and type(include_rank)==int:
+				sw2={d['word'] for d in worddb() if int(d['rank'])<=include_rank}
+				sw1|=sw2
+			STOPWORDS[lang]={w for w in sw1 if w}
 	return STOPWORDS[lang]
 
 def get_wordlist(lang='en'):
 	global WORDLISTS
 	if lang in WORDLISTS: return WORDLISTS[lang]
 	if lang=='en':
-		ENG_PATH = config.get('PATH_TO_ENGLISH_WORDLIST',PATH_TO_ENGLISH_WORDLIST)
-		if not ENG_PATH: raise Exception('!! PATH_TO_ENGLISH_WORDLIST not set in config.txt')
-		if not ENG_PATH.startswith(os.path.sep): ENG_PATH=os.path.join(LIT_ROOT,ENG_PATH)
-		with xopen(ENG_PATH) as f:
-			WORDLISTS[lang]=set(f.read().strip().split('\n'))
+		from lltk import PATH_TO_ENGLISH_WORDLIST
+		path = config.get('PATH_TO_ENGLISH_WORDLIST',PATH_TO_ENGLISH_WORDLIST)
+		if not path: raise Exception('!! PATH_TO_ENGLISH_WORDLIST not set in config.txt')
+		if not os.path.isabs(path): path=os.path.join(PATH_LLTK_REPO,path)
+		if os.path.exists(path):
+			with xopen(path) as f:
+				WORDLISTS[lang]=set(f.read().strip().split('\n'))
 	return WORDLISTS[lang]
 
 def get_spelling_modernizer(lang='en'):
 	global SPELLINGD
 	if lang in SPELLINGD: return SPELLINGD[lang]
 	if lang=='en':
-		SPELLING_MODERNIZER_PATH = config.get('PATH_TO_ENGLISH_SPELLING_MODERNIZER',PATH_TO_ENGLISH_SPELLING_MODERNIZER)
-		if not SPELLING_MODERNIZER_PATH: raise Exception('!! PATH_TO_ENGLISH_SPELLING_MODERNIZER not set in config.txt')
-		if not SPELLING_MODERNIZER_PATH.startswith(os.path.sep): SPELLING_MODERNIZER_PATH=os.path.join(LIT_ROOT,SPELLING_MODERNIZER_PATH)
-
-		#print('>> getting spelling modernizer from %s...' % SPELLING_MODERNIZER_PATH)
-		d={}
-		#with codecs.open(SPELLING_MODERNIZER_PATH,encoding='utf-8') as f:
-		with xopen(SPELLING_MODERNIZER_PATH) as f:
-			for ln in f:
-				ln=ln.strip()
-				if not ln: continue
-				try:
-					old,new=ln.split('\t')
-				except ValueError:
-					continue
-				d[old]=new
-		SPELLINGD[lang]=d
+		from lltk import PATH_TO_ENGLISH_SPELLING_MODERNIZER
+		path = config.get('PATH_TO_ENGLISH_SPELLING_MODERNIZER',PATH_TO_ENGLISH_SPELLING_MODERNIZER)
+		if not path: raise Exception('!! PATH_TO_ENGLISH_SPELLING_MODERNIZER not set in config.txt')
+		if not os.path.isabs(path): path=os.path.join(PATH_LLTK_REPO,path)
+		if os.path.exists(path):
+			#print('>> getting spelling modernizer from %s...' % SPELLING_MODERNIZER_PATH)
+			d={}
+			#with codecs.open(SPELLING_MODERNIZER_PATH,encoding='utf-8') as f:
+			with xopen(path) as f:
+				for ln in f:
+					ln=ln.strip()
+					if not ln: continue
+					try:
+						old,new=ln.split('\t')
+					except ValueError:
+						continue
+					d[old]=new
+			SPELLINGD[lang]=d
 	return SPELLINGD[lang]
 
 
@@ -327,6 +332,7 @@ def get_word2pos(lang='en'):
 	# from lltk import PATH_LLTK_CODE_HOME
 	if lang in WORD2POS: return WORD2POS[lang]
 	if lang=='en':
+		from lltk import PATH_TO_ENGLISH_WORD2POS
 		path = config.get('PATH_TO_ENGLISH_WORD2POS',PATH_TO_ENGLISH_WORD2POS)
 		if not path: raise Exception('!! PATH_TO_ENGLISH_WORD2POS not set in config.txt')
 		if not os.path.isabs(path): path=os.path.join(PATH_LLTK_REPO,path)
@@ -341,10 +347,10 @@ def get_ocr_corrections(lang='en'):
 	if lang in OCRCORREX: return OCRCORREX[lang]
 	if lang=='en':
 		d={}
-		PATH_TO_ENGLISH_OCR_CORRECTION_RULES = config.get('PATH_TO_ENGLISH_OCR_CORRECTION_RULES',PATH_TO_ENGLISH_OCR_CORRECTION_RULES)
-		if not PATH_TO_ENGLISH_OCR_CORRECTION_RULES: raise Exception('!! PATH_TO_ENGLISH_OCR_CORRECTION_RULES not set in config.txt')
-		if not PATH_TO_ENGLISH_OCR_CORRECTION_RULES.startswith(os.path.sep): PATH_TO_ENGLISH_OCR_CORRECTION_RULES=os.path.join(LIT_ROOT,PATH_TO_ENGLISH_OCR_CORRECTION_RULES)
-		with xopen(PATH_TO_ENGLISH_OCR_CORRECTION_RULES) as f:
+		from lltk import PATH_TO_ENGLISH_OCR_CORRECTION_RULES
+		path = config.get('PATH_TO_ENGLISH_OCR_CORRECTION_RULES',PATH_TO_ENGLISH_OCR_CORRECTION_RULES)
+		if not os.path.isabs(path): path=os.path.join(PATH_LLTK_REPO, path)
+		with xopen(path) as f:
 			for ln in f:
 				ln=ln.strip()
 				if not ln: continue
