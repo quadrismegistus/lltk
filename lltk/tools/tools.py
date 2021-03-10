@@ -274,7 +274,7 @@ def get_stopwords(lang='en',include_rank=None):
 	global STOPWORDS
 	if lang in STOPWORDS: return STOPWORDS[lang]
 	if lang=='en':
-		STOPWORDS_PATH = config.get('PATH_TO_ENGLISH_STOPWORDS')
+		STOPWORDS_PATH = config.get('PATH_TO_ENGLISH_STOPWORDS',PATH_TO_ENGLISH_STOPWORDS)
 		if not STOPWORDS_PATH: raise Exception('!! PATH_TO_ENGLISH_STOPWORDS not set in config.txt')
 		if not STOPWORDS_PATH.startswith(os.path.sep): STOPWORDS_PATH=os.path.join(PATH_LLTK_REPO,STOPWORDS_PATH)
 		with xopen(STOPWORDS_PATH) as f: sw1=set(f.read().strip().split('\n'))
@@ -288,7 +288,7 @@ def get_wordlist(lang='en'):
 	global WORDLISTS
 	if lang in WORDLISTS: return WORDLISTS[lang]
 	if lang=='en':
-		ENG_PATH = config.get('PATH_TO_ENGLISH_WORDLIST')
+		ENG_PATH = config.get('PATH_TO_ENGLISH_WORDLIST',PATH_TO_ENGLISH_WORDLIST)
 		if not ENG_PATH: raise Exception('!! PATH_TO_ENGLISH_WORDLIST not set in config.txt')
 		if not ENG_PATH.startswith(os.path.sep): ENG_PATH=os.path.join(LIT_ROOT,ENG_PATH)
 		with xopen(ENG_PATH) as f:
@@ -299,7 +299,7 @@ def get_spelling_modernizer(lang='en'):
 	global SPELLINGD
 	if lang in SPELLINGD: return SPELLINGD[lang]
 	if lang=='en':
-		SPELLING_MODERNIZER_PATH = config.get('PATH_TO_ENGLISH_SPELLING_MODERNIZER')
+		SPELLING_MODERNIZER_PATH = config.get('PATH_TO_ENGLISH_SPELLING_MODERNIZER',PATH_TO_ENGLISH_SPELLING_MODERNIZER)
 		if not SPELLING_MODERNIZER_PATH: raise Exception('!! PATH_TO_ENGLISH_SPELLING_MODERNIZER not set in config.txt')
 		if not SPELLING_MODERNIZER_PATH.startswith(os.path.sep): SPELLING_MODERNIZER_PATH=os.path.join(LIT_ROOT,SPELLING_MODERNIZER_PATH)
 
@@ -324,7 +324,7 @@ def get_word2pos(lang='en'):
 	# from lltk import PATH_LLTK_CODE_HOME
 	if lang in WORD2POS: return WORD2POS[lang]
 	if lang=='en':
-		path = config.get('PATH_TO_ENGLISH_WORD2POS')
+		path = config.get('PATH_TO_ENGLISH_WORD2POS',PATH_TO_ENGLISH_WORD2POS)
 		if not path: raise Exception('!! PATH_TO_ENGLISH_WORD2POS not set in config.txt')
 		if not os.path.isabs(path): path=os.path.join(PATH_LLTK_REPO,path)
 		if os.path.exists(path):
@@ -338,7 +338,7 @@ def get_ocr_corrections(lang='en'):
 	if lang in OCRCORREX: return OCRCORREX[lang]
 	if lang=='en':
 		d={}
-		PATH_TO_ENGLISH_OCR_CORRECTION_RULES = config.get('PATH_TO_ENGLISH_OCR_CORRECTION_RULES')
+		PATH_TO_ENGLISH_OCR_CORRECTION_RULES = config.get('PATH_TO_ENGLISH_OCR_CORRECTION_RULES',PATH_TO_ENGLISH_OCR_CORRECTION_RULES)
 		if not PATH_TO_ENGLISH_OCR_CORRECTION_RULES: raise Exception('!! PATH_TO_ENGLISH_OCR_CORRECTION_RULES not set in config.txt')
 		if not PATH_TO_ENGLISH_OCR_CORRECTION_RULES.startswith(os.path.sep): PATH_TO_ENGLISH_OCR_CORRECTION_RULES=os.path.join(LIT_ROOT,PATH_TO_ENGLISH_OCR_CORRECTION_RULES)
 		with xopen(PATH_TO_ENGLISH_OCR_CORRECTION_RULES) as f:
@@ -1807,8 +1807,8 @@ def cloud_list(tmpfn='.tmp_lltk_cloud_list'):
 	import subprocess
 	try:
 		#out=subprocess.check_output(config['PATH_CLOUD_LIST_CMD'],shell=True)
-		clist=config.get('PATH_CLOUD_LIST_CMD')
-		cdir=config.get('PATH_CLOUD_DEST')
+		clist=config.get('PATH_CLOUD_LIST_CMD',PATH_CLOUD_LIST_CMD)
+		cdir=config.get('PATH_CLOUD_DEST',PATH_CLOUD_DEST)
 		if clist and cdir:
 			cmd=f'{clist} {cdir} > {tmpfn}'
 			print('>>',cmd)
