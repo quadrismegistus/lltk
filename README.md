@@ -27,7 +27,7 @@ corpus = lltk.load('ECCO_TCP')           # load the corpus by name or ID
 
 # Metadata
 meta = corpus.meta                       # metadata as data frame
-meta_smpl = meta.query('1770<year<1830') # easy query access         
+smpl = meta.query('1770<year<1830')      # easy query access         
 
 # Data
 mfw = corpus.mfw()                       # get the 10K most frequent words as a list
@@ -40,9 +40,9 @@ mdw = corpus.mdw('gender')               # get most distinctive words for a meta
 
 ```python
 # Text objects
-texts = corpus.texts()                   # get a convenient Text object for each text
-texts_smpl = corpus.texts(smpl.id)       # get Text object for list of ids
-text = corpus.t                          # get a random Text object
+text = corpus.t                          # get a random Text object from corpus
+texts = corpus.texts()                   # get a list of corpus's text objects
+texts_smpl = corpus.texts(smpl.id)       # get text objects for list of ids
 
 # Magic attributes
 corpus.au                                # initialize magic
