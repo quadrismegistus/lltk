@@ -6,13 +6,13 @@ Literary Language Tool Kit (LLTK): corpora, models, and tools for the study of c
 
 1) Install:
 
-Open a terminal and type:
+Open a Jupyter/Colab notebook and type:
 
 ```
-pip install git+https://github.com/quadrismegistus/lltk@v2
+!pip install git+https://github.com/quadrismegistus/lltk@v2
 ```
 
-2) Show existing corpora:
+2) Import and show existing corpora:
 
 ```python
 import lltk
@@ -32,7 +32,13 @@ meta_smpl = meta.query('1770<year<1830') # easy query access
 # Data
 mfw = corpus.mfw()                       # get the 10K most frequent words as a list
 dtm = corpus.dtm()                       # get a document-term matrix as a pandas dataframe
+dtm = corpus.dtm(tfidf=True)             # get DTM as tf-idf
+mdw = corpus.mdw('gender')               # get most distinctive words for a metadata group
+```
 
+4) Play with text objects:
+
+```python
 # Text objects
 texts = corpus.texts()                   # get a convenient Text object for each text
 texts_smpl = corpus.texts(smpl.id)       # get Text object for list of ids
@@ -41,11 +47,8 @@ text = corpus.t                          # get a random Text object
 # Magic attributes
 author = corpus.au.Radcliffe             # hit "tab" after typing e.g. "Rad" to autocomplete 
 texts_wollst = corpus.au.Radcliffe.ti    # get text objects for last name Radcliffe 
-```
 
-4) Play with text objects:
-
-```python
+# Loop over texts
 for text in corpus.texts():              # loop over Text objects
     # metadata access
     text_meta = text.meta                # get text metadata as dictionary
@@ -117,4 +120,58 @@ Key to the table:
 | TedJDH              | [Corpus used in "Emergence of Literary Diction" (2012)](http://journalofdigitalhumanities.org/1-2/the-emergence-of-literary-diction-by-ted-underwood-and-jordan-sellers/) | Free                                                                        | [↓](https://www.dropbox.com/s/ibjl7x0eyyz5zm6/tedjdh_metadata.zip?dl=1)              | [↓](https://www.dropbox.com/s/igoxb4y7buctm5o/tedjdh_freqs.zip?dl=1)              | [↓](https://www.dropbox.com/s/8ug3h24h5bggnx7/tedjdh_txt.zip?dl=1)           |                                                                       |                                                                       |
 | TxtLab              | [A multilingual dataset of 450 novels](https://txtlab.org/2016/01/txtlab450-a-data-set-of-multilingual-novels-for-teaching-and-research)                                  | Free                                                                        | [↓](https://www.dropbox.com/s/eh33qy6bcm7rvcp/txtlab_metadata.zip?dl=1)              | [↓](https://www.dropbox.com/s/56azeswx0omjum2/txtlab_freqs.zip?dl=1)              | [↓](https://www.dropbox.com/s/q4bm4yf76zgumi6/txtlab_txt.zip?dl=1)           |                                                                       | [↓](https://github.com/christofs/txtlab450/archive/master.zip)        |
 
+
+## Documentation
+
+### Most frequent words
+
+```python
+# Return most frequent words as dataframe
+C.mfw_df(
+    n=None,                            # Number of top words overall
+    by_ntext=False,                    # Count number of documents not number of words
+    by_fpm=False,                      # Count by within-text relative sums
+    min_count=None,                    # Minimum count of word
+
+    yearbin=None,                      # Average relative counts across `yearbin` periods
+    col_group='period',                # Which column to periodize on
+    n_by_period=None,                  # Number of top words per period
+    keep_periods=False,                # Keep periods in output dataframe
+    n_agg='median',                    # How to aggregate across periods
+    min_periods=None,                  # minimum number of periods a word must appear in
+
+    excl_stopwords=False,              # Exclude stopwords (at `PATH_TO_ENGLISH_STOPWORDS`)
+    excl_top=0,                        # Exclude words ranked 1:`not_top`
+    valtype='fpm',                     # valtype to compute top words by
+    **attrs
+)
+```
+
+### Document term matrix
+
+```python
+C.dtm(
+    words=[],                          # words to use in DTM
+    n=25000,                           # if not `words`, how many mfw?
+    texts=None,                        # set texts to use explicitly, otherwise use all
+    tf=False,                          # return term frequencies, not counts
+    tfidf=False,                       # return tfidf, not counts
+    meta=False,                        # include metadata (e.g. ["gender","nation"])
+    **mfw_attrs,                       # all other attributes passed to self.mfw()
+)
+```
+
+### Most distinctive words
+
+```python
+C.mdw(                                 
+    groupby,                           # metadata categorical variable to group by
+    words=[],                          # explicitly set words to use
+    texts=None,                        # explicitly set texts to use
+    tfidf=True,                        # use tfidf as mdw calculation
+    keep_null_cols=False,              # remove texts which do not have `groupby` set
+    remove_zeros=True,                 # remove rows summing to zero
+    agg='median',                      # aggregate by `agg`
+)
+```
 

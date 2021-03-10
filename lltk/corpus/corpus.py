@@ -521,7 +521,6 @@ class Corpus(object):
 			n_agg='median',
 			min_count=None,
 			col_group='period',
-			not_top=None,
 			excl_stopwords=False,
 			excl_top=0,
 			valtype='fpm',
