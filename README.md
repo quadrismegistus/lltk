@@ -57,6 +57,7 @@ lltk.show()
 ```python
 # load a corpus: e.g. the txtLAB450 dataset of 450 En/Fr/Ger novels  
 corpus = lltk.load('TxtLab')
+```
 
     [TxtLab] Downloading txtlab_metadata.zip: 17.4kb [00:00, 20.2kb/s]                            
     [TxtLab] Unzipping txtlab_metadata.zip: 100%|██████████| 1/1 [00:00<00:00, 696.84it/s]
@@ -64,7 +65,6 @@ corpus = lltk.load('TxtLab')
     [TxtLab] Unzipping txtlab_freqs.zip: 100%|██████████| 410/410 [00:00<00:00, 638.10it/s]
     [TxtLab] Downloading txtlab_txt.zip: 95.1Mb [00:01, 55.9Mb/s]                            
     [TxtLab] Unzipping txtlab_txt.zip: 100%|██████████| 410/410 [00:02<00:00, 145.80it/s]
-```
 
 ## Accessing metadata
 
@@ -76,7 +76,7 @@ corpus.meta
 
 
 
-<table border="1" class="dataframe">
+<table  style="font-size:0.75em;" border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
       <th></th>
@@ -252,7 +252,7 @@ smpl
 
 
 
-<table border="1" class="dataframe">
+<table  style="font-size:0.75em;" border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
       <th></th>
@@ -369,7 +369,7 @@ corpus.mfw_df()
 
 
 
-<table border="1" class="dataframe">
+<table  style="font-size:0.75em;" border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
       <th></th>
@@ -535,7 +535,7 @@ top_noun_by_period
 
 
 
-<table border="1" class="dataframe">
+<table  style="font-size:0.75em;" border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
       <th></th>
@@ -698,7 +698,7 @@ corpus.dtm()
 
 
 
-<table border="1" class="dataframe">
+<table  style="font-size:0.75em;" border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
       <th></th>
@@ -1818,7 +1818,7 @@ fpms
 
 
 
-<table border="1" class="dataframe">
+<table  style="font-size:0.75em;" border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
       <th></th>
@@ -2961,7 +2961,7 @@ tfidfs
 
 
 
-<table border="1" class="dataframe">
+<table  style="font-size:0.75em;" border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
       <th></th>
@@ -4123,7 +4123,7 @@ corpus.mdw(
 ```
 
 
-<table border="1" class="dataframe">
+<table  style="font-size:0.75em;" border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
       <th></th>
