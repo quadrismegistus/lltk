@@ -191,8 +191,8 @@ def configure_prompt(default_config='config.txt',default_corpora='corpora',defau
 	var2path['PATH_TO_CORPORA'] = path_corpora
 	var2path['PATH_TO_MANIFEST'] = path_manifest
 
-	# for var,path in var2path.items():
-		# var2path[var] = path = path.replace('~',HOME)  #os.path.expanduser(path)
+	for var,path in var2path.items():
+		var2path[var] = path = path.replace('~',HOME)  #os.path.expanduser(path)
 		# # make dir if needed
 		# if not os.path.exists(path):
 		# 	if os.path.splitext(path)[0]==path:
