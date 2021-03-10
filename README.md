@@ -119,8 +119,14 @@ Key to the table:
 ## Examples
 
 ```python
+#set up
 import lltk
-C=lltk.load('dialnarr')
+C.show()
+
+# load/install
+C=lltk.load('OldBailey')
+
+# use
 C.mfw()
 C.dtm()
 ```

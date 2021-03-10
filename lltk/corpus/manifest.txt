@@ -358,6 +358,7 @@ name = LitLab
 desc = Literary Lab Corpus of 18th and 19th Century Novels
 link = https://litlab.stanford.edu/LiteraryLabPamphlet11.pdf
 url_metadata = https://www.dropbox.com/s/ruur7jrckhm8nqz/litlab_metadata.zip?dl=1
+url_freqs = https://www.dropbox.com/s/itoj9a8n4vrjot9/litlab_freqs.zip?dl=1
 public = metadata,freqs
 private = txt
 license_type = Academic
