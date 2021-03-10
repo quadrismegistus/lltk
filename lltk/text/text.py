@@ -134,7 +134,6 @@ class Text(object):
 	@property
 	def paras(self):
 		return [para.strip() for para in self.txt.split('\n\n') if para.strip()]
-	
 	@property
 	def nltk(self):
 		import nltk
@@ -149,14 +148,26 @@ class Text(object):
 		if not txt: return
 		yield from pmap_iter(
 				do_parse_stanza,
-				self.paras,
+				# self.paras,
+				[(para,lang) for para in self.paras],
 				desc='Parsing paragraphs with Stanza',
 				num_proc=num_proc)
+	@property
 	def stanza(self,lang=None):
 		if lang is None: lang=self.lang
 		#return do_parse_stanza(self.txt)
-		return self.stanza_paras(lang=lang)
-
+		return list(self.stanza_paras(lang=lang))
+	@property
+	def spacy(self,lang=None,num_proc=1):
+		if lang is None: lang=self.lang
+		objs=[(para,lang) for para in self.paras]
+		if not objs: return []
+		return pmap(
+			do_parse_spacy,
+			objs,
+			desc='Parsing paragraphs with spaCy',
+			num_proc=num_proc
+		)
 	@property
 	def minhash(self):
 		from datasketch import MinHash
@@ -164,4 +175,3 @@ class Text(object):
 		for word in self.tokens:
 			m.update(word.encode('utf-8'))
 		return m
-

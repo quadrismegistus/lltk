@@ -45,8 +45,9 @@ texts_smpl = corpus.texts(smpl.id)       # get Text object for list of ids
 text = corpus.t                          # get a random Text object
 
 # Magic attributes
+corpus.au                                # initialize magic
 author = corpus.au.Radcliffe             # hit "tab" after typing e.g. "Rad" to autocomplete 
-texts_wollst = corpus.au.Radcliffe.ti    # get text objects for last name Radcliffe 
+radcliffe = corpus.au.Radcliffe.ti       # get text objects for last name Radcliffe 
 
 # Loop over texts
 for text in corpus.texts():              # loop over Text objects
@@ -67,6 +68,7 @@ for text in corpus.texts():              # loop over Text objects
     tnltk = text.nltk                    # get nltk Text object
     tblob = text.blob                    # get TextBlob object
     tstanza = text.stanza                # get list of stanza objects (one per para)
+    tspacy = text.spacy                  # get list of spacy objects (one per para)
 ```
 
 

@@ -1,6 +1,7 @@
 from lltk.imports import *
 
-def do_parse_stanza(txt,lang='en'):
+def do_parse_stanza(obj):
+	txt,lang=obj
 	nlp=get_stanza_nlp(lang=lang)
 	return nlp(txt)
 
@@ -16,6 +17,32 @@ def get_stanza_nlp(lang='en'):
 			nlpd[lang] = stanza.Pipeline(lang)
 	nlp=nlpd[lang]
 	return nlp
+def get_spacy_nlp(lang='en'):
+	global nlpd
+	langsp='spacy_'+lang
+	model=f"{lang}_core_web_sm"
+	if not langsp in nlpd: 
+		import spacy
+		try:
+			nlp = spacy.load(model)
+		except OSError:
+			os.system('python -m spacy download {model}')
+			try:
+				nlp = spacy.load(model)
+			except OSError:
+				return
+		nlpd[langsp]=nlp
+	else:
+		nlp=nlpd[langsp]
+	return nlp
+
+
+def do_parse_spacy(obj):
+	txt,lang=obj
+	nlp=get_spacy_nlp(lang=lang)
+	return nlp(txt)
+	
+
 
 ## Spelling
 V2S = None
