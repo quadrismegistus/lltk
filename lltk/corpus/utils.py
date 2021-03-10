@@ -714,6 +714,7 @@ def do_gen_mfw_grp(group,*x,**y):
 	import pandas as pd
 	from scipy.stats import zscore
 	countd = do_gen_mfw(group.path_freqs,*x,**y)
+	if not countd: return pd.DataFrame()
 	df=pd.DataFrame([
 		{'word':w, 'count':c}
 		for w,c in countd.items()
