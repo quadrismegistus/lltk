@@ -1719,8 +1719,8 @@ def ppath(path):
 def rpath(path):
 	import os
 	return path.replace(
-		'~'
-		os.path.expanduser('~'),
+		'~',
+		os.path.expanduser('~')
 	)
 
 
