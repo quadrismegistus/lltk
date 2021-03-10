@@ -142,8 +142,11 @@ def load_default_config():
 	config=configparser.ConfigParser()
 	config.read(PATH_DEFAULT_CONF)
 	configd=config_obj2dict(config,pathhack_root=LIT_ROOT,pathhack=False)
+	for k,v in  configd.items():
+		if not os.path.isabs(v):
+			configd[k]=os.path.join(PATH_LLTK_REPO,v)
 	if not 'PATH_TO_CORPORA' in configd: configd['PATH_TO_CORPORA']='~/lltk_data/corpora'
-	configd=dict((k,v.replace(os.path.expanduser('~'),'~')) for k,v in configd.items())
+	# configd=dict((k,v.replace(os.path.expanduser('~'),'~')) for k,v in configd.items())
 	# if not 'PATH_TO_CORPORA' in configd: configd['PATH_TO_CORPORA']=os.path.expanduser('~/lltk_data/corpora')
 	return configd
 
@@ -203,8 +206,8 @@ def configure_prompt(default_config='config.txt',default_corpora='corpora',defau
 	for k,v in load_user_config().items(): newconfig[k]=v
 	for k,v in var2path.items(): newconfig[k]=v
 	for k,v in newconfig.items():
-		from lltk import PATH_LLTK_CODE_HOME
-		if PATH_LLTK_CODE_HOME in v: v=v.replace(PATH_LLTK_CODE_HOME+os.path.sep,'')
+		# from lltk import PATH_LLTK_CODE_HOME
+		# if PATH_LLTK_CODE_HOME in v: v=v.replace(PATH_LLTK_CODE_HOME+os.path.sep,'')
 		newconfig[k]=v.replace(os.path.expanduser('~'),'~')
 
 
@@ -254,13 +257,21 @@ import sys
 import csv
 #csv.field_size_limit(sys.maxsize)
 
+
+def get_the_getters(lang='en'):
+	get_stopwords(lang=lang)
+	get_wordlist(lang=lang)
+	get_spelling_modernizer(lang=lang)
+	get_word2pos(lang=lang)
+	get_ocr_corrections(lang=lang)
+
 def get_stopwords(lang='en',include_rank=None):
 	global STOPWORDS
 	if lang in STOPWORDS: return STOPWORDS[lang]
 	if lang=='en':
 		STOPWORDS_PATH = config.get('PATH_TO_ENGLISH_STOPWORDS')
 		if not STOPWORDS_PATH: raise Exception('!! PATH_TO_ENGLISH_STOPWORDS not set in config.txt')
-		if not STOPWORDS_PATH.startswith(os.path.sep): STOPWORDS_PATH=os.path.join(LIT_ROOT,STOPWORDS_PATH)
+		if not STOPWORDS_PATH.startswith(os.path.sep): STOPWORDS_PATH=os.path.join(PATH_LLTK_REPO,STOPWORDS_PATH)
 		with xopen(STOPWORDS_PATH) as f: sw1=set(f.read().strip().split('\n'))
 		if include_rank and type(include_rank)==int:
 			sw2={d['word'] for d in worddb() if int(d['rank'])<=include_rank}
@@ -305,7 +316,7 @@ def get_spelling_modernizer(lang='en'):
 
 def get_word2pos(lang='en'):
 	global WORD2POS
-	from lltk import PATH_LLTK_CODE_HOME
+	# from lltk import PATH_LLTK_CODE_HOME
 	if lang in WORD2POS: return WORD2POS[lang]
 	if lang=='en':
 		path = config.get('PATH_TO_ENGLISH_WORD2POS')
@@ -313,7 +324,7 @@ def get_word2pos(lang='en'):
 		if not os.path.isabs(path): path=os.path.join(PATH_LLTK_REPO,path)
 		if os.path.exists(path):
 			with xopen(path) as f:
-				print(path,f)
+				# print(path,f)
 				WORD2POS[lang]=json.load(f)
 	return WORD2POS[lang]
 
