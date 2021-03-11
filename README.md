@@ -23,10 +23,10 @@ Or, within python, show corpora in markdown:
 
 ```python
 import lltk
-lltk.show()                              # or in terminal: lltk show 
+lltk.show()
 ```
 
-### Load a corpus
+### Play with corpora
 
 See [below](#available-corpora) for available corpora.
 
@@ -46,7 +46,7 @@ dtm = corpus.dtm(tfidf=True)             # get DTM as tf-idf
 mdw = corpus.mdw('gender')               # get most distinctive words for a metadata group
 ```
 
-4) Play with text objects:
+### Play with texts
 
 ```python
 # accessing text objs
