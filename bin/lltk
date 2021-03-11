@@ -179,6 +179,7 @@ def main():
 		start_new_corpus_interactive(args)
 
 	elif args.cmd=='import':
+		args.defaults=True
 		start_new_corpus_interactive(args,import_existing=True)
 
 	elif args.cmd=='install' and args.corpus=='metadata':

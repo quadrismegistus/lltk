@@ -1869,13 +1869,13 @@ def cloud_share_all():
 
 
 
-def check_make_dir(path,consent=True,default='y'):
+def check_make_dir(path,ask=True,default='y'):
 	if os.path.exists(path) and os.path.isdir(path): return True
 	if os.path.splitext(path)[0]!=path: return # return if a filename, not a dirname
 	path=os.path.abspath(path)
 	if not os.path.exists(path) and os.path.splitext(path)[0]==path:
 		# create?
-		ans=input('>> create this path?: '+path+'\n>> [Y/n] ').strip().lower()
+		ans=input('>> create this path?: '+path+'\n>> [Y/n] ').strip().lower() if ask else default
 		if not ans: ans=default
 		if ans=='y':
 			print('   creating:',path)
@@ -1883,7 +1883,7 @@ def check_make_dir(path,consent=True,default='y'):
 			return True
 	return False
 
-def symlink(path,link_to,default='y'):
+def symlink(path,link_to,default='y',ask=True):
 	# symlink?
 	if link_to and os.path.exists(path):
 		link_does_not_exist=not os.path.exists(link_to)
@@ -1901,7 +1901,7 @@ def symlink(path,link_to,default='y'):
 			#print('   link exists:',link_to)
 			pass
 		elif link_does_not_exist or not link_already_points_to_file:
-			ans=input('>> create link? [Y/n]\n' + (' '*3) + f'from: {link_to}\n' + (' '*3) + f'to: {path}\n>> ').strip().lower()
+			ans=default if not ask else input('>> create link? [Y/n]\n' + (' '*3) + f'from: {link_to}\n' + (' '*3) + f'to: {path}\n>> ').strip().lower()
 			if not ans: ans=default
 			if ans=='y':
 				print('>> linking to:',link_to)
@@ -1928,10 +1928,10 @@ def check_move_file(src,dst):
 		return False
 
 
-def check_make_dirs(paths,consent=True):
+def check_make_dirs(paths,ask=True):
 	l=[]
 	for path in paths:
-		l+=[check_make_dir(path,consent=consent)]
+		l+=[check_make_dir(path,ask=ask)]
 	return l
 
 

@@ -21,7 +21,7 @@ class NewCorpus(Corpus):
 		"""
 		This is a custom installation function, downloading raw data
 		and processing it into a form which minimally contains
-		a metadata file stored at `metadata.csv` which has a column `self.COL_ID`
+		a metadata file stored at `metadata.csv` which has a column `self.col_id`
 		"""
 		# This will download any file attached to `url_raw` on the corpus manifest
 		# and unzip it to `path_raw` (usually ~/lltk_data/corpora/[corpusroot]/raw)

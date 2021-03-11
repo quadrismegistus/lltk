@@ -73,23 +73,26 @@ class Corpus(object):
 
 	def load_metadata(self,clean=True,add_text_col=False,text_col='_text'):
 		if self._metadf is None:	
-			# meta=read_df(self.path_metadata).set_index(self.COL_ID,drop=False).fillna('')
+			# meta=read_df(self.path_metadata).set_index(self.col_id,drop=False).fillna('')
 			if not os.path.exists(self.path_metadata):
 				# print(f'!!! No metadata file exists at {self.path_metadata}')
 				return pd.DataFrame() 
-			meta=read_df(self.path_metadata, dtype={'id':str}).fillna('')
+			meta=read_df(self.path_metadata, dtype={self.col_id:str}).fillna('')
+			if not self.col_id in meta.columns:
+				if self.col_fn in meta.columns:
+					meta[self.col_id]=meta[self.col_fn].apply(lambda x: os.path.splitext(x)[0])
 			if clean: meta=clean_meta(meta)
 			if self.year_start is not None and str(self.year_start).isdigit() and 'year' in meta.columns:
 				meta=meta.query(f'year>={self.year_start}')
 			if self.year_end is not None and str(self.year_end).isdigit() and 'year' in meta.columns:
 				meta=meta.query(f'year<={self.year_end}')
-			self._metadf=meta.set_index('id')
+			self._metadf=meta.set_index(self.col_id)
 
 		# create text objects
 		if not self._texts or not self._textd:
 			self._texts,self._textd=[],{}
 			for i,row in self._metadf.reset_index().iterrows():
-				idx=row[self.COL_ID] if self.COL_ID in row else row.index
+				idx=row[self.col_id] if self.col_id in row else row.index
 				t=self.TEXT_CLASS(idx,self,meta=dict(row))
 				self._texts.append(t)
 				self._textd[idx]=t
@@ -461,7 +464,7 @@ class Corpus(object):
 
 	def dtm(self,words=[],texts=None,n=DEFAULT_MFW_N,tf=False,tfidf=False,meta=False,na=0.0,**mfw_attrs):
 		dtm=self.preprocess_dtm(texts=texts, words=words,n=n,**mfw_attrs)
-		dtm=dtm.set_index('id') if 'id' in set(dtm.columns) else dtm
+		dtm=dtm.set_index(self.col_id) if self.col_id in set(dtm.columns) else dtm
 		if texts is not None:
 			dtm=dtm.loc[to_textids(texts)]
 
@@ -469,9 +472,9 @@ class Corpus(object):
 		if tfidf: dtm=to_tfidf(dtm)
 		if meta:
 			if type(meta) in {list,set}:
-				if not self.COL_ID in meta: meta=[self.COL_ID]+list(meta)
+				if not self.col_id in meta: meta=[self.col_id]+list(meta)
 			mdf=self.metadf[meta] if type(meta) in {list,set} else self.metadf
-			mdtm=mdf.merge(dtm,on='id',suffixes=('','_w'),how='right')
+			mdtm=mdf.merge(dtm,on=self.col_id,suffixes=('','_w'),how='right')
 			micols = mdf.columns
 			dtm=mdtm.set_index(list(micols))
 		return dtm.fillna(na) 
@@ -645,8 +648,8 @@ class Corpus(object):
 
 
 	def to_texts(self,texts):
-		if issubclass(texts.__class__, pd.DataFrame) and self.COL_ID in set(texts.reset_index().columns):
-			return [self.textd[idx] for idx in texts.reset_index()[self.COL_ID]]
+		if issubclass(texts.__class__, pd.DataFrame) and self.col_id in set(texts.reset_index().columns):
+			return [self.textd[idx] for idx in texts.reset_index()[self.col_id]]
 		# print(type(texts), texts)
 		return [
 			x if (Text in x.__class__.mro()) else self.textd[x]
@@ -796,7 +799,7 @@ class Corpus(object):
 
 		# get
 		objs = [
-			(t.path_freqs,wordset,{'id':t.id})
+			(t.path_freqs,wordset,{self.col_id:t.id})
 			for t in self.texts()
 			if os.path.exists(t.path_freqs) and len(wordset) and t.id
 		]
@@ -813,7 +816,7 @@ class Corpus(object):
 		)
 
 		# return
-		dtm = pd.DataFrame(ld).set_index('id').fillna(0)
+		dtm = pd.DataFrame(ld).set_index(self.col_id).fillna(0)
 		dtm = dtm.reindex(dtm.agg(sort_cols_by).sort_values(ascending=False).index, axis=1)
 
 		# df.to_csv(self.path_dtm)

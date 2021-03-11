@@ -126,10 +126,26 @@ LLTK has built in functionality for the following corpora. Some (🌞) are freel
 
 Incomplete for now. See [this sample notebook](https://nbviewer.jupyter.org/gist/quadrismegistus/0fb3821cd00d7879bf6ce3bc9ab954fe) for some examples.
 
+### New corpus
+
+Import a corpus into LLTK:
+
+```
+lltk import                           # use the "import" command \
+  -path_txt mycorpus/txts             # a folder of txt files  (use -path_xml for xml) \
+  -path_metadata mycorpus/meta.xls    # a metadata csv/tsv/xls about those txt files \
+  -col_fn filename                    # .txt/.xml filename col in metadata (use -col_id if no ext)
+```
+
+Or create a new one:
+```
+lltk create
+```
+
+
 ### Most frequent words
 
 ```python
-# Return most frequent words as dataframe
 corpus.mfw_df(
     n=None,                            # Number of top words overall
     by_ntext=False,                    # Count number of documents not number of words

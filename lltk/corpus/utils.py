@@ -199,6 +199,8 @@ def start_new_corpus_interactive(args,import_existing=False):
 	import os
 	import lltk
 	from lltk import tools
+	from argparse import Namespace
+	# print(args.__dict__.items(),'!?!?')
 
 	keys_mentioned =['path_root','path_xml','path_txt','path_python','path_metadata','class_name','name','id','desc','link']
 	for k in keys_mentioned:
@@ -209,8 +211,8 @@ def start_new_corpus_interactive(args,import_existing=False):
 		print('### LLTK: Start up a new corpus ###')
 
 		name,idx=args.name,args.id
-		if not name: name=input('\n>> (1) Set name of corpus (CamelCase, e.g. ChadwyckPoetry): ').strip()
-		if not idx: idx=input('>> (2) Set ID of corpus (lower-case, e.g chadwyck_poetry): ').strip()
+		if not name: name=input('\n>> (1) Set name of corpus (CamelCase, e.g. ChadwyckPoetry):\n').strip()
+		if not idx: idx=input('>> (2) Set ID of corpus (lower-case, e.g chadwyck_poetry):\n').strip()
 
 
 		## Set defaults
@@ -265,7 +267,7 @@ def start_new_corpus_interactive(args,import_existing=False):
 				path_abs=os.path.join(root,path)
 			if not path: return ''
 			link_to=path_abs_default if path_abs!=path_abs_default else None
-			if create: tools.check_make_dir(path_abs) #,link_to=link_to)
+			if create: tools.check_make_dir(path_abs,ask=not args.defaults) #,link_to=link_to)
 
 			#print('?',path,path_name,path_abs,path_abs_default)
 			#if not path_name in {'path_xml'} or os.path.exists(path_abs):
@@ -285,7 +287,7 @@ def start_new_corpus_interactive(args,import_existing=False):
 			print(f'   [abs path] {path_abs}\n')
 
 			if path_abs and link_to and os.path.dirname(path_abs)!=os.path.dirname(link_to):
-				tools.symlink(path_abs,link_to)
+				tools.symlink(path_abs,link_to,ask=not args.defaults)
 
 
 
@@ -339,6 +341,8 @@ def start_new_corpus_interactive(args,import_existing=False):
 	attrs={'name':name,'id':idx,'desc':desc,'link':link,
 	'path_root':path_root,'path_txt':path_txt,'path_xml':path_xml,'path_metadata':path_metadata,
 	'path_python':path_python,'class_name':class_name}
+	for k,v in args.__dict__.items():
+		if v and not k in attrs: attrs[k]=v
 
 	return start_new_corpus(attrs)
 
@@ -352,19 +356,16 @@ def start_new_corpus(attrs):
 	from argparse import Namespace
 	#ns = Bunch(**attrs)
 	ns=Namespace(**attrs)
+	id,name = attrs.get('id'),attrs.get('name')
+	if not id or not name: return
 
-	manifeststr="""[{name}]
-name = {name}
-id = {id}
-desc = {desc}
-link = {link}
-path_root = {path_root}
-path_txt = {path_txt}
-path_xml = {path_xml}
-path_metadata = {path_metadata}
-path_python = {path_python}
-class_name = {class_name}
-""".format(**attrs)
+	defaults=load_corpus_manifest_defaults(id,name)
+	manifeststrl=['['+name+']']
+	for x in ['name','id','desc','link','path_root','path_txt','path_xml','path_metadata','path_python','class_name','col_id','col_fn']:
+		if x in attrs and (x in {'name','id'} or attrs.get(x)!=defaults.get(x)):
+			manifeststrl.append(f'{x} = {attrs[x]}')
+	manifeststr='\n'.join(manifeststrl)
+	# print(manifeststr)
 
 	print('-'*40)
 
@@ -429,9 +430,14 @@ class_name = {class_name}
 		#from pathlib import Path
 		#Path(ns.path_metadata).touch()
 
-	print('\n>> Corpus finalized with the following manifest configuration:')
-	print(manifeststr)
+	print(f'\n>> Corpus finalized with the following manifest configuration.')
+	print(f'   Relative paths are relative to {PATH_CORPUS}.')
+	print(f'   Saved to:',PATH_MANIFEST_USER,'\n')
 
+	print(manifeststr,'\n')
+
+	with open(PATH_MANIFEST_USER,'a') as of:
+		of.write('\n\n'+manifeststr)
 
 
 
