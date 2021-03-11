@@ -1,6 +1,5 @@
-# lltk
-
-Literary Language Tool Kit (LLTK): corpora, models, and tools for the study of complex language.
+# Literary Language Toolkit (LLTK)
+Corpora, models, and tools for the study of complex language.
 
 ## Quickstart
 
