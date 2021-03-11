@@ -6,25 +6,33 @@ Literary Language Tool Kit (LLTK): corpora, models, and tools for the study of c
 
 See [this notebook](https://nbviewer.jupyter.org/gist/quadrismegistus/0fb3821cd00d7879bf6ce3bc9ab954fe) for a more interactive quickstart.
 
-1) Install:
+### Install
 
-Open a terminal or Jupyter/Colab notebook and type:
+Open a terminal, Jupyter, or Colab notebook and type:
 
 ```
-pip install -qU git+https://github.com/quadrismegistus/lltk@v2
+pip install -qU git+https://github.com/quadrismegistus/lltk
 ```
 
-2) Import and show existing corpora:
+Show available corpora:
+```
+lltk show
+```
+
+Or, within python, show corpora in markdown:
 
 ```python
 import lltk
 lltk.show()                              # or in terminal: lltk show 
 ```
 
-3) Load a corpus in Python:
+### Load a corpus
+
+See [below](#available-corpora) for available corpora.
 
 ```python
 # Load/install a corpus
+import lltk
 corpus = lltk.load('ECCO_TCP')           # load the corpus by name or ID
 
 # Metadata
@@ -41,14 +49,10 @@ mdw = corpus.mdw('gender')               # get most distinctive words for a meta
 4) Play with text objects:
 
 ```python
-# get text objects
+# accessing text objs
 texts = corpus.texts()                   # get a list of corpus's text objects
 texts_smpl = corpus.texts(smpl.id)       # get text objects for list of ids
-
-# Magic attributes
-corpus.au                                # initialize magic
-author = corpus.au.Radcliffe             # hit "tab" after typing e.g. "Rad" to autocomplete 
-radcliffe = corpus.au.Radcliffe.ti       # get text objects for last name Radcliffe 
+texts_rad = corpus.au.Radcliffe          # hit "tab" after typing e.g. "Rad" to autocomplete 
 
 # metadata access
 text = corpus.t                          # get a random text object from corpus
@@ -120,6 +124,8 @@ LLTK has built in functionality for the following corpora. Some (🌞) are freel
 
 
 ## Documentation
+
+Incomplete for now. See [this sample notebook](https://nbviewer.jupyter.org/gist/quadrismegistus/0fb3821cd00d7879bf6ce3bc9ab954fe) for some examples.
 
 ### Most frequent words
 
