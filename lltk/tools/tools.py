@@ -1591,7 +1591,7 @@ def linreg(X, Y):
 	return a, b, RR
 
 
-def download_wget(url, save_to):
+def download_wget(url, save_to, **attrs):
 	import wget
 	save_to_dir,save_to_fn=os.path.split(save_to)
 	if save_to_dir:
@@ -1599,7 +1599,7 @@ def download_wget(url, save_to):
 		os.chdir(save_to_dir)
 	fn=wget.download(url)#,bar=wget.bar_thermometer)
 	os.rename(fn,save_to_fn)
-	print('\n>> saved:',save_to)
+	# print('\n>> saved:',save_to)
 
 def download(url,save_to,force=False,desc=''):
 	if not force and os.path.exists(save_to): return
