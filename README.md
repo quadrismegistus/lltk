@@ -4,7 +4,7 @@ Literary Language Tool Kit (LLTK): corpora, models, and tools for the study of c
 
 ## Quickstart
 
-See [this notebook](https://nbviewer.jupyter.org/github/quadrismegistus/lltk/blob/master/README.ipynb) for a more interactive quickstart.
+See [this notebook](https://nbviewer.jupyter.org/gist/quadrismegistus/0fb3821cd00d7879bf6ce3bc9ab954fe) for a more interactive quickstart.
 
 1) Install:
 
