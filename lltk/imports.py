@@ -113,7 +113,8 @@ ENGLISH=None
 stopwords=set()
 MANIFEST={}
 
-
+colorconc='#f9b466'
+colorabs='#83b9d8'
 
 ### Corpus related
 

@@ -607,9 +607,10 @@ class Corpus(object):
 			if not n_by_period:
 				if has_period:
 					dfpiv = dfi.pivot(col_group,'word',valtype).fillna(0)
-					topNwords=list(dfpiv.median().sort_values(ascending=False).iloc[:n].index) #iloc[excl_top:excl_top+n]
+					# print(dfpiv.median().sort_values(ascending=False))
+					topNwords=list(dfpiv.median().sort_values(ascending=False).iloc[:int(n)].index) #iloc[excl_top:excl_top+n]
 				else:
-					topNwords=dfi.sort_values(valtype,ascending=False).iloc[:n].word
+					topNwords=dfi.sort_values(valtype,ascending=False).iloc[:int(n)].word
 				df=df[df.word.isin(set(topNwords))]
 			elif has_period:
 				df = df.dropna().sort_values('rank').groupby(col_group).head(n)
@@ -715,7 +716,7 @@ class Corpus(object):
 						by_fpm=by_fpm,
 						num_proc=num_proc,
 						col_group=col_group,
-						n=n,
+						# n=n,
 						estimate=estimate,
 						force=force,
 						verbose=verbose,
