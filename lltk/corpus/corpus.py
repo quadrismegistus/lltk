@@ -379,14 +379,14 @@ class Corpus(object):
 	def compile_download(self,unzip=True):
 		return self.install(part='raw',unzip=unzip)
 
-	def preprocess(self,parts=PREPROC_CMDS,verbose=True,**attrs):
+	def preprocess(self,parts=PREPROC_CMDS,verbose=True,force=False,num_proc=DEFAULT_NUM_PROC,**attrs):
 		if not parts: parts=PREPROC_CMDS
 		if type(parts)==str: parts=[p.strip().lower() for p in parts.split(',')]
 		for part in parts:
 			fname='preprocess_'+part
 			if not hasattr(self,fname): continue
 			func=getattr(self,fname)
-			x=func(verbose=verbose,**attrs)
+			x=func(verbose=verbose,num_proc=int(num_proc),force=force, **attrs)
 
 	def preprocess_misc(self): pass
 
