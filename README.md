@@ -3,7 +3,7 @@ Corpora, models, and tools for the study of complex language.
 
 ## Quickstart
 
-See [this notebook](https://nbviewer.jupyter.org/gist/quadrismegistus/0fb3821cd00d7879bf6ce3bc9ab954fe) for a more interactive quickstart.
+See [this notebook](https://nbviewer.jupyter.org/gist/quadrismegistus/0fb3821cd00d7879bf6ce3bc9ab954fe) for a more interactive quickstart ([run the code here on Binder](https://mybinder.org/v2/gist/quadrismegistus/0fb3821cd00d7879bf6ce3bc9ab954fe/master?filepath=lltk-readme.ipynb)).
 
 ### Install
 
