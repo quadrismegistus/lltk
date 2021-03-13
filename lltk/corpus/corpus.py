@@ -86,7 +86,7 @@ class Corpus(object):
 				meta=meta.query(f'year>={self.year_start}')
 			if self.year_end is not None and str(self.year_end).isdigit() and 'year' in meta.columns:
 				meta=meta.query(f'year<={self.year_end}')
-			self._metadf=meta.set_index(self.col_id)
+			self._metadf=meta.set_index(self.col_id,drop=True)
 
 		# create text objects
 		if not self._texts or not self._textd:
@@ -817,7 +817,7 @@ class Corpus(object):
 		)
 
 		# return
-		dtm = pd.DataFrame(ld).set_index(self.col_id).fillna(0)
+		dtm = pd.DataFrame(ld).set_index(self.col_id,drop=True).fillna(0)
 		dtm = dtm.reindex(dtm.agg(sort_cols_by).sort_values(ascending=False).index, axis=1)
 
 		# df.to_csv(self.path_dtm)

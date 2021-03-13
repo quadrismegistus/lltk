@@ -50,13 +50,17 @@ mdw = corpus.mdw('gender')               # get most distinctive words for a meta
 ```python
 # accessing text objs
 texts = corpus.texts()                   # get a list of corpus's text objects
-texts_smpl = corpus.texts(smpl.id)       # get text objects for list of ids
+texts_smpl = corpus.texts(smpl)          # text objects from df/list of ids 
 texts_rad = corpus.au.Radcliffe          # hit "tab" after typing e.g. "Rad" to autocomplete 
+text = corpus.t                          # get a random text object from corpus
 
 # metadata access
-text = corpus.t                          # get a random text object from corpus
 text_meta = text.meta                    # get text metadata as dictionary
 author = text.author                     # get common metadata as attributes    
+title = text.title
+year = text.year
+dec = text.decade                        # few inferred attributes too
+dec_str = text.decade_str                # '1890-1900' rather than 1890
 
 # data access
 txt = text.txt                           # get plain text as string

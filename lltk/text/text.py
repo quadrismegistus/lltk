@@ -125,7 +125,33 @@ class Text(object):
 	@property
 	def ocr_accuracy(self):
 		return float(len(self.words_recognized)) / len(self.words) if len(self.words) else np.nan
-
+	
+	def yearbin(self,ybin,as_str=False,zfill=4):
+		try:
+			binval=self.year//ybin*ybin
+			return binval if not as_str else f'{str(binval).zfill(zfill)}-{str(binval+ybin).zfill(zfill)}'
+		except Exception:
+			return np.nan
+	@property
+	def halfdecade(self): return self.yearbin(5)
+	@property
+	def decade(self): return self.yearbin(10)
+	@property
+	def quartercentury(self): return self.yearbin(25)
+	@property
+	def halfcentury(self): return self.yearbin(50)
+	@property
+	def century(self): return self.yearbin(100)
+	@property
+	def halfdecade_str(self): return self.yearbin(5,as_str=True)
+	@property
+	def decade_str(self): return self.yearbin(10,as_str=True)
+	@property
+	def quartercentury_str(self): return self.yearbin(25,as_str=True)
+	@property
+	def halfcentury_str(self): return self.yearbin(50,as_str=True)
+	@property
+	def century_str(self): return self.yearbin(100,as_str=True)
 
 
 
