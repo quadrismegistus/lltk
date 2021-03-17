@@ -199,8 +199,10 @@ def main():
 		if args.cmd in FUNC_CMDS:
 			cmder = getattr(corpus,args.cmd)
 			_attrs = dict(list(vars(args).items()))
+			# print(_attrs)
 			valid_args=set(valid_args_for(cmder))
 			_attrs = dict((k,v) for k,v in _attrs.items() if k in valid_args)
+			# print(_attrs)
 			# print(cmder, _attrs)
 			cmder(**_attrs)
 

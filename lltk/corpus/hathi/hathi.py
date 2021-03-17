@@ -79,9 +79,9 @@ class TextHathi(Text):
 		You probably don't need to modify it.
 
 		By default, it calls:
-		    a) text_plain_from_txt() if there is a text file copy
-		    b) text_plain_from_xml() if there is an XML file copy
-		       (unless force_xml==True, in which case run XML no matter what)
+			a) text_plain_from_txt() if there is a text file copy
+			b) text_plain_from_xml() if there is an XML file copy
+			(unless force_xml==True, in which case run XML no matter what)
 		"""
 
 		# 1) Get plain text from default behavior described just above
@@ -306,8 +306,8 @@ class Hathi(Corpus):
 		return super().install(parts=parts,force=force,**attrs)
 
 def get_date(imprint):
-    for x in tools.ngram(str(imprint),4):
-        x=''.join(x)
+	for x in tools.ngram(str(imprint),4):
+		x=''.join(x)
 		try:
 			return int(x)
 		except Exception:
