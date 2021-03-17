@@ -38,7 +38,20 @@ def which(pgm):
 			return p
 
 
-
+try:
+	from IPython.core.magic import register_cell_magic
+	@register_cell_magic
+	def write_and_run(line, cell):
+		argz = line.split()
+		file = argz[-1]
+		mode = 'w'
+		if len(argz) == 2 and argz[0] == '-a':
+			mode = 'a'
+		with open(file, mode) as f:
+			f.write(cell)
+		get_ipython().run_cell(cell)
+except NameError:
+	pass
 
 
 def human_format(num):
@@ -394,21 +407,26 @@ def save_df(df,ofn,move_prev=False,index=None,key=''):
 	ext = os.path.splitext(ofn.replace('.gz',''))[-1][1:]
 	if index is None: index=type(df.index) != pd.RangeIndex
 
-	if ext=='csv':
-		df.to_csv(ofn,index=index)
-	elif ext in {'xls','xlsx'}:
-		df.to_excel(ofn)
-	elif ext in {'txt','tsv'}:
-		df.to_csv(ofn,index=index,sep='\t')
-	elif ext=='ft':
-		# if index: df=df.reset_index()
-		df.to_feather(ofn)
-	elif ext=='pkl':
-		df.to_pickle(ofn)
-	elif ext=='h5':
-		df.to_hdf(ofn, key=key)
-	else:
-		raise Exception(f'[save_df()] What kind of df is this: {ofn}')
+	try:
+		if ext=='csv':
+			df.to_csv(ofn,index=index)
+		elif ext in {'xls','xlsx'}:
+			df.to_excel(ofn)
+		elif ext in {'txt','tsv'}:
+			df.to_csv(ofn,index=index,sep='\t')
+		elif ext=='ft':
+			# if index: df=df.reset_index()
+			df.to_feather(ofn)
+		elif ext=='pkl':
+			df.to_pickle(ofn)
+		elif ext=='h5':
+			df.to_hdf(ofn, key=key)
+		# else:
+			# raise Exception(f'[save_df()] What kind of df is this: {ofn}')
+	except Exception as e:
+		# try again as csv?
+		ofn=os.path.splitext(ofn)[0]+'.csv'
+		df.to_csv(ofn)
 
 
 def read_df(ifn,key='',**attrs):
