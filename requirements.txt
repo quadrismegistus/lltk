@@ -21,3 +21,4 @@ tabulate
 statsmodels
 plotnine
 networkx
+ujson
