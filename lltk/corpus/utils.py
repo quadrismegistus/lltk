@@ -65,6 +65,8 @@ def induct_corpus(name_or_id_or_C):
 	new_config={C.name: dict((k,str(v)) for k,v in sorted(manifestd.items()))}
 	write_manifest(PATH_MANIFEST_GLOBAL, path_manifests=[PATH_MANIFEST_GLOBAL],new_config=new_config)
 
+
+
 def showcorp_readme():
 	return showcorp(public_only=True,is_public=None,link=True,show_local=False,maxcolwidth=None)
 
@@ -150,8 +152,8 @@ def status_corpora_readme():
 
 def to_authorkey(name):
 	return zeropunc(to_lastname(name))
-
-
+def to_titlekey(title):
+	return zeropunc(''.join(x.title() for x in title[:30].split()))[:25]
 
 
 def corpus_names():

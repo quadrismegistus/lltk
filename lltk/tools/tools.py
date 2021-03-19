@@ -401,7 +401,7 @@ def get_ocr_corrections(lang='en'):
 
 
 
-def save_df(df,ofn,move_prev=False,index=None,key=''):
+def save_df(df,ofn,move_prev=False,index=None,key='',log=print):
 	import pandas as pd
 	if os.path.exists(ofn) and move_prev: iter_move(ofn)
 	ext = os.path.splitext(ofn.replace('.gz',''))[-1][1:]
@@ -427,6 +427,7 @@ def save_df(df,ofn,move_prev=False,index=None,key=''):
 		# try again as csv?
 		ofn=os.path.splitext(ofn)[0]+'.csv'
 		df.to_csv(ofn)
+	if log is not None: log('>> saved:',ofn)
 
 
 def read_df(ifn,key='',**attrs):
@@ -484,13 +485,49 @@ def measure_ocr_accuracy(txt_or_tokens,lang='en'):
 	return numrecog/numwords
 
 
-def tokenize(txt):
+def tokenize(txt,*x,**y):
 	# from nltk import word_tokenize
 	# return word_tokenize(txt)
 	from lltk.text.utils import tokenize as f
 	return f(txt)
 
+_SPLITTER_ = r"([-.,/:!?\";)(])"
 
+def basic_detokenizer(words):
+	""" This is the basic detokenizer helps us to resolves the issues we created by  our tokenizer"""
+	detokenize_sentence =[]
+	pos = 0
+	while( pos < len(words)):
+		if words[pos] in '-/.' and pos > 0 and pos < len(words) - 1:
+			left = detokenize_sentence.pop()
+			detokenize_sentence.append(left +''.join(words[pos:pos + 2]))
+			pos +=1
+		elif  words[pos] in '[(' and pos < len(words) - 1:
+			detokenize_sentence.append(''.join(words[pos:pos + 2]))   
+			pos +=1        
+		elif  words[pos] in ']).,:!?;' and pos > 0:
+			left  = detokenize_sentence.pop()
+			detokenize_sentence.append(left + ''.join(words[pos:pos + 1]))            
+		else:
+			detokenize_sentence.append(words[pos])
+		pos +=1
+	return ' '.join(detokenize_sentence)
+
+def detokenize(x,clean=True):
+	x=basic_detokenizer(x)
+	if clean:
+		x=x.strip()
+		while '  ' in x: x=x.replace('  ',' ')
+		while ' \n' in x: x=x.replace(' \n','\n')
+		while '\n ' in x: x=x.replace('\n ','\n')
+		while '\n\n\n' in x: x=x.replace('\n\n\n','\n\n')
+		if x.count('\n\n')*2==(x.count('\n')):
+			x=x.replace('\n\n','\n')
+	return x
+
+def printimg(fn):
+	from IPython.display import Image
+	return Image(filename=fn)
 
 def find_nth_character(str1, substr, n):
 	pos = -1

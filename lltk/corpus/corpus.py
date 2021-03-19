@@ -66,7 +66,7 @@ class Corpus(object):
 				for i,row in authordf.iterrows():
 					title=row[titlekey]
 					idx=row[idkey]
-					tkey=zeropunc(''.join(x.title() for x in title[:30].split()))[:25]
+					tkey=to_titlekey(title)
 					tobj=self._textd.get(idx)
 					setattr(aobj,tkey,tobj)
 		return self._authors
@@ -466,7 +466,7 @@ class Corpus(object):
 		dtm=self.preprocess_dtm(texts=texts, words=words,n=n,**mfw_attrs)
 		dtm=dtm.set_index(self.col_id) if self.col_id in set(dtm.columns) else dtm
 		if texts is not None:
-			dtm=dtm.loc[to_textids(texts)]
+			dtm=dtm.loc[[w for w in to_textids(texts) if w in set(dtm.index)]]
 
 		if tf: dtm=to_tf(dtm)
 		if tfidf: dtm=to_tfidf(dtm)

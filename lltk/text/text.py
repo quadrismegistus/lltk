@@ -38,7 +38,7 @@ class Text(object):
 			if not hasattr(self.corpus, exttype): raise Exception(f'Corpus has no {exttype}') 
 			ext=getattr(self.corpus,exttype)
 			cpath=getattr(self.corpus,name)
-			return os.path.join(cpath, self.id + ext)
+			return os.path.abspath(os.path.join(cpath, self.id + ext))
 		elif name in self.meta:
 			return self.meta[name]
 		else:
@@ -152,8 +152,12 @@ class Text(object):
 	def halfcentury_str(self): return self.yearbin(50,as_str=True)
 	@property
 	def century_str(self): return self.yearbin(100,as_str=True)
-
-
+	@property
+	def au(self): return to_authorkey(self.author)
+	@property
+	def ti(self): return to_titlekey(self.title)
+	@property
+	def shorttitle(self): return noPunc(self.title.strip().split(':')[0].split(';')[0].split('.')[0].split('(')[0].split('[')[0].strip())
 
 	#### Convenience
 	@property
