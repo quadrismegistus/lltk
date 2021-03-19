@@ -462,11 +462,12 @@ class Corpus(object):
 	### FREQS
 
 
-	def dtm(self,words=[],texts=None,n=DEFAULT_MFW_N,tf=False,tfidf=False,meta=False,na=0.0,**mfw_attrs):
+	def dtm(self,words=[],texts=None,n=DEFAULT_MFW_N,tf=False,tfidf=False,meta=False,na=0.0,sort_cols_by='sum',**mfw_attrs):
 		dtm=self.preprocess_dtm(texts=texts, words=words,n=n,**mfw_attrs)
 		dtm=dtm.set_index(self.col_id) if self.col_id in set(dtm.columns) else dtm
 		if texts is not None:
 			dtm=dtm.loc[[w for w in to_textids(texts) if w in set(dtm.index)]]
+		dtm = dtm.reindex(dtm.agg(sort_cols_by).sort_values(ascending=False).index, axis=1)
 
 		if tf: dtm=to_tf(dtm)
 		if tfidf: dtm=to_tfidf(dtm)
