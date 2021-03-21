@@ -18,20 +18,20 @@ from subprocess import check_call
 
 
 
-with open("README.md", "r") as fh:
+with open("README.md", "r", encoding='utf-8', errors='ignore') as fh:
     long_description = fh.read()
 
-with open("requirements.txt", "r") as fh:
+with open("requirements.txt", "r", encoding='utf-8', errors='ignore') as fh:
     requirements = [x.strip() for x in fh.read().split('\n') if x.strip()]
 
 setup(
     name='lltk-dh',
-    version='0.5.1',
+    version='0.5.2',
     description=('Literary Language Toolkit (LLTK): corpora, models, and tools for the digital humanities'),
     long_description=long_description,
     long_description_content_type="text/markdown",
     author='Ryan Heuser',
-    author_email='heuser@stanford.edu',
+    author_email='rj416@cam.ac.uk',
     url='https://github.com/quadrismegistus/lltk',
     license='MIT',
     packages=setuptools.find_packages(),
