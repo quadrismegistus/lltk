@@ -1,6 +1,7 @@
 notebooks/dev/
 notebooks/figures
 notebooks/graph_imgs
+*.egg-info
 
 *.pyc
 backups/

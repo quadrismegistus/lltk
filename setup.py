@@ -25,8 +25,8 @@ with open("requirements.txt", "r") as fh:
     requirements = [x.strip() for x in fh.read().split('\n') if x.strip()]
 
 setup(
-    name='lltk',
-    version='0.4.1',
+    name='lltk-dh',
+    version='0.5.1',
     description=('Literary Language Toolkit (LLTK): corpora, models, and tools for the digital humanities'),
     long_description=long_description,
     long_description_content_type="text/markdown",

@@ -493,6 +493,15 @@ def tokenize(txt,*x,**y):
 
 _SPLITTER_ = r"([-.,/:!?\";)(])"
 
+
+MDETOK=None
+
+def moses_detokenize(tokens,lang='en'):
+	global MDETOK
+	if MDETOK is None:
+		from sacremoses import MosesTokenizer, MosesDetokenizer
+		MDETOK=MosesDetokenizer(lang=lang)
+	return MDETOK.detokenize(tokens)
 def basic_detokenizer(words):
 	""" This is the basic detokenizer helps us to resolves the issues we created by  our tokenizer"""
 	detokenize_sentence =[]
@@ -513,16 +522,35 @@ def basic_detokenizer(words):
 		pos +=1
 	return ' '.join(detokenize_sentence)
 
+DTOK_TREEBANK=None
+def detokenize_treebank(x):
+	global DTOK_TREEBANK
+	if DTOK_TREEBANK is None:
+		from nltk.tokenize.treebank import TreebankWordDetokenizer
+		DTOK_TREEBANK = TreebankWordDetokenizer()
+	return DTOK_TREEBANK.detokenize(x)
+
+def cleanstrip(x):
+	x=x.strip()
+	while '  ' in x: x=x.replace('  ',' ')
+	while ' \n' in x: x=x.replace(' \n','\n')
+	while '\n ' in x: x=x.replace('\n ','\n')
+	while '\n\n\n' in x: x=x.replace('\n\n\n','\n\n')
+	if x.count('\n\n')*2==(x.count('\n')):
+		x=x.replace('\n\n','\n')
+
+	# quote?
+	# x=x.replace(' "','"')
+	# x=x.replace('" ','"')
+	# x=x.replace(" '","'")
+	# x=x.replace("' ","'")
+
+	return x
+
 def detokenize(x,clean=True):
-	x=basic_detokenizer(x)
-	if clean:
-		x=x.strip()
-		while '  ' in x: x=x.replace('  ',' ')
-		while ' \n' in x: x=x.replace(' \n','\n')
-		while '\n ' in x: x=x.replace('\n ','\n')
-		while '\n\n\n' in x: x=x.replace('\n\n\n','\n\n')
-		if x.count('\n\n')*2==(x.count('\n')):
-			x=x.replace('\n\n','\n')
+	# x=basic_detokenizer(x)
+	x=detokenize_treebank(x)
+	# if clean: x=cleanstrip(x)
 	return x
 
 def printimg(fn):
