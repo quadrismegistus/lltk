@@ -1685,11 +1685,13 @@ def download_wget(url, save_to, **attrs):
 	# print('\n>> saved:',save_to)
 
 def download(url,save_to,force=False,desc=''):
+	here=os.getcwd()
 	if not force and os.path.exists(save_to): return
 	try:
-		return download_pycurl(url,save_to,desc=desc)
+		download_pycurl(url,save_to,desc=desc)
 	except (ImportError,ModuleNotFoundError) as e:
-		return download_wget(url,save_to,desc=desc)
+		download_wget(url,save_to,desc=desc)
+	os.chdir(here)
 
 def download_curl(url,save_to):
 	save_to_dir,save_to_fn=os.path.split(save_to)

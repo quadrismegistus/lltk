@@ -10,15 +10,18 @@ See [this notebook](https://nbviewer.jupyter.org/gist/quadrismegistus/0fb3821cd0
 Open a terminal, Jupyter, or Colab notebook and type:
 
 ```
-pip install -qU git+https://github.com/quadrismegistus/lltk
+pip install -qU lltk-dh
+
+# or for very latest version:
+#pip install -qU git+https://github.com/quadrismegistus/lltk
 ```
 
-Show available corpora:
+Show [available corpora](#available-corpora):
 ```
 lltk show
 ```
 
-Or, within python, show corpora in markdown:
+Or, within python, show in markdown:
 
 ```python
 import lltk
