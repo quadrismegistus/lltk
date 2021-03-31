@@ -28,6 +28,7 @@ class Corpus(object):
 	XML2TXT = default_xml2txt
 
 	def __init__(self,load_meta=False,**attrs):
+		self.id,self.name,self.path_root,path_metadata=None,None,None,None
 		self._metadf=None
 		self._texts=None
 		self._textd=None
@@ -41,6 +42,12 @@ class Corpus(object):
 				self.load_metadata()
 			except Exception:
 				pass
+		if not self.path_root and self.id:
+			self.path_root=os.path.join(PATH_CORPUS,self.id)
+		if not self.path_metadata:
+			self.path_metadata=os.path.join(PATH_CORPUS,self.id,'metadata.csv')
+
+
 	#####
 	# Metadata
 	####

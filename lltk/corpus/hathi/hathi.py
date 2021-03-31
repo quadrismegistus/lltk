@@ -114,13 +114,6 @@ def get_date(imprint):
 			return x
 
 class HathiSubcorpus(Hathi):
-	# def __init__(self,id,name,search_terms,genre='',**y):
-	# 	self.id=self.ID=id
-	# 	self.name=self.NAME=name
-	# 	self.SEARCH_TERMS=search_terms
-	# 	self.GENRE=genre
-	# 	super().__init__()
-
 	def load_metadata(self,*x,**y):
 		meta=super().load_metadata()
 		meta['genre']=self.GENRE
