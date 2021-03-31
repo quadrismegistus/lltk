@@ -28,6 +28,7 @@ class Hathi(Corpus):
 			if not os.path.exists(os.path.dirname(self.path_full_metadata)):
 				os.makedirs(os.path.dirname(self.path_full_metadata))
 			#tools.download(hc.url_full_metadata, self.path_full_metadata)
+			H=load_corpus('Hathi')
 			H.download(parts=['metadata'])
 	
 	def load_metadata(self,*x,**y):

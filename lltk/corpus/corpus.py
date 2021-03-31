@@ -44,7 +44,7 @@ class Corpus(object):
 				pass
 		if not self.path_root and self.id:
 			self.path_root=os.path.join(PATH_CORPUS,self.id)
-		if not self.path_metadata:
+		if not self.path_metadata and self.id:
 			self.path_metadata=os.path.join(PATH_CORPUS,self.id,'metadata.csv')
 
 
