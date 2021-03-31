@@ -6,10 +6,10 @@ class TextHathi(Text): pass
 
 class Hathi(Corpus):
 	TEXT_CLASS=TextHathi
-	ID='hathi'
-	NAME='Hathi'
+	id='hathi'
+	name='Hathi'
 	LANGS=['eng']
-	SEARCH_TERMS=[]
+	name=[]
 	METADATA_HEADER='htid	access	rights	ht_bib_key	description	source	source_bib_num	oclc_num	isbn	issn	lccn	title	imprint	rights_reason_code	rights_timestamp	us_gov_doc_flag	rights_date_used	pub_place	lang	bib_fmt	collection_code	content_provider_code	responsible_entity_code	digitization_agent_code	access_profile_code	author'.split('\t')
 
 	@property
@@ -49,14 +49,14 @@ class Hathi(Corpus):
 		
 		if not os.path.exists(self.path_metadata):
 			self.download_full_metadata()
-			print('>> finding metadata matching search terms:',self.SEARCH_TERMS)
+			print('>> finding metadata matching search terms:',self.name)
 			old=[]
 			for dx in self.stream_full_meta():
 				title=dx.get('title')
 				if not title: continue
 				title=title.strip().lower()
 				titlewords=set(re.findall(r"[\w']+|[.,!?;]", title))
-				match = bool(self.SEARCH_TERMS & titlewords)
+				match = bool(self.name & titlewords)
 				if not match: continue
 				old+=[dx]
 
@@ -66,7 +66,7 @@ class Hathi(Corpus):
 			df['id']=df['htid'].apply(lambda x: x.split('.',1)[0]+'/'+x.split('.',1)[1])
 			df.to_csv(self.path_metadata)
 
-		# get IDs
+		# get ids
 		print('>> loading metadata')
 		df=pd.read_csv(self.path_metadata,error_bad_lines=False)
 		# df['year']=df['imprint'].apply(get_date)
@@ -117,67 +117,67 @@ def get_date(imprint):
 class HathiSubcorpus(Hathi):
 	def load_metadata(self,*x,**y):
 		meta=super().load_metadata()
-		meta['genre']=self.GENRE
+		meta['genre']=self.genre
 		return meta
 
 
 class HathiSermons(HathiSubcorpus):
-	ID='hathi_sermons'
-	NAME='HathiSermons'
-	SEARCH_TERMS={'sermon','sermons'}
-	GENRE='Sermon'
+	id='hathi_sermons'
+	name='HathiSermons'
+	name={'sermon','sermons'}
+	genre='Sermon'
 
 
 class HathiProclamations(HathiSubcorpus):
-	ID='hathi_proclamations'
-	NAME='HathiProclamations'
-	SEARCH_TERMS={'proclamation','proclamation'}
-	GENRE='Proclamation'
+	id='hathi_proclamations'
+	name='HathiProclamations'
+	name={'proclamation','proclamation'}
+	genre='Proclamation'
 
 
 class HathiEssays(HathiSubcorpus):
-	ID='hathi_essays'
-	NAME='HathiEssays'
-	SEARCH_TERMS={'essay','essays'}
-	GENRE='Essay'
+	id='hathi_essays'
+	name='HathiEssays'
+	name={'essay','essays'}
+	genre='Essay'
 
 
 class HathiLetters(HathiSubcorpus):
-	ID='hathi_letters'
-	NAME='HathiLetters'
-	SEARCH_TERMS={'letter','letters'}
-	GENRE='Letters'
+	id='hathi_letters'
+	name='HathiLetters'
+	name={'letter','letters'}
+	genre='Letters'
 
 class HathiTreatises(HathiSubcorpus):
-	ID='hathi_treatises'
-	NAME='HathiTreatises'
-	SEARCH_TERMS={'treatise','treatises'}
-	GENRE='Treatise'
+	id='hathi_treatises'
+	name='HathiTreatises'
+	name={'treatise','treatises'}
+	genre='Treatise'
 
 
 class HathiTales(HathiSubcorpus):
-	ID='hathi_tales'
-	NAME='HathiTales'
-	SEARCH_TERMS={'tale','tales'}
-	GENRE='Tale'
+	id='hathi_tales'
+	name='HathiTales'
+	name={'tale','tales'}
+	genre='Tale'
 
 class HathiNovels(HathiSubcorpus):
-	ID='hathi_novels'
-	NAME='HathiNovels'
-	SEARCH_TERMS={'novel','novels'}
-	GENRE='Novel'
+	id='hathi_novels'
+	name='HathiNovels'
+	name={'novel','novels'}
+	genre='Novel'
 
 class HathiStories(HathiSubcorpus):
-	ID='hathi_stories'
-	NAME='HathiStories'
-	SEARCH_TERMS={'story','stories'}
-	GENRE='Story'
+	id='hathi_stories'
+	name='HathiStories'
+	name={'story','stories'}
+	genre='Story'
 
 class HathiAlmanacs(HathiSubcorpus):
-	ID='hathi_almanacs'
-	NAME='HathiAlmanacs'
-	SEARCH_TERMS={'almanac','almanack','almanach'}
-	GENRE='Almanac'
+	id='hathi_almanacs'
+	name='HathiAlmanacs'
+	name={'almanac','almanack','almanach'}
+	genre='Almanac'
 
 
 
