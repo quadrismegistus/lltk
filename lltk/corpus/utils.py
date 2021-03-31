@@ -175,7 +175,7 @@ def share_corpora():
 
 
 
-def fix_meta(metadf, badcols={'_llp_','_lltk_','corpus','index','id.1','url_wordcount','url_text','sheetname','filename'},order=['id','author','title','year']):
+def fix_meta(metadf, badcols={'_llp_','_lltk_','corpus','index','id.1','url_wordcount','url_text','sheetname','_path'},order=['id','author','title','year']):
 	prefixcols = [col for col in order if col in set(metadf.columns)]
 	badcols|=set(prefixcols)
 	newcols = prefixcols+[col for col in metadf.columns if not col in badcols and not col.startswith('Unnamed:')]
@@ -744,3 +744,23 @@ def do_gen_mfw_grp(group,*x,**y):
 def load(name_or_id,load_meta=True,install_if_nec=True,**y):
 	return load_corpus(name_or_id,load_meta=load_meta,install_if_nec=install_if_nec,**y)
 #################################################################
+
+
+
+
+
+### Clean all?
+def clean_all_meta():
+	iterr=tqdm(list(corpora(load=False)))
+	for cname,Cd in iterr:
+		if cname<'Chicago': continue
+		if Cd.get('path_metadata')!='metadata.csv': continue
+		# if cname!='GaleAmericanFiction': continue
+		iterr.set_description(f'Loading {cname}')
+		C = load_corpus(cname)
+		meta = C.meta
+		fixed_meta = fix_meta(meta)
+		fixed_meta.to_csv(C.path_metadata,index=False)
+		# print(fixed_meta.columns, 'id' in fixed_meta.columns)
+		# print(fixed_meta.iloc[0])
+		# print()

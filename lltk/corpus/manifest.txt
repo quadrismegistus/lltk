@@ -237,6 +237,7 @@ id = hathi
 name = Hathi
 desc = Hathi Trust Research Center
 link = https://www.hathitrust.org/
+path_metadata = metadata.csv.gz
 url_full_metadata = https://www.hathitrust.org/filebrowser/download/297178
 #public = metadata,freqs
 license_type = Academic

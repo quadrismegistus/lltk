@@ -1,10 +1,4 @@
-from __future__ import absolute_import
-from __future__ import print_function
-
-from lltk.corpus.corpus import Corpus
-from lltk.text.text import Text
-import os
-
+from lltk.imports import *
 
 class TextChicago(Text): pass
 
@@ -95,5 +89,5 @@ class Chicago(Corpus):
 	def load_metadata(self,*x,**y):
 		meta=super().load_metadata()
 		meta['genre']='Fiction'
-		meta['id']=[str(int(x)).zfill(8) for x in meta.id]
+		#meta['id']=[str(int(x)).zfill(8) for x in meta.id]
 		return meta
