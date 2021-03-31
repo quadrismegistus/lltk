@@ -26,9 +26,11 @@ class FanFic(Corpus):
 		"""
 		meta=super().load_metadata()
 		meta['genre']='FanFiction'
-		meta['year']=meta['published'].apply(lambda x: x.split('/')[-1])
-		meta['year']=meta['year'].apply(lambda y: int('20'+str(y)) if int(str(y)[0])<5 else int('19'+str(y)))
-		meta['author']=meta['username']
+		if 'published' in meta.columns:
+			meta['year']=meta['published'].apply(lambda x: x.split('/')[-1])
+			meta['year']=meta['year'].apply(lambda y: int('20'+str(y)) if int(str(y)[0])<5 else int('19'+str(y)))
+		if 'username' in meta.columns:
+			meta['author']=meta['username']
 		return meta
 
 
