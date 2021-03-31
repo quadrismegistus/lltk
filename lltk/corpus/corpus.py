@@ -1,9 +1,11 @@
 from lltk.imports import *
 
 def fixpath(path):
-	if type(path)==str and path and '~' in path:
-		path=path.split('~')[-1]
-		path=os.path.join(os.path.expanduser('~'), path[1:])
+	if type(path)==str and path:
+		if '~' in path:
+			path=path.split('~')[-1]
+			path=os.path.join(os.path.expanduser('~'), path[1:])
+		path=os.path.abspath(path)
 	return path
 
 
@@ -217,15 +219,12 @@ class Corpus(object):
 			if pathpart=='raw': return paths
 			# do they belong to this corpus?
 			try:
+				pppath=getattr(self,f'path_{pathpart}')
+				pppath0 = os.path.dirname(pppath)
 				acceptable_paths = {getattr(t,f'path_{pathpart}') for t in self.texts()}
-				acceptable_paths = {
-					p.replace(
-						os.path.dirname(getattr(self,f'path_{pathpart}'))+os.path.sep,
-						''
-					) for p in acceptable_paths
-				}
-				# print('orig paths',list(paths)[:5])
-				# print('ok paths',list(acceptable_paths)[:5])
+				acceptable_paths = {p.replace(pppath0+os.path.sep,'') for p in acceptable_paths}
+				print('orig paths',len(paths),list(paths)[:5])
+				print('ok paths',len(acceptable_paths), list(acceptable_paths)[:5])
 				paths = list(set(paths) & acceptable_paths)
 			except Exception:
 				pass
