@@ -239,7 +239,19 @@ desc = Hathi Trust Research Center
 link = https://www.hathitrust.org/
 path_metadata = metadata.csv.gz
 url_full_metadata = https://www.hathitrust.org/filebrowser/download/297178
-#public = metadata,freqs
+url_metadata = https://www.dropbox.com/s/0bj4oxko6s6zaos/hathi_metadata.zip?dl=1
+public = metadata
+license_type = Academic
+
+
+[HathiAlmanacs]
+id = hathi_almanacs
+name = HathiAlmanacs
+desc = Hathi Trust volumes with "almanac(k/ch)" in title
+link = https://catalog.hathitrust.org/Search/Home
+path_freqs = ../hathi/freqs
+path_python = hathi/hathi.py
+public = metadata,freqs
 license_type = Academic
 
 

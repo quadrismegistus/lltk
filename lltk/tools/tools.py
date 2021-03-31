@@ -688,13 +688,29 @@ def writegengen(fnfn,generator,header=None,save=True):
 		if save: of.write('\t'.join([six.text_type(dx.get(h,'')) for h in header]) + '\n')
 		yield dx
 
-def readgen_csv(fnfn,sep=None,encoding='utf-8',errors='ignore'):
+def readgen_csv(fnfn,sep=None,encoding='utf-8',errors='ignore',header=[],progress=True,num_lines=0,desc='Reading CSV file'):
 	from smart_open import open
-	if not sep: sep=',' if fnfn.endswith('csv') else '\t'
+	from csv import reader
+	if not sep: sep=',' if fnfn.endswith('csv') or fnfn.endswith('.csv.gz') else '\t'
+	if progress and not num_lines:
+		with open(fnfn,encoding=encoding,errors=errors) as f:
+			for _ in tqdm(f,desc='Counting lines'):
+				num_lines+=1
+	
 	with open(fnfn,encoding=encoding,errors=errors) as f:
-		reader = csv.DictReader(f,delimiter=sep,quoting=csv.QUOTE_NONE)
-		for dx in reader:
-			yield dx
+		# csv_reader = reader(f)
+		# if not header: header=next(csv_reader)
+		header_line=next(f)
+		if header_line==None: return
+		header=list(reader([header_line.strip()]))[0]
+		if header!=None:
+			iterr=f if not progress else tqdm(f,total=num_lines,desc=desc)
+			for row in iterr:
+				try:
+					data = list(reader([row.strip()]))[0]
+					yield dict(zip(header,data))
+				except Exception:
+					pass
 
 def readgen(fnfn,header=None,tsep='\t',keymap={},keymap_all=six.text_type,encoding='utf-8',as_list=False,as_tuples=False,as_dict=True,toprint=True,progress=True):
 	if 'jsonl' in fnfn.split('.'):

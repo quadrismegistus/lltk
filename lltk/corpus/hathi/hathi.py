@@ -1,5 +1,7 @@
 from lltk.imports import *
 
+HATHI_FULL_META_NUMLINES = 17430652
+
 class TextHathi(Text): pass
 
 class Hathi(Corpus):
@@ -12,21 +14,26 @@ class Hathi(Corpus):
 
 	@property
 	def path_full_metadata(self):
-		return os.path.join(self.path_data,'metadata_full.txt.gz')
+		if not hasattr(self,'_pfm'):
+			H=load_corpus('Hathi')
+			self._pfm=H.path_metadata
+		return self._pfm
+
+	def stream_full_meta(self):
+		self.download_full_metadata()
+		yield from readgen_csv(self.path_full_metadata, num_lines=HATHI_FULL_META_NUMLINES, desc='Scanning through giant Hathi Trust CSV file')
 
 	def download_full_metadata(self):
 		if not os.path.exists(self.path_full_metadata):
 			if not os.path.exists(os.path.dirname(self.path_full_metadata)):
 				os.makedirs(os.path.dirname(self.path_full_metadata))
-			tools.download(hc.url_full_metadata, self.path_full_metadata)
+			#tools.download(hc.url_full_metadata, self.path_full_metadata)
+			H.download(parts=['metadata'])
 	
 	def load_metadata(self,*x,**y):
-		print('>> loading metadata (will take a while: very large file)')
-		meta=super().load_metadata()
-		meta['id']=meta['htid']
-		meta['year']=meta['imprint'].apply(get_date)
-		return meta
-	
+		df=super().load_metadata()
+		df['year']=df['imprint'].apply(get_date)
+		return df
 
 	def compile(self,**attrs):
 		"""
@@ -41,43 +48,33 @@ class Hathi(Corpus):
 		
 		if not os.path.exists(self.path_metadata):
 			self.download_full_metadata()
-			print('>>',self.path_metadata)
-
-
 			print('>> finding metadata matching search terms:',self.SEARCH_TERMS)
-			import gzip
-			i_title=self.METADATA_HEADER.index('title')
-			with gzip.open(self.path_full_metadata) as f, open(self.path_metadata,'w') as of:
-				of.write('\t'.join(self.METADATA_HEADER) +'\n')
-				for ln in tqdm(f):
-					ln=ln.decode()
-					dat=ln.split('\t')
-					title=dat[i_title]
-					if not title: continue
-					title=title.strip().lower()
-					titlewords=set(re.findall(r"[\w']+|[.,!?;]", title))
-					match = bool(self.SEARCH_TERMS & titlewords)
-					if not match: continue
-					of.write(ln)
-				
+			old=[]
+			for dx in self.stream_full_meta():
+				title=dx.get('title')
+				if not title: continue
+				title=title.strip().lower()
+				titlewords=set(re.findall(r"[\w']+|[.,!?;]", title))
+				match = bool(self.SEARCH_TERMS & titlewords)
+				if not match: continue
+				old+=[dx]
+
 			# fix!
-			df=pd.read_csv(self.path_metadata,sep='\t',error_bad_lines=False)
+			df=pd.DataFrame(old)
 			df=df[df.lang.isin(self.LANGS)]
 			df['id']=df['htid'].apply(lambda x: x.split('.',1)[0]+'/'+x.split('.',1)[1])
 			df.to_csv(self.path_metadata)
 
-
-
 		# get IDs
 		print('>> loading metadata')
 		df=pd.read_csv(self.path_metadata,error_bad_lines=False)
-		df['year']=df['imprint'].apply(get_date)
-		df['period']=df['year']//1*1
-		ids=list(set(df.groupby('period').sample(n=10,replace=True).id))
-		random.shuffle(ids)
+		# df['year']=df['imprint'].apply(get_date)
+		# df['period']=df['year']//1*1
+		# ids=list(set(df.groupby('period').sample(n=10,replace=True).id))
+		# random.shuffle(ids)
 
 		# compile!
-		tools.pmap(compile_text, ids, num_proc=6)
+		tools.pmap(compile_text, df.id, num_proc=6)
 
 
 	def download(self,**attrs):
@@ -117,6 +114,13 @@ def get_date(imprint):
 			return x
 
 class HathiSubcorpus(Hathi):
+	# def __init__(self,id,name,search_terms,genre='',**y):
+	# 	self.id=self.ID=id
+	# 	self.name=self.NAME=name
+	# 	self.SEARCH_TERMS=search_terms
+	# 	self.GENRE=genre
+	# 	super().__init__()
+
 	def load_metadata(self,*x,**y):
 		meta=super().load_metadata()
 		meta['genre']=self.GENRE
@@ -175,12 +179,21 @@ class HathiStories(HathiSubcorpus):
 	SEARCH_TERMS={'story','stories'}
 	GENRE='Story'
 
+class HathiAlmanacs(HathiSubcorpus):
+	ID='hathi_almanacs'
+	NAME='HathiAlmanacs'
+	SEARCH_TERMS={'almanac','almanack','almanach'}
+	GENRE='Almanac'
+
 
 
 
 def compile_text(idx,by_page=False):
+	from htrc_features import Volume
+	from urllib.error import HTTPError
+
 	try:
-		path_freqs = os.path.join(lltk.load('Hathi').path_freqs,idx+'.json')
+		path_freqs = os.path.join(load_corpus('Hathi').path_freqs,idx+'.json')
 		path_freqs_dir = os.path.dirname(path_freqs)
 		if os.path.exists(path_freqs): return
 		if not os.path.exists(path_freqs_dir):

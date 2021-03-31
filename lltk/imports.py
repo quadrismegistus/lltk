@@ -43,6 +43,7 @@ from zipfile import ZipFile
 import shutil,zipfile
 import networkx as nx
 import six,shutil
+from urllib.error import HTTPError
 
 
 DEFAULT_CORPUS = 'TxtLab'
