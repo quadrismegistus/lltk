@@ -32,7 +32,7 @@ class Hathi(Corpus):
 	
 	def load_metadata(self,*x,**y):
 		df=super().load_metadata()
-		df['year']=df['imprint'].apply(get_date)
+		if 'imprint' in df.columns: df['year']=df['imprint'].apply(get_date)
 		return df
 
 	def compile(self,**attrs):

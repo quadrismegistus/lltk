@@ -108,7 +108,11 @@ class Corpus(object):
 
 	@property
 	def meta(self):
-		if self._metadf is None: self.load_metadata()
+		if self._metadf is None:
+			try:
+				self.load_metadata()
+			except Exception:
+				pass
 		return self._metadf if self._metadf is not None else pd.DataFrame()
 	@property
 	def metadf(self):
