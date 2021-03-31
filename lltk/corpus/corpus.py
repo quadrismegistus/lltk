@@ -28,7 +28,7 @@ class Corpus(object):
 	XML2TXT = default_xml2txt
 
 	def __init__(self,load_meta=False,**attrs):
-		self.id,self.name,self.path_root,path_metadata=None,None,None,None
+		self.id,self.name,self.path_root,self.path_metadata=None,None,None,None
 		self._metadf=None
 		self._texts=None
 		self._textd=None
