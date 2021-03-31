@@ -17,7 +17,7 @@ htrc-feature-reader
 geopy
 moviepy
 tabulate
-#pycurl
+pycurl
 statsmodels
 plotnine
 networkx
