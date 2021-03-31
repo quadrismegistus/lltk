@@ -1696,7 +1696,7 @@ def download_wget(url, save_to, **attrs):
 	if save_to_dir:
 		if not os.path.exists(save_to_dir): os.makedirs(save_to_dir)
 		os.chdir(save_to_dir)
-	fn=wget.download(url,bar=wget.bar_adaptive)
+	fn=wget.download(url,bar=wget)
 	os.rename(fn,save_to_fn)
 	# print('\n>> saved:',save_to)
 
