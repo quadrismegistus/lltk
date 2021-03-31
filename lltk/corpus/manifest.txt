@@ -242,6 +242,9 @@ url_full_metadata = https://www.hathitrust.org/filebrowser/download/297178
 url_metadata = https://www.dropbox.com/s/0bj4oxko6s6zaos/hathi_metadata.zip?dl=1
 public = metadata
 license_type = Academic
+url_metadata = https://www.dropbox.com/s/el2hc45tauwzskc/hathi_almanacs_metadata.zip?dl=1
+
+
 
 
 [HathiAlmanacs]
@@ -285,6 +288,8 @@ path_freqs = ../hathi/freqs
 path_python = hathi/hathi.py
 public = metadata,freqs
 license_type = Academic
+url_metadata = https://www.dropbox.com/s/9s7vpe7bhqo86ic/hathi_essays_metadata.zip?dl=1
+
 
 
 [HathiLetters]
@@ -296,6 +301,8 @@ path_freqs = ../hathi/freqs
 path_python = hathi/hathi.py
 public = metadata,freqs
 license_type = Academic
+url_metadata = https://www.dropbox.com/s/11lajafcunypul2/hathi_letters_metadata.zip?dl=1
+
 
 
 [HathiNovels]
@@ -307,6 +314,8 @@ path_freqs = ../hathi/freqs
 path_python = hathi/hathi.py
 public = metadata,freqs
 license_type = Academic
+url_metadata = https://www.dropbox.com/s/hurtnwujziwusqz/hathi_novels_metadata.zip?dl=1
+
 
 
 [HathiProclamations]
@@ -318,6 +327,8 @@ path_freqs = ../hathi/freqs
 path_python = hathi/hathi.py
 public = metadata,freqs
 license_type = Academic
+url_metadata = https://www.dropbox.com/s/enksc8u5bqukc24/hathi_proclamations_metadata.zip?dl=1
+
 
 
 [HathiSermons]
@@ -329,6 +340,8 @@ path_freqs = ../hathi/freqs
 path_python = hathi/hathi.py
 public = metadata,freqs
 license_type = Academic
+url_metadata = https://www.dropbox.com/s/9s70xbcwrqad88c/hathi_sermons_metadata.zip?dl=1
+
 
 
 [HathiStories]
@@ -340,6 +353,8 @@ path_freqs = ../hathi/freqs
 path_python = hathi/hathi.py
 public = metadata,freqs
 license_type = Academic
+url_metadata = https://www.dropbox.com/s/sfzs0t1hodb9r9d/hathi_stories_metadata.zip?dl=1
+
 
 
 [HathiTales]
@@ -352,6 +367,8 @@ path_python = hathi/hathi.py
 public = metadata,freqs
 url_metadata = https://www.dropbox.com/s/hig9r9igcxp95sy/hathi_tales_metadata.zip?dl=1
 license_type = Academic
+url_metadata = https://www.dropbox.com/s/hig9r9igcxp95sy/hathi_tales_metadata.zip?dl=1
+
 
 
 [HathiTreatises]
@@ -363,6 +380,8 @@ path_freqs = ../hathi/freqs
 path_python = hathi/hathi.py
 public = metadata,freqs
 license_type = Academic
+url_metadata = https://www.dropbox.com/s/az903wuhx1b8zu1/hathi_treatises_metadata.zip?dl=1
+
 
 
 [InternetArchive]
