@@ -695,7 +695,8 @@ class Corpus(object):
 		texts=[t for t in texts if (not year_min or t.year>=year_min) and (not year_max or t.year<year_max)]
 		
 		key=self.mfwkey(yearbin,by_ntext,by_fpm,texts)
-		keyfn=os.path.join(self.path_mfw,key+'.ft')
+		# keyfn=os.path.join(self.path_mfw,key+'.ft')
+		keyfn=os.path.join(self.path_mfw,key+'.pkl')
 		
 		if key in self._mfwd: return self._mfwd[key]
 		
@@ -800,7 +801,8 @@ class Corpus(object):
 		# print(len(wordset))
 		if not wordkey: wordkey=self.wordkey(words)
 		if wordkey in self._dtmd: return self._dtmd[wordkey]
-		keyfn=os.path.join(self.path_dtm,wordkey+'.ft')
+		# keyfn=os.path.join(self.path_dtm,wordkey+'.ft')
+		keyfn=os.path.join(self.path_dtm,wordkey+'.pkl')
 		if not force:
 			if os.path.exists(keyfn):
 				# if verbose: self.log(f'DTM already saved for key {key}')

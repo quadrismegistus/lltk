@@ -256,6 +256,7 @@ def clean_text(txt):
 
 def to_lastname(name):
 	name=name.strip()
+	if not name: return 'Unknown'
 	if ',' in name:
 		name=name.split(',')[0]
 	else:
@@ -283,7 +284,9 @@ def default_xml2txt(xml, *x, OK={'p','l'}, BAD=[], body_tag='text', **args):
 	TXT='\n\n'.join(txt).replace(u'∣','')
 	return TXT
 
-
+def tokenize_agnostic(txt):
+    return re.findall(r"[\w']+|[.,!?; -—–\n]", txt)
+    
 def tokenize_fast(line,lower=False):
 	line = line.lower() if lower else line
 	import re

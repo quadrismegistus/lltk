@@ -44,6 +44,7 @@ import shutil,zipfile
 import networkx as nx
 import six,shutil
 from urllib.error import HTTPError
+from yapmap import *
 
 
 DEFAULT_CORPUS = 'TxtLab'
