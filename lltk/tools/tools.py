@@ -547,9 +547,10 @@ def cleanstrip(x):
 
 	return x
 
-def detokenize(x,clean=True):
+def detokenize(x):
 	# x=basic_detokenizer(x)
 	x=detokenize_treebank(x)
+	x=x.replace(' .','.')
 	# if clean: x=cleanstrip(x)
 	return x
 
