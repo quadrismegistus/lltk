@@ -44,7 +44,7 @@ def htid2id(htid):
 def freq_tsv2dict(freq_str):
 	from nltk import word_tokenize
 	from collections import Counter
-	from lltk.text import clean_text
+	
 	d=Counter()
 	for ln in freq_str.strip().split('\n'):
 		try:

@@ -109,7 +109,7 @@ class TextECCO(Text):
 			print('>>',self.fnfn_txt,'from cache')
 			return cache
 
-		from lltk.text import clean_text
+		
 
 		"""
 		Get the plain text from the ECCO xml files.
@@ -222,7 +222,7 @@ class ECCO(Corpus):
 OCR_CORREX = None
 def gale_xml2txt(dom, OK_word=['wd'], OK_page=['bodyPage'], remove_catchwords=True, correct_ocr=False):
 	global OCR_CORREX
-	from lltk.text import clean_text
+	
 
 	"""
 	Get the plain text from the ECCO xml files.

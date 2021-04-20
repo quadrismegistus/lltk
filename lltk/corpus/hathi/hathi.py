@@ -1,6 +1,13 @@
 from lltk.imports import *
 
 HATHI_FULL_META_NUMLINES = 17430652
+HATHI_FULL_META_PATH=os.path.join(PATH_CORPUS,'hathi','metadata.csv.gz')
+HATHI_FULL_META_URL = 'https://www.hathitrust.org/filebrowser/download/297178'
+
+
+def htid2id(x):
+	a,b=x.split('.',1)
+	return a+'/'+b
 
 class TextHathi(Text): pass
 
@@ -13,12 +20,10 @@ class Hathi(Corpus):
 	METADATA_HEADER='htid	access	rights	ht_bib_key	description	source	source_bib_num	oclc_num	isbn	issn	lccn	title	imprint	rights_reason_code	rights_timestamp	us_gov_doc_flag	rights_date_used	pub_place	lang	bib_fmt	collection_code	content_provider_code	responsible_entity_code	digitization_agent_code	access_profile_code	author'.split('\t')
 
 	@property
-	def path_full_metadata(self):
-		if not hasattr(self,'_pfm'):
-			H=load_corpus('Hathi')
-			self._pfm=H.path_metadata
-		return self._pfm
-
+	def path_full_metadata(self): return HATHI_FULL_META_PATH
+	@property
+	def url_full_metadata(self): return HATHI_FULL_META_URL
+	
 	def stream_full_meta(self):
 		self.download_full_metadata()
 		yield from readgen_csv(self.path_full_metadata, num_lines=HATHI_FULL_META_NUMLINES, desc='Scanning through giant Hathi Trust CSV file')
@@ -27,8 +32,7 @@ class Hathi(Corpus):
 		if not os.path.exists(self.path_full_metadata):
 			if not os.path.exists(os.path.dirname(self.path_full_metadata)):
 				os.makedirs(os.path.dirname(self.path_full_metadata))
-			H=load_corpus('Hathi')
-			tools.download(H.url_metadata, H.path_full_metadata)
+			tools.download(self.url_full_metadata, self.path_full_metadata)
 	
 	def load_metadata(self,*x,**y):
 		df=super().load_metadata()
@@ -62,7 +66,7 @@ class Hathi(Corpus):
 			# fix!
 			df=pd.DataFrame(old)
 			df=df[df.lang.isin(self.LANGS)]
-			df['id']=df['htid'].apply(lambda x: x.split('.',1)[0]+'/'+x.split('.',1)[1])
+			df['id']=df['htid'].apply(htid2id)
 			df.to_csv(self.path_metadata)
 
 		# get ids

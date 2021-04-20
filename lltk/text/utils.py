@@ -350,7 +350,7 @@ def save_freqs_json(obj, lower=True):
 		pass
 
 	# read txt
-	with open(ifnfn) as f: txt=f.read()
+	with open(ifnfn,encoding='utf-8',errors='replace') as f: txt=f.read()
 	
 	# tokenize
 	if lower: txt=txt.lower()

@@ -45,7 +45,9 @@ import networkx as nx
 import six,shutil
 from urllib.error import HTTPError
 from yapmap import *
-
+import tarfile,gzip
+import multiprocessing as mp
+import time
 
 DEFAULT_CORPUS = 'TxtLab'
 DEFAULT_CORPUS_ID = 'txtlab'
@@ -70,6 +72,8 @@ DEFAULT_MFW_YEARBIN = 100
 MANIFEST_REQUIRED_DATA=['name','id']
 
 MANIFEST_DEFAULTS=dict(
+	# id='corpus',
+	# name='Corpus',
 	path_txt='txt',
 	path_xml='xml',
 	path_index='',

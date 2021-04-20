@@ -29,6 +29,7 @@ class Corpus(object):
 
 	def __init__(self,load_meta=False,**attrs):
 		self.id,self.name,self.path_root,self.path_metadata=None,None,None,None
+		for k,v in MANIFEST_DEFAULTS.items(): setattr(self,k,v)
 		self._metadf=None
 		self._texts=None
 		self._textd=None
@@ -37,6 +38,13 @@ class Corpus(object):
 		for k,v in attrs.items():
 			if k.startswith('path_'): v=fixpath(v)
 			setattr(self,k,v)
+		
+		if self.name is None and self.id is None: raise Exception('Please give corpus a name or id.')
+		if self.name is None: self.name=''.join(x.title() for x in self.id.split('_'))
+		self.name=self.name.replace(' ','')
+		if self.id is None: self.id=camel2snake_case(self.name)
+		self.id=self.id.lower().replace(' ','').strip()
+		
 		if load_meta:
 			try:
 				self.load_metadata()
@@ -46,6 +54,13 @@ class Corpus(object):
 			self.path_root=os.path.join(PATH_CORPUS,self.id)
 		if not self.path_metadata and self.id:
 			self.path_metadata=os.path.join(PATH_CORPUS,self.id,'metadata.csv')
+		if self.path_root:
+			for k in dir(self):
+				if k.startswith('path_'):
+					v=getattr(self,k)
+					if type(v)==str:
+						if not os.path.isabs(v):
+							setattr(self,k, os.path.join(self.path_root,v) )
 
 
 	#####
@@ -234,8 +249,8 @@ class Corpus(object):
 				pppath0 = os.path.dirname(pppath)
 				acceptable_paths = {getattr(t,f'path_{pathpart}') for t in self.texts()}
 				acceptable_paths = {p.replace(pppath0+os.path.sep,'') for p in acceptable_paths}
-				print('orig paths',len(paths),list(paths)[:5])
-				print('ok paths',len(acceptable_paths), list(acceptable_paths)[:5])
+				# print('orig paths',len(paths),list(paths)[:5])
+				# print('ok paths',len(acceptable_paths), list(acceptable_paths)[:5])
 				paths = list(set(paths) & acceptable_paths)
 			except Exception:
 				pass
@@ -376,8 +391,8 @@ class Corpus(object):
 			if not os.path.exists(tmpfnfndir): os.makedirs(tmpfnfndir)
 			tools.download(url,tmpfnfn,desc=f'[{self.name}] Downloading {tmpfn}',force=force)
 		if unzip:
-			opath=self.path_raw if part=='raw' else self.path_root
-			tools.unzip(tmpfnfn,opath,desc=f'[{self.name}] Unzipping {tmpfn}',flatten=flatten)
+			odir=self.path_raw if part=='raw' else (os.path.dirname(opath) if not flatten else opath)
+			tools.unzip(tmpfnfn,odir,desc=f'[{self.name}] Unzipping {tmpfn}',flatten=flatten)
 			#if os.path.exists(self.path_raw) and os.listdir(self.path_raw)==['raw']:
 			#	os.rename(os.path.join(self.path_raw,'raw'), self.path_raw)
 		return self
@@ -762,7 +777,7 @@ class Corpus(object):
 			#odf.to_csv(self.path_mfw.replace('.txt','.csv'))
 			odf = odf[odf.columns[1:] if set(odf.columns) and odf.columns[0]=='index' else odf.columns]
 			if verbose: self.log(f'Saving MFW to {ppath(keyfn)}')
-			save_df(odf, keyfn)
+			save_df(odf, keyfn, log=False)
 			self._mfwd[key]=odf
 		return self._mfwd[key]
 
@@ -836,7 +851,7 @@ class Corpus(object):
 		# df.to_csv(self.path_dtm)
 		# df.reset_index().to_feather(self.path_dtm)
 		if verbose: self.log(f'Saving DTM to {ppath(keyfn)}')
-		save_df(dtm.reset_index(), keyfn)
+		save_df(dtm.reset_index(), keyfn, log=False)
 		self._dtmd[wordkey]=dtm
 		return dtm
 

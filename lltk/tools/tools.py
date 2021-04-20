@@ -1,5 +1,6 @@
 from lltk.imports import *
 import six,shutil
+from yapmap import *
 
 HOME=expanduser("~")
 LLTK_ROOT = LIT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -50,7 +51,7 @@ try:
 		with open(file, mode) as f:
 			f.write(cell)
 		get_ipython().run_cell(cell)
-except NameError:
+except (NameError,ModuleNotFoundError):
 	pass
 
 
@@ -695,7 +696,8 @@ def readgen_csv(fnfn,sep=None,encoding='utf-8',errors='ignore',header=[],progres
 	if not sep: sep=',' if fnfn.endswith('csv') or fnfn.endswith('.csv.gz') else '\t'
 	if progress and not num_lines:
 		with open(fnfn,encoding=encoding,errors=errors) as f:
-			for _ in tqdm(f,desc='Counting lines'):
+			# for _ in tqdm(f,desc='Counting lines'):
+			for _ in f:
 				num_lines+=1
 	
 	with open(fnfn,encoding=encoding,errors=errors) as f:

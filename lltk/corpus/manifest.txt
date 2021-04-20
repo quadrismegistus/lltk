@@ -279,6 +279,7 @@ url_freqs = https://www.dropbox.com/s/jm858ej78x7h0vk/hathi_englit_freqs.zip?dl=
 url_metadata = https://www.dropbox.com/s/gnwuwkpy4jybr5r/hathi_englit_metadata.zip?dl=1
 public = metadata,freqs
 license_type = Academic
+path_freqs = ../hathi/freqs
 
 
 [HathiEssays]

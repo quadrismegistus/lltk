@@ -13,7 +13,6 @@ xlrd
 htrc-feature-reader
 geopy
 moviepy
-tabulate
 pycurl
 statsmodels
 plotnine
