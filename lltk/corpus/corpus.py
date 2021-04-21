@@ -374,7 +374,7 @@ class Corpus(object):
 			print(url)
 			ol+=[url]
 		print()
-		return '\n'.join(ol)
+		#return '\n'.join(ol)
 
 
 	def mkdir_root(self):
@@ -439,7 +439,8 @@ class Corpus(object):
 			func=getattr(self,fname)
 			try:
 				x=func(verbose=verbose,num_proc=int(num_proc),force=force, **attrs)
-			except TypeError:
+			except TypeError as e:
+				self.log(f'!! ERROR: {e}')
 				pass
 
 	def preprocess_misc(self): pass
@@ -689,6 +690,9 @@ class Corpus(object):
 			dfr=dfr.merge(w2pdf,on='word')
 			
 
+		if col_group in dfr and set(dfr[col_group])=={EMPTY_GROUP}:
+			dfr=dfr.drop(col_group,1)
+
 		return dfr
 
 
@@ -726,6 +730,7 @@ class Corpus(object):
 			force=False,
 			verbose=True,
 			try_create_freqs=True,
+			progress=True,
 			pos=set(),
 			**attrs
 		):
@@ -734,23 +739,34 @@ class Corpus(object):
 		"""
 		if yearbin is None: yearbin=self.mfw_yearbin
 		if type(yearbin)==str: yearbin=int(yearbin)
-		texts=self.texts() if texts is None else texts
-		texts=self.to_texts(texts)
+		texts=self.texts() if texts is None else self.to_texts(texts)
 		texts=[t for t in texts if (not year_min or t.year>=year_min) and (not year_max or t.year<year_max)]
 		
 		key=self.mfwkey(yearbin,by_ntext,by_fpm,texts)
 		# keyfn=os.path.join(self.path_mfw,key+'.ft')
 		keyfn=os.path.join(self.path_mfw,key+'.pkl')
 		
-		if key in self._mfwd: return self._mfwd[key]
-		
+		if key in self._mfwd and self._mfwd[key] is not None:
+			return self._mfwd[key]
+
+		kwargs={
+			'by_ntext':by_ntext,
+			'estimate':estimate,
+			'by_fpm':by_fpm,
+			'progress':progress,
+			'desc':f'[{self.name}] Counting overall most frequent words (MFW)',
+			'num_proc':num_proc if yearbin is False else 1
+		}
+		odf=None
 		if not force and os.path.exists(keyfn):
 			# if verbose: self.log(f'MFW is cached for key {key}')
 			if verbose: self.log(f'Loading MFW from {ppath(keyfn)}')
-			df=read_df(keyfn)
-			self._mfwd[key]=df
-			# return df
-		else:
+			odf=read_df(keyfn)
+			self._mfwd[key]=odf
+			return odf
+
+		
+		if yearbin:
 			period2texts = divide_texts_historically(yearbin=yearbin,texts=texts)
 			old=[]
 			paths_freqs=[]
@@ -759,6 +775,10 @@ class Corpus(object):
 				for i,t in enumerate(texts):
 					if not os.path.exists(t.path_freqs): continue
 					ptdx={col_group:period, 'path_freqs':t.path_freqs}
+					try:
+						ptdx[col_group+'_int']=int(period.split('-'))
+					except Exception:
+						pass
 					paths_freqs.append(ptdx)
 			if not len(paths_freqs):
 				if verbose: self.log('No freqs files found to generate MFW')
@@ -773,6 +793,7 @@ class Corpus(object):
 						num_proc=num_proc,
 						col_group=col_group,
 						# n=n,
+						progress=progress,
 						estimate=estimate,
 						force=force,
 						verbose=verbose,
@@ -782,37 +803,43 @@ class Corpus(object):
 
 			pathdf=pd.DataFrame(paths_freqs)
 			# run
+			kwargs['progress']=False
 			odf = pmap_groups(
 				do_gen_mfw_grp,
 				pathdf.groupby(col_group),
 				num_proc=num_proc,
-				kwargs={
-					'by_ntext':by_ntext,
-					'estimate':estimate,
-					'by_fpm':by_fpm,
-					'progress':yearbin is False,
-					'desc':f'[{self.name}] Counting overall most frequent words (MFW)',
-					'num_proc':num_proc if yearbin is False else 1
-				},
+				kwargs=kwargs,
 				desc=f'[{self.name}] Counting most frequent words across {yearbin}-year periods',
-				progress=yearbin is not False
+				progress=progress#yearbin is not False
 			)
 			if odf is None or not len(odf): return pd.DataFrame()
-			
-			if yearbin is not False:
-				odf=odf.reset_index().sort_values(['period','rank'])
-			else:
-				odf=odf.reset_index().sort_values('rank')
-			#odf.to_csv(self.path_mfw.replace('.txt','.csv'))
-			odf = odf[odf.columns[1:] if set(odf.columns) and odf.columns[0]=='index' else odf.columns]
+			odf=odf.reset_index().sort_values(['period','rank'])
+		# no period
+		else:
+			pathdf=pd.DataFrame({'path_freqs':t.path_freqs} for t in texts)
+			odf=do_gen_mfw_grp(pathdf,progress=True,num_proc=num_proc)
+			# odf=odf.sort_values('rank')
+			# display(odf)
+
+		
+		if odf is not None:
 			if verbose: self.log(f'Saving MFW to {ppath(keyfn)}')
 			save_df(odf, keyfn, verbose=False)
-			self._mfwd[key]=odf
+		
+		self._mfwd[key]=odf
 		return self._mfwd[key]
 
 	def log(self,*x,**y):
 		xstr=' '.join(str(xx) for xx in x)
-		logger.info(f'[{self.name}] {xstr}')
+		import logging
+		logging.info(f'[{self.name}] {xstr}')
+		# from loguru import logger
+		# logger.remove()f
+		# logger.add(sys.stderr, format="[LLTK] ({time:HH:mm:ss}) {message}", level="INFO")
+		# logger.add(sys.stderr, format="{message} ({time:HH:mm:ss})", level="INFO")
+		# logger.add(sys.stderr, format="{message}", filter="lltk", level="INFO")
+		# logger.info(f'[{self.name}] {xstr}')
+		# logger.remove()
 
 
 	###################################
@@ -836,6 +863,8 @@ class Corpus(object):
 			sort_cols_by='sum',
 			force=False,
 			verbose=True,
+			year_min=None,
+			year_max=None,
 			**attrs
 		):
 		
@@ -853,12 +882,18 @@ class Corpus(object):
 				if verbose: self.log(f'Loading DTM from {ppath(keyfn)}')
 				df=read_df(keyfn)
 				self._dtmd[wordkey]=df
+				if verbose: self.log(f'Returning DTM from {ppath(keyfn)}')
 				return df
 
 		# get
+		texts=self.texts() if texts is None else self.to_texts(texts)
+		texts=[t for t in texts if (not year_min or t.year>=year_min) and (not year_max or t.year<year_max)]
+
+
+
 		objs = [
 			(t.path_freqs,wordset,{self.col_id:t.id})
-			for t in self.texts()
+			for t in texts
 			if os.path.exists(t.path_freqs) and len(wordset) and t.id
 		]
 		
