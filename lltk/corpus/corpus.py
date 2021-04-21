@@ -418,7 +418,7 @@ class Corpus(object):
 			tools.download(url,tmpfnfn,desc=f'[{self.name}] Downloading {tmpfn} to {mask_home_dir(tmpfnfn)}',force=force)
 		if unzip:
 			odir=self.path_raw if part=='raw' else (os.path.dirname(opath) if not flatten else opath)
-			tools.unzip(tmpfnfn,odir,desc=f'[{self.name}] Unzipping {tmpfn} to {mask_home_dir(odir)}',flatten=flatten)
+			tools.extract(tmpfnfn,odir,desc=f'[{self.name}] Unzipping {tmpfn} to {mask_home_dir(odir)}',flatten=flatten)
 			#if os.path.exists(self.path_raw) and os.listdir(self.path_raw)==['raw']:
 			#	os.rename(os.path.join(self.path_raw,'raw'), self.path_raw)
 		return self
@@ -806,13 +806,13 @@ class Corpus(object):
 			#odf.to_csv(self.path_mfw.replace('.txt','.csv'))
 			odf = odf[odf.columns[1:] if set(odf.columns) and odf.columns[0]=='index' else odf.columns]
 			if verbose: self.log(f'Saving MFW to {ppath(keyfn)}')
-			save_df(odf, keyfn, log=False)
+			save_df(odf, keyfn, verbose=False)
 			self._mfwd[key]=odf
 		return self._mfwd[key]
 
-
 	def log(self,*x,**y):
-		print(f'[{self.name}]',*x,**y)
+		xstr=' '.join(str(xx) for xx in x)
+		logger.info(f'[{self.name}] {xstr}')
 
 
 	###################################
@@ -880,7 +880,7 @@ class Corpus(object):
 		# df.to_csv(self.path_dtm)
 		# df.reset_index().to_feather(self.path_dtm)
 		if verbose: self.log(f'Saving DTM to {ppath(keyfn)}')
-		save_df(dtm.reset_index(), keyfn, log=False)
+		save_df(dtm.reset_index(), keyfn, verbose=False)
 		self._dtmd[wordkey]=dtm
 		return dtm
 

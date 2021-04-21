@@ -62,8 +62,11 @@ def induct_corpus(name_or_id_or_C):
 	# check_move_file(ifn_ipynb,ofn_ipynb)
 	manifestd=load_corpus_manifest_unique(C.id,C.name)
 	if not manifestd: return
-	check_move_file(ifn_py,ofn_py)
-	check_move_file(ifn_ipynb,ofn_ipynb)
+	#check_move_link_file(ifn_py,ofn_py)
+	#check_move_link_file(ifn_ipynb,ofn_ipynb)
+	shutil.copyfile(ifn_py,ofn_py)
+	shutil.copyfile(ifn_ipynb,ofn_ipynb)
+	
 	new_config={C.name: dict((k,str(v)) for k,v in sorted(manifestd.items()))}
 	write_manifest(PATH_MANIFEST_GLOBAL, path_manifests=[PATH_MANIFEST_GLOBAL],new_config=new_config)
 
@@ -723,7 +726,21 @@ def do_gen_mfw(paths_freqs,estimate=True,n=None,by_ntext=False,by_fpm=False,prog
 		progress=progress,
 		num_proc=num_proc
 	):
-		countd.update(freqs)
+		try:
+			countd.update(freqs)
+		except Exception as e:
+			if estimate:
+				return do_gen_mfw(
+					paths_freqs,
+					estimate=False,
+					n=n,
+					by_ntext=by_ntext,
+					by_fpm=by_fpm,
+					progress=progress,
+					desc=desc,
+					num_proc=num_proc
+				)
+			self.log(f'ERROR: {e}')
 	return countd
 
 def do_gen_mfw_grp(group,*x,**y):

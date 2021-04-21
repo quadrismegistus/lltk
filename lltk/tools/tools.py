@@ -400,9 +400,14 @@ def get_ocr_corrections(lang='en'):
 		OCRCORREX[lang]=d
 	return OCRCORREX[lang]
 
+def get_encoding(fn):
+	import chardet
+	with open(fn, 'rb') as f:
+		result = chardet.detect(f.read())  # or readline if the file is large
+	return result['encoding']
 
 
-def save_df(df,ofn,move_prev=False,index=None,key='',log=print):
+def save_df(df,ofn,move_prev=False,index=None,key='',log=print,verbose=True):
 	import pandas as pd
 	if os.path.exists(ofn) and move_prev: iter_move(ofn)
 	ext = os.path.splitext(ofn.replace('.gz',''))[-1][1:]
@@ -428,7 +433,7 @@ def save_df(df,ofn,move_prev=False,index=None,key='',log=print):
 		# try again as csv?
 		ofn=os.path.splitext(ofn)[0]+'.csv'
 		df.to_csv(ofn)
-	if log is not None: log('>> saved:',ofn)
+	if verbose: print('Saved:',ofn)
 
 
 def read_df(ifn,key='',**attrs):
@@ -2017,6 +2022,20 @@ def check_move_file(src,dst):
 				shutil.copyfile(src,dst)
 				os.unlink(src)
 				print('\n>> renamed:',dst,'\n')
+	except (KeyboardInterrupt,EOFError) as e:
+		return False
+
+def check_move_link_file(src,dst):
+	src=os.path.abspath(src)
+	dst=os.path.abspath(dst)
+	try:
+		if check_make_dir(os.path.dirname(dst)):
+			if input(f'\nMove and link\n    {src}\nto\n    {dst}\n[Y/n] ').strip()!='n':
+				print('\n>> moving {src} to {dst}')
+				shutil.copyfile(src,dst)
+				os.unlink(src)
+				print(f'>> linking {src} to {dst}')
+				os.symlink(dst,src)
 	except (KeyboardInterrupt,EOFError) as e:
 		return False
 

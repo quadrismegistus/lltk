@@ -397,6 +397,14 @@ public = metadata,freqs
 private = txt
 license_type = Academic
 
+[LongArcPrestige]
+desc = --
+id = long_arc_prestige
+link = --
+name = LongArcPrestige
+path_root = long_arc_prestige
+url_freqs = https://www.dropbox.com/s/wtduaflbx7n2933/long_arc_prestige_freqs.zip?dl=1
+url_metadata = https://www.dropbox.com/s/9d9zqmx11ru9s1v/long_arc_prestige_metadata.zip?dl=1
 
 [MarkMark]
 id = markmark

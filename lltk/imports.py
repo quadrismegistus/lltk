@@ -47,7 +47,13 @@ from urllib.error import HTTPError
 from yapmap import *
 import tarfile,gzip
 import multiprocessing as mp
-import time
+import time,logging
+
+from loguru import logger
+logger.remove()
+import sys
+logger.add(sys.stderr, format="[LLTK] ({time:HH:mm:ss}) {message}", level="INFO")
+
 
 DEFAULT_CORPUS = 'TxtLab'
 DEFAULT_CORPUS_ID = 'txtlab'
@@ -62,7 +68,7 @@ HOME=os.path.expanduser("~")
 MODERNIZE_SPELLING=False
 config = tools.config
 
-ZIP_PART_DEFAULTS={'txt','freqs','metadata','xml','raw','data'}
+ZIP_PART_DEFAULTS={'txt','freqs','metadata','xml'}#,'raw','data'}
 DOWNLOAD_PART_DEFAULTS=['metadata','freqs','txt','data']
 PREPROC_CMDS=['txt','freqs','mfw','dtm']
 DEST_LLTK_CORPORA=config.get('CLOUD_DEST','/Share/llp_corpora')
