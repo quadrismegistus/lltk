@@ -579,7 +579,7 @@ def load_manifest(force=True,corpus_name=None,path_manifests=PATH_MANIFESTS):
 
 
 
-def divide_texts_historically(texts,yearbin=10,yearmin=None,yearmax=None,min_len=None,empty_group='all'):
+def divide_texts_historically(texts,yearbin=10,yearmin=None,yearmax=None,min_len=None,empty_group=EMPTY_GROUP):
 	from collections import defaultdict
 	grp=defaultdict(list)
 	for t in texts:
@@ -590,8 +590,8 @@ def divide_texts_historically(texts,yearbin=10,yearmin=None,yearmax=None,min_len
 				if yearmin and year<yearmin: continue
 				if yearmax and year>=yearmax: continue
 				ybin = year // yearbin * yearbin
-				# ybinstr = f'{ybin}-{ybin+yearbin}'
-				ybinstr=ybin
+				ybinstr = f'{ybin}-{ybin+yearbin}'
+				# ybinstr=ybin
 				grp[ybinstr]+=[t]
 			except ValueError:
 				continue
@@ -706,14 +706,17 @@ def show_stats(corpus_names=[],genre=None,title=None):
 
 def getfreqs(path_freqs,by_ntext=False,by_fpm=False):
 	import ujson as json
-	with open(path_freqs) as f: freqs=json.load(f)
+	try:
+		with open(path_freqs) as f: freqs=json.load(f)
+	except FileNotFoundError:
+		return {}
 	if by_ntext: freqs=dict((w,1) for w in freqs)
 	if by_fpm:
 		total=sum(freqs.values())
 		freqs=dict((w,int(c/total*1000000)) for w,c in freqs.items())
 	return freqs
 
-def do_gen_mfw(paths_freqs,estimate=True,n=None,by_ntext=False,by_fpm=False,progress=False,desc='',num_proc=1):
+def do_gen_mfw(paths_freqs,estimate=True,n=None,by_ntext=False,by_fpm=False,progress=False,desc='',num_proc=1,floatpad=100000):
 	from bounter import bounter
 	from collections import Counter
 	from tqdm import tqdm
@@ -721,42 +724,56 @@ def do_gen_mfw(paths_freqs,estimate=True,n=None,by_ntext=False,by_fpm=False,prog
 	for freqs in pmap_iter(
 		getfreqs,
 		paths_freqs,
-		desc=desc,
 		kwargs=dict(by_ntext=by_ntext, by_fpm=by_fpm),
 		progress=progress,
-		num_proc=num_proc
+		num_proc=num_proc,
+		desc='Computing most frequent words across all texts'
 	):
-		try:
-			countd.update(freqs)
-		except Exception as e:
+		freqs=dict((w,c) for w,c in freqs.items() if is_valid_mfw_word(w))
+		# if these aren't integers...
+		typs={type(c) for w,c in freqs.items()}
+		# print(typs)
+		if  typs != {int}:
+			# if we're not estimating, it should be ok?
+			# if we are...
 			if estimate:
-				return do_gen_mfw(
-					paths_freqs,
-					estimate=False,
-					n=n,
-					by_ntext=by_ntext,
-					by_fpm=by_fpm,
-					progress=progress,
-					desc=desc,
-					num_proc=num_proc
-				)
-			self.log(f'ERROR: {e}')
+				# just make the count a fpm as integer
+				freqs_int=dict((w,int(math.ceil(c*floatpad))) for w,c in freqs.items())
+				freqs=[
+					w
+					for w,c in freqs_int.items()
+					for _ in range(c)
+				]
+				# print(f'freqs is now a list of {len(freqs)} items long')
+		# print(f'freqs has {len(freqs)} keys now')
+		countd.update(freqs)
+		# print(f'countd now has {len(countd)} keys')
+	# print(f'returning countd of {len(countd)} keys')
 	return countd
+
+def is_valid_mfw_word(w):
+	if not w: return False
+	if not w[0].isalpha(): return False
+	return True
 
 def do_gen_mfw_grp(group,*x,**y):
 	import pandas as pd
 	from scipy.stats import zscore
+	# y['progress']=False
 	countd = do_gen_mfw(group.path_freqs,*x,**y)
-	if not countd: return pd.DataFrame()
+	# print('got back from do_gen_mfw:',len(countd),'keys')
+	# if not countd: return pd.DataFrame()
 	df=pd.DataFrame([
 		{'word':w, 'count':c}
 		for w,c in countd.items()
+		if is_valid_mfw_word(w)
 	]).sort_values('count',ascending=False)
 	total=df['count'].sum()
 	# if y.get('by_fpm'):
 		# df['count']=df['count'] / 1000000
 	df['fpm']=df['count']/total*1000000
 	df['rank']=[i+1 for i in range(len(df))]
+	if 'index' in df.columns: df=df.drop('index',1)
 	return df
 
 

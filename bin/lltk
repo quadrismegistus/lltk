@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 from lltk.imports import *
 import os,sys,argparse,multiprocessing as mp
-SLINGSHOT_N=mp.cpu_count()
 
 path_self = os.path.realpath(__file__)
 path_code = os.path.abspath(os.path.join(path_self,'..','..'))

@@ -67,7 +67,6 @@ class LongArcPrestige(Corpus):
     TEXT_CLASS=TextLongArcPrestige
     COL_ID = 'id'
     url_raw=URL_DATA
-    testattr='Hello world from lltk github repo'
 
     def compile(self, num_proc=DEFAULT_NUM_PROC, force=False):
         """
@@ -77,10 +76,15 @@ class LongArcPrestige(Corpus):
         # First clone repo
         if not os.path.exists(self.path_raw): os.makedirs(self.path_raw)
         path_repo=os.path.join(self.path_raw,REPO_NAME)
-        if not os.path.exists(path_repo) and not force:
+        if not os.path.exists(path_repo) or force:
             gitcmd=f'cd {self.path_raw} && git clone {GIT_REPO} && cd {os.getcwd()}'
             self.log(f'''Cloning repo to {path_repo}''')
             os.system(gitcmd)
+        else:
+            gitcmd=f'cd {self.path_raw} && git pull && cd {os.getcwd()}'
+            self.log(f'Pulling updates for repository at {path_repo}')
+            os.system(gitcmd)
+            
 
         # get metadata from repo
         dfs=[]
@@ -92,12 +96,14 @@ class LongArcPrestige(Corpus):
             _df=pd.read_csv(fnfn)
             _df=_df[[x for x in META_COLS if x in set(_df.columns)]]
             _df['subcorpus']=fn.split('.')[0]
-            self.log(f'Found in {fn} df of shape {_df.shape}')
+            self.log(f'Found in {os.path.join(REPO_META_DIR,fn)}: of shape {_df.shape}')
             dfs.append(_df)
             
 
         # save metadata    
         df=pd.concat(dfs).fillna('')
+        for col in df:
+            df[col]=df[col].apply(lambda x: x if x!=' ' else '')
         df['reviewed']=df.pubrev.apply(lambda x: 'Reviewed' if x=='rev' else 'Unreviewed')
         df['id']=df.docid#.apply(htid2id)
         df['year']=df['earliestdate']

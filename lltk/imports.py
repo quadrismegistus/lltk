@@ -47,13 +47,7 @@ from urllib.error import HTTPError
 from yapmap import *
 import tarfile,gzip
 import multiprocessing as mp
-import time,logging
-
-from loguru import logger
-logger.remove()
-import sys
-logger.add(sys.stderr, format="[LLTK] ({time:HH:mm:ss}) {message}", level="INFO")
-
+import time,logging,math
 
 DEFAULT_CORPUS = 'TxtLab'
 DEFAULT_CORPUS_ID = 'txtlab'
@@ -81,6 +75,10 @@ TEXT_PATH_KEYS=[
 	'path_txt',
 	'path_xml'
 ]
+
+import logging
+logging.basicConfig(format='%(message)s', level=logging.INFO)
+
 
 MANIFEST_DEFAULTS=dict(
 	# id='corpus',
@@ -168,6 +166,10 @@ PATH_MANIFESTS = tools.remove_duplicates([
 	PATH_MANIFEST_USER_SHARE
 ], remove_empty=True)
 #print(PATH_MANIFESTS)
+
+EMPTY_GROUP='(all)'
+
+
 
 from pprint import pprint
 
