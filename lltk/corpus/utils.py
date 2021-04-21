@@ -18,6 +18,8 @@ def corpora(load=True,load_meta=False,incl_meta_corpora=True):
 			continue
 		# print(corpus_name, corpus_obj)
 		if corpus_obj is None: continue
+		from lltk.corpus.corpus import MetaCorpus
+		if not incl_meta_corpora and issubclass(corpus_obj.__class__, MetaCorpus): continue
 		yield (corpus_name, corpus_obj)
 
 def check_corpora(paths=['path_raw','path_xml','path_txt','path_freqs','path_metadata'],incl_meta_corpora=False):
@@ -156,8 +158,12 @@ def to_titlekey(title):
 	return zeropunc(''.join(x.title() for x in title[:30].split()))[:25]
 
 
-def corpus_names():
-	return sorted([cname for cname,cd in corpora(load=False)])
+def corpus_names(**attrs):
+	return sorted([cname for cname,cd in corpora(load=False,**attrs)])
+
+def corpus_ids(**attrs):
+	return sorted([cd['id'] for cname,cd in corpora(load=False,**attrs)])
+
 
 
 
@@ -434,12 +440,7 @@ def start_new_corpus(attrs):
 
 	print(f'\n>> Corpus finalized with the following manifest configuration.')
 	print(f'   Relative paths are relative to {PATH_CORPUS}.')
-	print(f'   Saved to:',PATH_MANIFEST_USER,'\n')
-
-	print(manifeststr,'\n')
-
-	with open(PATH_MANIFEST_USER,'a') as of:
-		of.write('\n\n'+manifeststr)
+	print(f'   Saved to:',path_manifest,'\n')
 
 
 
@@ -601,10 +602,12 @@ def divide_texts_historically(texts,yearbin=10,yearmin=None,yearmax=None,min_len
 
 def load_corpus(name_or_id,manifestd={},load_meta=False,install_if_nec=False,**input_kwargs):
 	if not manifestd: manifestd=load_corpus_manifest(name_or_id,make_path_abs=True)
-	# print('>> loading:',manifestd['path_python'])
+	# print('>> loading:',name_or_id,manifestd)
 	module = imp.load_source(manifestd['id'], manifestd['path_python'])
 	class_class = getattr(module,manifestd['class_name'])
 	C = class_class(load_meta=load_meta,**manifestd)
+	from lltk.corpus.corpus import MetaCorpus
+	if issubclass(class_class, MetaCorpus): return C
 	if install_if_nec and (C.meta is None or not len(C.meta)):
 		return C.install(**input_kwargs)
 	return C

@@ -109,16 +109,19 @@ class HathiEngLit(Corpus):
 			tools.download(url,ofnfn)
 
 	def compile_metadata(self):
-		all_meta_ld=[]
+		all_meta=[]
 		for fn in os.listdir(self.path_raw):
 			if fn.endswith('metadata.csv'):
-				all_meta_ld+=tools.read_ld(os.path.join(self.path_raw,fn))
+				fdf=read_df(os.path.join(self.path_raw,fn))
+				fdf['genre']=fn.split('_')[0].title()
+				all_meta+=[fdf]
 		import pandas as pd
-		df=pd.DataFrame(all_meta_ld)
+		df=pd.concat(all_meta)
 		df['id']=df.htid.apply(htid2id)
-		first_cols=['id','htid']
-		other_cols=[col for col in df.columns if not col in first_cols]
-		df[first_cols + other_cols].to_csv(self.path_metadata,sep='\t')
+		df['year']=pd.to_numeric(df['date'],errors='coerce')
+		df=fix_meta(df).set_index('id')
+		df.to_csv(self.path_metadata)
+		return df 
 
 	def compile_data(self,parallel=1,sbatch=False,sbatch_hours=1):
 		if not parallel: parallel=DEFAULT_NUM_PROC

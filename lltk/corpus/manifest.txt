@@ -16,6 +16,13 @@ public =
 private = raw,metadata
 license_type = Commercial
 
+[BigHist]
+desc = --
+id = bighist
+link = --
+name = BigHist
+path_root = bighist
+
 [CLMET]
 id = clmet
 name = CLMET
@@ -46,7 +53,7 @@ link = https://www.english-corpora.org/coha/
 public = 
 private = metadata,raw,freqs,txt
 license_type = Commercial
-mfw_n=10000
+mfw_n = 10000
 
 [CanonFiction]
 id = canon_fiction
@@ -70,7 +77,6 @@ private = raw,txt,xml
 license_type = Mixed
 url_freqs = https://www.dropbox.com/s/syluxyz1mcx5495/chadwyck_freqs.zip?dl=1
 url_metadata = https://www.dropbox.com/s/byqbi8sik255469/chadwyck_metadata.zip?dl=1
-
 
 [ChadwyckDrama]
 id = chadwyck_drama
@@ -198,15 +204,13 @@ license_type = Free
 year_start = 1640
 year_end = 1810
 
-
 [FanFic]
 id = fanfic
 name = FanFic
 desc = Corpus of Harry Potter Fan Fiction
 link = 
-public =
-private =
-
+public = 
+private = 
 
 [GaleAmericanFiction]
 id = gale_amfic
@@ -219,8 +223,6 @@ public = metadata,freqs
 private = txt,raw
 license_type = Academic
 
-
-
 [GildedAge]
 id = gildedage
 name = GildedAge
@@ -230,7 +232,6 @@ url_metadata = https://www.dropbox.com/s/fg605k0cnebf70i/gildedage_metadata.zip?
 url_freqs = https://www.dropbox.com/s/i5zjhil743rm907/gildedage_freqs.zip?dl=1
 public = metadata,txt,freqs
 license_type = Academic
-
 
 [Hathi]
 id = hathi
@@ -242,9 +243,6 @@ url_full_metadata = https://www.hathitrust.org/filebrowser/download/297178
 url_metadata = https://www.dropbox.com/s/0bj4oxko6s6zaos/hathi_metadata.zip?dl=1
 public = metadata
 license_type = Academic
-
-
-
 
 [HathiAlmanacs]
 id = hathi_almanacs
@@ -258,7 +256,6 @@ license_type = Academic
 url_metadata = https://www.dropbox.com/s/el2hc45tauwzskc/hathi_almanacs_metadata.zip?dl=1
 url_freqs = https://www.dropbox.com/s/xihowiox9lu7cc9/hathi_almanacs_freqs.zip?dl=1
 
-
 [HathiBio]
 id = hathi_bio
 name = HathiBio
@@ -268,7 +265,6 @@ url_metadata = https://www.dropbox.com/s/wth2i53gg0tq18a/hathi_bio_metadata.zip?
 public = metadata,freqs
 license_type = Academic
 url_freqs = https://www.dropbox.com/s/3jq8rjtpec4a6g9/hathi_bio_freqs.zip?dl=1
-
 
 [HathiEngLit]
 id = hathi_englit
@@ -280,7 +276,6 @@ url_metadata = https://www.dropbox.com/s/gnwuwkpy4jybr5r/hathi_englit_metadata.z
 public = metadata,freqs
 license_type = Academic
 path_freqs = ../hathi/freqs
-
 
 [HathiEssays]
 id = hathi_essays
@@ -294,8 +289,6 @@ license_type = Academic
 url_metadata = https://www.dropbox.com/s/9s7vpe7bhqo86ic/hathi_essays_metadata.zip?dl=1
 url_freqs = https://www.dropbox.com/s/j1kppdj2h9t20fp/hathi_essays_freqs.zip?dl=1
 
-
-
 [HathiLetters]
 id = hathi_letters
 name = HathiLetters
@@ -307,8 +300,6 @@ public = metadata,freqs
 license_type = Academic
 url_metadata = https://www.dropbox.com/s/11lajafcunypul2/hathi_letters_metadata.zip?dl=1
 url_freqs = https://www.dropbox.com/s/e7b07d5tlkfj9sw/hathi_letters_freqs.zip?dl=1
-
-
 
 [HathiNovels]
 id = hathi_novels
@@ -322,8 +313,6 @@ license_type = Academic
 url_metadata = https://www.dropbox.com/s/hurtnwujziwusqz/hathi_novels_metadata.zip?dl=1
 url_freqs = https://www.dropbox.com/s/yxpur1zvvbp7cwp/hathi_novels_freqs.zip?dl=1
 
-
-
 [HathiProclamations]
 id = hathi_proclamations
 name = HathiProclamations
@@ -335,8 +324,6 @@ public = metadata,freqs
 license_type = Academic
 url_metadata = https://www.dropbox.com/s/enksc8u5bqukc24/hathi_proclamations_metadata.zip?dl=1
 url_freqs = https://www.dropbox.com/s/0wzzfcd4qeb17ed/hathi_proclamations_freqs.zip?dl=1
-
-
 
 [HathiSermons]
 id = hathi_sermons
@@ -350,8 +337,6 @@ license_type = Academic
 url_metadata = https://www.dropbox.com/s/9s70xbcwrqad88c/hathi_sermons_metadata.zip?dl=1
 url_freqs = https://www.dropbox.com/s/gchqmnt1yhhephz/hathi_sermons_freqs.zip?dl=1
 
-
-
 [HathiStories]
 id = hathi_stories
 name = HathiStories
@@ -363,8 +348,6 @@ public = metadata,freqs
 license_type = Academic
 url_metadata = https://www.dropbox.com/s/sfzs0t1hodb9r9d/hathi_stories_metadata.zip?dl=1
 url_freqs = https://www.dropbox.com/s/g004z8lgyxxhwip/hathi_stories_freqs.zip?dl=1
-
-
 
 [HathiTales]
 id = hathi_tales
@@ -378,8 +361,6 @@ url_metadata = https://www.dropbox.com/s/hig9r9igcxp95sy/hathi_tales_metadata.zi
 license_type = Academic
 url_freqs = https://www.dropbox.com/s/b31o13d6l5do1kk/hathi_tales_freqs.zip?dl=1
 
-
-
 [HathiTreatises]
 id = hathi_treatises
 name = HathiTreatises
@@ -391,8 +372,6 @@ public = metadata,freqs
 license_type = Academic
 url_metadata = https://www.dropbox.com/s/az903wuhx1b8zu1/hathi_treatises_metadata.zip?dl=1
 url_freqs = https://www.dropbox.com/s/hafinhgc8u77vpz/hathi_treatises_freqs.zip?dl=1
-
-
 
 [InternetArchive]
 id = internet_archive
@@ -406,7 +385,6 @@ url_freqs = https://www.dropbox.com/s/eofh9npy5x7qn5o/internet_archive_freqs.zip
 url_data = https://www.dropbox.com/s/3yi0zcj6w5eehko/internet_archive_data.zip?dl=1
 public = metadata,freqs,txt,data
 license_type = Free
-
 
 [LitLab]
 id = litlab
@@ -431,16 +409,14 @@ public = metadata,freqs
 private = txt
 license_type = Academic
 
-
 [NewYorker]
 id = new_yorker
 name = NewYorker
 desc = New Yorker archives, 1925-2017
 link = 
 public = 
-private =
+private = 
 license_type = Academic
-
 
 [OldBailey]
 id = oldbailey
@@ -462,7 +438,7 @@ desc =
 link = 
 path_python = jstor_dfr/jstor_dfr.py
 public = 
-private =
+private = 
 license_type = Academic
 
 [RavenGarside]
@@ -486,7 +462,6 @@ url_metadata = https://www.dropbox.com/s/6gyueael6smbxyg/sotu_metadata.zip?dl=1
 public = metadata,freqs,txt
 license_type = Free
 
-
 [Sellers]
 id = sellers
 name = Sellers
@@ -498,7 +473,6 @@ url_txt = https://www.dropbox.com/s/j7e5my3s20n3xq4/sellers_txt.zip?dl=1
 public = metadata,freqs,txt
 license_type = Free
 
-
 [SemanticCohort]
 id = semantic_cohort
 name = SemanticCohort
@@ -508,7 +482,6 @@ url_data = https://www.dropbox.com/s/tnqna3bdsiovtnt/semantic_cohort_data.zip?dl
 url_metadata = https://www.dropbox.com/s/f6imhtfzgpf7tvz/semantic_cohort_metadata.zip?dl=1
 public = metadata,data
 license_type = Free
-
 
 [Spectator]
 id = spectator
@@ -520,7 +493,6 @@ url_metadata = https://www.dropbox.com/s/3cw2lcza68djzj1/spectator_metadata.zip?
 url_txt = https://www.dropbox.com/s/goj6xbom3qnv5u5/spectator_txt.zip?dl=1
 public = metadata,freqs,txt
 license_type = Free
-
 
 [TedJDH]
 id = tedjdh
@@ -544,18 +516,4 @@ url_freqs = https://www.dropbox.com/s/56azeswx0omjum2/txtlab_freqs.zip?dl=1
 url_metadata = https://www.dropbox.com/s/eh33qy6bcm7rvcp/txtlab_metadata.zip?dl=1
 public = metadata,freqs,txt,raw
 license_type = Free
-
-
-[MM]
-name = MM
-id = mm
-desc = --
-link = --
-path_root = mm
-path_txt = /home/ryan/markmark/txt
-path_xml = xml
-path_metadata = /home/ryan/markmark/metadata.csv
-path_python = mm.py
-class_name = MM
-
 

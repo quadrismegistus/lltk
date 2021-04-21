@@ -696,9 +696,7 @@ def readgen_csv(fnfn,sep=None,encoding='utf-8',errors='ignore',header=[],progres
 	if not sep: sep=',' if fnfn.endswith('csv') or fnfn.endswith('.csv.gz') else '\t'
 	if progress and not num_lines:
 		with open(fnfn,encoding=encoding,errors=errors) as f:
-			# for _ in tqdm(f,desc='Counting lines'):
-			for _ in f:
-				num_lines+=1
+			for _ in f: num_lines+=1
 	
 	with open(fnfn,encoding=encoding,errors=errors) as f:
 		# csv_reader = reader(f)
@@ -715,31 +713,18 @@ def readgen_csv(fnfn,sep=None,encoding='utf-8',errors='ignore',header=[],progres
 				except Exception:
 					pass
 
-def readgen(fnfn,header=None,tsep='\t',keymap={},keymap_all=six.text_type,encoding='utf-8',as_list=False,as_tuples=False,as_dict=True,toprint=True,progress=True):
-	if 'jsonl' in fnfn.split('.'):
-		for dx in readgen_jsonl(fnfn):
-			yield dx
+def readgen(fnfn,**y):
+	ext=os.path.splitext(fnfn)[-1]
+	if ext=='.jsonl':
+		yield from readgen_jsonl(fnfn,**y)
+	elif ext=='.csv':
+		yield from readgen_csv(fnfn,**y)
+	elif ext=='.txt':
+		yield from readgen_csv(fnfn,sep='\t',**y)
 	else:
-		import time
-		now=time.time()
-
-		"""
-		if tsep=='\t' and toprint:
-			print('>> streaming as tsv:',fnfn)
-		elif tsep==',' and toprint:
-			print('>> streaming as csv:',fnfn)
-		"""
-
-		if progress:
-			num_lines = get_num_lines(fnfn)
-			from tqdm import tqdm
-			_fn=os.path.basename(fnfn)
-			for dx in tqdm(readgen_csv(fnfn),total = num_lines, desc=f'>> reading csv ({_fn})'): yield dx
-		else:
-			for dx in readgen_csv(fnfn): yield dx
-
-		nownow=time.time()
-		if not progress and toprint: print('   done ['+str(round(nownow-now,1))+' seconds]')
+		# print(f'[readgen()] Resorting to non-generator load for {fnfn}')
+		df=read_df(fnfn)
+		yield from df.to_dict('records')
 
 def header(fnfn,tsep='\t',encoding='utf-8'):
 	header=[]
@@ -1707,6 +1692,8 @@ def download_wget(url, save_to, **attrs):
 def download(url,save_to,force=False,desc=''):
 	here=os.getcwd()
 	if not force and os.path.exists(save_to): return
+	savedir=os.path.dirname(save_to)
+	if not os.path.exists(savedir): os.makedirs(savedir)
 	try:
 		download_pycurl(url,save_to,desc=desc)
 	except (ImportError,ModuleNotFoundError) as e:
@@ -1838,7 +1825,7 @@ class Bunch(object):
 			yield v
 
 
-
+def mask_home_dir(path): return ppath(path)
 def ppath(path):
 	import os
 	return path.replace(
@@ -1900,7 +1887,7 @@ def unzip(zipfn, dest='.', flatten=False, overwrite=False, replace_in_filenames=
 	from tqdm import tqdm
 
 	# Open your .zip file
-	if not desc: desc=f'Extracting {os.path.basename(zipfn)}'
+	if not desc: desc=f'Extracting {os.path.basename(zipfn)} to {dest}'
 	with ZipFile(zipfn) as zip_file:
 		namelist=zip_file.namelist()
 
@@ -1921,10 +1908,11 @@ def unzip(zipfn, dest='.', flatten=False, overwrite=False, replace_in_filenames=
 				pass
 			except FileNotFoundError:
 				continue
-			
-			with zip_file.open(member) as source, open(target_fnfn,'wb') as target:
-				shutil.copyfileobj(source, target)
-
+			try:
+				with zip_file.open(member) as source, open(target_fnfn,'wb') as target:
+					shutil.copyfileobj(source, target)
+			except FileNotFoundError:
+				print('!! File not found:',target_fnfn)
 
 
 

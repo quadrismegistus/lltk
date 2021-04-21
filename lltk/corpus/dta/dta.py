@@ -1,12 +1,46 @@
-import os
-from lltk.text.text import Text
-from lltk.corpus.corpus import Corpus
-from lltk import tools
+from lltk.imports import *
 
-########################################################################################################################
-# [DTA]
-# (1) Text Class
-########################################################################################################################
+
+def get_meta_from_file(path_xml_meta):
+	# read xml from meta
+	if not os.path.exists(path_xml_meta): return {}
+	with open(path_xml_meta) as f: xml=f.read()
+
+	# parse
+	import bs4
+	dom=bs4.BeautifulSoup(xml,'lxml')
+
+	# get all dc tags
+	meta={}
+	meta['id']=os.path.splitext(os.path.basename(path_xml_meta))[0]
+	for tag in dom():
+		if tag.name.startswith('dc:'):
+			meta[tag.name[3:]]=tag.text
+	if 'rights' in meta: del meta['rights']
+
+	genre=str(meta.get('subject',''))
+	genrel=genre.lower()
+	if genrel.endswith('roman') or 'novelle' in genrel or 'märchen' in genrel:
+		meta['genre']='Fiction'
+		meta['medium']='Prose'   # check this assumption
+	elif genrel.endswith('drama'):
+		meta['genre']='Drama'
+		meta['medium']='Unknown'
+	elif 'lyrik' in genrel:
+		meta['genre']='Poetry'
+		meta['medium']='Verse'
+	else:
+		meta['genre']='Other'
+		meta['medium']='Unknown'
+	try:
+		meta['year']=int(meta['date'])
+	except ValueError:
+		import numpy as np
+		meta['year']=np.nan
+	meta['author']=meta['creator']
+	return meta
+
+
 
 class TextDTA(Text):
 	# (b) Getting plain text from XML files
@@ -24,66 +58,14 @@ class TextDTA(Text):
 	def path_xml_meta(self):
 		return os.path.join(self.corpus.path_xml_meta, self.id + '.xml')
 
-	def get_meta_from_file(self):
-		# read xml from meta
-		if not os.path.exists(self.path_xml_meta): return {}
-		with open(self.path_xml_meta) as f: xml=f.read()
-
-		# parse
-		import bs4
-		dom=bs4.BeautifulSoup(xml,'lxml')
-
-		# get all dc tags
-		meta={}
-		for tag in dom():
-			if tag.name.startswith('dc:'):
-				meta[tag.name[3:]]=tag.text
-		if 'rights' in meta: del meta['rights']
-		return meta
-
-	def get_metadata(self):
-		meta=super().get_metadata()
-		genre=str(meta.get('subject',''))
-		genrel=genre.lower()
-		if genrel.endswith('roman') or 'novelle' in genrel or 'märchen' in genrel:
-			meta['genre']='Fiction'
-			meta['medium']='Prose'   # check this assumption
-		elif genrel.endswith('drama'):
-			meta['genre']='Drama'
-			meta['medium']='Unknown'
-		elif 'lyrik' in genrel:
-			meta['genre']='Poetry'
-			meta['medium']='Verse'
-		else:
-			meta['genre']='Other'
-			meta['medium']='Unknown'
-
-		try:
-			meta['year']=int(meta['date'])
-		except ValueError:
-			import numpy as np
-			meta['year']=np.nan
-
-		meta['author']=meta['creator']
-		return meta
-
-
-
-########################################################################################################################
-# (2) Corpus Class
-########################################################################################################################
-
 class DTA(Corpus):
 	TEXT_CLASS=TextDTA
 
-
-	####################################################################################################################
-	# (2.1) Installation methods
-	####################################################################################################################
-
 	def compile(self,**attrs):
-		self.compile_xml()
+		self.download_raw_metadata()
 		self.compile_metadata()
+		self.download_raw_xml()
+		self.compile_xml()
 
 	def compile_xml(self):
 		# download if nec
@@ -96,6 +78,12 @@ class DTA(Corpus):
 		downloaded_to = self.download_raw_metadata()
 		# unzip
 		tools.unzip(downloaded_to, dest=self.path_xml_meta, flatten=True, overwrite=False, replace_in_filenames={'.oai_dc.':'.'})
+		# compile meta
+		metadf=pd.DataFrame(
+			get_meta_from_file(os.path.join(self.path_xml_meta,fn))
+			for fn in os.listdir(self.path_xml_meta) 
+		)
+		fix_meta(metadf).set_index('id').to_csv(self.path_metadata)
 
 
 	def download_raw_xml(self):

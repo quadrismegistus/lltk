@@ -70,6 +70,11 @@ DEFAULT_MFW_N =25000
 DEFAULT_DTM_N = 25000
 DEFAULT_MFW_YEARBIN = 100
 MANIFEST_REQUIRED_DATA=['name','id']
+TEXT_PATH_KEYS=[
+	'path_freqs',
+	'path_txt',
+	'path_xml'
+]
 
 MANIFEST_DEFAULTS=dict(
 	# id='corpus',

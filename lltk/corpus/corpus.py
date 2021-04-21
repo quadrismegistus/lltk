@@ -62,6 +62,16 @@ class Corpus(object):
 						if not os.path.isabs(v):
 							setattr(self,k, os.path.join(self.path_root,v) )
 
+	def __iter__(self):
+		self._iter_i=-1
+		self._texts=self.texts()
+		return self
+	def __next__(self):
+		self._iter_i+=1
+		if self._iter_i<len(self._texts):
+			return self._texts[self._iter_i]
+		else:
+			raise StopIteration
 
 	#####
 	# Metadata
@@ -142,6 +152,22 @@ class Corpus(object):
 	
 	@property
 	def metadata(self,*x,**y): return self.meta
+
+
+	def meta_iter(self,**y):
+		for dx in readgen(self.path_metadata,**y):
+			if not 'id' in dx:
+				# print(f'!! [{self.name}] Corpus does not have "id" column in {self.path_metadata}')
+				continue
+			dx['corpus']=self.name
+			dx['path_freqs']=os.path.join(self.path_freqs, dx['id'] + self.EXT_FREQS)
+			dx['path_txt']=os.path.join(self.path_txt, dx['id'] + self.EXT_TXT)
+			dx['path_xml']=os.path.join(self.path_xml, dx['id'] + self.EXT_XML)
+			if 'year' in dx and dx['year'] and type(dx['year']) not in {float, np.float}:
+				dx['_year_orig']=dx['year']
+				dx['year']=pd.to_numeric(dx['year'],errors='coerce')
+			yield dx
+
 
 	# Get texts
 	def texts(self,text_ids=None):
@@ -389,10 +415,10 @@ class Corpus(object):
 			# self.mkdir_root()
 			tmpfnfndir=os.path.dirname(tmpfnfn)
 			if not os.path.exists(tmpfnfndir): os.makedirs(tmpfnfndir)
-			tools.download(url,tmpfnfn,desc=f'[{self.name}] Downloading {tmpfn}',force=force)
+			tools.download(url,tmpfnfn,desc=f'[{self.name}] Downloading {tmpfn} to {mask_home_dir(tmpfnfn)}',force=force)
 		if unzip:
 			odir=self.path_raw if part=='raw' else (os.path.dirname(opath) if not flatten else opath)
-			tools.unzip(tmpfnfn,odir,desc=f'[{self.name}] Unzipping {tmpfn}',flatten=flatten)
+			tools.unzip(tmpfnfn,odir,desc=f'[{self.name}] Unzipping {tmpfn} to {mask_home_dir(odir)}',flatten=flatten)
 			#if os.path.exists(self.path_raw) and os.listdir(self.path_raw)==['raw']:
 			#	os.rename(os.path.join(self.path_raw,'raw'), self.path_raw)
 		return self
@@ -411,7 +437,10 @@ class Corpus(object):
 			fname='preprocess_'+part
 			if not hasattr(self,fname): continue
 			func=getattr(self,fname)
-			x=func(verbose=verbose,num_proc=int(num_proc),force=force, **attrs)
+			try:
+				x=func(verbose=verbose,num_proc=int(num_proc),force=force, **attrs)
+			except TypeError:
+				pass
 
 	def preprocess_misc(self): pass
 
@@ -941,4 +970,53 @@ class Corpus(object):
 
 
 
+
+def meta_load_metadata(C):
+	# meta=C.meta
+	if not os.path.exists(C.path_metadata): return pd.DataFrame()
+	meta=read_df(C.path_metadata)
+	meta['corpus']=C.name
+	if not 'id' in meta.columns: meta=meta.reset_index()
+	return meta
+
+class MetaCorpus(Corpus):
+	def __init__(self,corpora,**attrs):
+		self.corpora=[]
+		self.min_year=None
+		self.max_year=None
+		self._metadf=None
+		self._texts=None
+		self._textd=None
+		self._dtmd={}
+		self._mfwd={}
+		actual_cnames = set(corpus_names()) | set(corpus_ids())
+		for cname in corpora:
+			if not cname in actual_cnames: continue
+			self.corpora+=[load_corpus(cname)]
+
+	def load_metadata(self,*args,**attrs):
+		"""
+		Magic attribute loading metadata, and doing any last minute customizing
+		"""
+		if self._metadf is None:
+			self._metadf=pd.concat(
+				pmap(
+					meta_load_metadata,
+					self.corpora,
+					num_proc=DEFAULT_NUM_PROC
+				)
+			).reset_index().set_index(['corpus','id'])
+		return self._metadf
+	
+	def meta_iter(self):
+		iterr=tqdm(self.corpora)
+		for C in iterr:
+			iterr.set_description(f'[{C.name}] Iterating through metadata')
+			for dx in C.meta_iter(progress=False):
+				dx['corpus']=C.name
+				yield dx
+
+
+	def texts(self):
+		return [t for C in self.corpora for t in C.texts()]
 
