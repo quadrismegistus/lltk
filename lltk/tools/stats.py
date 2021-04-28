@@ -1,12 +1,4 @@
-from __future__ import absolute_import
-from __future__ import print_function
-# from http://localhost:8888/lab/tree/Dissertation%2Fagency%2FSemanticsOfPersonhood.ipynb
-
-import statsmodels.formula.api as smf
-import pandas as pd
-from scipy.stats import pearsonr
-from six.moves import range
-from six.moves import zip
+from lltk.imports import *
 
 def newpolyfit(X,Y):
     newdf=pd.DataFrame({'X':X, 'Y':Y})
@@ -174,7 +166,102 @@ def to_tfidf(dtm):
 
     return dtm_tf.apply(lambda x: x * idf,axis='columns')
 
-def to_mdw(grouped_dtm,agg='median'):
-    df = grouped_dtm.agg(agg).T
+def to_mdw(dtm,groupby,agg='median'):
+    df = dtm.groupby(groupby).agg(agg).T
     df=reset_index(df).rename({0:'word'},axis=1)#.set_index('word')
     return df.set_index('word')
+
+def to_counts(dtm,scale_by=1000000,**y):
+    return pmap_apply_cols(
+        rescale_col,
+        dtm,
+        kwargs=dict(scale_by=scale_by),
+        **y
+    )
+
+
+
+def pmap_apply_cols(func, df, lim=None, **y):
+    from yapmap import pmap
+    cols=list(df.columns)[:lim]
+    new_seriess = pmap(
+        func,
+        [df[col].values for col in cols],
+        **y
+    )
+    odf=pd.DataFrame(dict(zip(cols,new_seriess)), index=df.index)
+    return odf
+
+
+
+def rescale_col(colvals,scale_by=1000000,as_int=True):
+    maxval=max(colvals)
+    minval=min(colvals)
+    if minval>=1: return colvals
+    if minval<0: 
+        print(f'!! Negative values in column {col}')
+        return colvals
+    return [
+        x*scale_by if not as_int else int(x*scale_by)
+        for x in colvals
+    ]
+
+
+def do_mannwhitney(obj):
+    x,y,meta=obj
+    from scipy.stats import mannwhitneyu,zscore
+    try:
+        xz=zscore(x)
+        yz=zscore(y)
+        mwU, pvalue = mannwhitneyu(x,y)
+        result_dict=dict(meta.items())
+        result_dict['U']=mwU
+        result_dict['pvalue']=pvalue
+        result_dict['is_signif']=issign=pvalue<=0.05
+        result_dict['group1_mean']=xm=x.mean()
+        result_dict['group2_mean']=ym=y.mean()
+        result_dict['distinctive_of']=None if not issign else (
+            meta.get('group1') if xm>ym else meta.get('group2')
+        )
+        return result_dict
+    except ValueError as e:
+        # print('!!',e,meta)
+        return meta
+
+
+def to_mdw_mannwhitney(dtm,groupby,words=set(),group_names=None,progress=False,**pmap_kwargs):
+    from yapmap import pmap_iter
+    from scipy.stats import zscore
+    
+    # get words
+    groups = dtm.groupby(groupby)
+    if not words:
+        for gname,gdf in groups:
+            words = set(gdf.columns) if not words else words&set(gdf.columns)
+
+    objs=[]
+    for group1name,group1df in groups:
+        for group2name,group2df in groups:
+            if group1name>=group2name: continue
+            for word in words:
+                x=group1df[word]
+                y=group2df[word]
+                meta={
+                    'group1':group1name,
+                    'group2':group2name,
+                    'word':word,
+                }
+                objs+=[(x,y,meta)]
+    odf = pd.DataFrame(
+        pmap_iter(
+            do_mannwhitney,
+            objs,
+            progress=progress,
+            **pmap_kwargs
+        )
+    ).sort_values('U')
+    
+    odf=odf.sort_values(['distinctive_of','U'],ascending=[True,False])
+    odf=odf.set_index(['distinctive_of','group1','group2','word'])
+    odf['U_z']=zscore(odf['U'])
+    return odf

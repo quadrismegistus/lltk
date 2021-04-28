@@ -1918,7 +1918,9 @@ def unzip(zipfn, dest='.', flatten=False, overwrite=False, replace_in_filenames=
 					shutil.copyfileobj(source, target)
 			except FileNotFoundError:
 				print('!! File not found:',target_fnfn)
-
+def safesample(df,n,replace=False):
+    if replace: return df.sample(n=n,replace=True)
+    return df.sample(n=n) if len(df)>n else df
 
 
 def get_num_lines(filename):

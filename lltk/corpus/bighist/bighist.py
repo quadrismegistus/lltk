@@ -50,6 +50,7 @@ class BigHist(MetaCorpus):
         'TedJDH',
         'TxtLab'
     ]
+    name='BigHist'
 
     def __init__(self,**attrs):
         super().__init__(corpora=self.CORPORA)
