@@ -518,10 +518,11 @@ id = tedjdh
 name = TedJDH
 desc = Corpus used in "Emergence of Literary Diction" (2012)
 link = http://journalofdigitalhumanities.org/1-2/the-emergence-of-literary-diction-by-ted-underwood-and-jordan-sellers/
+url_freqs = https://www.dropbox.com/s/igoxb4y7buctm5o/tedjdh_freqs.zip?dl=1
+url_data = https://www.dropbox.com/s/e76r3hjfdrnedes/tedjdh_data.zip?dl=1
 url_metadata = https://www.dropbox.com/s/ibjl7x0eyyz5zm6/tedjdh_metadata.zip?dl=1
 url_txt = https://www.dropbox.com/s/8ug3h24h5bggnx7/tedjdh_txt.zip?dl=1
-url_freqs = https://www.dropbox.com/s/igoxb4y7buctm5o/tedjdh_freqs.zip?dl=1
-public = metadata,freqs,txt
+public = metadata,freqs,txt,data
 license_type = Free
 
 [TxtLab]

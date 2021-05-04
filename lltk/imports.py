@@ -62,7 +62,7 @@ HOME=os.path.expanduser("~")
 MODERNIZE_SPELLING=False
 config = tools.config
 
-ZIP_PART_DEFAULTS={'txt','freqs','metadata','xml'}#,'raw','data'}
+ZIP_PART_DEFAULTS={'txt','freqs','metadata','xml','data'} # raw
 DOWNLOAD_PART_DEFAULTS=['metadata','freqs','txt','data']
 PREPROC_CMDS=['txt','freqs','mfw','dtm']
 DEST_LLTK_CORPORA=config.get('CLOUD_DEST','/Share/llp_corpora')
