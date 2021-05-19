@@ -1741,10 +1741,7 @@ def download(url,save_to,force=False,desc=''):
 	if not force and os.path.exists(save_to): return
 	savedir=os.path.dirname(save_to)
 	if not os.path.exists(savedir): os.makedirs(savedir)
-	try:
-		download_pycurl(url,save_to,desc=desc)
-	except (ImportError,ModuleNotFoundError) as e:
-		download_wget(url,save_to,desc=desc)
+	download_wget(url,save_to,desc=desc)
 	os.chdir(here)
 
 def download_curl(url,save_to):

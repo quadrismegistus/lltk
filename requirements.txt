@@ -14,7 +14,6 @@ xlwt
 htrc-feature-reader
 geopy
 moviepy
-pycurl
 statsmodels
 plotnine
 networkx
