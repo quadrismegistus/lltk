@@ -21,3 +21,4 @@ ujson
 yapmap
 loguru
 sacremoses
+sklearn
