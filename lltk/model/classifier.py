@@ -99,7 +99,7 @@ class Classifier(Model):
             #X_train, X_test = X[train_index], X[test_index]
             y_train, y_test = y[train_index], y[test_index]
             Xdf_train, Xdf_test = Xdfq.iloc[train_index], Xdfq.iloc[test_index]
-            X_train,X_test = Xdf_train.values, X_test.values
+            X_train,X_test = Xdf_train.values, Xdf_test.values
             # fit
             clf.fit(X_train,y_train)
             probs=clf.predict_proba(X_test)
