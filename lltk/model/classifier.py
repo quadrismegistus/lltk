@@ -96,17 +96,14 @@ class Classifier(Model):
             # build new model
             clf=self.get_clf()
             # slice
-            X_train, X_test = X[train_index], X[test_index]
+            #X_train, X_test = X[train_index], X[test_index]
             y_train, y_test = y[train_index], y[test_index]
             Xdf_train, Xdf_test = Xdfq.iloc[train_index], Xdfq.iloc[test_index]
+            X_train,X_test = Xdf_train.values, X_test.values
             # fit
-            try:
-                clf.fit(pd.to_numeric(X_train).values,pd.to_numeric(y_train))
-            except Exception as e:
-                print('!!',e)
-                continue
-            probs=clf.predict_proba(pd.to_numeric(X_test))
-            predictions=clf.predict(pd.to_numeric(X_test))
+            clf.fit(X_train,y_train)
+            probs=clf.predict_proba(X_test)
+            predictions=clf.predict(X_test)
             #return clf,probs,predictions
 
             if leave_one_out:
