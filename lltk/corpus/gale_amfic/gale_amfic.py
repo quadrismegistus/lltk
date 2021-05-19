@@ -107,7 +107,8 @@ class GaleAmericanFiction(Corpus):
         import numpy as np
         meta=super().load_metadata(clean=False)
         meta['genre']='Fiction'
-        meta['id']=meta['psmid']
+        if meta.index.name!='id' and 'id' not in set(meta.columns):
+            meta['id']=meta['psmid']
         meta['year']=[int(str(x)[:4]) if str(x)[:4].isdigit() else np.nan for x in meta.pub_date_start]
         meta['title']=meta['full_title']
         meta['author']=meta['author_composed']

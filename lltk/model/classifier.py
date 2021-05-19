@@ -19,16 +19,16 @@ from six.moves import zip
 
 
 def resample_df(df,key,numsample=None,replace=False):
-    print(df[key].value_counts())
+    # print(df[key].value_counts())
     groups=df.groupby(key)
     lens=[len(_gdf.index) for _gname,_gdf in groups]
     minlen=min(lens)
-    print(lens)
-    print(minlen)
+    # print(lens)
+    # print(minlen)
     ns=numsample if numsample else minlen
-    print('-->',ns)
+    # print('-->',ns)
     dfs_sample=[_gdf.sample(ns,replace=replace) for _gname,_gdf in groups if len(_gdf)>=ns]
-    print([len(x) for x in dfs_sample])
+    # print([len(x) for x in dfs_sample])
     ndf=pd.concat(dfs_sample)
     ndf=ndf.sample(frac=1)
     return ndf
@@ -183,12 +183,12 @@ class Classifier(Model):
             return precision_recall_curve(list(y_true), y_scores, pos_label=pos_label)
 
         plt.rcParams['figure.figsize'] = [7, 7]
-        from sklearn.utils.fixes import signature
+        #from sklearn.utils.fixes import signature
         precision, recall, _ = prcurve(y_true,y_scores,pos_label=pos_label)
         from sklearn.metrics import average_precision_score
         average_precision = average_precision_score([int(yx==pos_label) for yx in y_true], y_scores)
         label = label.replace('_prob_sonnet','') + ' (AP=%s)' % round(average_precision,2)
-        step_kwargs = ({'step': 'post'} if 'step' in signature(plt.fill_between).parameters else {})
+        #step_kwargs = ({'step': 'post'} if 'step' in signature(plt.fill_between).parameters else {})
         plt.step(recall, precision, color=color, alpha=1.0, where='post',label=label)
         plt.xlabel('Recall')
         plt.ylabel('Precision')

@@ -87,6 +87,20 @@ def status_corpora_markdown(maxcolwidth=45,link=False,**attrs):
 
 
 
+def yield_corpora_meta(corpora,incl_meta=[]):
+    o=[]
+    for cname in tqdm(corpora,desc='Loading metadata'):
+        C=load_corpus(cname) if type(cname)==str else cname
+        for dx in C.meta_iter():
+            if incl_meta:
+                dx=dict((k,dx.get(k,'')) for k in incl_meta)
+                #for key in set(dx.keys())-set(incl_meta): del dx[key]
+            yield dx
+
+def small_meta(corpora,incl_meta=['id','corpus','year','genre','major_genre','canon_genre']):
+    return pd.DataFrame(yield_corpora_meta(corpora,incl_meta))
+
+
 
 def install(cname_or_id_or_C,*x,**y):
     C=load_corpus(cname_or_id_or_C) if type(cname_or_id_or_C)==str else cname_or_id_or_C
@@ -788,7 +802,7 @@ def do_gen_mfw_grp(group,*x,**y):
 
 
 
-def load(name_or_id,load_meta=False,install_if_nec=True,**y):
+def load(name_or_id,load_meta=False,install_if_nec=False,**y):
     return load_corpus(name_or_id,load_meta=load_meta,install_if_nec=install_if_nec,**y)
 #################################################################
 

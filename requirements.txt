@@ -10,6 +10,7 @@ nbformat
 pandas
 ujson
 xlrd
+xlwt
 htrc-feature-reader
 geopy
 moviepy
@@ -20,3 +21,4 @@ networkx
 ujson
 yapmap
 loguru
+sacremoses

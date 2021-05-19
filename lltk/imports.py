@@ -51,6 +51,7 @@ import time,logging,math
 
 DEFAULT_CORPUS = 'TxtLab'
 DEFAULT_CORPUS_ID = 'txtlab'
+os.environ['NUMEXPR_NUM_THREADS']='8'
 
 ROOT = os.path.dirname(os.path.realpath(__file__))
 

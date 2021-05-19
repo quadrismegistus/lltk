@@ -30,6 +30,9 @@ class Text(object):
 		self.meta=meta
 		self.lang=self.corpus.lang if lang is None else lang
 
+	def __repr__(self):
+		o=f'{self.author}, _{self.title}_ ({self.year}) [{self.corpus.name}: {self.id}]'
+		return o
 	# convenience
 	def __getattr__(self, name):
 		if name.startswith('path_') and hasattr(self.corpus,name):

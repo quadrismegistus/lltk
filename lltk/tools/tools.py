@@ -500,6 +500,17 @@ def tokenize(txt,*x,**y):
 _SPLITTER_ = r"([-.,/:!?\";)(])"
 
 
+
+
+
+def ensure_dir_exists(path):
+	if not os.path.exists(path):
+		try:
+			os.makedirs(path)
+		except FileExistsError:
+			pass
+
+
 MDETOK=None
 
 def moses_detokenize(tokens,lang='en'):
@@ -529,6 +540,7 @@ def basic_detokenizer(words):
 	return ' '.join(detokenize_sentence)
 
 DTOK_TREEBANK=None
+DTOK_MD=None
 def detokenize_treebank(x):
 	global DTOK_TREEBANK
 	if DTOK_TREEBANK is None:
@@ -553,12 +565,12 @@ def cleanstrip(x):
 
 	return x
 
-def detokenize(x):
-	# x=basic_detokenizer(x)
-	x=detokenize_treebank(x)
-	x=x.replace(' .','.')
-	# if clean: x=cleanstrip(x)
-	return x
+def detokenize(x,lang='en'):
+	global DTOK_MD
+	if DTOK_MD is None:
+		from sacremoses import MosesDetokenizer
+		DTOK_MD=MosesDetokenizer(lang=lang)
+	return DTOK_MD.detokenize(x)
 
 def printimg(fn):
 	from IPython.display import Image
@@ -646,36 +658,66 @@ def printm(x):
 	display(Markdown(x))
 
 
-def writegen(fnfn,generator,header=None,args=[],kwargs={},find_all_keys=False,total=None):
-	from tqdm import tqdm
-	import codecs,csv
-	if 'jsonl' in fnfn.split('.'): return writegen_jsonl(fnfn,generator,args=args,kwargs=kwargs)
+def writegen(fnfn,generator,header=None,args=[],kwargs={},find_all_keys=False,total=None,progress=False,delimiter=','):
+    from tqdm import tqdm
+    import csv,gzip
 
-	iterator=generator(*args,**kwargs)
-	if total: iterator=tqdm(iterator,total=total)
-	if not header:
-		if not find_all_keys:
-			first=next(iterator)
-			header=sorted(first.keys())
-		else:
-			print('>> finding keys:')
-			keys=set()
-			for dx in iterator:
-				keys|=set(dx.keys())
-			header=sorted(list(keys))
-			print('>> found:',len(header),'keys')
+    if not header:
+        iterator=generator(*args,**kwargs)
+        if not find_all_keys:
+            first=next(iterator)
+            header=sorted(first.keys())
+        else:
+            print('>> finding keys:')
+            keys=set()
+            for dx in iterator:
+                keys|=set(dx.keys())
+            header=sorted(list(keys))
+            print('>> found:',len(header),'keys')
 
-	iterator=generator(*args,**kwargs)
-	with open(fnfn, 'w') as csvfile:
-		writer = csv.DictWriter(csvfile,fieldnames=header,extrasaction='ignore',delimiter='\t')
-		writer.writeheader()
-		for i,dx in enumerate(iterator):
-			for k,v in dx.items():
-				#if type(v) in [str]:
-				#	dx[k]=v.encode('utf-8')
-				dx[k] = str(v).replace('\r\n',' ').replace('\r',' ').replace('\n',' ').replace('\t',' ')
-			writer.writerow(dx)
-	print('>> saved:',fnfn)
+    iterator=generator(*args,**kwargs)
+    if progress or total: iterator=tqdm(iterator,total=total)
+
+    with (open(fnfn, 'w') if not fnfn.endswith('.gz') else gzip.open(fnfn,'wt')) as csvfile:
+        writer = csv.DictWriter(csvfile,fieldnames=header,extrasaction='ignore',delimiter=delimiter)
+        writer.writeheader()
+        for i,dx in enumerate(iterator):
+            #for k,v in dx.items():
+            #	dx[k] = str(v).replace('\r\n',' ').replace('\r',' ').replace('\n',' ').replace('\t',' ')
+            writer.writerow(dx)
+    print('>> saved:',fnfn)
+    
+
+# def writegen(fnfn,generator,header=None,args=[],kwargs={},find_all_keys=False,total=None):
+# 	from tqdm import tqdm
+# 	import codecs,csv
+# 	if 'jsonl' in fnfn.split('.'): return writegen_jsonl(fnfn,generator,args=args,kwargs=kwargs)
+
+# 	iterator=generator(*args,**kwargs)
+# 	if total: iterator=tqdm(iterator,total=total)
+# 	if not header:
+# 		if not find_all_keys:
+# 			first=next(iterator)
+# 			header=sorted(first.keys())
+# 		else:
+# 			print('>> finding keys:')
+# 			keys=set()
+# 			for dx in iterator:
+# 				keys|=set(dx.keys())
+# 			header=sorted(list(keys))
+# 			print('>> found:',len(header),'keys')
+
+# 	iterator=generator(*args,**kwargs)
+# 	with open(fnfn, 'w') as csvfile:
+# 		writer = csv.DictWriter(csvfile,fieldnames=header,extrasaction='ignore',delimiter='\t')
+# 		writer.writeheader()
+# 		for i,dx in enumerate(iterator):
+# 			for k,v in dx.items():
+# 				#if type(v) in [str]:
+# 				#	dx[k]=v.encode('utf-8')
+# 				dx[k] = str(v).replace('\r\n',' ').replace('\r',' ').replace('\n',' ').replace('\t',' ')
+# 			writer.writerow(dx)
+# 	print('>> saved:',fnfn)
 
 def writegen_orig(fnfn,generator,header=None,args=[],kwargs={}):
 	if 'jsonl' in fnfn.split('.'): return writegen_jsonl(fnfn,generator,args=args,kwargs=kwargs)
@@ -1919,8 +1961,8 @@ def unzip(zipfn, dest='.', flatten=False, overwrite=False, replace_in_filenames=
 			except FileNotFoundError:
 				print('!! File not found:',target_fnfn)
 def safesample(df,n,replace=False):
-    if replace: return df.sample(n=n,replace=True)
-    return df.sample(n=n) if len(df)>n else df
+	if replace: return df.sample(n=n,replace=True)
+	return df.sample(n=n) if len(df)>n else df
 
 
 def get_num_lines(filename):
