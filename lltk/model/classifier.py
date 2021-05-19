@@ -100,7 +100,11 @@ class Classifier(Model):
             y_train, y_test = y[train_index], y[test_index]
             Xdf_train, Xdf_test = Xdfq.iloc[train_index], Xdfq.iloc[test_index]
             # fit
-            clf.fit(pd.to_numeric(X_train),pd.to_numeric(y_train))
+            try:
+                clf.fit(pd.to_numeric(X_train).values,pd.to_numeric(y_train))
+            except Exception as e:
+                print('!!',e)
+                continue
             probs=clf.predict_proba(pd.to_numeric(X_test))
             predictions=clf.predict(pd.to_numeric(X_test))
             #return clf,probs,predictions
