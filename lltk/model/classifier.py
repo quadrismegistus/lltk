@@ -100,9 +100,9 @@ class Classifier(Model):
             y_train, y_test = y[train_index], y[test_index]
             Xdf_train, Xdf_test = Xdfq.iloc[train_index], Xdfq.iloc[test_index]
             # fit
-            clf.fit(X_train,y_train)
-            probs=clf.predict_proba(X_test)
-            predictions=clf.predict(X_test)
+            clf.fit(pd.to_numeric(X_train),pd.to_numeric(y_train))
+            probs=clf.predict_proba(pd.to_numeric(X_test))
+            predictions=clf.predict(pd.to_numeric(X_test))
             #return clf,probs,predictions
 
             if leave_one_out:
