@@ -791,12 +791,14 @@ def do_gen_mfw_grp(group,*x,**y):
         {'word':w, 'count':c}
         for w,c in countd.items()
         if is_valid_mfw_word(w)
-    ]).sort_values('count',ascending=False)
-    total=df['count'].sum()
-    # if y.get('by_fpm'):
-        # df['count']=df['count'] / 1000000
-    df['fpm']=df['count']/total*1000000
-    df['rank']=[i+1 for i in range(len(df))]
+    ])
+    if 'count' in df.columns:
+        df=df.sort_values('count',ascending=False)
+        total=df['count'].sum()
+        # if y.get('by_fpm'):
+            # df['count']=df['count'] / 1000000
+        df['fpm']=df['count']/total*1000000
+        df['rank']=[i+1 for i in range(len(df))]
     if 'index' in df.columns: df=df.drop('index',1)
     return df
 
