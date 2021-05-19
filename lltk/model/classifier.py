@@ -1,4 +1,20 @@
+"""
+A set of classes and functions for doing logistic regression and classification
+"""
 from lltk.imports import *
+
+# imports
+from sklearn.linear_model import LogisticRegression
+from sklearn.neural_network import MLPClassifier
+from sklearn.model_selection import cross_val_predict,cross_val_score
+from sklearn.metrics import classification_report
+from sklearn.model_selection import LeaveOneOut
+from sklearn.model_selection import KFold
+import numpy as np
+from lltk.model import Model,NullModel
+import pandas as pd
+import os
+
 
 def resample_df(df,key,numsample=None,replace=False):
     # print(df[key].value_counts())
@@ -15,7 +31,6 @@ def resample_df(df,key,numsample=None,replace=False):
     ndf=ndf.sample(frac=1)
     return ndf
 
-from lltk.model.classifier import *
 
 class Classifier(Model):
     def __init__(self, dataframe, model_type='logistic',name='Classifier'):
@@ -39,10 +54,9 @@ class Classifier(Model):
         Xdf=resample_df(self.df, y_col_name)
         return Xdf
 
-    
 
     # basic classifier
-    def classify(self,y_col_name,standardize=True,leave_one_out=False,n_splits=5,zscore_axis=0,C=None,resample=True,fillna=0):
+    def classify(self,y_col_name,standardize=True,leave_one_out=False,n_splits=5,zscore_axis=0,C=None,resample=True):
         loo=LeaveOneOut()
         kf = KFold(n_splits=n_splits,shuffle=True,random_state=11)
         all_predictions=[]
@@ -55,14 +69,15 @@ class Classifier(Model):
         else:
             Xdf=self.df
 
-        y=np.array(Xdf[y_col_name].apply(str)) # fix?
+        y=np.array(Xdf[y_col_name]) # fix?
         Xdfq=Xdf.select_dtypes('number').dropna(axis=0) #1)
-        
 
         if standardize:
-            Xdfq=Xdfq.apply(lambda col: (col - col.dropna().mean()) / col.dropna().std(), axis=0)
-            Xdfq=Xdf.select_dtypes('number').dropna(axis=0)
-        X=Xdfq.values
+            from scipy.stats import zscore
+            X=zscore(Xdfq.values,axis=zscore_axis)
+            #X=Xdfq.apply(zscore) #,axis=zscore_axis)
+        else:
+            X=Xdfq.values
 
         self.Xdf=Xdf
         self.Xdfq=Xdfq
@@ -76,34 +91,17 @@ class Classifier(Model):
         splitter = loo.split(X) if leave_one_out else kf.split(X)
 
         for train_index,test_index in splitter:
-#             print(train_index)
-#             print(test_index)
             # build new model
             clf=self.get_clf()
             # slice
             #X_train, X_test = X[train_index], X[test_index]
             y_train, y_test = y[train_index], y[test_index]
             Xdf_train, Xdf_test = Xdfq.iloc[train_index], Xdfq.iloc[test_index]
-#             display(Xdf_train)
-#             display(Xdf_test)
-#             display(y_train)
-#             display(y_test)
-            X_train,X_test = Xdf_train.values.astype('float'), Xdf_test.values.astype('float')
-#             # fit
-# #             print(type(X_train), type(X_test))
-# #             print(set(type(x) for x in X_train))
-#             print(set(type(y) for x in X_train for y in x))
-# #             print(set(type(x) for x in X_test))
-#             print(set(type(y) for x in X_test for y in x))
-            
-            try:
-                clf.fit(X_train,y_train)
-            except Exception as e:
-                print('!!',e)
-                continue
+            X_train,X_test = Xdf_train.values, Xdf_test.values
+            # fit
+            clf.fit(X_train,y_train)
             probs=clf.predict_proba(X_test)
             predictions=clf.predict(X_test)
-#             print('DONE!',probs,predictions)
             #return clf,probs,predictions
 
             if leave_one_out:
@@ -139,8 +137,6 @@ class Classifier(Model):
         self.dfr['pred']=all_predictions
         self.dfr['prob']=all_probs
         self.dfr['true']=y
-        self.dfr['correct']=[int(xx==yy) for xx,yy in zip(self.dfr.pred, self.dfr.true)]
-        self.dfr['support']=len(y)
         self.coeffs=all_coeffs
         self.dfc=pd.DataFrame([{'feat':c, 'coeff':f} for c,f in list(all_coeffs.items())])
         self.clf=clf
