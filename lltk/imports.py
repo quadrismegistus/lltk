@@ -179,6 +179,7 @@ from lltk.text.utils import *
 from lltk.corpus.utils import *
 from lltk.text.text import *
 from lltk.corpus.corpus import *
+from lltk.model import *
 
 
 
