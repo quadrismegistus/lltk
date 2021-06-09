@@ -147,12 +147,10 @@ def reset_index(df):
 	return pd.merge(index_df, df, left_index=True, right_index=True)
 
 
-def to_tf(df_dtm):
-    # rows
-    dfq=df_dtm.select_dtypes('number')
-    rowsums = dfq.sum(axis='rows')
-    # divide by rows
-    return dfq / rowsums
+def to_tf(dtm):
+    dfq=dtm.select_dtypes('number')
+    rowsums = dfq.sum(axis=1)
+    return dfq.div(rowsums,axis=0)
 
 
 def to_tfidf(dtm):

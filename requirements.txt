@@ -22,3 +22,4 @@ yapmap
 loguru
 sacremoses
 sklearn
+nltk
