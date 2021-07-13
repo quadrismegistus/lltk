@@ -1737,12 +1737,13 @@ def download_wget(url, save_to, **attrs):
 	# print('\n>> saved:',save_to)
 
 def download(url,save_to,force=False,desc=''):
-	here=os.getcwd()
+	# here=os.getcwd()
 	if not force and os.path.exists(save_to): return
 	savedir=os.path.dirname(save_to)
 	if not os.path.exists(savedir): os.makedirs(savedir)
-	download_wget(url,save_to,desc=desc)
-	os.chdir(here)
+	#download_wget(url,save_to,desc=desc)
+	download_file_tqdm(url,save_to,desc=desc)
+	# os.chdir(here)
 
 def download_curl(url,save_to):
 	save_to_dir,save_to_fn=os.path.split(save_to)
@@ -1774,6 +1775,43 @@ def download_tqdm2(url, save_to):
 			copyfileobj(r.raw, f, total)
 
 
+
+#!/usr/bin/env python 
+__author__  = "github.com/ruxi"
+__license__ = "MIT"
+import requests 
+import tqdm     # progress bar
+import os.path
+def download_file_tqdm(url, filename=False, verbose = False, desc=None):
+    """
+    Download file with progressbar
+    
+    Usage:
+        download_file('http://web4host.net/5MB.zip')  
+    """
+    if not filename:
+        local_filename = os.path.join(".",url.split('/')[-1])
+    else:
+        local_filename = filename
+    r = requests.get(url, stream=True)
+    file_size = int(r.headers['Content-Length'])
+    chunk = 1
+    chunk_size=1024
+    num_bars = int(file_size / chunk_size)
+    if verbose:
+        print(dict(file_size=file_size))
+        print(dict(num_bars=num_bars))
+
+    with open(local_filename, 'wb') as fp:
+        for chunk in tqdm.tqdm(
+                                    r.iter_content(chunk_size=chunk_size)
+                                    , total= num_bars
+                                    , unit = 'KB'
+                                    , desc = local_filename if not desc else desc
+                                    , leave = True # progressbar stays
+                                ):
+            fp.write(chunk)
+    return
 
 def download_pycurl(url, save_to,desc=''):
 	# from: https://gist.github.com/etheleon/882d6a9a64c064d4202ccd59f6c0b533

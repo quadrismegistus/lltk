@@ -804,7 +804,7 @@ def do_gen_mfw_grp(group,*x,**y):
 
 
 
-def load(name_or_id,load_meta=False,install_if_nec=False,**y):
+def load(name_or_id,load_meta=False,install_if_nec=True,**y):
     return load_corpus(name_or_id,load_meta=load_meta,install_if_nec=install_if_nec,**y)
 #################################################################
 
