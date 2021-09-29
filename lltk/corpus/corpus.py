@@ -1,7 +1,7 @@
 from lltk.imports import *
 
 def fixpath(path):
-    if type(path)==str and path:
+    if type(path)==str and path and not os.path.isabs(path):
         if '~' in path:
             path=path.split('~')[-1]
             path=os.path.join(os.path.expanduser('~'), path[1:])
@@ -63,7 +63,9 @@ class Corpus(object):
                 if k.startswith('path_'):
                     v=getattr(self,k)
                     if type(v)==str:
+                        v=fixpath(v)
                         if not os.path.isabs(v):
+                            print([k,v,self.path_root])
                             setattr(self,k, os.path.join(self.path_root,v) )
 
     def __iter__(self):
