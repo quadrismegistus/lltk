@@ -65,8 +65,11 @@ class Corpus(object):
                     if type(v)==str:
                         v=fixpath(v)
                         if not os.path.isabs(v):
-                            print([k,v,self.path_root])
-                            setattr(self,k, os.path.join(self.path_root,v) )
+                            #print([k,v,self.path_root])
+                            try:
+                                setattr(self,k, os.path.join(self.path_root,v) )
+                            except AttributeError:
+                                pass
 
     def __iter__(self):
         self._iter_i=-1
