@@ -564,7 +564,7 @@ def draw_bokeh(g,
         size_opt = '_size'
         data_l = X = np.array([d.get(size_by,0) for n,d in g.nodes(data=True)])
         maxval=size_max_val if size_max_val else X.max(axis=0)
-        data_l_norm = (X - X.min(axis=0)) / (size_max_val - X.min(axis=0))
+        data_l_norm = (X - X.min(axis=0)) / (maxval - X.min(axis=0) + 1)
         data_scaled = [(min_size + (max_size * x)) for x in data_l_norm]
         for x,n in zip(data_scaled, g.nodes()):
             g.nodes[n]['_size']=x
@@ -596,6 +596,7 @@ def draw_bokeh(g,
 
     #Set edge opacity and width
     # network_graph.edge_renderer.glyph = MultiLine(line_alpha=0.5, line_width=1)
+    if not weight_max_val: weight_max_val = max(d.get('weight',1) for a,b,d in g.edges(data=True))
     network_graph.edge_renderer.data_source.data["line_width"] = [
         ((g.get_edge_data(a,b).get('weight',1) / weight_max_val) * max_weight) + min_weight
         for a, b in g.edges()

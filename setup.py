@@ -26,7 +26,7 @@ with open("requirements.txt", "r", encoding='utf-8', errors='ignore') as fh:
 
 setup(
     name='lltk-dh',
-    version='0.5.13',
+    version='0.5.14',
     description=('Literary Language Toolkit (LLTK): corpora, models, and tools for the digital humanities'),
     long_description=long_description,
     long_description_content_type="text/markdown",
