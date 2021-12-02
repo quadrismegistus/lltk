@@ -23,3 +23,5 @@ loguru
 sacremoses
 sklearn
 nltk
+smart_open
+tabulate
