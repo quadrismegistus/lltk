@@ -2,6 +2,66 @@ from lltk.imports import *
 
 ### Accessing corpora
 
+
+
+
+def load_metadata_from_df_or_fn(idf,force=False,**attrs):
+    if type(idf)==str: idf=read_df(idf)
+    if idf is None or not len(idf): return pd.DataFrame()
+    #return df_requiring_id_and_corpus(idf,**attrs)
+    return df_requiring_id(idf,**attrs).fillna('')
+
+
+def df_requiring_id(df,idkey='id',fillna='',*x,**y):
+    if df is None or not len(df): return pd.DataFrame(columns=[],index=[]).rename_axis(idkey)
+    if df.index.name==idkey and not idkey in set(df.columns): df=df.reset_index()
+    if not idkey in set(df.columns): df[idkey]=''
+    df[idkey]=df[idkey].fillna('')
+    df[idkey]=[(idx if idx else f'X{i+1:04}') for i,idx in enumerate(df[idkey])]
+    df=df.fillna(fillna) if fillna is not None else df
+    df=df.set_index(idkey)
+    return df
+
+def df_requiring_id_and_corpus(df,
+        col_id='id',
+        col_id_corpus='id_corpus',
+        col_id_text='id_text',
+        col_id_new='_id',
+        id_corpus_default='',
+        id_text_default='',
+        idsep='|',
+        fillna='',
+        *x,**y):
+    meta=fix_meta(df.reset_index().fillna(''))
+    metacols = set(meta.columns)
+    needcols={col_id,col_id_corpus,col_id_text,col_id_new}
+    for col in needcols-metacols: meta[col]=''
+
+    # deduce
+    new=[]
+    for i,(idx,id_corpus,id_text) in enumerate(zip(meta[col_id], meta[col_id_corpus], meta[col_id_text])):
+        _idx=''
+        if idx and idsep in idx: id_corpus,id_text = idx.split(idsep,1)
+        if not id_corpus: id_corpus=id_corpus_default
+        if not id_text: id_text=id_text_default
+        if not idx and id_corpus and id_text:
+            _idx=idx=f'{id_corpus}{idsep}{id_text}'
+        if not idx: idx=f'X{id_text_default}{i+1:04}'
+        if not id_text: id_text=idx
+        #if not id_corpus and id_corpus_default: id_corpus=id_corpus_default
+        if not _idx: _idx=f'{id_corpus}{idsep}{idx}' if id_corpus and not idsep in idx else idx
+        new+=[(idx,id_corpus,id_text,_idx)]
+    meta[col_id],meta[col_id_corpus],meta[col_id_text],meta[col_id_new] = zip(*new)
+
+    return df_requiring_id(meta, idkey=col_id)
+
+
+
+
+
+
+
+
 def show(link=None,m=True,*x,**y):
     if in_jupyter() and m:
         printm(showcorp(link=True if link is None else link,**y))
@@ -184,7 +244,6 @@ def corpus_ids(**attrs):
 
 
 
-
 def share_corpora():
     allstr=[]
     for cname,corpus in corpora(load=True,incl_meta_corpora=False):
@@ -203,6 +262,7 @@ def fix_meta(metadf, badcols={'_llp_','_lltk_','corpus','index','id.1','url_word
     badcols|=set(prefixcols)
     newcols = prefixcols+[col for col in metadf.columns if not col in badcols and not col.startswith('Unnamed:')]
     metadf = metadf[newcols]
+    metadf = metadf.fillna('')
     return metadf
 
 def clean_meta(meta):
@@ -803,9 +863,12 @@ def do_gen_mfw_grp(group,*x,**y):
     return df
 
 
-
-def load(name_or_id,load_meta=False,install_if_nec=True,**y):
-    return load_corpus(name_or_id,load_meta=load_meta,install_if_nec=install_if_nec,**y)
+CORPUSOBJD={}
+def load(name_or_id,load_meta=False,force=False,install_if_nec=False,**y):
+    global CORPUSOBJD
+    if force or not name_or_id in CORPUSOBJD or CORPUSOBJD[name_or_id] is None:
+        CORPUSOBJD[name_or_id] = load_corpus(name_or_id,load_meta=load_meta,install_if_nec=install_if_nec,**y)
+    return CORPUSOBJD[name_or_id]
 #################################################################
 
 # Attach meta
@@ -863,3 +926,47 @@ def clean_all_meta():
         # print(fixed_meta.columns, 'id' in fixed_meta.columns)
         # print(fixed_meta.iloc[0])
         # print()
+
+
+
+
+
+
+
+
+### Text objects
+def iter_texts(c_id_q,sep=';'):
+    global GET_CORPUSD
+    if not '|' in c_id_q: return []
+    c_id_q=c_id_q.strip()
+    if sep in c_id_q: return [t for q in c_id_q.split(sep) for t in iter_texts(q)]
+    cname,id_q = c_id_q.split('|',1)
+    if not cname in GET_CORPUSD:
+        corpus=load_corpus(cname,load_meta=False)
+        cmeta=corpus.load_metadata_file()
+        GET_CORPUSD[cname]=(corpus,cmeta)
+    else:
+        corpus,cmeta=GET_CORPUSD[cname]
+    
+    if not '=' in id_q and not '>' in id_q and not '<' in id_q and not '"' in id_q and not "'" in id_q:
+        idx=id_q
+        qdf=cmeta[cmeta[corpus.COL_ID] == idx]
+    else:
+        qstr=id_q
+        qdf=cmeta.query(id_q.replace('&','\&'))
+    idcol=corpus.COL_ID
+    if not hasattr(corpus,'._textd') or not corpus._textd: corpus._textd={}
+    if idcol in set(qdf.columns):
+        for idx,(i,row) in zip(qdf[idcol], qdf.iterrows()):
+            if not idx in corpus._textd:
+                corpus._textd[idx]=t=corpus.text(idx,dict(row))
+            else:
+                t=corpus._textd[idx]
+            yield t
+
+def get_texts(c_id_q): return list(iter_texts(c_id_q))
+    
+def get_text(c_id_q):#,sample=True):
+    for t in iter_texts(c_id_q): return t
+    #return (random.choice(o) if sample else o[0]) if type(o)==list and o else None
+    

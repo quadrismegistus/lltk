@@ -2,6 +2,33 @@ from lltk.imports import *
 
 
 
+import re
+# as per recommendation from @freylis, compile once only
+CLEANR = re.compile('<.*?>') 
+
+def unhtml(raw_html):
+  cleantext = re.sub(CLEANR, '', raw_html)
+  return cleantext
+
+
+
+# def load_with_anno(fn,anno_exts=['xlsx','xls','csv'],suffix='anno',**kwargs):
+
+def load_with_anno(fn,anno_exts=['.anno.xlsx','.anno.xls','.anno.csv','.xlsx','.xls'],suffix='anno',**kwargs):
+	fnbase,fnext = os.path.splitext(fn)
+	for anno_ext in anno_exts:
+		if fnext != anno_ext:
+			anno_fn = fnbase + anno_ext
+			if os.path.exists(anno_fn):
+				return read_df(anno_fn)
+	return pd.DataFrame()
+
+def load_with_anno_or_orig(fn,**kwargs):
+	df_anno = load_with_anno(fn,**kwargs)
+	if len(df_anno): return df_anno
+	o=read_df(fn)
+	if type(o)==pd.DataFrame is not None and len(o): return o
+	return pd.DataFrame()
 
 
 
@@ -10,8 +37,27 @@ from lltk.imports import *
 
 
 
+def xml2txt_prose(path_xml, para_tag='p', bad_tags=BAD_TAGS, body_tag='doc'):
+	import bs4
 
-
+	if not os.path.exists(path_xml): return ''
+	with open(path_xml) as f: xml=f.read()
+	xml = clean_text(xml)
+	dom = bs4.BeautifulSoup(xml,'lxml')
+	body = dom.find(body_tag)    
+	if body is None: body = dom
+	for tag in bad_tags:
+		for x in body(tag):
+			x.extract()
+	
+	paras = [para.text.strip() for para in body(para_tag)]
+	if paras:
+		paras=[' '.join(para.strip().split()) for para in paras]
+		paras=[para for para in paras if para]
+		txt='\n\n'.join(paras)
+	else:
+		txt = body.text.strip()
+	return txt
 
 
 
@@ -231,15 +277,18 @@ def to_textids(l,col_id='id'):
 	]
 
 def clean_text(txt):
+	import ftfy
+	txt=ftfy.fix_text(txt)
 	replacements={
 		'&hyphen;':'-',
 		'&sblank;':'--',
 		'&mdash;':' -- ',
 		'&ndash;':' - ',
 		'&longs;':'s',
+		'&wblank':' -- ',
 		u'\u2223':'',
 		u'\u2014':' -- ',
-		'|':'',
+		# '|':'',
 		'&ldquo;':u'“',
 		'&rdquo;':u'”',
 		'&lsquo;':u'‘’',
@@ -249,9 +298,13 @@ def clean_text(txt):
 	}
 	for k,v in list(replacements.items()):
 		txt=txt.replace(k,v)
-	#return bleach.clean(txt,strip=True)
 	return txt
 
+def remove_bad_tags(dom, bad_tags):
+    for tag in bad_tags:
+        for x in dom(tag):
+            x.decompose()
+    return dom
 
 
 def to_lastname(name):

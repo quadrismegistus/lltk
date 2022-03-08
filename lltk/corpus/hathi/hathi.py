@@ -2,8 +2,8 @@ from lltk.imports import *
 
 HATHI_FULL_META_NUMLINES = 17430652
 HATHI_FULL_META_PATH=os.path.join(PATH_CORPUS,'hathi','metadata.csv.gz')
-HATHI_FULL_META_URL = 'https://www.hathitrust.org/filebrowser/download/297178'
-
+# HATHI_FULL_META_URL = 'https://www.hathitrust.org/filebrowser/download/297178'
+HATHI_FULL_META_URL = 'https://www.hathitrust.org/filebrowser/download/344452'
 
 def htid2id(x):
     a,b=x.split('.',1)
@@ -36,7 +36,12 @@ class Hathi(Corpus):
 
     def load_metadata(self,*x,**y):
         df=super().load_metadata()
-        if 'imprint' in df.columns: df['year']=df['imprint'].apply(get_date)
+        if 'rights_date_used' in set(df.columns):
+            df['year']=df['rights_date_used']
+        elif 'imprint' in set(df.columns):
+            df['year']=df['imprint'].apply(get_date)
+        else:
+            df['year']=np.nan
         return df
 
     def compile(self,**attrs):
@@ -72,13 +77,12 @@ class Hathi(Corpus):
         # get ids
         print('>> loading metadata')
         df=pd.read_csv(self.path_metadata,error_bad_lines=False)
-        # df['year']=df['imprint'].apply(get_date)
         # df['period']=df['year']//1*1
         # ids=list(set(df.groupby('period').sample(n=10,replace=True).id))
         # random.shuffle(ids)
 
         # compile!
-        tools.pmap(compile_text, df.id, num_proc=6)
+        tools.pmap(compile_text, df.id, num_proc=1)
 
 
     def download(self,**attrs):
@@ -112,10 +116,8 @@ class Hathi(Corpus):
 def get_date(imprint):
     for x in tools.ngram(str(imprint),4):
         x=''.join(x)
-        try:
-            return int(x)
-        except Exception:
-            return x
+        if x.isdigit(): return int(x)
+    return np.nan
 
 class HathiSubcorpus(Hathi):
     def load_metadata(self,*x,**y):
@@ -214,7 +216,8 @@ def compile_text(idx,by_page=False):
         with open(path_freqs,'w') as of:
             json.dump(vol_freqs_d, of)
 
-    except (HTTPError,FileNotFoundError,KeyError) as e:
+    # except (HTTPError,FileNotFoundError,KeyError) as e:
+    except Exception as e:
         # print('!!',e)
         pass
 

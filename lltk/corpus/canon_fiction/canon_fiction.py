@@ -1,6 +1,19 @@
 from lltk.imports import *
 
-class TextCanonFiction(Text): pass
+class TextCanonFiction(Text):
+	pass
+	# @property
+	# def xml(self):
+	# 	if os.path.exists(self.path_xml): return super().xml
+	# 	src = self.source
+	# 	if src is not None: return src.xml
+	# 	return ''
+
+	
+	
+
+
+
 class CanonFiction(Corpus):
 	TEXT_CLASS=TextCanonFiction
 	CORPORA_TO_START_WITH = ['Chadwyck','MarkMark']

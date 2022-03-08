@@ -1,6 +1,10 @@
 import warnings
 warnings.filterwarnings('ignore')
-
+import multiprocessing as mp
+try:
+	mp.set_start_method('spawn')
+except RuntimeError:
+	pass
 
 
 nlp=None
@@ -12,7 +16,13 @@ DEFAULT_NUM_PROC=4
 PARALLELIZED_CMDS=['preprocess']
 PART_REFERRING_CMDS=['install','preprocess','zip','upload','share']
 FUNC_CMDS={'compile','preprocess','install'}
-
+GET_CORPUSD={}
+IDSEP='/'
+COL__ID='_id'
+COL_ID='id'
+COL_ID_CORPUS = 'id_corpus'
+COL_ID_TEXT = 'id_text'
+IDSEP_START='_'
 
 
 
@@ -24,11 +34,14 @@ from pprint import pprint
 import imp
 
 import os,sys,ujson as json,pandas as pd,random,gzip,time,inspect
+from functools import partial
 import re,configparser
 from datetime import datetime
 import urllib, tempfile
 from os.path import expanduser
 from xopen import xopen
+
+import nltk
 
 from tqdm import tqdm
 from pprint import pprint
@@ -46,7 +59,8 @@ import six,shutil
 from urllib.error import HTTPError
 from yapmap import *
 import tarfile,gzip
-import multiprocessing as mp
+
+
 import time,logging,math
 
 DEFAULT_CORPUS = 'TxtLab'
@@ -86,14 +100,21 @@ MANIFEST_DEFAULTS=dict(
 	# name='Corpus',
 	path_txt='txt',
 	path_xml='xml',
+	path_nlp='nlp',
+	path_pos='pos',
 	path_index='',
 	ext_xml='.xml',
 	ext_txt='.txt',
+	ext_nlp='.jsonl',
+	path_cadence_scan='cadence_scan',
+	path_cadence_parse='cadence_parse',
 
 	path_model='',
 	path_header=None,
 	#path_metadata='metadata.txt',
 	path_metadata='metadata.csv',
+	path_metadata_init='metadata_init.csv',
+	path_metadata_letters='metadata_letters.pkl',
 	path_notebook='notebook.ipynb',
 	paths_text_data=[],
 	paths_rel_data=[],
@@ -101,6 +122,9 @@ MANIFEST_DEFAULTS=dict(
 
 	path_freq_table={},
 	col_id='id',
+	col_id_corpus='id_corpus',
+	col_id_text='id_text',
+	idsep='|',col_t='_text',
 	col_fn='fn',
 	path_root='',
 	path_raw='raw',
@@ -111,6 +135,8 @@ MANIFEST_DEFAULTS=dict(
 	path_python='',
 	manifest_override=True,
 	path_data='data',
+	path_chars='chars',
+	path_letters='letters',
 	is_meta = '',
 	public='',
 	private='',
@@ -128,6 +154,8 @@ nlp=None
 ENGLISH=None
 stopwords=set()
 MANIFEST={}
+
+BAD_TAGS={'figdesc','head','edit','note','header','footer','dochead','front'}
 
 colorconc='#f9b466'
 colorabs='#83b9d8'
@@ -170,7 +198,7 @@ PATH_MANIFESTS = tools.remove_duplicates([
 
 EMPTY_GROUP='(all)'
 
-
+TMP_CORPUS_ID='tmp_corpus'
 
 from pprint import pprint
 
@@ -204,3 +232,4 @@ PATH_CLOUD_SHARE_CMD='bin/dropbox_uploader.sh share'
 PATH_CLOUD_UPLOAD_CMD='bin/dropbox_uploader.sh upload'
 PATH_CLOUD_LIST_CMD='bin/dropbox_uploader.sh list'
 PATH_CLOUD_DEST = '/Share/llp_corpora'
+

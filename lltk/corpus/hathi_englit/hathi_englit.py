@@ -125,6 +125,7 @@ class HathiEngLit(Corpus):
 
 	def compile_data(self,parallel=1,sbatch=False,sbatch_hours=1):
 		if not parallel: parallel=DEFAULT_NUM_PROC
+		if not os.path.exists(self.path_freqs): os.makedirs(self.path_freqs)
 		filenames = [os.path.join(self.path_raw,fn) for fn in os.listdir(self.path_raw) if fn.endswith('.tar.gz')]
 		objects = [(fn,self.path_freqs,i%int(parallel)) for i,fn in enumerate(filenames)]
 		pmap(untar_to_freqs_folder,objects,num_proc=parallel)

@@ -16,11 +16,6 @@ class TextECCO_TCP(TextTCP):
         return self._meta
 
 
-def clean_text(txt):
-    txt=txt.replace(u'\u2223','') # weird kind of | character
-    txt=txt.replace(u'\u2014','-- ') # em dash
-    return txt
-
 
 def fix_genre(genre,title):
     if genre in {'Verse'}: return genre

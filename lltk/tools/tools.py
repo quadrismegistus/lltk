@@ -30,7 +30,20 @@ PATH_LLTK_REPO=os.path.abspath(os.path.join(LLTK_ROOT,'..'))
 URL_DEFAULT_DATA='https://www.dropbox.com/s/cq1xb85yaysezx4/lltk_default_data.zip?dl=1'
 
 
+def get_from_attrs_if_not_none(obj,name):
+	try:
+		return obj.__getattribute__(name)
+	except AttributeError:
+		return None
 
+def snake2camel(x,sep='_'):
+    return ''.join(
+        xx.title()
+        for xx in x.split(sep)
+    )
+def ensure_snake(xstr):
+    xstr=xstr.lower().strip().replace('_',' ')
+    return '_'.join([zeropunc(x) for x in xstr.split()])
 def which(pgm):
 	path=os.getenv('PATH')
 	for p in path.split(os.path.pathsep):
@@ -412,6 +425,9 @@ def save_df(df,ofn,move_prev=False,index=None,key='',log=print,verbose=True):
 	if os.path.exists(ofn) and move_prev: iter_move(ofn)
 	ext = os.path.splitext(ofn.replace('.gz',''))[-1][1:]
 	if index is None: index=type(df.index) != pd.RangeIndex
+	
+	ofndir=os.path.dirname(ofn)
+	if not os.path.exists(ofndir): os.makedirs(ofndir)
 
 	try:
 		if ext=='csv':
@@ -740,6 +756,7 @@ def writegengen(fnfn,generator,header=None,save=True):
 def readgen_csv(fnfn,sep=None,encoding='utf-8',errors='ignore',header=[],progress=True,num_lines=0,desc='Reading CSV file'):
 	from smart_open import open
 	from csv import reader
+	from tqdm import tqdm
 	if not sep: sep=',' if fnfn.endswith('csv') or fnfn.endswith('.csv.gz') else '\t'
 	if progress and not num_lines:
 		with open(fnfn,encoding=encoding,errors=errors) as f:
@@ -1344,10 +1361,12 @@ def noPunc(token):
 	return token.strip(punctuation)
 
 def zeropunc(s,spaces_ok=False):
-	# ok={' '} if spaces_ok else {}
-	import string
-	return s.translate(str.maketrans('', '', string.punctuation))
-	# return ''.join(x for x in s if x.isalpha() or x in ok)
+	return ''.join([x for x in s if x.isalpha()])
+
+	# # ok={' '} if spaces_ok else {}
+	# import string
+	# return s.translate(str.maketrans('', '', string.punctuation))
+	# # return ''.join(x for x in s if x.isalpha() or x in ok)
 
 
 def now(now=None):
@@ -1737,13 +1756,13 @@ def download_wget(url, save_to, **attrs):
 	# print('\n>> saved:',save_to)
 
 def download(url,save_to,force=False,desc=''):
-	# here=os.getcwd()
+	here=os.getcwd()
 	if not force and os.path.exists(save_to): return
 	savedir=os.path.dirname(save_to)
 	if not os.path.exists(savedir): os.makedirs(savedir)
-	#download_wget(url,save_to,desc=desc)
+	# download_wget(url,save_to,desc=desc)
 	download_file_tqdm(url,save_to,desc=desc)
-	# os.chdir(here)
+	os.chdir(here)
 
 def download_curl(url,save_to):
 	save_to_dir,save_to_fn=os.path.split(save_to)
@@ -1779,39 +1798,42 @@ def download_tqdm2(url, save_to):
 #!/usr/bin/env python 
 __author__  = "github.com/ruxi"
 __license__ = "MIT"
-import requests 
-import tqdm     # progress bar
-import os.path
 def download_file_tqdm(url, filename=False, verbose = False, desc=None):
-    """
-    Download file with progressbar
-    
-    Usage:
-        download_file('http://web4host.net/5MB.zip')  
-    """
-    if not filename:
-        local_filename = os.path.join(".",url.split('/')[-1])
-    else:
-        local_filename = filename
-    r = requests.get(url, stream=True)
-    file_size = int(r.headers['Content-Length'])
-    chunk = 1
-    chunk_size=1024
-    num_bars = int(file_size / chunk_size)
-    if verbose:
-        print(dict(file_size=file_size))
-        print(dict(num_bars=num_bars))
+	"""
+	Download file with progressbar
+	"""
 
-    with open(local_filename, 'wb') as fp:
-        for chunk in tqdm.tqdm(
-                                    r.iter_content(chunk_size=chunk_size)
-                                    , total= num_bars
-                                    , unit = 'KB'
-                                    , desc = local_filename if not desc else desc
-                                    , leave = True # progressbar stays
-                                ):
-            fp.write(chunk)
-    return
+	import requests 
+	from tqdm import tqdm
+	import os.path
+
+
+	if not filename:
+		local_filename = os.path.join(".",url.split('/')[-1])
+	else:
+		local_filename = filename
+	
+	r = requests.get(url, stream=True)
+	file_size = r.headers.get('content-length')
+	chunk = 1
+	chunk_size=1024
+	num_bars = int(file_size) // chunk_size if file_size else None
+	if verbose:
+		print(dict(file_size=file_size))
+		print(dict(num_bars=num_bars))
+
+	
+	with open(local_filename, 'wb') as fp:
+		iterr=tqdm(
+			r.iter_content(chunk_size=chunk_size),
+			total=num_bars,
+			unit='KB',
+			desc = local_filename if not desc else desc,
+			leave = True
+		)
+		for chunk in iterr:
+			fp.write(chunk)
+	return
 
 def download_pycurl(url, save_to,desc=''):
 	# from: https://gist.github.com/etheleon/882d6a9a64c064d4202ccd59f6c0b533
@@ -2223,5 +2245,6 @@ def remove_duplicates(seq,remove_empty=False):
 
 
 ### UTILS
+
 
 

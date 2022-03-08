@@ -12,6 +12,7 @@ import codecs,os
 from lltk import tools
 from lltk.text.text import Text
 from lltk.tools import get_spelling_modernizer,modernize_spelling_in_txt
+import pandas as pd
 
 STANZA_TAGS = ['stanza','versepara','pdiv']
 LINE_TAGS = ['l','lb']
@@ -35,7 +36,7 @@ class TextChadwyckPoetry(Text):
 
 	@property
 	def year(self):
-		return self.year_author_is_30
+		return pd.to_numeric(self.author_dob,errors='coerce') + 30
 
 	# @property
 	# def meta(self,force_author_dob=True,plus_years=30):
@@ -97,12 +98,12 @@ class TextChadwyckPoetry(Text):
 	# from /home/users/heuser/workspace/jupyter/prosodic_chadwyck/prosodic_parser.py
 	def text_plain(self, OK=['l','lb'], BAD=['note','edit'], body_tag='poem', line_lim=None, modernize_spelling=True):
 		#if not self.exists: return ''
-		if os.path.exists(self.fnfn_txt):
-			print('>> text_plain from stored text file:',self.fnfn_txt)
-			return tools.read(self.fnfn_txt)
+		if self.path_txt and os.path.exists(self.path_txt):
+			# print('>> text_plain from stored text file:',self.path_txt)
+			return tools.read(self.path_txt)
 
-		if self.fnfn_xml and os.path.exists(self.fnfn_xml):
-			return xml2txt(self.fnfn_xml, OK=OK,BAD=BAD,body_tag=body_tag,line_lim=line_lim,modernize_spelling=modernize_spelling)
+		if self.path_xml and os.path.exists(self.path_xml):
+			return xml2txt(self.path_xml, OK=OK,BAD=BAD,body_tag=body_tag,line_lim=line_lim,modernize_spelling=modernize_spelling)
 
 		return ''
 
@@ -197,8 +198,8 @@ class ChadwyckPoetry(Corpus):
 		import numpy as np
 		meta=super().load_metadata()
 		meta['genre']='Verse'
-		#meta['year']=meta.author_dob.apply(lambda x: int(x)+30 if x.isdigit() else np.nan)
-		meta['year']=meta.apply(decide_year_from_dob_and_dod,1)
+		meta['year']=meta.author_dob.apply(lambda x: int(x)+30 if x.isdigit() else np.nan)
+		# meta['year']=meta.apply(decide_year_from_dob_and_dod,1)
 		return meta#.query(f'{self.MIN_YEAR}<=year<{self.MAX_YEAR}')
 
 

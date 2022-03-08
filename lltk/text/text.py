@@ -19,20 +19,70 @@ class AuthorBunch(Bunch):
 	@property
 	def meta(self): return self.corpus.meta[self.corpus.meta.id.isin(set(self.ids))]
 	
-
+def get_idx(
+        id='',
+        id_corpus='',
+        id_text='',
+        i=None,
+        **kwargs):
+    
+    if id: return id
+    if id_corpus and id_text: return f'{IDSEP_START}{id_corpus}{IDSEP}{id_text}'
+    if i is None: i=random.randint(1,100000)
+    return f'X{i:06}'
 
 class Text(object):
-	def __init__(self,idx,corpus,meta={},lang=None,tokenizer=None):
-		self.id=idx
+	BAD_TAGS={'note','footnote','greek','latin'}
+	# BODY_TAG=None
+
+
+	def __init__(self,
+			id=None,
+			corpus=None,
+			meta={},
+
+			id_corpus='',
+			id_text='',
+			i=None,
+
+			lang=None,
+			tokenizer=None,
+			**kwargs):
+
+		self._source=None
+		self.id=get_idx(id=id, id_corpus=id_corpus, id_text=id_text, i=i)
+		meta[COL_ID]=self.id
+		self._meta=meta
+		
 		self.corpus=corpus
-		self.XML2TXT=self.corpus.XML2TXT
-		self.TOKENIZER=self.corpus.TOKENIZER if tokenizer is None else tokenizer
-		self.meta=meta
-		self.lang=self.corpus.lang if lang is None else lang
+		self.lang=lang
+		if corpus is None:
+			self.XML2TXT=self.corpus.XML2TXT
+			self.TOKENIZER=self.corpus.TOKENIZER if tokenizer is None else tokenizer
+			if self.lang is None: self.lang=self.corpus.lang
+		else:
+			self.XML2TXT=default_xml2txt
+			self.TOKENIZER=tokenize
+		
+
 
 	def __repr__(self):
-		o=f'{self.author}, _{self.title}_ ({self.year}) [{self.corpus.name}: {self.id}]'
+		co=self.corpus.name if self.corpus is not None and hasattr(self.corpus,'name') and self.corpus.name else ''
+		au,ti,yr,idx = self.author, self.title, self.year, self.id
+		l = [
+			co if co else 'Corpus?',
+			au if au else 'Author?',
+			ti if ti else 'Title?',
+			yr if yr else 'Year?',
+			idx if idx else 'ID?',
+
+		]
+
+		co,au,ti,yr,idx = l
+		o=f'{au}, _{ti}_ ({yr}) [{co}: {idx}]'
+		#return str(self.meta)
 		return o
+	
 	# convenience
 	def __getattr__(self, name):
 		if name.startswith('path_') and hasattr(self.corpus,name):
@@ -41,26 +91,114 @@ class Text(object):
 			if not hasattr(self.corpus, exttype): raise Exception(f'Corpus has no {exttype}') 
 			ext=getattr(self.corpus,exttype)
 			cpath=getattr(self.corpus,name)
-			return os.path.abspath(os.path.join(cpath, self.id + ext))
-		elif name in self.meta:
+			opath=os.path.abspath(os.path.join(cpath, self.id + ext))
+
+			# on source?
+			if not os.path.exists(opath) and self.source:
+				opath2=getattr(self.source,name)
+				if os.path.exists(opath2): return opath2
+			return opath
+		
+		if name in self.meta:
 			return self.meta[name]
-		else:
-			# Default behaviour
-			return object.__getattribute__(self, name)
+		
+		
+		res = get_from_attrs_if_not_none(self, name)
+		if res is not None: return res
+		source = get_from_attrs_if_not_none(self, 'source')
+
+		res = get_from_attrs_if_not_none(self._source, name)
+		if res is not None: return res
+		
+
+		return None
+
+	def get_path(t,part='texts'):
+		if not t.corpus: return ''
+		partattr='path_'+part
+		if hasattr(t.corpus, partattr):
+			croot=getattr(t.corpus,partattr)
+			return os.path.join(croot,t.id)
+	
+	@property
+	def path(self): return self.get_path()
 
 	# load text?
 	@property
-	def txt(self): return self.text_plain()
+	def addr(self):
+		return f'{self.corpus.name}|{self.id}'
+	@property
+	def txt(self): return clean_text(self.text_plain())
 	@property
 	def xml(self):
-		if not os.path.exists(self.path_xml): return ''
-		with open(self.path_xml) as f: return f.read()
+		path_xml = self.get_path_xml()
+		if not os.path.exists(path_xml): return ''
+		with open(path_xml) as f: return clean_text(f.read())
+	
+	
+	def get_path_xml(self):
+		if not os.path.exists(self.path_xml):
+			tsrc = self.source
+			if tsrc is not None and os.path.exists(tsrc.path_xml):
+				return tsrc.path_xml
+		return self.path_xml
+
 
 	# xml
 	@property
 	def dom(self):
+		#if not self._dom:
 		import bs4
-		return bs4.BeautifulSoup(self.text_xml,'lxml')
+		xml=self.xml
+		if xml:
+			dom=bs4.BeautifulSoup(xml,'lxml')
+			for tag in self.BAD_TAGS:
+				for x in dom(tag):
+					x.extract()
+		else:
+			dom=bs4.BeautifulSoup()
+
+		if self.BODY_TAG is not None:
+			dom = dom.find(self.BODY_TAG)
+		
+		return dom
+
+	@property
+	def source(self): return self.source_text()
+
+	def source_text(self):
+		if self.id and self.id.startswith(IDSEP_START) and IDSEP in self.id:
+			id_corpus,id_text = self.id[1:].split(IDSEP,1)
+			if id_corpus and id_text:
+				try:
+					C = load(id_corpus,install_if_nec=True)
+					t = C.textd.get(id_text)
+					return t
+				except KeyError:
+					pass
+
+	# def source_text(self, col_id_corpus='id_corpus', col_id_text='id_text'):
+	# 	meta = self._meta
+	# 	id_corpus = meta.get(col_id_corpus)
+	# 	id_text = meta.get(col_id_text)
+	# 	id_c = self.corpus.id if self.corpus is not None else ''
+		
+	# 	if id_corpus and id_text and id_corpus!=id_c:
+	# 		try:
+	# 			C = load(id_corpus)
+	# 			t = C.textd.get(id_text)
+	# 			return t
+	# 		except KeyError:
+	# 			pass
+
+	@property
+	def meta(self):
+		meta={
+			**(self.source._meta if hasattr(self.source,'_meta') else {}),
+			**self._meta,
+		}
+		return meta
+		
 
 
 	def text_plain(self, force_xml=None):
@@ -68,7 +206,7 @@ class Text(object):
 		This function returns the plain text file. You may want to modify this.
 		"""
 		# Return plain text version if it exists
-		if os.path.exists(self.path_txt) and not force_xml:
+		if self.path_txt and os.path.exists(self.path_txt) and not force_xml:
 			with open(self.path_txt,encoding='utf-8',errors='ignore') as f:
 				return f.read()
 		# Otherwise, load from XML?
@@ -162,14 +300,65 @@ class Text(object):
 	@property
 	def shorttitle(self): return noPunc(self.title.strip().split(':')[0].split(';')[0].split('.')[0].split('(')[0].split('[')[0].strip())
 
-	#### Convenience
+	@property
+	def prose_or_verse(t):
+		for g in [t.medium, t.genre, t.major_genre, t.canon_genre]:	
+			if g in {'Prose','Non-Fiction','Fiction','Biography','Oratory'}:
+				return 'Prose'
+			elif g in {'Verse','Poetry'}:
+				return 'Verse'
+		if t.corpus.name in {'Chadwyck'}:
+			return 'Prose'
+		elif t.corpus.name in {'ChadwyckPoetry'}:
+			return 'Verse'
+		# else:
+		# 	txt_verse, txt_prose = t.txt_verse, t.txt_prose
+		# 	if txt_verse or txt_prose:
+		# 		return 'Verse' if len(txt_verse)>len(txt_prose) else 'Prose'
+		return ''
+	@property
+	def is_prose(self): return self.prose_or_verse=='Prose'
+	@property
+	def is_verse(self): return self.prose_or_verse=='Verse'
+
+	@property
+	def txt_prose(self):
+		paras=self.paras_xml
+		if not paras and self.is_prose: paras=self.paras
+		return '\n\n'.join(paras if paras else [])
+	@property
+	def txt_verse(self):
+		lines=self.lines_xml
+		if not lines and self.is_verse: return self.txt
+		return '\n'.join(lines if lines else [])
+
+	@property
+	def lines_xml(self):
+		dom=self.dom
+		for x in dom('p'): x.extract()
+		return [clean_text(e.text).strip() for e in dom('l')]
+	
+	@property
+	def paras_xml(self):
+		dom=self.dom
+		for x in dom('l'): x.extract()
+		paras=[e.text.strip() for e in dom('p')]
+		return [para for para in paras if para]
+	@property
+	def paras_txt(self):
+		paras=[para.strip() for para in self.txt.split('\n\n')]
+		return [para for para in paras if para]
 	@property
 	def paras(self):
-		return [para.strip() for para in self.txt.split('\n\n') if para.strip()]
+		return self.paras_txt
+		# paras = self.paras_xml
+		# if not paras: paras = self.paras_txt
+		# return paras
+
 	@property
 	def nltk(self):
 		import nltk
-		return nltk.Text(self.tokens)
+		return nltk.Text(self.tokens())
 	@property
 	def blob(self):
 		from textblob import TextBlob
@@ -207,3 +396,5 @@ class Text(object):
 		for word in self.tokens:
 			m.update(word.encode('utf-8'))
 		return m
+
+

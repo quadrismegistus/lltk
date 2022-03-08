@@ -2,17 +2,16 @@ from lltk.imports import *
 
 BAD={'figdesc','head','edit','note','l'}
 OK={'p'}
+BODY_TAG='doc'
+
+def xml2txt_chadwyck(path_xml):
+	return xml2txt_prose(path_xml,para_tag='p',bad_tags=BAD_TAGS|BAD,body_tag=BODY_TAG)
 
 
-def xml2txt_chadwyck(xml):
-	return xml2txt(xml,
-		OK=OK,
-		BAD=BAD,
-		body_tag='doc'
-	)
-
-
-class TextChadwyck(Text): pass
+class TextChadwyck(Text):
+	BODY_TAG=BODY_TAG
+	BAD_TAGS=BAD
+	
 
 
 def split_raw_xml_into_chapters(xml_str,chapter_tags=['div5','div4','div3','div2','div1','div0'],para_tag='p',verse_tag='l',keep_verse=True,modernize_spelling=True):
@@ -157,9 +156,11 @@ from lltk.corpus.corpus import Corpus
 class Chadwyck(Corpus):
 	TEXT_CLASS=TextChadwyck
 	XML2TXT=xml2txt_chadwyck
+	EXT_XML='.new'
 
 	# compile from raw
-	def compile(self,raw_ext='.new',**y):
+	def compile(self,raw_ext=None,**y):
+		if raw_ext is None: raw_ext=self.EXT_XML
 		import pandas as pd
 		# make sure I have it
 		self.compile_download()

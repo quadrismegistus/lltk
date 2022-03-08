@@ -3,6 +3,7 @@ from lltk.imports import *
 from lltk.imports import *
 
 
+
 class CharacterNetwork:
 
     def __init__(self, url_or_path_or_g = None, is_directed=True):
@@ -324,41 +325,51 @@ def merc(lat, lon):
 
 
 def layout_graph_force(g,pos=None,iterations=10000,**attrs):
-    from fa2 import ForceAtlas2
-    defaults=dict(
-        # Behavior alternatives
-        outboundAttractionDistribution=False,  # Dissuade hubs
-        linLogMode=False,  # NOT IMPLEMENTED
-        adjustSizes=False,  # Prevent overlap (NOT IMPLEMENTED)
-        edgeWeightInfluence=1.0,
 
-        # Performance
-        jitterTolerance=1.0,  # Tolerance
-        barnesHutOptimize=True,
-        barnesHutTheta=1.2,
-        multiThreaded=False,  # NOT IMPLEMENTED
+    try:
+        from fa2 import ForceAtlas2
+        defaults=dict(
+            # Behavior alternatives
+            outboundAttractionDistribution=False,  # Dissuade hubs
+            linLogMode=False,  # NOT IMPLEMENTED
+            adjustSizes=False,  # Prevent overlap (NOT IMPLEMENTED)
+            edgeWeightInfluence=1.0,
 
-        # Tuning
-        scalingRatio=1.0,
-        strongGravityMode=False,
-        gravity=1.0,
+            # Performance
+            jitterTolerance=1.0,  # Tolerance
+            barnesHutOptimize=True,
+            barnesHutTheta=1.2,
+            multiThreaded=False,  # NOT IMPLEMENTED
 
-        # Log
-        verbose=False
-    )
-    newattrs={
-        **defaults,
-        **dict((k,v) for k,v in attrs.items() if k in defaults)
-    }
-    # if pos is None: pos={}
-    # print(pos.keys())
-    # print(pos,'!!')
-    # print(g.nodes())
-    forceatlas2=ForceAtlas2(**newattrs)
-    # print('inp',pos,'?!?!?')
-    pos=dict(forceatlas2.forceatlas2_networkx_layout(g,pos=pos,iterations=iterations).items())
-    # print('\nres',pos,'\n')
-    return pos
+            # Tuning
+            scalingRatio=1.0,
+            strongGravityMode=False,
+            gravity=1.0,
+
+            # Log
+            verbose=False
+        )
+        newattrs={
+            **defaults,
+            **dict((k,v) for k,v in attrs.items() if k in defaults)
+        }
+        # if pos is None: pos={}
+        # print(pos.keys())
+        # print(pos,'!!')
+        # print(g.nodes())
+        forceatlas2=ForceAtlas2(**newattrs)
+        # print('inp',pos,'?!?!?')
+        pos=dict(forceatlas2.forceatlas2_networkx_layout(g,pos=pos,iterations=iterations).items())
+        # print('\nres',pos,'\n')
+        return pos
+    
+    except (ImportError,ModuleNotFoundError,AttributeError) as e:
+        try:
+            return nx.nx_agraph.graphviz_layout(g,prog='neato')
+        except (ImportError,ModuleNotFoundError) as e2:
+            return nx.spring_layout(g,k=0.15, iterations=20)
+
+
 
 def layout_graph_geo(
         g,
@@ -552,6 +563,8 @@ def draw_bokeh(g,
     plot = figure(**figopts)
     plot.title.text_font_size = '18px'
 
+
+
     if pos_by=='geo':
         from bokeh.tile_providers import CARTODBPOSITRON, get_provider
         tile_provider = get_provider(CARTODBPOSITRON)
@@ -559,7 +572,7 @@ def draw_bokeh(g,
 
     # size?
     
-    
+    size_opt = min_size
     if size_by is not None:
         size_opt = '_size'
         data_l = X = np.array([d.get(size_by,0) for n,d in g.nodes(data=True)])
@@ -590,17 +603,18 @@ def draw_bokeh(g,
     
     # render nodes
     network_graph.node_renderer.glyph = Circle(
-        size=size_opt, 
+        size=size_opt,
         fill_color='_color',#color_by if color_by is not None else default_color
     )
 
     #Set edge opacity and width
     # network_graph.edge_renderer.glyph = MultiLine(line_alpha=0.5, line_width=1)
     if not weight_max_val: weight_max_val = max(d.get('weight',1) for a,b,d in g.edges(data=True))
-    network_graph.edge_renderer.data_source.data["line_width"] = [
+    widths = [
         ((g.get_edge_data(a,b).get('weight',1) / weight_max_val) * max_weight) + min_weight
         for a, b in g.edges()
     ]
+    network_graph.edge_renderer.data_source.data["line_width"] = widths
     network_graph.edge_renderer.glyph.line_width = {'field': 'line_width'}
 
     if color_line_by:
@@ -1017,6 +1031,59 @@ def combo_imgs(folder1, folder2, ofolder):
 
 
 
+def draw_graph_pyvis(networkx_graph,notebook=True,output_filename='graph.html',show_buttons=True,only_physics_buttons=False):
+    """
+    This function accepts a networkx graph object,
+    converts it to a pyvis network object preserving its node and edge attributes,
+    and both returns and saves a dynamic network visualization.
+    
+    Valid node attributes include:
+        "size", "value", "title", "x", "y", "label", "color".
+        
+        (For more info: https://pyvis.readthedocs.io/en/latest/documentation.html#pyvis.network.Network.add_node)
+        
+    Valid edge attributes include:
+        "arrowStrikethrough", "hidden", "physics", "title", "value", "width"
+        
+        (For more info: https://pyvis.readthedocs.io/en/latest/documentation.html#pyvis.network.Network.add_edge)
+        
+    
+    Args:
+        networkx_graph: The graph to convert and display
+        notebook: Display in Jupyter?
+        output_filename: Where to save the converted network
+        show_buttons: Show buttons in saved version of network?
+        only_physics_buttons: Show only buttons controlling physics of network?
+    """
+    
+    # import
+    from pyvis import network as net
+    
+    # make a pyvis network
+    pyvis_graph = net.Network(notebook=notebook)
+    
+    # for each node and its attributes in the networkx graph
+    for node,node_attrs in networkx_graph.nodes(data=True):
+        pyvis_graph.add_node(str(node),**node_attrs)
+        
+    # for each edge and its attributes in the networkx graph
+    for source,target,edge_attrs in networkx_graph.edges(data=True):
+        # if value/width not specified directly, and weight is specified, set 'value' to 'weight'
+        if not 'value' in edge_attrs and not 'width' in edge_attrs and 'weight' in edge_attrs:
+            # place at key 'value' the weight of the edge
+            edge_attrs['value']=edge_attrs['weight']
+        # add the edge
+        pyvis_graph.add_edge(str(source),str(target),**edge_attrs)
+        
+    # turn buttons on
+    if show_buttons:
+        if only_physics_buttons:
+            pyvis_graph.show_buttons(filter_=['physics'])
+        else:
+            pyvis_graph.show_buttons()
+    
+    # return and also save
+    return pyvis_graph.show(output_filename)
 
 
 
@@ -1045,3 +1112,105 @@ def test():
 
 
 
+
+
+
+
+
+
+netstat_keys=['degree','degree_centrality','betweenness_centrality']
+
+def netstat_nx(g, stats=netstat_keys):
+    for stat_name in stats:
+        stat_node2val=getattr(nx,stat_name)(g)
+        for node,val in dict(stat_node2val).items():
+            g.nodes[node][stat_name]=val
+    return g
+
+def rescale_weights(weights, min_size=1, max_size=10, max_val=None):
+    max_val = weights.max() if not max_val else max_val
+    weights = weights / max_val * max_size
+    weights = weights.apply(lambda x: x if x>min_size else min_size)
+    return weights
+
+
+def draw_nx(
+        g,
+        # ax=None,
+        pos=None,
+        final_g=None,
+        size_by='degree',weight_by='weight',
+        min_weight_size=1,max_weight_size=10,max_weight=None,
+        color_by='color',color_default='black',
+        plot_width=20,
+        plot_height=10,
+        save_to='',
+        show=True,
+        ):
+    if not pos: pos = layout_graph_force(g if not final_g else final_g)
+
+    import matplotlib
+    import matplotlib.pyplot as plt
+    matplotlib.rc('figure', figsize=(plot_width, plot_height))
+    
+    
+    # get stats
+    if size_by in set(netstat_keys): netstat_nx(g)
+    sizes = pd.Series([d.get(size_by,0) for a,d in g.nodes(data=True)])
+    weights = pd.Series([d.get(weight_by,0) for a,b,d in g.edges(data=True)])
+    edge_colors = [d.get(color_by,color_default) for a,b,d in g.edges(data=True)]
+    
+
+    fig, ax = plt.subplots()
+    if not show: plt.close()
+
+    nxfig=nx.draw_networkx(
+        g,
+        ax=ax,
+        pos=pos,
+        node_size=rescale_weights(sizes,min_size=1,max_size=1000),
+        width=rescale_weights(weights,min_size=min_weight_size,max_size=max_weight_size,max_val=max_weight),
+        edge_color=edge_colors
+    )
+    if save_to: fig.savefig(save_to)
+
+    if show:
+        plt.show()
+        plt.close()
+
+
+
+def draw_nx_dynamic(iter_g,pos=None,final_g=None, fps=10, ofn='fig.dynamic_graph.mp4',**kwargs):
+    import moviepy.video.io.ImageSequenceClip
+    from base64 import b64encode
+    from IPython.display import HTML
+    import matplotlib.pyplot as plt
+    plt.ioff()
+
+    if not pos and final_g: pos = layout_graph_force(final_g)
+
+
+    with tempfile.TemporaryDirectory() as odir:    
+        maxval = max(d.get('weight',1) for a,b,d in final_g.edges(data=True))
+
+        ofn_l=[]
+        for gi,g in enumerate(iter_g):
+            ofn_png = os.path.join(odir,f'graph{gi:04}.png')
+            posnow = pos if pos else layout_graph_force(g)
+            draw_nx(g,pos=posnow,save_to=ofn_png,show=False,**kwargs)
+            ofn_l.append(ofn_png)
+
+        print(f'Making movie ({ofn}) [{len(ofn_l)})]...')
+        
+        clip = moviepy.video.io.ImageSequenceClip.ImageSequenceClip(ofn_l, fps=fps)
+        clip.write_videofile(ofn,verbose=False,logger=None) #progress_bar=False)
+
+
+        with open(ofn,'rb') as f: mp4=f.read()
+        data_url = "data:video/mp4;base64," + b64encode(mp4).decode()
+        htm=HTML("""
+        <video width=666 controls>
+            <source src="%s" type="video/mp4">
+        </video>
+        """ % data_url)
+        return ofn,htm
