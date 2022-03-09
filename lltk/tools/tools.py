@@ -4,12 +4,6 @@ from yapmap import *
 from loguru import logger as log
 
 
-def setup_log():
-    log.remove()
-    format="""<cyan>[{time:HH:mm:ss}]</cyan> <level>{name}.{function}()</level> <cyan>></cyan> {message}"""
-    log.add(sys.stderr, colorize=True, format=format)
-setup_log()
-
 
 
 
@@ -40,6 +34,19 @@ PATH_LLTK_REPO=os.path.abspath(os.path.join(LLTK_ROOT,'..'))
 
 URL_DEFAULT_DATA='https://www.dropbox.com/s/cq1xb85yaysezx4/lltk_default_data.zip?dl=1'
 
+PATH_LLTK_LOG = os.path.join(PATH_LLTK_HOME,'logs')
+
+def setup_log(to_screen=False):
+	log.remove()
+	ofn=os.path.join(PATH_LLTK_LOG,"lltk_{time}.log")
+	format="""<cyan>[{time:HH:mm:ss}]</cyan> <level>{name}.{function}()</level><cyan>:{line}:</cyan> {message}"""
+	if to_screen: log.add(sys.stderr, colorize=True, format=format)
+	log.add(ofn, rotation="10MB", colorize=False, format=format)
+setup_log()
+
+
+
+
 
 def get_from_attrs_if_not_none(obj,name):
 	try:
@@ -52,9 +59,29 @@ def snake2camel(x,sep='_'):
         xx.title()
         for xx in x.split(sep)
     )
-def ensure_snake(xstr):
-    xstr=xstr.lower().strip().replace('_',' ')
-    return '_'.join([zeropunc(x) for x in xstr.split()])
+
+def ensure_camel(s):
+    l=s.replace('_',' ').strip().split()
+    l=[zeropunc(x) for x in l]
+    # l=[zeropunc(x,allow='_') for x in l]
+    l=[x[0].upper()+x[1:] for x in l if x]
+    o=''.join(l)
+    return o
+
+def to_camel_case(x):
+    return ''.join((y[0].upper()+y[1:] for y in x.split()))
+
+def ensure_snake(xstr,lower=True,allow={'_'}):
+	if lower: xstr=xstr.lower()
+	xstr=xstr.strip().replace(' ','_')
+	o='_'.join(
+		zeropunc(x,allow=allow)
+		for x in xstr.split('_')
+	)
+	while '__' in o: o=o.replace('__','_')
+	return o
+
+
 def which(pgm):
 	path=os.getenv('PATH')
 	for p in path.split(os.path.pathsep):
@@ -796,18 +823,18 @@ def readgen_csv(fnfn,sep=None,encoding='utf-8',errors='ignore',header=[],progres
 
 def readgen(fnfn,**y):
 	if issubclass(fnfn.__class__,pd.DataFrame): yield from resetindex(fnfn).to_dict('records')
-
-	ext=os.path.splitext(fnfn)[-1]
-	if ext=='.jsonl':
-		yield from readgen_jsonl(fnfn,**y)
-	elif ext=='.csv':
-		yield from readgen_csv(fnfn,**y)
-	elif ext=='.txt':
-		yield from readgen_csv(fnfn,sep='\t',**y)
-	else:
-		# print(f'[readgen()] Resorting to non-generator load for {fnfn}')
-		df=read_df(fnfn)
-		yield from resetindex(df).to_dict('records')
+	if type(fnfn)==str and os.path.exists(fnfn):
+		ext=os.path.splitext(fnfn)[-1]
+		if ext=='.jsonl':
+			yield from readgen_jsonl(fnfn,**y)
+		elif ext=='.csv':
+			yield from readgen_csv(fnfn,**y)
+		elif ext=='.txt':
+			yield from readgen_csv(fnfn,sep='\t',**y)
+		else:
+			# print(f'[readgen()] Resorting to non-generator load for {fnfn}')
+			df=read_df(fnfn)
+			yield from resetindex(df).to_dict('records')
 
 def header(fnfn,tsep='\t',encoding='utf-8'):
 	header=[]
@@ -1379,8 +1406,10 @@ def noPunc(token):
 	from string import punctuation
 	return token.strip(punctuation)
 
-def zeropunc(s,spaces_ok=False):
-	return ''.join([x for x in s if x.isalpha()])
+def zeropunc(s,allow={}):
+	allow=set(allow)
+	# return ''.join([x for x in s if x.isalpha() or x in allow])
+	return ''.join([x for x in s if x.isalnum() or x in allow])
 
 	# # ok={' '} if spaces_ok else {}
 	# import string

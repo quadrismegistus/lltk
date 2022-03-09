@@ -21,14 +21,12 @@ class AuthorBunch(Bunch):
 	
 def get_idx(
         id='',
-        id_corpus='',
-        id_text='',
         i=None,
+		allow='_/.-',
         **kwargs):
     
-    if id: return id
-    if id_corpus and id_text: return f'{IDSEP_START}{id_corpus}{IDSEP}{id_text}'
-    if i is None: i=random.randint(1,100000)
+    if id: return ensure_snake(id,allow=allow,lower=False)
+    if not i: i=random.randint(1,100000)
     return f'X{i:06}'
 
 
@@ -43,21 +41,16 @@ class BaseText(object):
 	def __init__(self,
 			id=None,
 			corpus=None,
-			#meta={},
-
-			#id_corpus='',
-			#id_text='',
-			#i=None,
-
-			lang=None,
-			tokenizer=None,
-			**kwargs):
+			# lang=None,
+			# tokenizer=None,
+			**meta):
 
 		self._source=None
 		self.id=id
 		self.corpus=corpus
 		meta[COL_ID]=self.id
 		self._meta=meta
+		
 
 		if is_corpus_obj(corpus):
 			self.XML2TXT=corpus.XML2TXT
@@ -80,7 +73,8 @@ class BaseText(object):
 		]
 
 		co,au,ti,yr,idx = l
-		o=f'<{self.__class__.__name__}> {au}, “{ti}” ({yr}) [{co}: {idx}]'
+		#o=f'[[<{self.__class__.__name__}> {au}, “{ti}” ({yr}) [{co}: {idx}]]]'
+		o=f'<{self.__class__.__name__}: {self.id} ({self.corpus.id})>'
 		#return str(self.meta)
 		return o
 	
@@ -100,8 +94,8 @@ class BaseText(object):
 				if os.path.exists(opath2): return opath2
 			return opath
 		
-		if name in self.meta:
-			return self.meta[name]
+		if name in self._meta:
+			return self._meta[name]
 		
 		
 		res = get_from_attrs_if_not_none(self, name)
@@ -127,7 +121,7 @@ class BaseText(object):
 	# load text?
 	@property
 	def addr(self):
-		return f'{IDSEP_START}{self.corpus.name}{IDSEP}{self.id}'
+		return f'{IDSEP_START}{self.corpus.id}{IDSEP}{self.id}'
 	@property
 	def txt(self): return clean_text(self.text_plain())
 	@property
@@ -195,8 +189,8 @@ class BaseText(object):
 	@property
 	def meta(self):
 		meta={
-			**(self.source._meta if hasattr(self.source,'_meta') else {}),
-			**self._meta,
+			**(self.source.meta if self.source is not None and self.source.meta is not None else {}),
+			**self._meta
 		}
 		return meta
 		
@@ -405,17 +399,18 @@ class BaseText(object):
 
 def Text(id=None,corpus=None,**kwargs):
 	text_ref,corpus_ref=id,corpus
-	log.debug(f'Text(id="{text_ref}", corpus="{corpus_ref}"')
+	log.debug(f'Generating text with id="{text_ref}" and corpus="{corpus_ref}"')
 
 	from lltk.corpus.corpus import Corpus
 	# have text?
 	if issubclass(text_ref.__class__, BaseText):
 		# have text
 		text = text_ref
-		log.debug(f'called on a text object: {text}')
+		# log.debug(f'called on a text object: {text}')
 		# already?
 		if corpus_ref is None: 
-			log.debug(f'no new corpus set, returning as-is: {text}')
+			# log.debug(f'no new corpus set, returning as-is')
+			log.debug(f'Returning text: {text}')
 			return text
 	
 	elif type(text_ref)==str:
@@ -425,10 +420,10 @@ def Text(id=None,corpus=None,**kwargs):
 	
 	# get corpus
 	corpus = Corpus(corpus_ref,**kwargs)
-	log.debug(f'got corpus: {corpus}')
+	log.debug(f'Getting corpus: {corpus}')
 	# add text
-	text = corpus.init_text(text_ref,**kwargs)
-	log.debug(f'returning text {text}')
+	text = corpus.text(text_ref,**kwargs)
 	# ensure assigned
 	# text.corpus = corpus
+	log.debug(f'Returning text: {text}')
 	return text
