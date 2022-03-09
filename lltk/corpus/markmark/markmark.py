@@ -1,6 +1,6 @@
-from lltk.corpus.corpus import Corpus
+from lltk.corpus.corpus import BaseCorpus
 
-class MarkMark(Corpus):
+class MarkMark(BaseCorpus):
 	def load_metadata(self,*x,**y):
 		meta=super().load_metadata()
 		meta['genre']='Fiction'

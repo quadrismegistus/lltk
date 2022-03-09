@@ -1,11 +1,11 @@
 from __future__ import absolute_import
 import os
-from lltk.corpus.corpus import Corpus
-from lltk.text.text import Text
+from lltk.corpus.corpus import BaseCorpus
+from lltk.text.text import BaseText
 
 
 
-class TextDialNarr(Text):
+class TextDialNarr(BaseText):
 	
 	def get_meta_from_file(self):
 		# 1825.Child.Am.F.The_Rebels_Or_Boston_Before_The_Revolution.dialogue
@@ -28,5 +28,5 @@ class TextDialNarr(Text):
 		return self.fnfn_txt.replace('.ascii.','.ascii.txt')
 
 
-class DialNarr(Corpus):
+class DialNarr(BaseCorpus):
 	TEXT_CLASS=TextDialNarr

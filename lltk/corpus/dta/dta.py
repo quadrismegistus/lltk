@@ -42,7 +42,7 @@ def get_meta_from_file(path_xml_meta):
 
 
 
-class TextDTA(Text):
+class TextDTA(BaseText):
 	# (b) Getting plain text from XML files
 	def text_plain_from_xml(self):
 		import bs4
@@ -58,7 +58,7 @@ class TextDTA(Text):
 	def path_xml_meta(self):
 		return os.path.join(self.corpus.path_xml_meta, self.id + '.xml')
 
-class DTA(Corpus):
+class DTA(BaseCorpus):
 	TEXT_CLASS=TextDTA
 
 	def compile(self,**attrs):

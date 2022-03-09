@@ -61,7 +61,7 @@ def xml2txt_tcp(xmlfn,OK=['p','l'], BAD=[], body_tag='text', force_xml=False, te
 
 
 
-class TextTCP(Text):
+class TextTCP(BaseText):
     @property
     def sections_xml(self,divider_tag='DIV1'):
         return super(TextTCP,self).sections_xml(divider_tag=divider_tag,text_section_class=self.corpus.TEXT_SECTION_CLASS)
@@ -71,7 +71,7 @@ class TextTCP(Text):
 
 
 
-class TCP(Corpus):
+class TCP(BaseCorpus):
     XML2TXT=xml2txt_tcp
 
     

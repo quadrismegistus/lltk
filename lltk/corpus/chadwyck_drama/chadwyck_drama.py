@@ -2,7 +2,7 @@ from lltk.imports import *
 
 ### TEXT
 
-class TextChadwyckDrama(Text):
+class TextChadwyckDrama(BaseText):
 	SPEECH_TAGS = ['speech']
 	LINE_TAGS = ['l','lb','pl']
 	PARA_TAGS = ['p']
@@ -103,7 +103,7 @@ class TextChadwyckDrama(Text):
 
 
 ### CORPUS
-class ChadwyckDrama(Corpus):
+class ChadwyckDrama(BaseCorpus):
 	TEXT_CLASS=TextChadwyckDrama
 
 	def gen_xml(self, split_start='<poem>', split_end='</poem>', id_split_start='<ID>', id_split_end='</ID>'):

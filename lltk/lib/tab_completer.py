@@ -29,7 +29,7 @@ class tabCompleter(object):
             text = os.path.expanduser('~')
 
         # autocomplete directories with having a trailing slash
-        if os.path.isdir(text):
+        if os.path.isdir(BaseText):
             text += '/'
 
         return [x for x in glob.glob(text + '*')][state]

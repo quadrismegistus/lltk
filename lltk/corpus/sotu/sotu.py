@@ -1,6 +1,6 @@
 from lltk.imports import *
 
-class SOTU(Corpus):
+class SOTU(BaseCorpus):
 	def compile(self):
 		ld=[]
 		for fn in os.listdir(self.path_txt):

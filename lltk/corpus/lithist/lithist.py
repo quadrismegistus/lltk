@@ -1,11 +1,11 @@
 from __future__ import absolute_import
 
-from lltk.corpus.corpus import Corpus,load_corpus
-from lltk.text.text import Text
+from lltk.corpus.corpus import BaseCorpus,load_corpus
+from lltk.text.text import BaseText
 import os
 
 """
-class LitHist(Corpus):
+class LitHist(BaseCorpus):
 	TEXT_CLASS=Text
 	PATH_TXT = 'lithist/_txt_lithist'
 	PATH_XML = 'lithist/_xml_lithist'
@@ -17,7 +17,7 @@ class LitHist(Corpus):
 """
 
 
-from lltk.corpus.corpus import CorpusMeta,name2corpus
+from lltk.corpus.corpus import BaseCorpusMeta,name2corpus
 import os
 
 def lithist_load_corpus(name,medium={},genre={}):

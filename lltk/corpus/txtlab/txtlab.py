@@ -1,8 +1,8 @@
 from lltk.imports import *
 
-class TextTxtLab(Text): pass
+class TextTxtLab(BaseText): pass
 
-class TxtLab(Corpus):
+class TxtLab(BaseCorpus):
 	TEXT_CLASS=TextTxtLab
 
 

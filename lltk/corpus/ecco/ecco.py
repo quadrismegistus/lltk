@@ -3,7 +3,7 @@ from lltk.imports import *
 
 
 
-class TextECCO(Text):
+class TextECCO(BaseText):
 	@property
 	def meta_by_file(self):
 		if not hasattr(self,'_meta'):
@@ -194,7 +194,7 @@ class TextECCO(Text):
 
 
 
-class ECCO(Corpus):
+class ECCO(BaseCorpus):
 	TEXT_CLASS=TextECCO
 	EXT_XML = '.xml.gz'
 

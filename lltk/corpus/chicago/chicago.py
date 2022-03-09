@@ -1,8 +1,8 @@
 from lltk.imports import *
 
-class TextChicago(Text): pass
+class TextChicago(BaseText): pass
 
-class Chicago(Corpus):
+class Chicago(BaseCorpus):
 	TEXT_CLASS=TextChicago
 	RAW_FN_METADATA_CSV_AUTHORS = 'AUTHORS_METADATA.csv'
 	RAW_FN_METADATA_CSV_TEXTS = 'NOVELS_METADATA.csv'

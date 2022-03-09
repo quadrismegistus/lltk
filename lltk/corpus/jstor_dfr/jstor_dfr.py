@@ -2,19 +2,19 @@ import os,json,bs4
 import numpy as np
 
 import lltk
-from lltk.text.text import Text
-from lltk.corpus.corpus import Corpus
+from lltk.text.text import BaseText
+from lltk.corpus.corpus import BaseCorpus
 from zipfile import ZipFile
 from tqdm import tqdm
 import shutil
 
 
-class TextJstorDFR(Text):
+class TextJstorDFR(BaseText):
 	pass
 
 
 
-class JstorDFR(Corpus):
+class JstorDFR(BaseCorpus):
 	TEXT_CLASS=TextJstorDFR
 
 	@property

@@ -10,7 +10,7 @@ META_KEYS = ['_path', 'a1', 'alias', 'aliasinv', 'anote', 'argument', 'attauth',
 ### TEXT CLASS
 import codecs,os
 from lltk import tools
-from lltk.text.text import Text
+from lltk.text.text import BaseText
 from lltk.tools import get_spelling_modernizer,modernize_spelling_in_txt
 import pandas as pd
 
@@ -20,7 +20,7 @@ LINE_TAGS = ['l','lb']
 spelling_d = None
 
 
-class TextChadwyckPoetry(Text):
+class TextChadwyckPoetry(BaseText):
 	STANZA_TAGS = ['stanza','versepara','pdiv']
 	LINE_TAGS = ['l','lb']
 
@@ -115,11 +115,11 @@ class TextChadwyckPoetry(Text):
 
 
 ### CORPUS CLASS
-from lltk.corpus.corpus import Corpus
+from lltk.corpus.corpus import BaseCorpus
 import os,codecs,re
 from lltk import tools
 
-class ChadwyckPoetry(Corpus):
+class ChadwyckPoetry(BaseCorpus):
 	"""
 	Steps taking in bringing this corpus from raw to refined.
 

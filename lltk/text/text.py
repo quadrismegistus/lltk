@@ -31,38 +31,39 @@ def get_idx(
     if i is None: i=random.randint(1,100000)
     return f'X{i:06}'
 
-class Text(object):
+
+
+class BaseText(object):
 	BAD_TAGS={'note','footnote','greek','latin'}
 	# BODY_TAG=None
+	XML2TXT=default_xml2txt
+	TOKENIZER=tokenize
 
 
 	def __init__(self,
 			id=None,
 			corpus=None,
-			meta={},
+			#meta={},
 
-			id_corpus='',
-			id_text='',
-			i=None,
+			#id_corpus='',
+			#id_text='',
+			#i=None,
 
 			lang=None,
 			tokenizer=None,
 			**kwargs):
 
 		self._source=None
-		self.id=get_idx(id=id, id_corpus=id_corpus, id_text=id_text, i=i)
+		self.id=id
+		self.corpus=corpus
 		meta[COL_ID]=self.id
 		self._meta=meta
+
+		if is_corpus_obj(corpus):
+			self.XML2TXT=corpus.XML2TXT
+			self.TOKENIZER=corpus.TOKENIZER
+			# if self.lang is None: self.lang=corpus.lang
 		
-		self.corpus=corpus
-		self.lang=lang
-		if corpus is None:
-			self.XML2TXT=self.corpus.XML2TXT
-			self.TOKENIZER=self.corpus.TOKENIZER if tokenizer is None else tokenizer
-			if self.lang is None: self.lang=self.corpus.lang
-		else:
-			self.XML2TXT=default_xml2txt
-			self.TOKENIZER=tokenize
 		
 
 
@@ -70,16 +71,16 @@ class Text(object):
 		co=self.corpus.name if self.corpus is not None and hasattr(self.corpus,'name') and self.corpus.name else ''
 		au,ti,yr,idx = self.author, self.title, self.year, self.id
 		l = [
-			co if co else 'Corpus?',
-			au if au else 'Author?',
-			ti if ti else 'Title?',
-			yr if yr else 'Year?',
-			idx if idx else 'ID?',
+			co if co else 'Corpus',
+			au if au else 'Author',
+			ti if ti else 'Title',
+			yr if yr else 'Year',
+			idx if idx else 'ID',
 
 		]
 
 		co,au,ti,yr,idx = l
-		o=f'{au}, _{ti}_ ({yr}) [{co}: {idx}]'
+		o=f'<{self.__class__.__name__}> {au}, “{ti}” ({yr}) [{co}: {idx}]'
 		#return str(self.meta)
 		return o
 	
@@ -126,7 +127,7 @@ class Text(object):
 	# load text?
 	@property
 	def addr(self):
-		return f'{self.corpus.name}|{self.id}'
+		return f'{IDSEP_START}{self.corpus.name}{IDSEP}{self.id}'
 	@property
 	def txt(self): return clean_text(self.text_plain())
 	@property
@@ -398,3 +399,36 @@ class Text(object):
 		return m
 
 
+
+
+
+
+def Text(id=None,corpus=None,**kwargs):
+	text_ref,corpus_ref=id,corpus
+	log.debug(f'Text(id="{text_ref}", corpus="{corpus_ref}"')
+
+	from lltk.corpus.corpus import Corpus
+	# have text?
+	if issubclass(text_ref.__class__, BaseText):
+		# have text
+		text = text_ref
+		log.debug(f'called on a text object: {text}')
+		# already?
+		if corpus_ref is None: 
+			log.debug(f'no new corpus set, returning as-is: {text}')
+			return text
+	
+	elif type(text_ref)==str:
+		corpus_ref_id,text_ref = to_corpus_and_id(text_ref)
+		if not corpus_ref: corpus_ref=corpus_ref_id
+	
+	
+	# get corpus
+	corpus = Corpus(corpus_ref,**kwargs)
+	log.debug(f'got corpus: {corpus}')
+	# add text
+	text = corpus.init_text(text_ref,**kwargs)
+	log.debug(f'returning text {text}')
+	# ensure assigned
+	# text.corpus = corpus
+	return text

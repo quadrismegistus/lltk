@@ -55,7 +55,7 @@ PATH_HERE=os.path.abspath(__file__)
 PATH_HERE_DIRNAME=os.path.dirname(PATH_HERE)
 
 
-class TextHathiEngLit(Text): pass
+class TextHathiEngLit(BaseText): pass
 
 
 def freq_tsv2dict(freq_str):
@@ -92,7 +92,7 @@ def untar_to_freqs_folder(args):
 
 
 
-class HathiEngLit(Corpus):
+class HathiEngLit(BaseCorpus):
 	TEXT_CLASS=TextHathiEngLit
 
 

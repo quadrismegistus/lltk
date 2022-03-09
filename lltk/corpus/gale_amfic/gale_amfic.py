@@ -39,7 +39,7 @@ attr2xml={'psmid': 'PSMID',
  'total_pages': 'totalPages'}
 
 
-class TextGaleAmericanFiction(Text):
+class TextGaleAmericanFiction(BaseText):
 
     def get_meta_from_file(self):
         """
@@ -100,7 +100,7 @@ class TextGaleAmericanFiction(Text):
 
 
 
-class GaleAmericanFiction(Corpus):
+class GaleAmericanFiction(BaseCorpus):
     TEXT_CLASS=TextGaleAmericanFiction
 
     def load_metadata(self):

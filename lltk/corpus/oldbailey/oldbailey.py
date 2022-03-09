@@ -1,6 +1,6 @@
 from lltk.imports import *
 
-class TextOldBailey(Text):
+class TextOldBailey(BaseText):
 	STANZA_TAGS = ['stanza','versepara','pdiv']
 	LINE_TAGS = ['l','lb']
 
@@ -43,7 +43,7 @@ class TextOldBailey(Text):
 
 
 
-class OldBailey(Corpus):
+class OldBailey(BaseCorpus):
 	"""
     [This is the PARSED Old Bailey. Full one not implemented yet.]
 	"""

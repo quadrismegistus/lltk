@@ -2,14 +2,21 @@ from lltk.imports import *
 
 ### Accessing corpora
 
+def is_corpus_obj(x):
+    from lltk.corpus.corpus import BaseCorpus
+    return issubclass(x.__class__,BaseCorpus)
 
 
 
 def load_metadata_from_df_or_fn(idf,force=False,**attrs):
     if type(idf)==str: idf=read_df(idf)
     if idf is None or not len(idf): return pd.DataFrame()
-    #return df_requiring_id_and_corpus(idf,**attrs)
     return df_requiring_id(idf,**attrs).fillna('')
+
+def iter_metadata_from_df_or_fn(df_or_fn,force=False,**attrs):
+    for odx in readgen(df_or_fn):
+        yield odx
+
 
 
 def df_requiring_id(df,idkey='id',fillna='',*x,**y):
@@ -22,38 +29,6 @@ def df_requiring_id(df,idkey='id',fillna='',*x,**y):
     df=df.set_index(idkey)
     return df
 
-def df_requiring_id_and_corpus(df,
-        col_id='id',
-        col_id_corpus='id_corpus',
-        col_id_text='id_text',
-        col_id_new='_id',
-        id_corpus_default='',
-        id_text_default='',
-        idsep='|',
-        fillna='',
-        *x,**y):
-    meta=fix_meta(df.reset_index().fillna(''))
-    metacols = set(meta.columns)
-    needcols={col_id,col_id_corpus,col_id_text,col_id_new}
-    for col in needcols-metacols: meta[col]=''
-
-    # deduce
-    new=[]
-    for i,(idx,id_corpus,id_text) in enumerate(zip(meta[col_id], meta[col_id_corpus], meta[col_id_text])):
-        _idx=''
-        if idx and idsep in idx: id_corpus,id_text = idx.split(idsep,1)
-        if not id_corpus: id_corpus=id_corpus_default
-        if not id_text: id_text=id_text_default
-        if not idx and id_corpus and id_text:
-            _idx=idx=f'{id_corpus}{idsep}{id_text}'
-        if not idx: idx=f'X{id_text_default}{i+1:04}'
-        if not id_text: id_text=idx
-        #if not id_corpus and id_corpus_default: id_corpus=id_corpus_default
-        if not _idx: _idx=f'{id_corpus}{idsep}{idx}' if id_corpus and not idsep in idx else idx
-        new+=[(idx,id_corpus,id_text,_idx)]
-    meta[col_id],meta[col_id_corpus],meta[col_id_text],meta[col_id_new] = zip(*new)
-
-    return df_requiring_id(meta, idkey=col_id)
 
 
 

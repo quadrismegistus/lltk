@@ -1,6 +1,6 @@
 import os
-from lltk.text.text import Text
-from lltk.corpus.corpus import Corpus
+from lltk.text.text import BaseText
+from lltk.corpus.corpus import BaseCorpus
 from lltk import tools
 from tqdm import tqdm
 import shutil
@@ -23,7 +23,7 @@ folder2genre=dict((v,k) for k,v in genre2folder.items())
 # (1) Text Class
 ########################################################################################################################
 
-class TextCOCA(Text):
+class TextCOCA(BaseText):
 	pass
 
 
@@ -31,7 +31,7 @@ class TextCOCA(Text):
 # (2) Corpus Class
 ########################################################################################################################
 
-class COCA(Corpus):
+class COCA(BaseCorpus):
 	TEXT_CLASS=TextCOCA
 
 

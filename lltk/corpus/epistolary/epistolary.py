@@ -1,7 +1,8 @@
 from lltk.imports import *
 from lltk.model.charnet import *
 
-
+CLAR_ID=f'_chadwyck/Eighteenth-Century_Fiction/richards.01'
+CLAR_IDX=f'Eighteenth-Century_Fiction/richards.01'
 
 
 TITLE_WORDS = set("""
@@ -432,10 +433,10 @@ def calculate_tok2id(df_text_letters):
 #### CLASSES
 
 
-# class TextEpistolary(Text): pass
+# class TextEpistolary(BaseText): pass
 
 
-# class Epistolary(Corpus):
+# class Epistolary(BaseCorpus):
 #     NAME='Epistolary'
 #     ID='epistolary'
 #     TEXT_CLASS=TextEpistolary
@@ -674,7 +675,7 @@ def get_clarissa():
     return clarissa
 
 def get_clarissa_id():
-    return f'_chadwyck/Eighteenth-Century_Fiction/richards.01'
+    return 
 
 
 # # def cast_init(obj, Class,*x,**y):
@@ -688,13 +689,13 @@ def get_clarissa_id():
 # # def SourceTextEpistolary(text_obj,*x, **y):
 # #     return CastObjCls(text_obj, SourceTextEpistolaryCls,*x,**y)
 
-# class TextEpistolary(Text):
+# class TextEpistolary(BaseText):
 #     pass
 
 
 
 
-# class SourceTextEpistolaryCls(Text):
+# class SourceTextEpistolaryCls(BaseText):
 #     def __init__(self,epistolary_corpus,**kwargs):
 #         self.C=epistolary_corpus
 #         for k,v in kwargs.items(): setattr(self,k,v)
@@ -838,7 +839,7 @@ def get_clarissa_id():
 
     
 
-# class Epistolary(Corpus):
+# class Epistolary(BaseCorpus):
 #     NAME='Epistolary2'
 #     ID='epistolary2'
 #     TEXT_CLASS=TextEpistolary
@@ -938,11 +939,11 @@ def get_clarissa_id():
 
 
 
-class TextEpistolary(Text):
+class TextEpistolary(BaseText):
     pass
 
 
-class Epistolary(Corpus):
+class Epistolary(BaseCorpus):
     NAME='Epistolary'
     ID='epistolary'
     TEXT_CLASS=TextEpistolary

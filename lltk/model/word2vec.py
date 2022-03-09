@@ -1474,7 +1474,7 @@ class SkipgramsCorpus(object):
 
 	def __iter__(self):
 		for text in self.corpus.texts():
-			for slice in self.slice(text):
+			for slice in self.slice(BaseText):
 				yield slice
 
 

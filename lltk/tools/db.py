@@ -14,7 +14,7 @@ def make_metadata_db(dbname='lltk',tablename=TABLE_NEXT, buffer_size=1000):
 	print('>> removing')
 	table.drop()
 
-	from .. import corpus
+	from .. import BaseCorpus
 	from corpus import corpora
 
 	print('>> creating index')

@@ -1,16 +1,16 @@
 import os
 import lltk
-from lltk.text.text import Text
-from lltk.corpus.corpus import Corpus
+from lltk.text.text import BaseText
+from lltk.corpus.corpus import BaseCorpus
 
 
 
-class TextSemanticCohort(Text):
+class TextSemanticCohort(BaseText):
 	pass
 
 
 
-class SemanticCohort(Corpus):
+class SemanticCohort(BaseCorpus):
 	TEXT_CLASS=TextSemanticCohort
 
 	def compile(self,**attrs):

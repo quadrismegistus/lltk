@@ -1,6 +1,17 @@
 from lltk.imports import *
 import six,shutil
 from yapmap import *
+from loguru import logger as log
+
+
+def setup_log():
+    log.remove()
+    format="""<cyan>[{time:HH:mm:ss}]</cyan> <level>{name}.{function}()</level> <cyan>></cyan> {message}"""
+    log.add(sys.stderr, colorize=True, format=format)
+setup_log()
+
+
+
 
 HOME=expanduser("~")
 LLTK_ROOT = LIT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -168,6 +179,8 @@ def get_url_or_path(url_or_path):
 
 
 
+def whatism(val,name='var', pref='* '):
+    printm(f'{pref}```{name}``` = {val}')
 
 
 
@@ -455,6 +468,8 @@ def save_df(df,ofn,move_prev=False,index=None,key='',log=print,verbose=True):
 def read_df(ifn,key='',**attrs):
 	if not os.path.exists(ifn): return
 	import pandas as pd
+	if issubclass(ifn.__class__,pd.DataFrame): return ifn
+
 	ext = os.path.splitext(ifn.replace('.gz',''))[-1][1:]
 	if ext=='csv':
 		return pd.read_csv(ifn,**attrs)
@@ -641,7 +656,9 @@ def worddb(abs_key = 'Complex Substance (Locke) <> Mixed Modes (Locke)_max',conc
 
 ###
 
-
+def resetindex(df,badcols={'level_0','index'},**y):
+	odf=df.reset_index()
+	return odf[[col for col in odf.columns if col not in badcols]]
 
 
 
@@ -778,6 +795,8 @@ def readgen_csv(fnfn,sep=None,encoding='utf-8',errors='ignore',header=[],progres
 					pass
 
 def readgen(fnfn,**y):
+	if issubclass(fnfn.__class__,pd.DataFrame): yield from resetindex(fnfn).to_dict('records')
+
 	ext=os.path.splitext(fnfn)[-1]
 	if ext=='.jsonl':
 		yield from readgen_jsonl(fnfn,**y)
@@ -788,7 +807,7 @@ def readgen(fnfn,**y):
 	else:
 		# print(f'[readgen()] Resorting to non-generator load for {fnfn}')
 		df=read_df(fnfn)
-		yield from df.to_dict('records')
+		yield from resetindex(df).to_dict('records')
 
 def header(fnfn,tsep='\t',encoding='utf-8'):
 	header=[]

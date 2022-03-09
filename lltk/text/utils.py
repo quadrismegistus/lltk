@@ -1,6 +1,13 @@
 from lltk.imports import *
 
 
+def id_is_addr(idx):
+    return idx and idx.startswith(IDSEP_START) and IDSEP in idx
+
+def to_corpus_and_id(idx):
+    if id_is_addr(idx):
+        return tuple(idx[len(IDSEP_START):].split(IDSEP,1))
+    return ('',idx)
 
 import re
 # as per recommendation from @freylis, compile once only
@@ -257,7 +264,7 @@ def save_tokenize_text(text,ofolder=None,force=False):
 
 	from collections import Counter
 	import json,codecs
-	toks=tokenize_text(text)
+	toks=tokenize_text(BaseText)
 	tokd=dict(Counter(toks))
 	with codecs.open(ofnfn,'w',encoding='utf-8') as of:
 		json.dump(tokd,of)

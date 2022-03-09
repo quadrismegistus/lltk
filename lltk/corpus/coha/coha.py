@@ -1,6 +1,6 @@
 from lltk.imports import *
 
-class TextCOHA(Text):
+class TextCOHA(BaseText):
 	def text_plain(self):
 		txt=super().text_plain()
 		txt = txt.replace('@ @ @ @ @ @ @ @ @ @','\n\n')
@@ -8,7 +8,7 @@ class TextCOHA(Text):
 
 
 
-class COHA(Corpus):
+class COHA(BaseCorpus):
 	TEXT_CLASS=TextCOHA
 	def update_metadata(self):
 		super(COHA,self).save_metadata(num_words=True,ocr_accuracy=True)

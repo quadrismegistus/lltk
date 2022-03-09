@@ -22,7 +22,9 @@ def to_camel_case(x):
     return ''.join((y[0].upper()+y[1:] for y in x.split()))
 
 
-class Corpus(object):
+
+
+class BaseCorpus(object):
     ID=None
     NAME=None
     EXT_TXT='.txt'
@@ -39,7 +41,7 @@ class Corpus(object):
     ENCODING_TXT = 'utf-8'
     ENCODING_XML = 'utf-8'
     TYPE='Corpus'
-    TEXT_CLASS=Text
+    TEXT_CLASS=BaseText
     TOKENIZER=tokenize
     MODERNIZE=MODERNIZE_SPELLING
     LANG='en'
@@ -48,6 +50,8 @@ class Corpus(object):
     def __getattr__(self, name):
         return get_from_attrs_if_not_none(self,name)
 
+    def __repr__(self):
+        return f'<{self.__class__.__name__}> {self.id} ({self.name})'
 
     def __init__(self,
             id=None,
@@ -59,7 +63,7 @@ class Corpus(object):
         for k,v in MANIFEST_DEFAULTS.items(): setattr(self,k,v)
         self._metadf=None
         self._texts=None
-        self._textd=None
+        self._textd={}
         self._dtmd={}
         self._mfwd={}
 
@@ -131,12 +135,28 @@ class Corpus(object):
         else:
             raise StopIteration
 
-    def get_text(self,id=None,**kwargs):
-        if self._textd and id in self._textd: return self._textd[id]
-        return self.init_text(id=id,**kwargs)
+    # def get_text(self,id=None,**kwargs):
+    #     if self._textd and id in self._textd: return self._textd[id]
+    #     return self.init_text(id=id,**kwargs)
     
-    def init_text(self,id=None,corpus=None,meta={},**kwargs):
-        corpus = self if corpus is None else corpus
+    def text(self,id=None,add=True,**kwargs):
+        if id is not None and id in self.textd:
+            return self._textd[id]
+        else:            
+            obj=self.init_text(id=id,**kwargs)
+            if add and obj is not None: self.add_text(obj)
+            return obj
+        raise Exception('Text could not be initiated from corpus')
+    
+    # def init_text(self,id=None,corpus=None,meta={},**kwargs):
+    def init_text(self,id=None,corpus=None,**kwargs):
+        # log.debug(f'init_text(id={id}, corpus={corpus}, meta={meta}, **{kwargs}))')
+        log.debug(f'init_text(id={id}, corpus={corpus}, **{kwargs}))')
+        corpus = self# if corpus is None else corpus
+
+        # ensure text
+        # Text = 
+
         t=self.TEXT_CLASS(
             id=id,
             corpus=corpus,
@@ -146,6 +166,18 @@ class Corpus(object):
         # if type(self._textd)!={}: self._textd={}
         # self._textd[id]=t
         return t
+    
+    def add_text(self,t):
+        # ensure textobj
+        t = Text(t)
+        # ensure ours
+        if t.__class__!=self.TEXT_CLASS:
+            t=self.init_text()
+
+        # assign by id
+        self._textd[t.id]=t
+
+    
     @property
     def paths(self):
         return self.__paths
@@ -199,6 +231,8 @@ class Corpus(object):
 
     
     def init(self, meta_final=None, other_meta=[], expand_meta=True, force=False,**kwargs):
+        printm(f'##### calling Corpus.init(...)')
+
         # so far?
         meta_l=[]
         # local too?
@@ -258,19 +292,20 @@ class Corpus(object):
         return self._metadf
 
 
+
     def load_metadata(self,force=False,**kwargs):
         if force or self._metadf is None or self._texts is None or self._textd is None:
             self.init(force=force,**kwargs)
         return self._metadf
 
-    def text(self,idx,meta=None):
+    # def text(self,idx,meta=None):
 
 
-        if meta is None:
-            if self._textd is not None and idx in self._textd:
-                return self._textd[idx]
-        else:
-            return self.TEXT_CLASS(idx,self,meta=dict(meta))
+    #     if meta is None:
+    #         if self._textd is not None and idx in self._textd:
+    #             return self._textd[idx]
+    #     else:
+    #         return self.TEXT_CLASS(idx,self,meta=dict(meta))
 
     @property
     def meta(self):
@@ -1170,7 +1205,7 @@ def meta_load_metadata(C):
 
 
 
-class MetaCorpus(Corpus):
+class MetaCorpus(BaseCorpus):
     def __init__(self,corpora,**attrs):
         super().__init__(**attrs)
         self.corpora=[]
@@ -1257,3 +1292,39 @@ class MetaCorpus(Corpus):
     def texts(self):
         return [t for C in self.corpora for t in C.texts()]
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+def Corpus(corpus_ref=None,**kwargs):
+    log.debug(f'Corpus({corpus_ref}, **{kwargs})')
+    if issubclass(corpus_ref.__class__, BaseCorpus):
+        log.debug(f'called on a corpus object, returning: {corpus_ref}')
+        return corpus_ref
+    
+    if type(corpus_ref)==str and corpus_ref:
+        log.debug(f'Corpus() called on a string: "{corpus_ref}"')
+        try:
+            C=load(corpus_ref,**kwargs)
+            log.debug(f'"{corpus_ref}" found, returning: {C}')
+            return C
+        except KeyError:
+            pass
+    
+    C=BaseCorpus(corpus_ref,**kwargs)
+
+    if not corpus_ref:    
+        log.debug(f'returning default corpus: {C}')
+        return C
+    
+    log.debug(f'returning new corpus: {C}')
+    return C

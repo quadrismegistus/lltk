@@ -9,9 +9,9 @@ def htid2id(x):
     a,b=x.split('.',1)
     return a+'/'+b
 
-class TextHathi(Text): pass
+class TextHathi(BaseText): pass
 
-class Hathi(Corpus):
+class Hathi(BaseCorpus):
     TEXT_CLASS=TextHathi
     id='hathi'
     name='Hathi'

@@ -8,7 +8,7 @@ def xml2txt_chadwyck(path_xml):
 	return xml2txt_prose(path_xml,para_tag='p',bad_tags=BAD_TAGS|BAD,body_tag=BODY_TAG)
 
 
-class TextChadwyck(Text):
+class TextChadwyck(BaseText):
 	BODY_TAG=BODY_TAG
 	BAD_TAGS=BAD
 	
@@ -152,8 +152,8 @@ def compile_text(obj):
 
 
 ### CORPUS CLASS
-from lltk.corpus.corpus import Corpus
-class Chadwyck(Corpus):
+from lltk.corpus.corpus import BaseCorpus
+class Chadwyck(BaseCorpus):
 	TEXT_CLASS=TextChadwyck
 	XML2TXT=xml2txt_chadwyck
 	EXT_XML='.new'

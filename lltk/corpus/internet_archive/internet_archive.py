@@ -4,8 +4,8 @@ from internetarchive import search_items
 
 
 DEFAULT_COLLECTION='19thcennov'
-class TextInternetArchive(Text): pass
-class InternetArchive(Corpus):
+class TextInternetArchive(BaseText): pass
+class InternetArchive(BaseCorpus):
 	TEXT_CLASS=TextInternetArchive
 	def get_collection_ids(self,collection=DEFAULT_COLLECTION,iter_as_items=False):
 		# search
