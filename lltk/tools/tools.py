@@ -36,7 +36,7 @@ URL_DEFAULT_DATA='https://www.dropbox.com/s/cq1xb85yaysezx4/lltk_default_data.zi
 
 PATH_LLTK_LOG = os.path.join(PATH_LLTK_HOME,'logs')
 
-def setup_log(to_screen=False):
+def setup_log(to_screen=True):
 	log.remove()
 	ofn=os.path.join(PATH_LLTK_LOG,"lltk_{time}.log")
 	format="""<cyan>[{time:HH:mm:ss}]</cyan> <level>{name}.{function}()</level><cyan>:{line}:</cyan> {message}"""
@@ -44,8 +44,21 @@ def setup_log(to_screen=False):
 	log.add(ofn, rotation="10MB", colorize=False, format=format)
 setup_log()
 
+# save txt
+def ensure_abs(path_root,path):
+    return os.path.join(path_root,path) if not os.path.isabs(path) else path
 
 
+
+def join_if(*l,sep):
+    return sep.join(str(x) for x in l if x)
+
+
+
+def escape_linebreaks(txt,sep='↵'):
+    return txt.strip().replace('\n',sep)
+def unescape_linebreaks(txt,sep='↵'):
+    return txt.replace(sep,'\n').strip()
 
 
 def get_from_attrs_if_not_none(obj,name):

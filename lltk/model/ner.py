@@ -166,3 +166,80 @@ def ner_txt2names_spacy(txt,incl_labels={}): # 'PERSON'
             countd[entd.text]+=1
     
     return countd
+
+
+
+
+
+
+
+
+
+TITLE_WORDS = set("""
+Miss Ms.
+Mr. Mrs.
+Lord Lady
+Baron Baroness
+Count Countess
+Sir Madam
+Queen King
+Goodman` p
+Uncle Aunt
+Father Mother
+Brother Sister
+Cousin
+""".strip().split())
+
+
+
+
+NLP_FROMTO=None
+def nlp_ner_stanza():
+    global NLP_FROMTO
+    if NLP_FROMTO is not None: return NLP_FROMTO    
+    import stanza
+    nlp = stanza.Pipeline(lang='en',verbose=False)#,processors='tokenize,ner')
+    NLP_FROMTO=nlp
+    return nlp
+
+def nlp_ner_get_doc(txt):
+    if type(txt)!=str: return txt
+    nlp = nlp_ner_stanza()
+    doc = nlp(txt)
+    return doc
+
+
+def get_propn_i_l(sentdf):
+    i=0
+    o=[]
+    propnow=[]
+    was_propn=None
+    for upos,deprel in zip(sentdf.upos,sentdf.deprel):
+        is_propn=upos=='PROPN'
+        if is_propn:
+            was_propn=True
+            o+=[i+1]
+        elif was_propn:
+            i+=1
+            was_propn=False
+            o+=['']
+        else:
+            o+=['']
+    return o
+
+
+def get_ner_sentdf(doc):
+    doc=nlp_ner_get_doc(doc)
+
+    sents=[]
+    for sent in doc.sentences:
+        for word in sent.tokens:
+            worddx=word.to_dict()[0]
+            worddx['sent_i']=len(sents)+1
+            if worddx['text'] in TITLE_WORDS: worddx['upos']='PROPN'
+            sents.append(worddx)
+    sentdf=pd.DataFrame(sents).fillna('')
+    if len(sentdf):
+        sentdf['propn_i']=get_propn_i_l(sentdf)
+        # decide_recips(sentdf)
+    return sentdf

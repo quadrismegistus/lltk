@@ -23,7 +23,7 @@ COL_ID='id'
 COL_ID_CORPUS = 'id_corpus'
 COL_ID_TEXT = 'id_text'
 IDSEP_START='_'
-
+SECTION_NAME='sections'
 
 
 
@@ -59,7 +59,7 @@ import six,shutil
 from urllib.error import HTTPError
 from yapmap import *
 import tarfile,gzip
-
+import bs4
 
 import time,logging,math
 
@@ -233,3 +233,7 @@ PATH_CLOUD_UPLOAD_CMD='bin/dropbox_uploader.sh upload'
 PATH_CLOUD_LIST_CMD='bin/dropbox_uploader.sh list'
 PATH_CLOUD_DEST = '/Share/llp_corpora'
 
+
+
+# etc
+CLAR_ID='_chadwyck/Eighteenth-Century_Fiction/richards.01'

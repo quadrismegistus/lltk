@@ -7,6 +7,18 @@ def is_corpus_obj(x):
     return issubclass(x.__class__,BaseCorpus)
 
 
+    
+def update_df(odf, opath, reset=False, force=False, index=False, verbose=False, idcols=['id'],sort_by=None, sort_by_asc=[]):
+    if not os.path.exists(opath):
+        odf=odf
+    else:
+        dfl=[odf,read_df(opath)]
+        odf=pd.concat(dfl).fillna('')
+    odf=odf.drop_duplicates(idcols,keep='last').fillna('')        
+    odf=fix_meta(odf.fillna(''))
+    if sort_by: odf=odf.sort_values(sort_by, ascending=sort_by_asc)
+    return odf
+
 
 def load_metadata_from_df_or_fn(idf,force=False,**attrs):
     if type(idf)==str: idf=read_df(idf)

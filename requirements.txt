@@ -26,3 +26,4 @@ nltk>=3.6.4
 smart_open
 tabulate
 mgzip
+openpyxl

@@ -18,6 +18,24 @@ def unhtml(raw_html):
   return cleantext
 
 
+def grab_tag_text(dom,tagname,limit=None,sep_tag=' || ',sep_ln=' | '):
+    tagnames = [tagname] if type(tagname) not in {tuple,list} else tagname
+    tags = [
+        tag
+        for tagname in tagnames
+        for tag in dom(tagname)
+    ]
+    
+    tags_txt = [
+        unhtml(str(tag)).strip().replace('\n',sep_ln)
+        for tag in tags
+    ]
+
+    otxt = sep_tag.join(tags_txt).strip()
+
+    return otxt
+
+
 
 # def load_with_anno(fn,anno_exts=['xlsx','xls','csv'],suffix='anno',**kwargs):
 
@@ -37,7 +55,18 @@ def load_with_anno_or_orig(fn,**kwargs):
 	if type(o)==pd.DataFrame is not None and len(o): return o
 	return pd.DataFrame()
 
-
+def get_anno_fn_if_exists(
+		fn,
+		anno_exts=['.anno.xlsx','.anno.xls','.anno.csv','.xlsx','.xls'],
+		**kwargs):
+	if type(fn)!=str: return fn
+	fnbase,fnext = os.path.splitext(fn)
+	for anno_ext in anno_exts:
+		if fnext != anno_ext:
+			anno_fn = fnbase + anno_ext
+			if os.path.exists(anno_fn):
+				return anno_fn
+	return fn
 
 
 

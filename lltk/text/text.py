@@ -20,14 +20,18 @@ class AuthorBunch(Bunch):
 	def meta(self): return self.corpus.meta[self.corpus.meta.id.isin(set(self.ids))]
 	
 def get_idx(
-        id='',
-        i=None,
+		id='',
+		i=None,
 		allow='_/.-',
-        **kwargs):
-    
-    if id: return ensure_snake(id,allow=allow,lower=False)
-    if not i: i=random.randint(1,100000)
-    return f'X{i:06}'
+		prefstr='X',
+		numposs=1000000,
+		numzero=None,
+		**kwargs):
+	
+	if id: return ensure_snake(id,allow=allow,lower=False)
+	if not numzero: numzero=len(str(numposs))-1
+	if not i: i=random.randint(1,numposs-1)
+	return f'{prefstr}{i:0{numzero}}'
 
 
 
@@ -36,47 +40,64 @@ class BaseText(object):
 	# BODY_TAG=None
 	XML2TXT=default_xml2txt
 	TOKENIZER=tokenize
+	SECTION_CLASS=None
+	SECTION_CORPUS_CLASS=None
 
 
 	def __init__(self,
 			id=None,
-			corpus=None,
+			_corpus=None,
+			_section_corpus=None,
+			_source=None,
+			_txt=None,
+			_xml=None,
 			# lang=None,
 			# tokenizer=None,
 			**meta):
+		self.id=get_idx(id)
+		self._source=_source
+		self._corpus=_corpus
+		self._section_corpus=_section_corpus
+		self._sections=[]
 
-		self._source=None
-		self.id=id
-		self.corpus=corpus
+		if _txt: self._txt=_txt
+		if _xml: self._xml=_xml
+
 		meta[COL_ID]=self.id
 		self._meta=meta
 		
 
-		if is_corpus_obj(corpus):
-			self.XML2TXT=corpus.XML2TXT
-			self.TOKENIZER=corpus.TOKENIZER
+		if is_corpus_obj(_corpus):
+			self.XML2TXT=_corpus.XML2TXT
+			self.TOKENIZER=_corpus.TOKENIZER
 			# if self.lang is None: self.lang=corpus.lang
 		
-		
-
+	@property
+	def corpus(self): return self._corpus
 
 	def __repr__(self):
-		co=self.corpus.name if self.corpus is not None and hasattr(self.corpus,'name') and self.corpus.name else ''
-		au,ti,yr,idx = self.author, self.title, self.year, self.id
-		l = [
-			co if co else 'Corpus',
-			au if au else 'Author',
-			ti if ti else 'Title',
-			yr if yr else 'Year',
-			idx if idx else 'ID',
-
-		]
-
-		co,au,ti,yr,idx = l
-		#o=f'[[<{self.__class__.__name__}> {au}, “{ti}” ({yr}) [{co}: {idx}]]]'
-		o=f'<{self.__class__.__name__}: {self.id} ({self.corpus.id})>'
-		#return str(self.meta)
+		# o=f'{self.__class__.__name__}({self.id},  corpus={self.corpus})'
+		# o=f'[{self.__class__.__name__}]({self.id}|{self.corpus})'
+		# o=f'[{self.__class__.__name__}]({self.corpus.id}|{self.id})'
+		o=f'[{self.__class__.__name__}]({self.addr})'
 		return o
+
+	# def __repr__(self):
+	# 	co=self.corpus.name if self.corpus is not None and hasattr(self.corpus,'name') and self.corpus.name else ''
+	# 	au,ti,yr,idx = self.author, self.title, self.year, self.id
+	# 	l = [
+	# 		co if co else 'Corpus',
+	# 		au if au else 'Author',
+	# 		ti if ti else 'Title',
+	# 		yr if yr else 'Year',
+	# 		idx if idx else 'ID',
+	# 	]
+
+	# 	co,au,ti,yr,idx = l
+	# 	#o=f'[[<{self.__class__.__name__}> {au}, “{ti}” ({yr}) [{co}: {idx}]]]'
+	# 	o=f'<{self.__class__.__name__}: {self.id} {self.corpus}>'
+	# 	#return str(self.meta)
+	# 	return o
 	
 	# convenience
 	def __getattr__(self, name):
@@ -100,13 +121,10 @@ class BaseText(object):
 		
 		res = get_from_attrs_if_not_none(self, name)
 		if res is not None: return res
-		source = get_from_attrs_if_not_none(self, 'source')
-
 		res = get_from_attrs_if_not_none(self._source, name)
 		if res is not None: return res
-		
-
 		return None
+
 
 	def get_path(t,part='texts'):
 		if not t.corpus: return ''
@@ -123,9 +141,12 @@ class BaseText(object):
 	def addr(self):
 		return f'{IDSEP_START}{self.corpus.id}{IDSEP}{self.id}'
 	@property
-	def txt(self): return clean_text(self.text_plain())
+	def txt(self): 
+		if self._txt: return self._txt
+		return clean_text(self.text_plain())
 	@property
 	def xml(self):
+		if self._xml: return self._xml
 		path_xml = self.get_path_xml()
 		if not os.path.exists(path_xml): return ''
 		with open(path_xml) as f: return clean_text(f.read())
@@ -142,7 +163,7 @@ class BaseText(object):
 	# xml
 	@property
 	def dom(self):
-		#if not self._dom:
+		if self._dom is not None: return self._dom
 		import bs4
 		xml=self.xml
 		if xml:
@@ -159,7 +180,9 @@ class BaseText(object):
 		return dom
 
 	@property
-	def source(self): return self.source_text()
+	def source(self):
+		if self._source is not None: return self._source
+		return self.source_text()
 
 	def source_text(self):
 		if self.id and self.id.startswith(IDSEP_START) and IDSEP in self.id:
@@ -172,19 +195,7 @@ class BaseText(object):
 				except KeyError:
 					pass
 
-	# def source_text(self, col_id_corpus='id_corpus', col_id_text='id_text'):
-	# 	meta = self._meta
-	# 	id_corpus = meta.get(col_id_corpus)
-	# 	id_text = meta.get(col_id_text)
-	# 	id_c = self.corpus.id if self.corpus is not None else ''
-		
-	# 	if id_corpus and id_text and id_corpus!=id_c:
-	# 		try:
-	# 			C = load(id_corpus)
-	# 			t = C.textd.get(id_text)
-	# 			return t
-	# 		except KeyError:
-	# 			pass
+
 
 	@property
 	def meta(self):
@@ -394,6 +405,70 @@ class BaseText(object):
 
 
 
+	def get_section_class(self,section_class=None):
+		if section_class is not None: return section_class
+		if self.SECTION_CLASS is not None: return self.SECTION_CLASS
+		return TextSection
+
+	def get_section_corpus_class(self,section_corpus_class=None):
+		if section_corpus_class is not None: return section_corpus_class
+		if self.SECTION_CORPUS_CLASS is not None: return self.SECTION_CORPUS_CLASS
+		from lltk.corpus.corpus import SectionCorpus
+		return SectionCorpus
+
+
+	# def init_section(self,id=None,section_class=None,**meta):
+	# 	# make id
+	# 	if id is None: id=get_idx(i=len(self._sections), prefstr='S', numposs=1000)
+	# 	id=os.path.join(self.id,id)
+	# 	# check not duplicate
+	# 	assert id not in set(x.id for x in self._sections)
+	# 	# gen obj
+	# 	section_class=self.get_section_class(section_class)
+	# 	sec = section_class(
+	# 		id,
+	# 		_source=self,
+	# 		**meta)
+	# 	self._sections.append(sec)
+	# 	return sec
+
+
+	@property
+	def sections(self,_id=SECTION_NAME,section_class=None,section_corpus_class=None):
+		SectionCorpusClass = self.get_section_corpus_class(section_corpus_class)
+		return SectionCorpusClass(
+			id=os.path.join(self.id, _id),
+			_source=self,
+			_id_allows='_/'
+		)
+	
+
+
+
+class TextSection(BaseText):
+	_type='sections'
+
+	@property
+	def corpus(self): return self._section_corpus
+
+	# @property
+	# def corpus(self): return self._section_corpus
+	
+	# @property
+	# def path(self): return os.path.join(self.source.path,self.id)
+	# @property
+	# def addr(self): return os.path.join(self.source.addr,self.id)
+	@property
+	def txt(self): return self._txt if self._txt else ''
+	@property
+	def xml(self): return self._xml if self._xml else ''
+	
+	# def __repr__(self):
+	# 	o=f'[{self.__class__.__name__}]({self.corpus.id}|{self.id})'
+	# 	return o
+
+
+	
 
 
 
@@ -414,16 +489,16 @@ def Text(id=None,corpus=None,**kwargs):
 			return text
 	
 	elif type(text_ref)==str:
-		corpus_ref_id,text_ref = to_corpus_and_id(text_ref)
-		if not corpus_ref: corpus_ref=corpus_ref_id
+		corpus_ref_id,text_ref_id = to_corpus_and_id(text_ref)
+		if not corpus_ref and corpus_ref_id:
+			# if no corpus assigned but one is here on the id
+			corpus = Corpus(corpus_ref_id,**kwargs)
+			text = corpus.text(text_ref_id,**kwargs)
+			log.debug(f'Returning text: {text}')
+			return text
 	
-	
-	# get corpus
+	# otherwise get this/default corpus
 	corpus = Corpus(corpus_ref,**kwargs)
-	log.debug(f'Getting corpus: {corpus}')
-	# add text
 	text = corpus.text(text_ref,**kwargs)
-	# ensure assigned
-	# text.corpus = corpus
 	log.debug(f'Returning text: {text}')
 	return text
