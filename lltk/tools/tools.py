@@ -473,7 +473,7 @@ def get_encoding(fn):
 	return result['encoding']
 
 
-def save_df(df,ofn,move_prev=False,index=None,key='',log=print,verbose=True):
+def save_df(df,ofn,move_prev=False,index=None,key='',log=print,verbose=False):
 	import pandas as pd
 	if os.path.exists(ofn) and move_prev: iter_move(ofn)
 	ext = os.path.splitext(ofn.replace('.gz',''))[-1][1:]

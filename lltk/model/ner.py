@@ -202,9 +202,26 @@ def nlp_ner_stanza():
     NLP_FROMTO=nlp
     return nlp
 
+
+NLP_DATE=None
+def nlp_ner_dates_stanza():
+    global NLP_DATE
+    if NLP_DATE is not None: return NLP_DATE
+    import stanza
+    nlp = stanza.Pipeline(lang='en',verbose=False,processors='tokenize,ner')
+    NLP_DATE=nlp
+    return nlp
+
+
 def nlp_ner_get_doc(txt):
     if type(txt)!=str: return txt
     nlp = nlp_ner_stanza()
+    doc = nlp(txt)
+    return doc
+
+def nlp_ner_get_doc_simple(txt):
+    if type(txt)!=str: return txt
+    nlp = nlp_ner_dates_stanza()
     doc = nlp(txt)
     return doc
 
@@ -243,3 +260,17 @@ def get_ner_sentdf(doc):
         sentdf['propn_i']=get_propn_i_l(sentdf)
         # decide_recips(sentdf)
     return sentdf
+
+
+
+def extract_ents(txt,types={"DATE","TIME"}):
+    doc = nlp_ner_get_doc(txt)
+
+    if doc.entities:
+        dates = [ent.text for ent in doc.entities if ent.type in types]
+        if dates:
+            return ' | '.join(dates)
+    return ''
+
+def extract_places(txt,**y): return extract_ents(txt,types={'FAC','ORG','GPE'})
+def extract_times(txt,**y): return extract_ents(txt,types={'DATE','TIME'})

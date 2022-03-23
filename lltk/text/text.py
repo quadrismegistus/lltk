@@ -58,7 +58,8 @@ class BaseText(object):
 		self._source=_source
 		self._corpus=_corpus
 		self._section_corpus=_section_corpus
-		self._sections=[]
+		# self._sections=[]
+		self._sections=_section_corpus
 
 		if _txt: self._txt=_txt
 		if _xml: self._xml=_xml
@@ -98,6 +99,12 @@ class BaseText(object):
 	# 	o=f'<{self.__class__.__name__}: {self.id} {self.corpus}>'
 	# 	#return str(self.meta)
 	# 	return o
+
+	def metadata(self,force=False):
+		# rewrite this
+		return self._meta
+
+
 	
 	# convenience
 	def __getattr__(self, name):
@@ -159,6 +166,12 @@ class BaseText(object):
 				return tsrc.path_xml
 		return self.path_xml
 
+	def get_path_text(self,part='txt'):
+		if part=='txt':
+			return os.path.join(self.path, 'text.txt')
+		elif part=='xml':
+			return os.path.join(self.path, 'text.xml')
+		return ''
 
 	# xml
 	@property
@@ -196,14 +209,18 @@ class BaseText(object):
 					pass
 
 
-
 	@property
-	def meta(self):
-		meta={
+	def meta(self): return self.metadata(force=False)
+	
+	def metadata(self,force=True):
+		# ?
+		if not force and self._meta: return self._meta
+		# gen
+		self._meta={
 			**(self.source.meta if self.source is not None and self.source.meta is not None else {}),
 			**self._meta
 		}
-		return meta
+		return self._meta
 		
 
 
@@ -434,13 +451,15 @@ class BaseText(object):
 
 
 	@property
-	def sections(self,_id=SECTION_NAME,section_class=None,section_corpus_class=None):
-		SectionCorpusClass = self.get_section_corpus_class(section_corpus_class)
-		return SectionCorpusClass(
-			id=os.path.join(self.id, _id),
-			_source=self,
-			_id_allows='_/'
-		)
+	def sections(self,_id=DIR_SECTION_NAME,section_class=None,section_corpus_class=None):
+		if self._sections is None:
+			SectionCorpusClass = self.get_section_corpus_class(section_corpus_class)
+			self._sections=SectionCorpusClass(
+				id=os.path.join(self.id, _id),
+				_source=self,
+				_id_allows='_/'
+			)
+		return self._sections
 	
 
 
@@ -458,10 +477,14 @@ class TextSection(BaseText):
 	# def path(self): return os.path.join(self.source.path,self.id)
 	# @property
 	# def addr(self): return os.path.join(self.source.addr,self.id)
+	# @property
+	# def txt(self): return self._txt if self._txt else ''
+	# @property
+	# def xml(self): return self._xml if self._xml else ''
 	@property
-	def txt(self): return self._txt if self._txt else ''
+	def path_txt(self): return self.get_path_text('txt')
 	@property
-	def xml(self): return self._xml if self._xml else ''
+	def path_xml(self): return self.get_path_text('xml')
 	
 	# def __repr__(self):
 	# 	o=f'[{self.__class__.__name__}]({self.corpus.id}|{self.id})'

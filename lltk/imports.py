@@ -23,8 +23,8 @@ COL_ID='id'
 COL_ID_CORPUS = 'id_corpus'
 COL_ID_TEXT = 'id_text'
 IDSEP_START='_'
-SECTION_NAME='sections'
-
+DIR_SECTION_NAME='sections'
+DIR_TEXTS_NAME='texts'
 
 
 from pprint import pprint
@@ -195,6 +195,8 @@ PATH_MANIFESTS = tools.remove_duplicates([
 	PATH_MANIFEST_USER_SHARE
 ], remove_empty=True)
 #print(PATH_MANIFESTS)
+
+ANNO_EXTS=['.anno.xlsx','.anno.xls','.anno.csv','.xlsx','.xls']
 
 EMPTY_GROUP='(all)'
 

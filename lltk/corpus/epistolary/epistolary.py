@@ -86,14 +86,17 @@ class TextSectionLetterChadwyck(TextSectionLetter):
     sep_txt='\n\n------------\n\n'
 
     @property
-    def meta(self):
+    def meta(self): return self.metadata(force=False)
+    
+    def metadata(self,force=False):
         # return self._meta
         # already good?
-        if not {'txt_front','sender_tok','recip_tok'} - set(self._meta.keys()): return self._meta
+        if not force and not {'txt_front','sender_tok','recip_tok'} - set(self._meta.keys()): return self._meta
         # have anything?
         ltr_xml=self.xml
         if not ltr_xml: return self._meta
         ltr_dom=self.dom
+        
 
         # otherwise..
         meta = self._meta
@@ -110,20 +113,34 @@ class TextSectionLetterChadwyck(TextSectionLetter):
             ltrtitle=ltr_xml.split('</collection>')[-1].split('<attbytes>')[0].strip()
         else:
             ltrtitle=''
-        meta['txt_head']=ltrtitle if ltrtitle!=meta['txt_front'] else ''
+        meta['txt_head']=ltrtitle if ltrtitle!=meta['txt_front'] else ''        
+        ltr_txt=self.txt
+        meta['txt_start'] = ltr_txt[:1000].replace('\n',' ').replace('\t',' ')
+        meta['txt_end'] = ltr_txt[-1000:].replace('\n',' ').replace('\t',' ')
         
-        ## deduce recips?
-        # self.deduce_recip(meta)
-        txt = meta.get('txt_front')
-        meta['sender_tok'], meta['recip_tok'] = get_sender_recip(txt)
+        ### NER
+        from lltk.model.ner import extract_places, extract_times, nlp_ner_get_doc_simple
+        import dateparser
+
+        meta['sender_tok'], meta['recip_tok'] = get_sender_recip(meta.get('txt_front'))
+        
+        # start of text
+        txt=meta['txt_front'] + '  ' + meta['txt_start'][:100]
+        doc=nlp_ner_get_doc_simple(txt)
+        meta['date_ner']=extract_times(doc)
+        meta['date_time']=str(dateparser.parse(meta['date_ner'])) if meta['date_ner'] else ''
+        meta['num_words']=len(tokenize_fast(ltr_txt))
+        
         return meta
 
-
     @property
-    def txt(self,*x,**y):
-        ltr_dom = remove_bad_tags(self.dom, BAD_TAGS)
+    def txt(self,*x,_force=False,**y):
+        if not _force and os.path.exists(self.path_txt):
+            with open(self.path_txt) as f:
+                return f.read()
+        dom = bs4.BeautifulSoup(self.xml)
+        ltr_dom = remove_bad_tags(dom, BAD_TAGS)
         letters = list(ltr_dom(self.LTR))
-        if not len(letters): letters=[ltr_dom]
         ltxts=[]
         for ltr in letters:
             ptxts=[]
@@ -146,29 +163,23 @@ class TextSectionLetterChadwyck(TextSectionLetter):
 
 
 class SectionCorpusLetterChadwyck(SectionCorpus):
-    # def init(self,force=False,lim=None,progress=False,**kwargs):
-    #     initd=super().init(force=force)
-    #     if not force and initd: return self._init
+    def init_text(self,*x,_force=True,**y):
+        t = super().init_text(*x,**y)
+        # save xml?
+        if _force or not os.path.exists(t.path_xml):
+            o=t.xml
+            if o:
+                ensure_dir_exists(os.path.dirname(t.path_xml))
+                with open(t.path_xml,'w') as of:
+                    of.write(o) 
         
-    #     div_strs=[
-    #         ltrxml.split(f'<{self.DIV}>',1)[-1].strip()
-    #         for ltrxml in self.xml.split(f'</{self.DIV}>')[:-1]
-    #         if f'</{self.LTR}>' in ltrxml.split(f'<{self.DIV}>',1)[-1]
-    #     ]
-    #     letter_i=0
-    #     iterr=tqdm(div_strs, disable=not progress, desc='Scanning for letters')
-        
-    #     for ltrxml in iterr:
-    #         letter_i+=1 #len(o)+1
-    #         letter_id=f'L{letter_i:03}'
-    #         ltr=self.init_text(
-    #             id=letter_id,
-    #             letter_i=letter_i,
-    #             _xml=ltrxml,
-    #         )
-        
-    #     self._init=True
-
+        # save txt?
+        if _force or not os.path.exists(t.path_txt):
+            o=t.txt
+            if o:
+                ensure_dir_exists(os.path.dirname(t.path_txt))
+                with open(t.path_txt,'w') as of:
+                    of.write(o)
 
     def init(self,force=False,lim=None,progress=True,**kwargs):
         if not force and self._init: return
@@ -176,7 +187,6 @@ class SectionCorpusLetterChadwyck(SectionCorpus):
         # from meta?
         super().init(force=force)
         if not force and self._init: return
-        
         
         log.debug(f'Initializing: {self}')
         from string import ascii_lowercase
@@ -215,7 +225,7 @@ class SectionCorpusLetterChadwyck(SectionCorpus):
                     letter_id=f'L{letter_i:03}{letter_subid}'
 
                     _xml=clean_text(str(ltrdom))
-                    if ldomi==0: _xml=_xmldiv_hdr+_xml
+                    if ldomi==0: _xml=_xmldiv_hdr + _xml[_xml.index(f'<{self.LTR}'):]
 
                     odx=dict(
                         id=letter_id,
@@ -242,7 +252,7 @@ class SectionCorpusLetterChadwyck(SectionCorpus):
         # o=[]
         oi=0
         for ltrdom in dom(self.LTR):
-            ltrdom.odx['_xml'] = ltrdom.odx['_xml_ref'][:-3] + ltrdom.odx['_xml'][1+len(self.LTR):]
+            # ltrdom.odx['_xml'] = ltrdom.odx['_xml_ref'][:-3] + ltrdom.odx['_xml'][1+len(self.LTR):]
             okeys=[
                 # 'id',
                 'id_orig',

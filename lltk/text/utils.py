@@ -39,7 +39,7 @@ def grab_tag_text(dom,tagname,limit=None,sep_tag=' || ',sep_ln=' | '):
 
 # def load_with_anno(fn,anno_exts=['xlsx','xls','csv'],suffix='anno',**kwargs):
 
-def load_with_anno(fn,anno_exts=['.anno.xlsx','.anno.xls','.anno.csv','.xlsx','.xls'],suffix='anno',**kwargs):
+def load_with_anno(fn,anno_exts=ANNO_EXTS,suffix='anno',**kwargs):
 	fnbase,fnext = os.path.splitext(fn)
 	for anno_ext in anno_exts:
 		if fnext != anno_ext:
@@ -69,6 +69,42 @@ def get_anno_fn_if_exists(
 	return fn
 
 
+
+
+def merge_read_dfs_iter(fns_or_dfs, opt_exts=[]):
+	odd=defaultdict(dict)
+	for fn_or_df in fns_or_dfs:
+		yield from readgen(fn_or_df,progress=False)
+
+		if type(fn_or_df)==str:
+			for opt_ext in opt_exts:
+				newfn = os.path.splitext(fn_or_df)[0]+opt_ext
+				if os.path.exists(newfn):
+					yield from readgen(newfn,progress=False)
+			
+
+def merge_read_dfs_dict(fns_or_dfs, opt_exts=[], on='id', fillna=None):
+	odd=defaultdict(dict)
+	iterr=merge_read_dfs_iter(fns_or_dfs, opt_exts=opt_exts)
+	for dx in iterr:
+		if on not in dx: continue
+		onx = dx[on]
+		for k,v in dx.items():
+			if v is not None and (type(v)!=str or len(v)):
+				if fillna is not None and v is np.nan: v=fillna
+				odd[onx][k]=v
+	return odd
+
+def merge_read_dfs(fns_or_dfs, opt_exts=[], on='id'):
+	odd = merge_read_dfs_dict(fns_or_dfs, opt_exts=opt_exts, on=on)
+	index = list(odd.keys())
+	rows = [odd[i] for i in index]
+	odf=pd.DataFrame(rows, index=index)
+	return odf
+
+
+def merge_read_dfs_anno(fns_or_dfs, on='id'):
+	return merge_read_dfs(fns_or_dfs, opt_exts=ANNO_EXTS, on=on)
 
 
 

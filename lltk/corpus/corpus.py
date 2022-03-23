@@ -176,7 +176,8 @@ class BaseCorpus(object):
             #t=self.init_text(t,**kwargs)
 
         # assign by id
-        self._textd[t.id]=t
+        if t is not None and issubclass(t.__class__, BaseText):
+            self._textd[t.id]=t
 
     
     @property
@@ -198,7 +199,7 @@ class BaseCorpus(object):
     def authors(self,authorkey='author',titlekey='title',idkey=COL_ID):
         if not hasattr(self,'_authors') or not self._authors:
             if self._metadf is None or self._textd is None: 
-                self.load_metadata()
+                self.metadata()
                 return self.authors
 
             self._authors=au=Bunch()
@@ -221,9 +222,11 @@ class BaseCorpus(object):
 
     def init_meta(self,*x,**y):
         meta_files_or_dfs=[self.path_metadata_init,self.path_metadata,self._metadf]
-        for mdf_or_fn in meta_files_or_dfs:
-            mdf_or_fn_anno = get_anno_fn_if_exists(mdf_or_fn)
-            yield from readgen(mdf_or_fn_anno,progress=False)
+        # for mdf_or_fn in meta_files_or_dfs:
+        #     mdf_or_fn_anno = get_anno_fn_if_exists(mdf_or_fn)
+        #     yield from readgen(mdf_or_fn_anno,progress=False)
+        odd = merge_read_dfs_dict(meta_files_or_dfs, opt_exts=ANNO_EXTS, on=self.col_id, fillna='')
+        yield from odd.values()
 
     # def init(self, meta_final=None, other_meta=[], expand_meta=True, force=False,**kwargs):
     def init(self,force=False,meta_final=[],**kwargs):
@@ -243,16 +246,18 @@ class BaseCorpus(object):
 
 
 
-    def load_metadata(self,force=False,progress=True,lim=None,**kwargs):
+    def metadata(self,force=False,force_save=True,progress=True,lim=None,**kwargs):
         if force or self._metadf is None:
             log.debug('Generating metadata dataframe')
             self._metadf = pd.DataFrame(
-                t.meta
+                t.metadata(force=force)
                 for t in tqdm(self.texts()[:lim],disable=not progress,desc='Iterating over texts')
+                if t is not None
+                and t.metadata is not None
             )
             try:
                 self._metadf = self._metadf.set_index(self.col_id).fillna('')
-                self.save_metadata(force=force)
+                self.save_metadata(force=force_save)
             except KeyError:
                 log.error(f'ID key not present in metadf: {self.col_id}')
                 pass
@@ -272,7 +277,7 @@ class BaseCorpus(object):
     #         return self.TEXT_CLASS(idx,self,meta=dict(meta))
 
     @property
-    def meta(self): return self.load_metadata()
+    def meta(self): return self.metadata()
 
     @property
     def textd(self):
@@ -283,8 +288,8 @@ class BaseCorpus(object):
     def metadf(self):
         return self.meta.reset_index() if len(self.meta) else self.meta
 
-    @property
-    def metadata(self,*x,**y): return self.meta
+    # @property
+    # def metadata(self,*x,**y): return self.meta
 
 
 
@@ -714,7 +719,7 @@ class BaseCorpus(object):
         return os.path.join(PATH_CORPUS,self.id)
     @property
     def path_texts(self):
-        return os.path.join(self.path_home,'texts')
+        return os.path.join(self.path,DIR_TEXTS_NAME)
     # @property
     # def path(self): return self.path_root
 
@@ -1258,7 +1263,7 @@ class MetaCorpus(BaseCorpus):
 
 
 class SectionCorpus(BaseCorpus):
-    # def __init__(self,_source,_id=SECTION_NAME):
+    # def __init__(self,_source,_id=DIR_SECTION_NAME):
     #     self._source=_source
     #     self._id=_id
     #     for k,v in MANIFEST_DEFAULTS.items():
@@ -1281,7 +1286,9 @@ class SectionCorpus(BaseCorpus):
     # @property
     # def id(self): return os.path.join(self.source.id, self._id)
     @property
-    def path(self): return os.path.join(self.source.corpus.path_texts, self.id)
+    def path(self):
+        return os.path.join(self.source.path, DIR_SECTION_NAME)
+    
     @property
     def addr(self): return f'{IDSEP_START}{self.source.corpus.id}{IDSEP}{self.id}'
 
