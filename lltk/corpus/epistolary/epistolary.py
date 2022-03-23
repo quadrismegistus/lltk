@@ -279,24 +279,25 @@ class SectionCorpusLetterChadwyck(SectionCorpus):
 
 
 
-class TextEpistolaryChadwyck(BaseText):
+
+
+class TextEpistolary(BaseText):
+    DIV_VOL=''
+    DIV_LTR=''
+    DIV=''
+    LTR=''
+    SECTION_CLASS=TextSectionLetter
+    SECTION_DIR_NAME='letters'
+
+    # @property
+    # def letters(self): return []
+
+class TextEpistolaryChadwyck(TextEpistolary):
     DIV_VOL='div2'
     DIV_LTR='div3'
     LTR='letter'
     SECTION_CLASS=TextSectionLetterChadwyck
     SECTION_CORPUS_CLASS=SectionCorpusLetterChadwyck
-
-
-
-
-class TextEpistolary(BaseText):
-    DIV=''
-    LTR=''
-    SECTION_CLASS=TextSectionLetter
-
-    @property
-    def letters(self): return []
-
 
 class Epistolary(BaseCorpus):
     NAME='Epistolary'
@@ -304,13 +305,19 @@ class Epistolary(BaseCorpus):
     TEXT_CLASS=TextEpistolary
     CORPORA_TO_START_WITH = ['Chadwyck']
 
-    def init(self,*x,**y):
-        super().init(*x,**y)
+    # def init(self,*x,**y):
+    #     super().init(*x,**y)
         
-        # recast text objects by corpus
-        for idx,t in self._textd.items():
-            if t.source and t.source.corpus.id=='chadwyck':
-                t.__class__ = TextEpistolaryChadwyck
+    #     # recast text objects by corpus
+    #     for idx,t in self._textd.items():
+    #         if t.source and t.source.corpus.id=='chadwyck':
+    #             t.__class__ = TextEpistolaryChadwyck
+
+    def init_text(self,*args,**kwargs):
+        t=super().init_text(*args,**kwargs)
+        if t.source and t.source.corpus.id=='chadwyck':
+            t.__class__ = TextEpistolaryChadwyck
+        return t
 
 
 ##

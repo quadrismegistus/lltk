@@ -140,32 +140,46 @@ class BaseCorpus(object):
 
     
     # def init_text(self,id=None,corpus=None,meta={},**kwargs):
-    def init_text(self,id=None,**kwargs):
+    def init_text(self,id=None,_source=None,**kwargs):
         # log.debug(f'{self}: Initializing text with id="{id}"')
-        if id is None: id=get_idx()
-        ## get source?
-        id_corpus,id_text = to_corpus_and_id(id)
-        
-        source_text = None
-        if id_corpus:
-            if id_corpus==self.id:
-                # can't be my own source
-                id=id_text
-            else:
-                # log.debug(f'Need to get new corpus: {id_corpus}')
-                # get the referenced text
-                source_corpus = Corpus(id_corpus)
-                # assign as source
-                source_text = source_corpus.text(id_text)
+        if issubclass(_source.__class__, BaseText):
+            # print(f'{_source} is Text')
+            source_text = _source
+            if id is None: id = source_text.addr
+        elif issubclass(id.__class__, BaseText):
+            # print(f'{id} is Text')
+            source_text = id
+            id = source_text.addr
+        else:
+            if id is None: id=get_idx()
+            ## get source?
+            id_corpus,id_text = to_corpus_and_id(id)
+            
+            source_text = None
+            if id_corpus:
+                if id_corpus==self.id:
+                    # can't be my own source
+                    id=id_text
+                else:
+                    # log.debug(f'Need to get new corpus: {id_corpus}')
+                    # get the referenced text
+                    source_corpus = Corpus(id_corpus)
+                    # assign as source
+                    source_text = source_corpus.text(id_text)
         
         ## get text
         text = self.TEXT_CLASS(
             id,
             _corpus = self,
+            _source = source_text,
             **kwargs
         )
-        text._source=source_text
-        
+
+        ### add as well
+        self.add_text(text)
+
+        # need to redo meta
+
         # log.debug(f'{self}: Returning text: {text}')
         return text
     
@@ -177,7 +191,9 @@ class BaseCorpus(object):
 
         # assign by id
         if t is not None and issubclass(t.__class__, BaseText):
-            self._textd[t.id]=t
+            if t.id not in self._textd:
+                self._textd[t.id]=t
+                self._metadf=None # redo meta
 
     
     @property
@@ -222,6 +238,7 @@ class BaseCorpus(object):
 
     def init_meta(self,*x,**y):
         meta_files_or_dfs=[self.path_metadata_init,self.path_metadata,self._metadf]
+        # log.debug(meta_files_or_dfs)
         # for mdf_or_fn in meta_files_or_dfs:
         #     mdf_or_fn_anno = get_anno_fn_if_exists(mdf_or_fn)
         #     yield from readgen(mdf_or_fn_anno,progress=False)
@@ -235,10 +252,10 @@ class BaseCorpus(object):
         i=0
         for dx in self.init_meta(meta_final):
             if not self.col_id in dx: continue
-            # init text from meta
+            # init text from meta -- will add itself
             t = self.init_text(**dx)
             # add text to textd
-            self.add_text(t)
+            # self.add_text(t)
             i+=1
         if i: self._init=True
         return
@@ -246,23 +263,26 @@ class BaseCorpus(object):
 
 
 
-    def metadata(self,force=False,force_save=True,progress=True,lim=None,**kwargs):
-        if force or self._metadf is None:
-            log.debug('Generating metadata dataframe')
-            self._metadf = pd.DataFrame(
+    def metadata(self,force=False,force_inner=True,force_save=False,progress=True,lim=None,**kwargs):
+        self.init()
+        mdf=self._metadf
+        if not force and mdf is not None and len(mdf) and len(mdf.columns):
+            pass
+        #elif not force and os.path.exists(self.path_metadata):
+        #    mdf=self.load_metadata_file()
+        else:
+            mdf=pd.DataFrame(
                 t.metadata(force=force)
                 for t in tqdm(self.texts()[:lim],disable=not progress,desc='Iterating over texts')
                 if t is not None
                 and t.metadata is not None
             )
-            try:
-                self._metadf = self._metadf.set_index(self.col_id).fillna('')
-                self.save_metadata(force=force_save)
-            except KeyError:
-                log.error(f'ID key not present in metadf: {self.col_id}')
-                pass
-            log.debug(f'Returning dataframe of {self._metadf.shape} dimensions')
-        return self._metadf
+        # set
+        if self.col_id in set(mdf.columns): mdf=mdf.set_index(self.col_id)
+        self._metadf=mdf
+        # self.save_metadata(force=force_save)
+        # log.debug(f'Returning dataframe of {self._metadf.shape} dimensions')
+        return mdf
 
     def save_metadata(self,*x,force=False,**y):
         if self._metadf is not None:
@@ -277,7 +297,7 @@ class BaseCorpus(object):
     #         return self.TEXT_CLASS(idx,self,meta=dict(meta))
 
     @property
-    def meta(self): return self.metadata()
+    def meta(self): return self.metadata(force=False)
 
     @property
     def textd(self):
@@ -1263,22 +1283,25 @@ class MetaCorpus(BaseCorpus):
 
 
 class SectionCorpus(BaseCorpus):
-    # def __init__(self,_source,_id=DIR_SECTION_NAME):
-    #     self._source=_source
+    # def __init__(self,*args,_id=None,**kwargs):
+    #     super().__init__(*args,_id=_id,**kwargs)
     #     self._id=_id
-    #     for k,v in MANIFEST_DEFAULTS.items():
-    #         setattr(self,k,v)
-    #     self._metadf=None
-    #     self._texts=None
-    #     self._textd=defaultdict(lambda: None)
+    # # def __init__(self,_source,_id=DIR_SECTION_NAME):
+    # #     self._source=_source
+    # #     self._id=_id
+    # #     for k,v in MANIFEST_DEFAULTS.items():
+    # #         setattr(self,k,v)
+    # #     self._metadf=None
+    # #     self._texts=None
+    # #     self._textd=defaultdict(lambda: None)
 
-    # def __getattr__(self,name):
-    #     res = get_from_attrs_if_not_none(self, name)
-    #     if res is None:
-    #         res = get_from_attrs_if_not_none(self._source, name)
-    #     if res is not None and name.startswith('path_') and not os.path.isabs(res):
-    #         res=os.path.join(self.source.path, res)
-    #     return res
+    # # def __getattr__(self,name):
+    # #     res = get_from_attrs_if_not_none(self, name)
+    # #     if res is None:
+    # #         res = get_from_attrs_if_not_none(self._source, name)
+    # #     if res is not None and name.startswith('path_') and not os.path.isabs(res):
+    # #         res=os.path.join(self.source.path, res)
+    # #     return res
 
     
     @property
@@ -1287,7 +1310,10 @@ class SectionCorpus(BaseCorpus):
     # def id(self): return os.path.join(self.source.id, self._id)
     @property
     def path(self):
-        return os.path.join(self.source.path, DIR_SECTION_NAME)
+        return os.path.join(self.source.path, self._id)
+
+    def path_(self,_id=DIR_SECTION_NAME):
+        return os.path.join(self.source.path, _id)
     
     @property
     def addr(self): return f'{IDSEP_START}{self.source.corpus.id}{IDSEP}{self.id}'

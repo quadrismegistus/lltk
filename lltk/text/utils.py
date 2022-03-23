@@ -80,6 +80,7 @@ def merge_read_dfs_iter(fns_or_dfs, opt_exts=[]):
 			for opt_ext in opt_exts:
 				newfn = os.path.splitext(fn_or_df)[0]+opt_ext
 				if os.path.exists(newfn):
+					log.debug(f'Overwriting dataframe with data from: {newfn}')
 					yield from readgen(newfn,progress=False)
 			
 

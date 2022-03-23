@@ -5,7 +5,7 @@ from lltk.imports import *
 class AuthorBunch(Bunch):
 	def __iter__(self):
 		for v in self.__dict__.values():
-			if issubclass(v.__class__, Text):
+			if issubclass(v.__class__, BaseText):
 				yield v
 	@property
 	def ti(self): return list(self)
@@ -42,6 +42,9 @@ class BaseText(object):
 	TOKENIZER=tokenize
 	SECTION_CLASS=None
 	SECTION_CORPUS_CLASS=None
+	SECTION_DIR_NAME=DIR_SECTION_NAME
+
+	def __eq__(self,other): return self.addr == other.addr
 
 
 	def __init__(self,
@@ -59,7 +62,7 @@ class BaseText(object):
 		self._corpus=_corpus
 		self._section_corpus=_section_corpus
 		# self._sections=[]
-		self._sections=_section_corpus
+		self._sections={}
 
 		if _txt: self._txt=_txt
 		if _xml: self._xml=_xml
@@ -210,11 +213,11 @@ class BaseText(object):
 
 
 	@property
-	def meta(self): return self.metadata(force=False)
+	def meta(self): return self.metadata(force=True)
 	
 	def metadata(self,force=True):
 		# ?
-		if not force and self._meta: return self._meta
+		if not force and self._meta and len(self._meta)>1: return self._meta
 		# gen
 		self._meta={
 			**(self.source.meta if self.source is not None and self.source.meta is not None else {}),
@@ -450,16 +453,24 @@ class BaseText(object):
 	# 	return sec
 
 
+	# @property
 	@property
-	def sections(self,_id=DIR_SECTION_NAME,section_class=None,section_corpus_class=None):
-		if self._sections is None:
+	def letters(self): return self.sections(_id='letters')
+	@property
+	def chapters(self): return self.sections(_id='chapters')
+
+	def sections(self,_id=None,section_class=None,section_corpus_class=None,force=False):
+		if _id is None: _id=self.SECTION_DIR_NAME
+		if force or _id not in self._sections:
 			SectionCorpusClass = self.get_section_corpus_class(section_corpus_class)
-			self._sections=SectionCorpusClass(
-				id=os.path.join(self.id, _id),
+			self._sections[_id]=SectionCorpusClass(
+				# id=os.path.join(self.id, _id),
+				id=_id,
 				_source=self,
-				_id_allows='_/'
+				_id_allows='_/',
+				_id=_id
 			)
-		return self._sections
+		return self._sections.get(_id)
 	
 
 
