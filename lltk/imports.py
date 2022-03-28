@@ -2,7 +2,7 @@ import warnings
 warnings.filterwarnings('ignore')
 import multiprocessing as mp
 try:
-	mp.set_start_method('spawn')
+	mp.set_start_method('fork')
 except RuntimeError:
 	pass
 
@@ -25,6 +25,10 @@ COL_ID_TEXT = 'id_text'
 IDSEP_START='_'
 DIR_SECTION_NAME='sections'
 DIR_TEXTS_NAME='texts'
+DIR_CHARS_NAME='characters'
+BOOKNLPD={}
+
+
 
 
 from pprint import pprint
@@ -238,4 +242,6 @@ PATH_CLOUD_DEST = '/Share/llp_corpora'
 
 
 # etc
-CLAR_ID='_chadwyck/Eighteenth-Century_Fiction/richards.01'
+CLARISSA_ID=CLAR_ID=f'_epistolary/_chadwyck/Eighteenth-Century_Fiction/richards.01'
+MASQ_ID='_epistolary/_chadwyck/Eighteenth-Century_Fiction/haywood.13'
+EVELINA_ID = '_epistolary/_chadwyck/Eighteenth-Century_Fiction/burney.01'

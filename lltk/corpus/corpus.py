@@ -125,8 +125,20 @@ class BaseCorpus(object):
 
     # get/make/add
     def text(self,id=None,init=True,add=True,**kwargs):
-        id=get_idx(id)
+        if issubclass(id.__class__, BaseText):
+            if id.corpus is not None and self.corpus is not None and id.corpus.id == self.corpus.id:
+                return id
+            else:
+                id=id.addr
+        else:
+            if id is None:id=get_idx(id)
+            id_corpus,id_text = to_corpus_and_id(id)
+            if id_corpus==self.id: id=id_text
+
+        # get obj already?
         obj=self.get_text(id)
+
+        # create new?
         if obj is None and init:
             obj=self.init_text(id=id,**kwargs)
         if obj is not None and add:
@@ -176,7 +188,7 @@ class BaseCorpus(object):
         )
 
         ### add as well
-        self.add_text(text)
+        # self.add_text(text)
 
         # need to redo meta
 
@@ -255,7 +267,7 @@ class BaseCorpus(object):
             # init text from meta -- will add itself
             t = self.init_text(**dx)
             # add text to textd
-            # self.add_text(t)
+            self.add_text(t)
             i+=1
         if i: self._init=True
         return
@@ -263,7 +275,7 @@ class BaseCorpus(object):
 
 
 
-    def metadata(self,force=False,force_inner=True,force_save=False,progress=True,lim=None,**kwargs):
+    def metadata(self,force=False,force_inner=True,force_save=False,progress=False,lim=None,**kwargs):
         self.init()
         mdf=self._metadf
         if not force and mdf is not None and len(mdf) and len(mdf.columns):
@@ -1283,44 +1295,16 @@ class MetaCorpus(BaseCorpus):
 
 
 class SectionCorpus(BaseCorpus):
-    # def __init__(self,*args,_id=None,**kwargs):
-    #     super().__init__(*args,_id=_id,**kwargs)
-    #     self._id=_id
-    # # def __init__(self,_source,_id=DIR_SECTION_NAME):
-    # #     self._source=_source
-    # #     self._id=_id
-    # #     for k,v in MANIFEST_DEFAULTS.items():
-    # #         setattr(self,k,v)
-    # #     self._metadf=None
-    # #     self._texts=None
-    # #     self._textd=defaultdict(lambda: None)
-
-    # # def __getattr__(self,name):
-    # #     res = get_from_attrs_if_not_none(self, name)
-    # #     if res is None:
-    # #         res = get_from_attrs_if_not_none(self._source, name)
-    # #     if res is not None and name.startswith('path_') and not os.path.isabs(res):
-    # #         res=os.path.join(self.source.path, res)
-    # #     return res
-
-    
     @property
     def source(self): return self._source
-    # @property
-    # def id(self): return os.path.join(self.source.id, self._id)
     @property
     def path(self):
         return os.path.join(self.source.path, self._id)
-
     def path_(self,_id=DIR_SECTION_NAME):
         return os.path.join(self.source.path, _id)
-    
     @property
     def addr(self): return f'{IDSEP_START}{self.source.corpus.id}{IDSEP}{self.id}'
-
     def get_section_class(self,*x,**y): return self.source.get_section_class(*x,**y)
-
-
 
     def init_text(self,id=None,section_class=None,**meta):
         # make id
@@ -1337,9 +1321,27 @@ class SectionCorpus(BaseCorpus):
             sec=self._textd[id]
         return sec
 
+    @property
+    def txt(self): return self.get_txt()
 
-
-
+    def get_txt(self,extra_txt_pref=[],force=False,**kwargs):
+        if force or self._txt is None or self._txt_offsets is None:
+            otxt=''
+            offset=0
+            offsets={}
+            for t in self.texts():
+                txt=t.txt
+                if extra_txt_pref:
+                    txt_pref='\n\n\n'.join(t.meta.get(x,'') for x in extra_txt_pref)
+                    txt=txt_pref+'\n\n\n'+txt
+                txt+='\n\n\n\n\n'
+                offset2=offset + len(txt)
+                otxt+=txt
+                offsets[t.id]=(offset,offset2)
+                offset=offset2
+            self._txt_offsets=offsets
+            self._txt=otxt
+        return self._txt
 
 
 

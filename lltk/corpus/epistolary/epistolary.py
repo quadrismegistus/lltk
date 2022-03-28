@@ -6,28 +6,9 @@ from lltk.corpus.corpus import SectionCorpus
 CLAR_ID=f'_chadwyck/Eighteenth-Century_Fiction/richards.01'
 CLAR_IDX=f'Eighteenth-Century_Fiction/richards.01'
 
-chardata_metakeys_initial = dict(
-    char_race='',
-    char_gender='',
-    char_class='',
-    char_geo_birth='',
-    char_geo_marriage='',
-    char_geo_death='',
-    char_geo_begin='',
-    char_geo_middle='',
-    char_geo_end='',
-)
 
 
 
-
-def get_canon():
-    Chad = load('Chadwyck')
-    return dict(
-        clarissa = Chad.textd['Eighteenth-Century_Fiction/richards.01'],
-        pamela=Chad.textd['Eighteenth-Century_Fiction/richards.04'],
-        evelina=Chad.textd['Eighteenth-Century_Fiction/burney.01'],
-    )
 
 def get_clarissa():
     clarissa = get_canon()['clarissa']
@@ -49,35 +30,6 @@ def get_clarissa_id():
 
 
 class TextSectionLetter(TextSection): pass
-    # def deduce_recip(self, meta=None,keys=['txt_front','txt_head']):
-    #     from lltk.model.ner import get_ner_sentdf
-    #     ltr_meta=meta if meta is not None else self._meta
-
-    #     txt = '     '.join(
-    #         ltr_meta.get(argname,'').replace(' | ',' ')
-    #         for argname in keys
-    #     )
-        
-    #     byline_sentdf = None
-    #     sender,recip = '?','?'
-        
-    #     if txt:
-    #         if not ltr_meta.get('sender_tok'):
-    #             if byline_sentdf is None: byline_sentdf = deduce_recip(txt)
-    #             if 'epistolary_role' in set(byline_sentdf.columns):
-    #                 sender=' '.join(byline_sentdf[byline_sentdf.epistolary_role=='sender'].text)
-
-
-
-    #         ## recip
-    #         if not ltr_meta.get('recip_tok'):
-    #             if byline_sentdf is None: byline_sentdf = deduce_recip(txt)
-    #             if 'epistolary_role' in set(byline_sentdf.columns):
-    #                 recip=' '.join(byline_sentdf[byline_sentdf.epistolary_role=='recip'].text)
-        
-    #     ltr_meta['sender_tok']=sender if sender else '?'
-    #     ltr_meta['recip_tok']=recip if recip else '?'
-
 
 
 class TextSectionLetterChadwyck(TextSectionLetter):
@@ -91,7 +43,8 @@ class TextSectionLetterChadwyck(TextSectionLetter):
     def metadata(self,force=False):
         # return self._meta
         # already good?
-        if not force and not {'txt_front','sender_tok','recip_tok'} - set(self._meta.keys()): return self._meta
+        # if not force and not {'txt_front','sender_tok','recip_tok'} - set(self._meta.keys()): return self._meta
+        if not force and len(self._meta)>2: return self._meta
         # have anything?
         ltr_xml=self.xml
         if not ltr_xml: return self._meta
@@ -110,19 +63,20 @@ class TextSectionLetterChadwyck(TextSectionLetter):
         for newtag,xtag in meta_map.items():
             meta[newtag]=clean_text(grab_tag_text(ltr_dom, xtag, sep_ln=' ', sep_tag=' | ')) if xtag else ''
         if '</collection>' in ltr_xml and '<attbytes>' in ltr_xml:
-            ltrtitle=ltr_xml.split('</collection>')[-1].split('<attbytes>')[0].strip()
+            ltrtitle=clean_text(unhtml(ltr_xml.split('</collection>')[-1].split('<attbytes>')[0].strip()))
         else:
             ltrtitle=''
         meta['txt_head']=ltrtitle if ltrtitle!=meta['txt_front'] else ''        
         ltr_txt=self.txt
-        meta['txt_start'] = ltr_txt[:1000].replace('\n',' ').replace('\t',' ')
-        meta['txt_end'] = ltr_txt[-1000:].replace('\n',' ').replace('\t',' ')
+        meta['txt_start'] = clean_text(ltr_txt[:1000].replace('\n',' ').replace('\t',' '))
+        meta['txt_end'] = clean_text(ltr_txt[-1000:].replace('\n',' ').replace('\t',' '))
         
         ### NER
         from lltk.model.ner import extract_places, extract_times, nlp_ner_get_doc_simple
         import dateparser
 
-        meta['sender_tok'], meta['recip_tok'] = get_sender_recip(meta.get('txt_front'))
+        itxt=meta.get('txt_head','') + '  ...  ' + meta.get('txt_front','')
+        meta['sender_tok'], meta['recip_tok'] = get_sender_recip(itxt)
         
         # start of text
         txt=meta['txt_front'] + '  ' + meta['txt_start'][:100]
@@ -138,6 +92,7 @@ class TextSectionLetterChadwyck(TextSectionLetter):
         if not _force and os.path.exists(self.path_txt):
             with open(self.path_txt) as f:
                 return f.read()
+    
         dom = bs4.BeautifulSoup(self.xml)
         ltr_dom = remove_bad_tags(dom, BAD_TAGS)
         letters = list(ltr_dom(self.LTR))
@@ -158,11 +113,20 @@ class TextSectionLetterChadwyck(TextSectionLetter):
             ltrtxt=self.sep_paras.join(ptxts).strip()
             ltxts.append(ltrtxt)
         otxt=self.sep_txt.join(ltxts).strip()
+        pref=self.meta.get('txt_front')
+        if pref: otxt=pref+'\n\n\n'+otxt
         return clean_text(otxt)
 
 
+class SectionCorpusLetter(SectionCorpus):
+    pass
 
-class SectionCorpusLetterChadwyck(SectionCorpus):
+
+
+class SectionCorpusLetterChadwyck(SectionCorpusLetter):
+    @property
+    def txt(self): return self.get_txt(extra_txt_pref=['txt_front'])
+
     def init_text(self,*x,_force=True,**y):
         t = super().init_text(*x,**y)
         # save xml?
@@ -291,6 +255,29 @@ class TextEpistolary(BaseText):
 
     # @property
     # def letters(self): return []
+
+    def characters(self):
+        if self._characters is None:
+            from lltk.model.characters import CharacterSystem
+            
+            CS=CharacterSystem(self)
+            df = self.letters.meta.reset_index()
+            df = df[[col for col in df.columns if col not in {'txt_start','txt_end'}]]
+            df['txt']=[self.letters.text(idx).txt for idx in df['id']]
+
+            CS.init_events(
+                df=df,
+                event_type='letter',
+                col_sender='sender_tok',
+                col_recip='recip_tok',
+                col_t='letter_i'
+            )
+            self._characters=CS
+        return self._characters
+
+
+
+
 
 class TextEpistolaryChadwyck(TextEpistolary):
     DIV_VOL='div2'
@@ -429,3 +416,19 @@ def get_letter_network_from_dfletters(dfletters,progress=False,*x,**y):
     return g
 
 
+def get_canon(idx=None):
+    C = Epistolary()
+    d=dict(
+        clarissa=C.text('_chadwyck/Eighteenth-Century_Fiction/richards.01'),
+        pamela=C.text('_chadwyck/Eighteenth-Century_Fiction/richards.04'),
+        evelina=C.text('_chadwyck/Eighteenth-Century_Fiction/burney.01'),
+    )
+    return d if not idx else d.get(idx)
+
+
+
+
+# t = C.init_text('_chadwyck/Eighteenth-Century_Fiction/richards.01')    # clarissa
+# # t = C.init_text('_chadwyck/Eighteenth-Century_Fiction/richards.04')  # pamela
+# # t = C.init_text('_chadwyck/Eighteenth-Century_Fiction/smollett.03')  # clinker
+# # t=C.init_text('_chadwyck/Eighteenth-Century_Fiction/brookefm.02')    # julia mandeville

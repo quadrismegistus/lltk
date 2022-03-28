@@ -1,8 +1,5 @@
 from lltk.imports import *
 
-from lltk.imports import *
-
-
 
 class CharacterNetwork:
 
@@ -19,11 +16,6 @@ class CharacterNetwork:
         # make tables
         self.nx2df()
     
-        
-
-
-
-
 
     ##############
     # Dynamic networks
@@ -359,7 +351,14 @@ def layout_graph_force(g,pos=None,iterations=10000,**attrs):
         # print(g.nodes())
         forceatlas2=ForceAtlas2(**newattrs)
         # print('inp',pos,'?!?!?')
-        pos=dict(forceatlas2.forceatlas2_networkx_layout(g,pos=pos,iterations=iterations).items())
+        #print(type(pos), pos.get('ClarisasHarlowe') if type(pos)==dict else None)
+        pos=dict(
+            forceatlas2.forceatlas2_networkx_layout(
+                g,
+                pos=pos,
+                iterations=iterations
+            ).items()
+        )
         # print('\nres',pos,'\n')
         return pos
     
@@ -1134,18 +1133,116 @@ def rescale_weights(weights, min_size=1, max_size=10, max_val=None):
     return weights
 
 
+# def draw_nx(
+#         g,
+#         # ax=None,
+#         pos=None,
+#         final_g=None,
+#         size_by='degree',weight_by='weight',
+#         min_weight_size=1,max_weight_size=10,max_weight=None,
+#         color_by='color',color_default='black',
+#         plot_width=20,
+#         plot_height=10,
+#         save_to='',
+#         show=True,
+#         ):
+#     if not pos: pos = layout_graph_force(g if not final_g else final_g)
+
+#     import matplotlib
+#     import matplotlib.pyplot as plt
+#     matplotlib.rc('figure', figsize=(plot_width, plot_height))
+    
+    
+#     # get stats
+#     if size_by in set(netstat_keys): netstat_nx(g)
+#     sizes = pd.Series([d.get(size_by,0) for a,d in g.nodes(data=True)])
+#     weights = pd.Series([d.get(weight_by,0) for a,b,d in g.edges(data=True)])
+#     edge_colors = [d.get(color_by,color_default) for a,b,d in g.edges(data=True)]
+    
+
+#     fig, ax = plt.subplots()
+#     if not show: plt.close()
+
+#     nxfig=nx.draw_networkx(
+#         g,
+#         ax=ax,
+#         pos=pos,
+#         node_size=rescale_weights(sizes,min_size=1,max_size=1000),
+#         width=rescale_weights(weights,min_size=min_weight_size,max_size=max_weight_size,max_val=max_weight),
+#         edge_color=edge_colors
+#     )
+#     if save_to: fig.savefig(save_to)
+
+#     if show:
+#         plt.show()
+#         plt.close()
+
+
+
+# def draw_nx_dynamic(iter_g,pos=None,final_g=None, fps=10, ofn='fig.dynamic_graph.mp4',**kwargs):
+#     import moviepy.video.io.ImageSequenceClip
+#     from base64 import b64encode
+#     from IPython.display import HTML
+#     import matplotlib.pyplot as plt
+#     plt.ioff()
+
+#     if not pos and final_g: pos = layout_graph_force(final_g)
+
+
+#     with tempfile.TemporaryDirectory() as odir:    
+#         maxval = max(d.get('weight',1) for a,b,d in final_g.edges(data=True))
+
+#         ofn_l=[]
+#         for gi,g in enumerate(iter_g):
+#             ofn_png = os.path.join(odir,f'graph{gi:04}.png')
+#             posnow = pos if pos else layout_graph_force(g)
+#             draw_nx(g,pos=posnow,save_to=ofn_png,show=False,**kwargs)
+#             ofn_l.append(ofn_png)
+
+#         print(f'Making movie ({ofn}) [{len(ofn_l)})]...')
+        
+#         clip = moviepy.video.io.ImageSequenceClip.ImageSequenceClip(ofn_l, fps=fps)
+#         clip.write_videofile(ofn,verbose=False,logger=None) #progress_bar=False)
+
+
+#         with open(ofn,'rb') as f: mp4=f.read()
+#         data_url = "data:video/mp4;base64," + b64encode(mp4).decode()
+#         htm=HTML("""
+#         <video width=666 controls>
+#             <source src="%s" type="video/mp4">
+#         </video>
+#         """ % data_url)
+#         return ofn,htm
+
+
+
+
+
+def rescale_weights(weights, min_size=1, max_size=10, max_val=None):
+    max_val = weights.max() if not max_val else max_val
+    weights = weights / max_val * max_size
+    weights = weights.apply(lambda x: x if x>min_size else min_size)
+    return weights
+
 def draw_nx(
         g,
-        # ax=None,
         pos=None,
         final_g=None,
-        size_by='degree',weight_by='weight',
-        min_weight_size=1,max_weight_size=10,max_weight=None,
-        color_by='color',color_default='black',
+        
+        size_by='degree',
+        weight_by='weight',
+        color_by='color',
+        color_default='black',
+        
+        min_weight_size=1,
+        max_weight_size=10,
+        max_weight=None,
+        
         plot_width=20,
         plot_height=10,
         save_to='',
         show=True,
+        **kwargs,
         ):
     if not pos: pos = layout_graph_force(g if not final_g else final_g)
 
@@ -1180,37 +1277,68 @@ def draw_nx(
 
 
 
-def draw_nx_dynamic(iter_g,pos=None,final_g=None, fps=10, ofn='fig.dynamic_graph.mp4',**kwargs):
+def draw_nx_dynamic(
+        iter_g,
+        pos=None,
+        final_g=None,
+        max_weight=None,
+        fps=10,
+        ofn='fig.dynamic_graph.mp4',
+        odir_imgs=None,
+        force=False,
+        **kwargs):
     import moviepy.video.io.ImageSequenceClip
     from base64 import b64encode
     from IPython.display import HTML
     import matplotlib.pyplot as plt
     plt.ioff()
+    if final_g is not None:
+        if pos is None: pos = layout_graph_force(final_g)
+        if max_weight is None: max_weight = max(d.get('weight',1) for a,b,d in final_g.edges(data=True))
+    
+    
+    if not odir_imgs:
+        tdir=tempfile.TemporaryDirectory()
+        odir_imgs=tdir.name
+    else:
+        tdir=None
+        if not os.path.exists(odir_imgs): os.makedirs(odir_imgs)
 
-    if not pos and final_g: pos = layout_graph_force(final_g)
+    # with tempfile.TemporaryDirectory() as odir:    
+    ofn_l=[]
+    posnow=None
+    for gi,g in enumerate(iter_g):
+        gi=g.t if hasattr(g,'t') and g.t else gi
+        ofn_png = os.path.join(odir_imgs,f'graph{gi:04}.png')
+        posnow = pos if pos else layout_graph_force(
+            g,
+            pos=posnow,
+            iterations=1
+        )
+
+        if force or not os.path.exists(ofn_png):
+            draw_nx(
+                g,
+                pos=posnow,
+                max_weight=max_weight,
+                save_to=ofn_png,
+                show=False,
+                **kwargs)
+        ofn_l.append(ofn_png)
+
+    print(f'Making movie ({ofn}) [{len(ofn_l)})]...')
+    
+    clip = moviepy.video.io.ImageSequenceClip.ImageSequenceClip(ofn_l, fps=fps)
+    clip.write_videofile(ofn,verbose=False,logger=None) #progress_bar=False)
 
 
-    with tempfile.TemporaryDirectory() as odir:    
-        maxval = max(d.get('weight',1) for a,b,d in final_g.edges(data=True))
+    with open(ofn,'rb') as f: mp4=f.read()
+    data_url = "data:video/mp4;base64," + b64encode(mp4).decode()
+    htm=HTML("""
+    <video width=666 controls>
+        <source src="%s" type="video/mp4">
+    </video>
+    """ % data_url)
 
-        ofn_l=[]
-        for gi,g in enumerate(iter_g):
-            ofn_png = os.path.join(odir,f'graph{gi:04}.png')
-            posnow = pos if pos else layout_graph_force(g)
-            draw_nx(g,pos=posnow,save_to=ofn_png,show=False,**kwargs)
-            ofn_l.append(ofn_png)
-
-        print(f'Making movie ({ofn}) [{len(ofn_l)})]...')
-        
-        clip = moviepy.video.io.ImageSequenceClip.ImageSequenceClip(ofn_l, fps=fps)
-        clip.write_videofile(ofn,verbose=False,logger=None) #progress_bar=False)
-
-
-        with open(ofn,'rb') as f: mp4=f.read()
-        data_url = "data:video/mp4;base64," + b64encode(mp4).decode()
-        htm=HTML("""
-        <video width=666 controls>
-            <source src="%s" type="video/mp4">
-        </video>
-        """ % data_url)
-        return ofn,htm
+    if tdir is not None: tdir.cleanup()
+    return ofn,htm

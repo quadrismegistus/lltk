@@ -48,7 +48,11 @@ setup_log()
 def ensure_abs(path_root,path):
     return os.path.join(path_root,path) if not os.path.isabs(path) else path
 
-
+def fillna(x,y=''):
+	try:
+		return y if np.isnan(x) else x
+	except TypeError:
+		return x
 
 def join_if(*l,sep):
     return sep.join(str(x) for x in l if x)
@@ -505,27 +509,36 @@ def save_df(df,ofn,move_prev=False,index=None,key='',log=print,verbose=False):
 	if verbose: print('Saved:',ofn)
 
 
-def read_df(ifn,key='',**attrs):
+def read_df(ifn,key='',fmt='',error_bad_lines=False,**attrs):
 	if not os.path.exists(ifn): return
 	import pandas as pd
 	if issubclass(ifn.__class__,pd.DataFrame): return ifn
 
 	ext = os.path.splitext(ifn.replace('.gz',''))[-1][1:]
-	if ext=='csv':
-		return pd.read_csv(ifn,**attrs)
-	elif ext in {'xls','xlsx'}:
-		return pd.read_excel(ifn,**attrs)
-	elif ext in {'txt','tsv'}:
-		return pd.read_csv(ifn,sep='\t',**attrs)
-	elif ext=='ft':
-		return pd.read_feather(ifn,**attrs)
-	elif ext=='pkl':
-		return pd.read_pickle(ifn,**attrs)
-	elif ext=='h5':
-		return pd.read_hdf(ifn, key=key,**attrs)
-	else:
-		raise Exception(f'[save_df()] What kind of df is this: {ifn}')
 
+	try:
+
+		if fmt=='csv' or ext=='csv':
+			return pd.read_csv(ifn,error_bad_lines=error_bad_lines,**attrs)
+		elif fmt=='tsv' or ext=='tsv':
+			return pd.read_csv(ifn,sep='\t',error_bad_lines=error_bad_lines,**attrs)
+		elif ext in {'xls','xlsx'}:
+			return pd.read_excel(ifn,**attrs)
+		elif ext in {'txt','tsv'}:
+			return pd.read_csv(ifn,sep='\t',**attrs)
+		elif ext=='ft':
+			return pd.read_feather(ifn,**attrs)
+		elif ext=='pkl':
+			return pd.read_pickle(ifn,**attrs)
+		elif ext=='h5':
+			return pd.read_hdf(ifn, key=key,**attrs)
+		else:
+			raise Exception(f'[save_df()] What kind of df is this: {ifn}')
+	except Exception as e:
+		log.debug(f'Error: {e}')
+		pass
+	
+	return pd.DataFrame()
 
 
 def iter_move(fn,force=False,prefix=''):
@@ -572,14 +585,31 @@ _SPLITTER_ = r"([-.,/:!?\";)(])"
 
 
 
+from io import StringIO 
+import sys
+
+class Capturing(list):
+	def __enter__(self):
+		self._stdout = sys.stdout
+		sys.stdout = self._stringio = StringIO()
+		return self
+	def __exit__(self, *args):
+		self.extend(self._stringio.getvalue().splitlines())
+		del self._stringio    # free up some memory
+		sys.stdout = self._stdout
+
 
 
 def ensure_dir_exists(path):
+	if not os.path.isdir(path) and os.path.splitext(path)[-1]:
+		path=os.path.dirname(path)
 	if not os.path.exists(path):
 		try:
 			os.makedirs(path)
 		except FileExistsError:
 			pass
+
+
 
 
 MDETOK=None
@@ -2307,5 +2337,38 @@ def remove_duplicates(seq,remove_empty=False):
 
 ### UTILS
 
+
+
+
+
+def rename_folders(from_name,to_name,rootdir,ask=True):
+    to_replace=[]
+    from_path,to_path='',''
+    for root,dirs,fn in sorted(os.walk(rootdir)):
+        for dirname in dirs:
+            if dirname == from_name:
+                from_path = os.path.join(root,from_name)
+                to_path=os.path.join(root,to_name)
+                to_replace.append((from_path,to_path))
+    
+    if not to_replace:
+        print('Nothing to replace.')
+        return
+    if ask:
+        yn = input(f'''{len(to_replace)} directories to replace, e.g.
+
+{from_path}
+
+-->
+
+{to_path}
+
+Replace all? [Y/n]
+''')
+        if not yn or yn.strip().lower()[0]=='n': return
+    
+    for from_path,to_path in to_replace:
+        os.rename(from_path, to_path)
+    
 
 

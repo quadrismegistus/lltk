@@ -58,6 +58,7 @@ def load_with_anno_or_orig(fn,**kwargs):
 def get_anno_fn_if_exists(
 		fn,
 		anno_exts=['.anno.xlsx','.anno.xls','.anno.csv','.xlsx','.xls'],
+		return_fn_otherwise=True,
 		**kwargs):
 	if type(fn)!=str: return fn
 	fnbase,fnext = os.path.splitext(fn)
@@ -66,7 +67,7 @@ def get_anno_fn_if_exists(
 			anno_fn = fnbase + anno_ext
 			if os.path.exists(anno_fn):
 				return anno_fn
-	return fn
+	return fn if return_fn_otherwise else ''
 
 
 
@@ -80,12 +81,13 @@ def merge_read_dfs_iter(fns_or_dfs, opt_exts=[]):
 			for opt_ext in opt_exts:
 				newfn = os.path.splitext(fn_or_df)[0]+opt_ext
 				if os.path.exists(newfn):
-					log.debug(f'Overwriting dataframe with data from: {newfn}')
+					# log.debug(f'Overwriting dataframe with data from: {newfn}')
 					yield from readgen(newfn,progress=False)
 			
 
 def merge_read_dfs_dict(fns_or_dfs, opt_exts=[], on='id', fillna=None):
 	odd=defaultdict(dict)
+	if type(fns_or_dfs) not in {list,tuple}: fns_or_dfs=[fns_or_dfs]
 	iterr=merge_read_dfs_iter(fns_or_dfs, opt_exts=opt_exts)
 	for dx in iterr:
 		if on not in dx: continue
@@ -100,7 +102,12 @@ def merge_read_dfs(fns_or_dfs, opt_exts=[], on='id'):
 	odd = merge_read_dfs_dict(fns_or_dfs, opt_exts=opt_exts, on=on)
 	index = list(odd.keys())
 	rows = [odd[i] for i in index]
-	odf=pd.DataFrame(rows, index=index)
+	odf=pd.DataFrame(rows)
+	
+	if on in set(odf.columns):
+		odf=odf[~odf[on].isna()]
+		odf=odf[~odf[on].isnull()]
+		odf=odf.set_index(on)
 	return odf
 
 

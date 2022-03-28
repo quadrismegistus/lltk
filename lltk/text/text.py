@@ -27,7 +27,7 @@ def get_idx(
 		numposs=1000000,
 		numzero=None,
 		**kwargs):
-	
+	if issubclass(id.__class__, BaseText): return id.id
 	if id: return ensure_snake(id,allow=allow,lower=False)
 	if not numzero: numzero=len(str(numposs))-1
 	if not i: i=random.randint(1,numposs-1)
@@ -117,7 +117,11 @@ class BaseText(object):
 			if not hasattr(self.corpus, exttype): raise Exception(f'Corpus has no {exttype}') 
 			ext=getattr(self.corpus,exttype)
 			cpath=getattr(self.corpus,name)
-			opath=os.path.abspath(os.path.join(cpath, self.id + ext))
+			try:
+				opath=os.path.abspath(os.path.join(cpath, self.id + ext))
+			except TypeError as e:
+				log.debug(f'Error getting attribute "{name}": {e}')
+				return
 
 			# on source?
 			if not os.path.exists(opath) and self.source:
@@ -151,9 +155,13 @@ class BaseText(object):
 	def addr(self):
 		return f'{IDSEP_START}{self.corpus.id}{IDSEP}{self.id}'
 	@property
-	def txt(self): 
-		if self._txt: return self._txt
-		return clean_text(self.text_plain())
+	def txt(self): return self.get_txt()
+		#if self._txt: return self._txt
+		#return clean_text(self.text_plain())
+
+
+
+
 	@property
 	def xml(self):
 		if self._xml: return self._xml
@@ -217,12 +225,15 @@ class BaseText(object):
 	
 	def metadata(self,force=True):
 		# ?
-		if not force and self._meta and len(self._meta)>1: return self._meta
+		self._meta['_addr']=self.addr
+		if not force and self._meta and len(self._meta)>2:
+			return self._meta
 		# gen
 		self._meta={
 			**(self.source.meta if self.source is not None and self.source.meta is not None else {}),
 			**self._meta
 		}
+		
 		return self._meta
 		
 
@@ -238,6 +249,21 @@ class BaseText(object):
 		# Otherwise, load from XML?
 		if os.path.exists(self.path_xml): return self.xml2txt(self.path_xml)
 		return ''
+
+	def get_txt(self,force=False,prefer_sections=True,section_type=None,force_xml=False):
+		if force or not self._txt:
+			if not prefer_sections:
+				self._txt=self.text_plain(force_xml=force_xml)
+				self._txt_offsets={}
+			else:
+				secs=self.sections(section_type)
+				if secs is not None and secs.txt:
+					self._txt=secs.txt
+					self._txt_offsets=secs._txt_offsets
+				else:
+					self._txt=self.text_plain(force_xml=force_xml)
+					self._txt_offsets={}
+		return clean_text(self._txt) if self._txt else ''
 
 	
 	# freqs
@@ -471,6 +497,31 @@ class BaseText(object):
 				_id=_id
 			)
 		return self._sections.get(_id)
+
+	@property
+	def text_root(self):
+		if not issubclass(self.__class__,BaseText): return
+		if issubclass(self.__class__,TextSection): return self.source
+		return self
+
+	def characters(self,id='default'):
+		if not hasattr(self,f'_characters'): self._characters={}
+		if not id in self._characters:
+			from lltk.model.characters import CharacterSystem
+			self._characters[id]=CharacterSystem(t)
+		return self._characters[id]
+
+	def get_character_id(self,char_tok_or_id,**kwargs):
+		return self.characters(**kwargs).get_character_id(char_tok_or_id,**kwargs)
+
+	@property
+	def booknlp(self):
+		if self._booknlp is None: self._booknlp={}
+		if not self.addr in self._booknlp:
+			from lltk.model.booknlp import ModelBookNLP
+			self._booknlp[self.addr]=ModelBookNLP(self)
+		return self._booknlp[self.addr]
+
 	
 
 
@@ -508,18 +559,22 @@ class TextSection(BaseText):
 
 def Text(id=None,corpus=None,**kwargs):
 	text_ref,corpus_ref=id,corpus
-	log.debug(f'Generating text with id="{text_ref}" and corpus="{corpus_ref}"')
+	# log.debug(f'Generating text with id="{text_ref}" and corpus="{corpus_ref}"')
 
 	from lltk.corpus.corpus import Corpus
 	# have text?
 	if issubclass(text_ref.__class__, BaseText):
 		# have text
-		text = text_ref
+		text_obj = text_ref
 		# log.debug(f'called on a text object: {text}')
 		# already?
 		if corpus_ref is None: 
 			# log.debug(f'no new corpus set, returning as-is')
-			log.debug(f'Returning text: {text}')
+			# log.debug(f'Returning text: {text}')
+			return text_obj
+		else:
+			corpus = Corpus(corpus_ref,**kwargs)
+			text = corpus.text(text_obj.addr,**kwargs)
 			return text
 	
 	elif type(text_ref)==str:
@@ -528,11 +583,11 @@ def Text(id=None,corpus=None,**kwargs):
 			# if no corpus assigned but one is here on the id
 			corpus = Corpus(corpus_ref_id,**kwargs)
 			text = corpus.text(text_ref_id,**kwargs)
-			log.debug(f'Returning text: {text}')
+			# log.debug(f'Returning text: {text}')
 			return text
 	
 	# otherwise get this/default corpus
 	corpus = Corpus(corpus_ref,**kwargs)
 	text = corpus.text(text_ref,**kwargs)
-	log.debug(f'Returning text: {text}')
+	# log.debug(f'Returning text: {text}')
 	return text

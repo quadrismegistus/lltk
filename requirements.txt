@@ -27,3 +27,4 @@ smart_open
 tabulate
 mgzip
 openpyxl
+ftfy
