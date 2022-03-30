@@ -2,26 +2,6 @@
 from lltk.imports import *
 from lltk.model.characters import CharacterSystem
 
-NARRATOR_ID='NARRATOR'
-BOOKNLP_DEFAULT_LANGUAGE="en"
-BOOKNLP_DEFAULT_MODEL='small'
-BOOKNLP_DEFAULT_PIPELINE="entity,quote,supersense,event,coref"
-BOOKNLP_RENAME_COLS={'paragraph_ID': 'para_i',
-'sentence_ID': 'sent_i',
-'token_ID_within_sentence': 'sent_token_i',
-'token_ID_within_document': 'token_i',
-'word': 'token',
-'lemma': 'lemma',
-'byte_onset': 'onset',
-'byte_offset': 'offset',
-'POS_tag': 'pos',
-'fine_POS_tag': 'pos2',
-'dependency_relation': 'deprel',
-'syntactic_head_ID': 'head',
-'event': 'event'
-}
-
-
 
 class ModelBookNLP(CharacterSystem):
     CHARACTER_SYSTEM_ID='booknlp'
@@ -43,6 +23,9 @@ class ModelBookNLP(CharacterSystem):
         self._chartokd=None
         self._df_tokens=None
         self._df_chars=None
+        self._interactions=None
+
+    def __repr__(self): return f'[{self.__class__.__name__}]({self.text.addr})'
 
     def init(self,**kwargs):
         self.parse(**kwargs)
@@ -189,7 +172,8 @@ class ModelBookNLP(CharacterSystem):
             odf=odf[odf.char_tok!=""]
         return odf
 
-        
+    @property
+    def text_root(self): return self.text.text_root
             
     ### TOKEN LEVEL DATA
             
@@ -363,21 +347,21 @@ class ModelBookNLP(CharacterSystem):
                 od[ctok]+=ccount
         return od
 
-    def characters(self):
-        from lltk.model.characters import CharacterSystem
-        self._character_system=CharacterSystem(
-            self.text,
-            id='booknlp',
-            _char_tokd=self.get_character_token_counts,
-            )
-        return self._character_system
+    # def characters(self):
+    #     from lltk.model.characters import CharacterSystem
+    #     self._character_system=CharacterSystem(
+    #         self.text,
+    #         id='booknlp',
+    #         _char_tokd=self.get_character_token_counts,
+    #         )
+    #     return self._character_system
 
 
     # booknlp
 
     def iter_interactions(
             self,
-            narrator_id=NARRATOR_ID,
+            narrator_id=BOOKNLP_NARRATOR_ID,
             mentioned_near_window=100,
             col_mentioned='char_id_mentioned',
             col_speaking='char_id_speaking',
@@ -423,10 +407,7 @@ class ModelBookNLP(CharacterSystem):
                     mentioned_last=mentioned
                     mentioned_last_i=mentioned_i
 
-    def interactions(self,force=False,**kwargs):
-        if force or self._interactions is None:
-            self._interactions=pd.DataFrame(self.iter_interactions(**kwargs))
-        return self._interactions
+    
 
 
 def get_booknlp(
@@ -514,7 +495,7 @@ def parse_booknlp(
             outputFolder=odir,
             idd='text'
         )
-        log.debug(f'Parsing BookNLP with args: {okwargs}')
+        # log.debug(f'Parsing BookNLP with args: {okwargs}')
         return booknlp.process(**okwargs)
 
 

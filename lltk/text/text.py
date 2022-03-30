@@ -463,20 +463,7 @@ class BaseText(object):
 		return SectionCorpus
 
 
-	# def init_section(self,id=None,section_class=None,**meta):
-	# 	# make id
-	# 	if id is None: id=get_idx(i=len(self._sections), prefstr='S', numposs=1000)
-	# 	id=os.path.join(self.id,id)
-	# 	# check not duplicate
-	# 	assert id not in set(x.id for x in self._sections)
-	# 	# gen obj
-	# 	section_class=self.get_section_class(section_class)
-	# 	sec = section_class(
-	# 		id,
-	# 		_source=self,
-	# 		**meta)
-	# 	self._sections.append(sec)
-	# 	return sec
+	
 
 
 	# @property
@@ -504,15 +491,22 @@ class BaseText(object):
 		if issubclass(self.__class__,TextSection): return self.source
 		return self
 
-	def characters(self,id='default'):
-		if not hasattr(self,f'_characters'): self._characters={}
+	def characters(self,id='default',systems={'booknlp'},**kwargs):
+		if type(self._characters)!=dict: self._characters={}
 		if not id in self._characters:
 			from lltk.model.characters import CharacterSystem
-			self._characters[id]=CharacterSystem(t)
+			CS=self._characters[id]=CharacterSystem(self.text_root)
+			for sysname in systems:
+				system=getattr(self,sysname)
+				CS.add_system(system)
 		return self._characters[id]
 
 	def get_character_id(self,char_tok_or_id,**kwargs):
-		return self.characters(**kwargs).get_character_id(char_tok_or_id,**kwargs)
+		return self.characters().get_character_id(char_tok_or_id,**kwargs)
+
+	@property
+	def charsys(self): return self.characters()
+	def interactions(self,**kwargs): return self.charsys.interactions(**kwargs)
 
 	@property
 	def booknlp(self):

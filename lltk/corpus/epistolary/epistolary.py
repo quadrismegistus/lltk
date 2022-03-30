@@ -1,4 +1,5 @@
 from lltk.imports import *
+from lltk.model.characters import CharacterSystem
 from lltk.model.charnet import *
 from lltk.corpus.corpus import SectionCorpus
 
@@ -27,7 +28,8 @@ def get_clarissa_id():
 ##
 
 
-
+def getxmlcontents(dom):
+    return '\n'.join(str(x) for x in dom.contents)
 
 class TextSectionLetter(TextSection): pass
 
@@ -118,8 +120,79 @@ class TextSectionLetterChadwyck(TextSectionLetter):
         return clean_text(otxt)
 
 
-class SectionCorpusLetter(SectionCorpus):
-    pass
+class SectionCorpusLetter(SectionCorpus, CharacterSystem):
+    CHARACTER_SYSTEM_ID='letters'
+
+    def get_character_token_counts(
+            self,
+            char_keys=['sender_tok','recip_tok','char_tok','character_tok']):
+        counter=Counter()
+        sdf=self.metadata().fillna('')
+        if sdf is not None and len(sdf):
+            for ckey in char_keys:
+                if ckey in set(sdf.columns):
+                    for cval in sdf[ckey]:
+                        for cvalx in cval.strip().split('; '):
+                            counter[cvalx.strip()]+=1
+        return counter
+
+    def iter_interactions(self,
+            col_sender='sender_tok',
+            col_recip='recip_tok',
+            col_t='id',
+            **kwargs):
+
+        df = self.metadata()#.reset_index()
+        cols=set(df.reset_index().columns)
+        for colx in [col_sender,col_recip,col_t]:
+            if not colx in cols:
+                log.error(f'Error: columns {colx} not found in epistolary data df ({cols})')
+                return pd.DataFrame()
+        df['_sender_id'] = df[col_sender].fillna('').apply(self.get_character_id)
+        df['_recip_id'] = df[col_recip].fillna('').apply(self.get_character_id)
+        df = df[[col for col in df.columns if col not in {'txt_start','txt_end'}]]
+        # df['txt']=[self.letters.text(idx).txt for idx in df['id']]
+
+        for text_id,row in df.iterrows():
+            # X wrote letter to Y
+            yield dict(
+                source=row._sender_id,
+                rel='wrote_letter_to',
+                target=row._recip_id,
+                text_id=text_id,
+                source_tok=row[col_sender],
+                target_tok=row[col_recip],
+            )
+
+            ## encloser?
+            encloser_id=row.get('id_parent')
+            if encloser_id:
+                encloser_row = df.loc[encloser_id]
+                enclosed_row = row
+
+                # X enclosed a letter written by Y
+                yield dict(
+                    source=encloser_row._sender_id,
+                    rel='enclosed_letter_from',
+                    target=enclosed_row._sender_id,
+                    text_id = encloser_id,
+                    source_tok=encloser_row[col_sender],
+                    target_tok=enclosed_row[col_sender],
+                )
+
+                # X enclosed a letter written to Y
+                # yield dict(
+                #     source=encloser_row._sender_id,
+                #     rel='enclosed_letter_to',
+                #     target=enclosed_row._recip_id,
+                #     text_id = encloser_id,
+                #     source_tok=encloser_row[col_sender],
+                #     target_tok=enclosed_row[col_recip],
+                # )
+        
+
+
+        # return xdf
 
 
 
@@ -145,6 +218,35 @@ class SectionCorpusLetterChadwyck(SectionCorpusLetter):
                 with open(t.path_txt,'w') as of:
                     of.write(o)
 
+
+    def redo_xml(self):
+        dom = self.dom
+        vols = dom(self.DIV_VOL)
+        if not len(vols): vols=[dom]
+        newxml = []   
+        for voldom in tqdm(vols,desc='Iterating volumes 1',position=0): 
+            divs = voldom(self.DIV_LTR)
+            if not len(divs): divs=[voldom]
+            newxml+=[f'<{self.DIV_VOL}>']
+            
+            for divdom in tqdm(divs,desc='Iterating volume letters',position=1,disable=True):
+                _xmldiv = clean_text(getxmlcontents(divdom))
+                for tagposs in [self.LTR,self.BODY,self.P+'>']:
+                    try:
+                        _xmldiv_hdr,_xmldiv_body = _xmldiv.split(f'<{tagposs}',1)
+                        break
+                    except ValueError:
+                        pass
+                else:
+                    # print('!?!?!?!')
+                    # print(_xmldiv)
+                    continue
+                
+                divxml2 = f'<{self.DIV_LTR}>{_xmldiv_hdr}<{self.LTR}>{_xmldiv_body}</{self.LTR}></{self.DIV_LTR}>'
+                newxml.append(divxml2)
+            newxml+=[f'</{self.DIV_VOL}>']
+        return bs4.BeautifulSoup('\n'.join(newxml))
+
     def init(self,force=False,lim=None,progress=True,**kwargs):
         if not force and self._init: return
 
@@ -160,24 +262,27 @@ class SectionCorpusLetterChadwyck(SectionCorpusLetter):
         letter_ii=0
 
         ## VOLUME
-        dom = self.dom
+        dom = self.redo_xml() #self.dom
         vols = dom(self.DIV_VOL)
         if not len(vols): vols=[dom]
         vol_i=0
+
         for voldom in tqdm(vols,desc='Iterating volumes',position=0): 
-            divs = voldom(self.DIV_LTR)
-            if not len(divs): continue
             vol_i+=1
+            divs = voldom(self.DIV_LTR)
+            # if not len(divs): continue
+            if not len(divs): divs=[voldom]
 
             for divdom in tqdm(divs,desc='Iterating volume letters',position=1,disable=True):
                 ltrs=divdom(self.LTR)
                 num_letters = len(ltrs)
-                if not num_letters: continue
-                letter_i+=1
-                letter_ii = 0 if len(ltrs)==1 else 1
-
+                # if not num_letters: continue
                 _xmldiv = clean_text(str(divdom))
                 _xmldiv_hdr = _xmldiv[:_xmldiv.index(f'<{self.LTR}')]
+                
+                letter_i+=1
+                letter_ii = 0 if num_letters<2 else 1
+                
                 #meta_hdr = letter_xml_hdr_to_meta(_xmldiv_hdr)
                 #idz = meta_hdr.get('id_letter')
                 idz = grab_tag_text(divdom,'idref',limit=1)
@@ -189,7 +294,11 @@ class SectionCorpusLetterChadwyck(SectionCorpusLetter):
                     letter_id=f'L{letter_i:03}{letter_subid}'
 
                     _xml=clean_text(str(ltrdom))
-                    if ldomi==0: _xml=_xmldiv_hdr + _xml[_xml.index(f'<{self.LTR}'):]
+                    if ldomi==0:
+                        try:
+                            _xml=_xmldiv_hdr + _xml[_xml.index(f'<{self.LTR}'):]
+                        except ValueError:
+                            _xml=_xmldiv_hdr + _xml[_xml.index(f'<{self.BODY}'):]
 
                     odx=dict(
                         id=letter_id,
@@ -245,35 +354,39 @@ class SectionCorpusLetterChadwyck(SectionCorpusLetter):
 
 
 
+from lltk.model.characters import CharacterSystem
 class TextEpistolary(BaseText):
     DIV_VOL=''
     DIV_LTR=''
     DIV=''
     LTR=''
+    BODY=''
+    P=''
     SECTION_CLASS=TextSectionLetter
     SECTION_DIR_NAME='letters'
 
-    # @property
-    # def letters(self): return []
+    def characters(self,systems={'letters','booknlp'},**kwargs):
+        return super().characters(systems=systems,**kwargs)
 
-    def characters(self):
-        if self._characters is None:
-            from lltk.model.characters import CharacterSystem
-            
-            CS=CharacterSystem(self)
-            df = self.letters.meta.reset_index()
-            df = df[[col for col in df.columns if col not in {'txt_start','txt_end'}]]
-            df['txt']=[self.letters.text(idx).txt for idx in df['id']]
+    def interactions(self,**kwargs):
+        odf=super().interactions(**kwargs)
+        
+        # overwrite NARRATOR with author
+        odf_wrote = odf[odf.rel=='wrote_letter_to']
+        writers = dict(zip(odf_wrote.text_id, odf_wrote.source))
+        def getnewsrc(src,text_id):
+            if src!=BOOKNLP_NARRATOR_ID: return src
+            if text_id not in writers: return src
+            o=writers[text_id]
+            if not o or o in BAD_CHAR_IDS: return src
+            return o
 
-            CS.init_events(
-                df=df,
-                event_type='letter',
-                col_sender='sender_tok',
-                col_recip='recip_tok',
-                col_t='letter_i'
-            )
-            self._characters=CS
-        return self._characters
+        odf['source']=[
+            getnewsrc(src,text_id)
+            for src,text_id in zip(odf.source, odf.text_id)
+        ]
+        return odf
+
 
 
 
@@ -283,6 +396,8 @@ class TextEpistolaryChadwyck(TextEpistolary):
     DIV_VOL='div2'
     DIV_LTR='div3'
     LTR='letter'
+    BODY='body'
+    P='p'
     SECTION_CLASS=TextSectionLetterChadwyck
     SECTION_CORPUS_CLASS=SectionCorpusLetterChadwyck
 
@@ -376,7 +491,14 @@ def calculate_tok2id(df_text_letters):
 
 
 
-def iter_letter_networks_from_dfletters(dfletters,bad_ids={'?',''},progress=True,*x,**y):
+def iter_letter_networks_from_dfletters(
+        dfletters,
+        key_source='source',
+        key_target='target',
+        key_rel='rel',
+        bad_ids=BAD_CHAR_IDS,
+        progress=True,
+        *x,**y):
     G=nx.DiGraph()
     iterr=tqdm(
         dfletters.to_dict(orient='records'),
@@ -384,19 +506,20 @@ def iter_letter_networks_from_dfletters(dfletters,bad_ids={'?',''},progress=True
         desc='Iterating letters as networks'
     )
     for row in iterr:
-        sender_id=row.get('sender_id','')
-        recip_id=row.get('recip_id','')
+        sender_id=row.get(key_source,'')
+        recip_id=row.get(key_target,'')
         if not sender_id or not recip_id: continue
         if sender_id in bad_ids or recip_id in bad_ids: continue
         
-        node_types = ['sender','recip']
-        for node_type in node_types:
-            node_id=row[f'{node_type}_id']
-            if not G.has_node(node_id):
-                node_feats=dict((k.replace(f'{node_type}_','char_'),v) for k,v in row.items() if k.startswith(f'{node_type}_'))
-                G.add_node(node_id,**node_feats)
+        # node_types = ['sender','recip']
+        # for node_type in node_types:
+        #     node_id=row[f'{node_type}_id']
+        #     if not G.has_node(node_id):
+        #         node_feats=dict((k.replace(f'{node_type}_','char_'),v) for k,v in row.items() if k.startswith(f'{node_type}_'))
+        #         G.add_node(node_id,**node_feats)
         
-        edge_attrs = dict((k,v) for k,v in row.items() if not k.split('_')[0] in set(node_types))
+        # edge_attrs = dict((k,v) for k,v in row.items() if not k.split('_')[0] in set(node_types))
+        edge_attrs={}
         if not G.has_edge(sender_id, recip_id):
             edge_attrs['weight']=1
             G.add_edge(sender_id,recip_id,**edge_attrs)
@@ -412,6 +535,7 @@ def iter_letter_networks_from_dfletters(dfletters,bad_ids={'?',''},progress=True
         yield G
 
 def get_letter_network_from_dfletters(dfletters,progress=False,*x,**y):
+    g=None
     for g in iter_letter_networks_from_dfletters(dfletters,progress=progress,*x,**y): pass
     return g
 
@@ -425,7 +549,9 @@ def get_canon(idx=None):
     )
     return d if not idx else d.get(idx)
 
-
+def get_clarissa(): return get_canon().get('clarissa')
+def get_pamela(): return get_canon().get('pamela')
+def get_evelina(): return get_canon().get('evelina')
 
 
 # t = C.init_text('_chadwyck/Eighteenth-Century_Fiction/richards.01')    # clarissa

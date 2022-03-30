@@ -2,19 +2,6 @@ from lltk.imports import *
 import networkx as nx
 
 
-chardata_metakeys_initial = dict(
-    char_race='',
-    char_gender='',
-    char_class='',
-    char_geo_birth='',
-    char_geo_marriage='',
-    char_geo_death='',
-    char_geo_begin='',
-    char_geo_middle='',
-    char_geo_end='',
-)
-
-
 
 
 class Character:
@@ -31,28 +18,54 @@ class CharacterSystem(BaseModel):
     EVENT_TYPE='interaction'
     CHARACTER_SYSTEM_ID='default'
     
-    def __init__(self,source,_char_tokd=Counter(),**kwargs):
+    def __init__(self,source,id=None,_char_tokd=Counter(),**kwargs):
         self._source=source
+        self.id=self.CHARACTER_SYSTEM_ID
         self._events={}
         self._df_feats=None
         self._df_names=None
         self._char_tokd=_char_tokd
         self._d_count=_char_tokd
         self._character_tok2id={}
+        self._interactions=None
+        self._charsys={
+            self.CHARACTER_SYSTEM_ID:self
+        }
         # self._dg=dnx.DynGraph(edge_removal=True)
 
+    def add_system(self,character_system,**kwargs):
+        if not hasattr(self,'_charsys'): self._charsys={}
+        idx = character_system.CHARACTER_SYSTEM_ID
+        if not idx in self._charsys:
+            self._charsys[idx]=character_system
+            setattr(self,zeropunc(idx),character_system)
+            if self.CHARACTER_SYSTEM_ID in self._charsys:
+                del self._charsys[self.CHARACTER_SYSTEM_ID]
+
+    def iter_systems(self):
+        if not hasattr(self,'_charsys') or not self._charsys:
+            self._charsys={self.CHARACTER_SYSTEM_ID:self}
+        yield from self._charsys.values()
     
-        
+    def systems(self,**kwargs):
+        return list(self.iter_systems(**kwargs))
+    
+    @property
+    def text_root(self): return self.source.text_root
+
     @property
     def source(self): return self._source
     @property
-    def path_chars(self): return os.path.join(self.source.text_root.path, DIR_CHARS_NAME)
+    def path_chars(self): return os.path.join(self.text_root.path, DIR_CHARS_NAME)
     @property
-    def path_names_dir(self): return os.path.join(self.path_chars,'names')
+    def path_names_dir(self): return os.path.join(self.path_chars,'names_auto')
     @property
     def path_names(self): return os.path.join(self.path_chars,'names.csv')
     @property
-    def path_names_anno(self): return get_anno_fn_if_exists(self.path_names, return_fn_otherwise=False)
+    def path_names_anno(self): return get_anno_fn_if_exists(self.text_root.characters().path_names, return_fn_otherwise=False)
+    @property
+    def path_interactions(self):
+        return os.path.join(self.path_chars,'interactions',f'{self.CHARACTER_SYSTEM_ID}.pkl')
 
     @property
     def path_names_auto(self): return os.path.join(self.path_names_dir,f'{self.CHARACTER_SYSTEM_ID}.json')
@@ -65,52 +78,99 @@ class CharacterSystem(BaseModel):
     @property
     def df_feats(self): return self.get_df_feats()
 
-    def get_character_id(self,char_tok,force=False,bad={'?','?!','x'}):
-        if not self._character_tok2id:
-            self.init_names(force=force)
-        o=self._character_tok2id.get(char_tok,'')
-        if o in bad: o=''
-        return o
+    def get_character_id(self,char_toks,force=False,bad=BAD_CHAR_IDS,return_tok=False,sep=';'):
+        char_toks=str(char_toks)
+        if not self._character_tok2id: self._character_tok2id=self.init_names_anno()
+        default = '' if not return_tok else char_toks
+        if not char_toks: return default
+        ol=[]
+        for char_tok in str(char_toks).split(sep):
+            char_tok=char_tok.strip()
+            o=str(self._character_tok2id.get(char_tok))
+            if not o:
+                character_tok=clean_character_tok(char_tok)
+                o=self._character_tok2id.get(character_tok)
+            if o: ol.append(o)
+        out=(sep+' ' if sep==sep.strip() else sep).join(ol) if ol else default
+        return out if out not in {'nan','None'} else '?'
 
 
-    def names(self,force=False):
-        if force or self._df_names is None:
-            self.init_names(force=force)
-        return self._df_names
+        
+    def names(self,force=False,merge=True,ignore_blank=True,overwrite=True):
+        if force or self._df_names is None: self.init_names(force=force)
+        odf=self._df_names
+        
+        if merge:
+            odf=odf[odf.character_tok!=""]
+            icols=['character_tok']
+            qcols=['char_tok_count']
+            odf=odf[icols+qcols].groupby(icols).sum().reset_index()
+            odf['character_id']=odf.character_tok.fillna('').apply(self.get_character_id)
+            # odf=odf[odf.char_tok!=""]
+            odf=odf.sort_values(qcols,ascending=False)
+            odf=odf[['character_tok','character_id','char_tok_count']]
+            odf=odf.rename({'char_tok_count':'character_tok_count'},axis=1)
 
-    def init_names(self,force=False):
-        if not force and self._df_names is not None and self._character_tok2id is not None: return
-        ## auto-generate my names if haven't
-        self.init_names_auto(force=force)
-        self.init_names_sections_auto(force=force)
-        ## get total auto freq
-        name_counts = self.init_names_auto_all()
-        ## get annotated renamer
-        name2id = self.init_names_anno()
-        odf=pd.DataFrame(
-            dict(
-                character_tok=ctok,
-                character_id=name2id.get(ctok,'?'),
-                character_id_auto=zeropunc(ctok),
-                character_tok_count=name_counts[ctok],
-            )
-            for ctok in name_counts
-        )
-        odf=odf.sort_values('character_tok_count',ascending=False)
-        save_df(odf,self.path_names,index=False)
-        self._df_names=odf
-        self._character_tok2id = dict((zip(odf.character_tok,odf.character_id)))
+        if overwrite:
+            save_df(odf, self.path_names, index=False)
+
+        return odf if not ignore_blank else odf[odf.character_id!=""]
+
+
+    def init_names(selff,force=False):
+        od_l=[]
+        odf_l=[]
+        for self in selff.systems():
+            if not force and self._df_names is None or self._character_tok2id is None:
+
+                ## auto-generate my names if haven't
+                name_counts = self.init_names_auto(force=force)
+                
+                ## get renamer
+                name2id = self.init_names_anno()
+                
+                odf=pd.DataFrame(
+                    dict(
+                        character_tok=clean_character_tok(ctok),
+                        char_tok=ctok,
+                    )
+                    for ctok in name_counts
+                )
+                odf['character_id']=[
+                    name2id[a] if a in name2id else (name2id[b] if b in name2id else '?')
+                    for a,b in zip(odf.character_tok,odf.char_tok)
+                ]
+                odf['character_id_auto']=odf['character_tok'].apply(zeropunc)
+                odf['char_tok_count']=[name_counts[ctok] for ctok in odf.char_tok]
+
+                odf=odf.sort_values('char_tok_count',ascending=False)
+                #save_df(odf,self.path_names,index=False)
+                self._df_names=odf
+                self._character_tok2id = od = {}
+                for col1 in ['character_tok','char_tok']:
+                    for k,v in zip(odf[col1], odf.character_id):
+                        if v and v not in BAD_CHAR_IDS:
+                            od[k]=v
+            od_l.extend(self._character_tok2id.items())
+            odf_l.append(self._df_names.assign(charsys_id=self.CHARACTER_SYSTEM_ID))
+        if selff is not self:
+            selff._character_tok2id=dict(od_l)
+            selff._df_names=pd.concat(odf_l) if odf_l else pd.DataFrame()
+        return selff._df_names
 
     
-    def init_names_anno(self):
+    def init_names_anno(self,bad_ids=BAD_CHAR_IDS):
         fn=self.path_names_anno
+        od={}
         if fn and os.path.exists(fn):
             odf=read_df(fn)
             cols=set(odf.columns)
-            if len(odf) and 'character_tok' in cols and 'character_id' in cols:
-                od=dict(zip(odf.character_tok, odf.character_id))
-                return od
-        return {}
+            for col1 in ['character_tok','char_tok']:
+                if col1 in cols:
+                    for k,v in zip(odf[col1], odf.character_id):
+                        if v and v not in bad_ids:
+                            od[k]=v            
+        return od
 
 
     def init_names_auto(self,char_toks=None,force=False):
@@ -125,30 +185,47 @@ class CharacterSystem(BaseModel):
                 char_toks=Counter(json.load(f))
         return char_toks
 
-    def init_names_sections_auto(
-            self,
-            section_type=None,
-            char_keys=['sender_tok','recip_tok','char_tok'],
-            force=False):
-        ofn=os.path.join(self.path_names_dir,f'{section_type if section_type else "sections"}.json')
-        if force or not os.path.exists(ofn):
-            counter=Counter()
-            secs=self.sections(section_type)
-            if secs is None: return counter
-            sdf=secs.meta
-            if sdf is None or not len(sdf): return counter
-            for ckey in char_keys:
-                if ckey in set(sdf.columns):
-                    for cval in sdf[ckey]:
-                        for cvalx in cval.strip().split('; '):
-                            counter[cvalx.strip()]+=1
-            with open(ofn,'w') as of:
-                json.dump(dict(counter), of)
-            return counter
-        else:
-            with open(ofn) as f:
-                return Counter(json.load(f))
+    # def init_names_sections_auto(
+    #         self,
+    #         section_type=None,
+    #         char_keys=['sender_tok','recip_tok','char_tok'],
+    #         force=False):
+    #     ofn=os.path.join(self.path_names_dir,f'{section_type if section_type else "sections"}.json')
+    #     if force or not os.path.exists(ofn):
+    #         counter=Counter()
+    #         secs=self.sections(section_type)
+    #         if secs is None: return counter
+    #         sdf=secs.meta
+    #         if sdf is None or not len(sdf): return counter
+    #         for ckey in char_keys:
+    #             if ckey in set(sdf.columns):
+    #                 for cval in sdf[ckey]:
+    #                     for cvalx in cval.strip().split('; '):
+    #                         counter[cvalx.strip()]+=1
+    #         with open(ofn,'w') as of:
+    #             json.dump(dict(counter), of)
+    #         return counter
+    #     else:
+    #         with open(ofn) as f:
+    #             return Counter(json.load(f))
         
+
+    def iter_interactions(self,**kwargs):
+        for charsys in self.iter_systems():
+            yield from charsys.iter_interactions(**kwargs)
+
+    def interactions(self,force=False,ignore_blank=True,**kwargs):
+        if not force and self._interactions is not None and len(self._interactions):
+            odf=self._interactions
+        elif not force and os.path.exists(self.path_interactions):
+            odf=read_df(self.path_interactions)
+        else:
+            odf=self._interactions=pd.DataFrame(self.iter_interactions(**kwargs))
+            save_df(odf, self.path_interactions, verbose=True)
+        
+        if ignore_blank: odf=odf[(odf.source!="") & (odf.target!="")]
+        return odf.fillna('')
+
         
 
     def init_names_auto_all(self,**kwargs):
@@ -161,7 +238,8 @@ class CharacterSystem(BaseModel):
                 with open(fnfn) as f: fnd=Counter(json.load(f))
 
                 for name,count in fnd.items():
-                    nametoks[clean_character_tok(name)]+=count
+                    # nametoks[clean_character_tok(name)]+=count
+                    nametoks[name]+=count
 
         return nametoks
 

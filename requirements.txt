@@ -28,3 +28,4 @@ tabulate
 mgzip
 openpyxl
 ftfy
+dateparser

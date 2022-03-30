@@ -275,7 +275,7 @@ class BaseCorpus(object):
 
 
 
-    def metadata(self,force=False,force_inner=True,force_save=False,progress=False,lim=None,**kwargs):
+    def metadata(self,force=False,force_inner=False,force_save=False,progress=True,lim=None,**kwargs):
         self.init()
         mdf=self._metadf
         if not force and mdf is not None and len(mdf) and len(mdf.columns):
@@ -292,8 +292,8 @@ class BaseCorpus(object):
         # set
         if self.col_id in set(mdf.columns): mdf=mdf.set_index(self.col_id)
         self._metadf=mdf
-        # self.save_metadata(force=force_save)
-        # log.debug(f'Returning dataframe of {self._metadf.shape} dimensions')
+        self.save_metadata(force=force_save)
+        log.debug(f'Returning dataframe of {self._metadf.shape} dimensions')
         return mdf
 
     def save_metadata(self,*x,force=False,**y):

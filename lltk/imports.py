@@ -95,6 +95,40 @@ TEXT_PATH_KEYS=[
 	'path_xml'
 ]
 
+BOOKNLP_NARRATOR_ID='NARRATOR'
+BOOKNLP_DEFAULT_LANGUAGE="en"
+BOOKNLP_DEFAULT_MODEL='small'
+BOOKNLP_DEFAULT_PIPELINE="entity,quote,supersense,event,coref"
+BOOKNLP_RENAME_COLS={'paragraph_ID': 'para_i',
+'sentence_ID': 'sent_i',
+'token_ID_within_sentence': 'sent_token_i',
+'token_ID_within_document': 'token_i',
+'word': 'token',
+'lemma': 'lemma',
+'byte_onset': 'onset',
+'byte_offset': 'offset',
+'POS_tag': 'pos',
+'fine_POS_tag': 'pos2',
+'dependency_relation': 'deprel',
+'syntactic_head_ID': 'head',
+'event': 'event'
+}
+BAD_CHAR_IDS={'?','?!','x','nan','None'}
+chardata_metakeys_initial = dict(
+    char_race='',
+    char_gender='',
+    char_class='',
+    char_geo_birth='',
+    char_geo_marriage='',
+    char_geo_death='',
+    char_geo_begin='',
+    char_geo_middle='',
+    char_geo_end='',
+)
+
+
+
+
 import logging
 logging.basicConfig(format='%(message)s', level=logging.INFO)
 

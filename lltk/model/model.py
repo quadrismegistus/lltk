@@ -5,5 +5,7 @@ class BaseModel(object):
 		try:
 			return self.__getattribute__(key)
 		except AttributeError:
-			if self.text is not None:
-				return self.text.__getattr__(key)
+			return None
+			# try:
+			# if hasattr(self,'text') and self.text is not None:
+			# 	return self.text.__getattr__(key)
