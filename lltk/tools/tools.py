@@ -5,6 +5,21 @@ from loguru import logger as log
 
 
 
+def is_url(x): return type(x)==str and x.strip().startswith('http')
+def is_path(x):  return type(x) == str and os.path.exists(x)
+def is_graph(x): return type(x) in {nx.Graph, nx.DiGraph}
+def tupper(x): return x[0].upper()+x[1:]
+
+def camel_case_split(str):
+	words = [[str[0]]]
+
+	for c in str[1:]:
+		if words[-1][-1].islower() and c.isupper():
+			words.append(list(c))
+		else:
+			words[-1].append(c)
+
+	return [''.join(word) for word in words]
 
 
 HOME=expanduser("~")
@@ -354,6 +369,13 @@ import sys
 import csv
 #csv.field_size_limit(sys.maxsize)
 
+def get_tqdm(*args,**kwargs):
+	if in_jupyter():
+		from tqdm.notebook import tqdm as tqdmx
+	else:
+		from tqdm import tqdm as tqdmx
+	return tqdmx(*args,**kwargs)
+
 
 def get_the_getters(lang='en'):
 	get_stopwords(lang=lang)
@@ -477,14 +499,14 @@ def get_encoding(fn):
 	return result['encoding']
 
 
-def save_df(df,ofn,move_prev=False,index=None,key='',log=print,verbose=False):
+def save_df(df,ofn,move_prev=False,index=None,key='',log=print,verbose=False,**kwargs):
 	import pandas as pd
 	if os.path.exists(ofn) and move_prev: iter_move(ofn)
 	ext = os.path.splitext(ofn.replace('.gz',''))[-1][1:]
 	if index is None: index=type(df.index) != pd.RangeIndex
 	
 	ofndir=os.path.dirname(ofn)
-	if not os.path.exists(ofndir): os.makedirs(ofndir)
+	if ofndir and not os.path.exists(ofndir): os.makedirs(ofndir)
 
 	try:
 		if ext=='csv':
@@ -540,8 +562,54 @@ def read_df(ifn,key='',fmt='',error_bad_lines=False,**attrs):
 	
 	return pd.DataFrame()
 
+def get_backup_fn(fn,suffix='bak'):
+	name,ext=os.path.splitext(fn)
+	return f'{name}.bak{ext}'
 
-def iter_move(fn,force=False,prefix=''):
+def backup_fn(fn,suffix='bak',copy=True,move=True,**kwargs):
+	"""
+	`move` is reset to False if copy == True
+	"""
+	if copy: move=False
+	if os.path.exists(fn):
+		ofn=get_backup_fn(fn)
+		if copy: shutil.copy(fn,ofn)
+		if move: shutil.move(fn,ofn)
+
+def backup_save_df(df,fn,suffix='bak',**kwargs):
+	"""
+	`move` is reset to False if copy == True
+	"""
+	import filecmp
+	
+	odf=df
+	odf_fn=fn
+	odf_fn_tmp=odf_fn+'.tmp'
+	
+	bak_fn=get_backup_fn(fn,suffix=suffix)
+	bak_fn_tmp=bak_fn+'.tmp'
+	
+	# if os.path.exists(bak_fn): shutil.move(bak_fn,bak_fn_tmp)
+	if os.path.exists(odf_fn): shutil.move(odf_fn,odf_fn_tmp)
+	
+	save_df(odf,odf_fn,**kwargs)
+
+	if os.path.exists(odf_fn_tmp):
+		file_changed = not filecmp.cmp(odf_fn, odf_fn_tmp)
+		if file_changed: 
+			# move prev version to backup file
+			shutil.move(odf_fn_tmp, bak_fn)
+		else:
+			# get rid of prev version tmp file
+			os.unlink(odf_fn_tmp)
+
+def show_csvs(path='.',**kwargs):
+    for fn in os.listdir(path):
+        if fn.endswith('csv'): 
+            print(fn)
+            display(read_df(fn))
+
+def iter_move(fn,force=False,prefix='',keep=3):
 	if os.path.exists(fn):
 		iter_fn=iter_filename(fn,force=force,prefix=prefix)
 		iter_dir=os.path.dirname(iter_fn)
@@ -553,9 +621,9 @@ def iter_filename(fnfn,force=False,prefix=''):
 	if os.path.exists(fnfn) or force:
 		fndir,fn=os.path.split(fnfn)
 		filename,ext = os.path.splitext(fn)
-		fnum=2 if not force else 1
+		fnum=1 if not force else 0
 		maybe_fn=os.path.join(fndir, prefix + filename + ext)
-		while os.path.exists(maybe_fn):
+		while fnum and os.path.exists(maybe_fn):
 			fnum+=1
 			maybe_fn=os.path.join(fndir, prefix + filename + str(fnum) + ext)
 		fnfn = maybe_fn

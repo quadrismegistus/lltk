@@ -237,7 +237,7 @@ class ModelBookNLP(CharacterSystem):
         return super().get_character_id(char_tok_or_id, force=force)
         
 
-    def tokens(self,force=False,progress=True,only_propn=True,**kwargs):
+    def tokens(self,force=False,progress=True,only_propn=True,return_df=False,**kwargs):
         if not force and self._df_tokens is not None:
             odf=self._df_tokens
         elif not force and os.path.exists(self.path_data_tokens):
@@ -391,6 +391,7 @@ class ModelBookNLP(CharacterSystem):
                         source=mentioner,
                         rel='mentioned',
                         target=mentioned,
+                        t=(rowd.get('text_id'), rowd.get('token_i')),
                         mention_diff=0,
                         **format_d(rowd)
                     )
@@ -432,11 +433,15 @@ def get_booknlp(
     booknlpd=BOOKNLPD if cache else {}
     key=(language,model,pipeline)
     if not key in booknlpd:
-        from booknlp.booknlp import BookNLP
-        booknlpd[key]=BookNLP(
-            language=language,
-            model_params=dict(pipeline=pipeline,model=model)
-        )
+        try:
+            from booknlp.booknlp import BookNLP
+            booknlpd[key]=BookNLP(
+                language=language,
+                model_params=dict(pipeline=pipeline,model=model)
+            )
+        except ModuleNotFoundError:
+            log.error('BookNLP module not find')
+            booknlpd[key]=None
     return booknlpd[key]
 
 
@@ -496,7 +501,10 @@ def parse_booknlp(
             idd='text'
         )
         # log.debug(f'Parsing BookNLP with args: {okwargs}')
-        return booknlp.process(**okwargs)
+        try:
+            return booknlp.process(**okwargs)
+        except AttributeError:
+            return
 
 
 def get_booknlp_text_path(

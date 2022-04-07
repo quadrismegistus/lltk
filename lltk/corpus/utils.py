@@ -546,6 +546,7 @@ def load_corpus_manifest_unique(id,name):
 
 def load_corpus_manifest(name_or_id,manifestd={},make_path_abs=True):
     if not manifestd:
+        manifestd = dict(MANIFEST_DEFAULTS.items())
         manifest=load_manifest(name_or_id)
         if name_or_id in manifest:
             manifestd=manifest[name_or_id]
@@ -579,6 +580,11 @@ def load_corpus_manifest(name_or_id,manifestd={},make_path_abs=True):
             if k.startswith('path_'):
                 if type(v)==str and v and not os.path.isabs(v):
                     manifestd[k]=os.path.join(manifestd['path_root'], v)
+
+    if not manifestd.get('path_python'):
+        manifestd['path_python'] = os.path.join(manifestd['path_root'], manifestd['id']+'.py')
+    
+    # log.debug(f'Corpus python path: {manifestd["path_python"]}')
 
     return manifestd
 
@@ -677,15 +683,17 @@ def to_yearbin(year,yearbin):
 def load_corpus(name_or_id,manifestd={},load_meta=False,install_if_nec=False,**input_kwargs):
     if not manifestd: manifestd=load_corpus_manifest(name_or_id,make_path_abs=True)
     # print('>> loading:',name_or_id,manifestd)
-    module = imp.load_source(manifestd['id'], manifestd['path_python'])
-    class_class = getattr(module,manifestd['class_name'])
-    C = class_class(load_meta=load_meta,**manifestd)
-    from lltk.corpus.corpus import MetaCorpus
-    if issubclass(class_class, MetaCorpus): return C
-    if install_if_nec and (C.meta is None or not len(C.meta)):
-        return C.install(**input_kwargs)
-    return C
-
+    try:
+        module = imp.load_source(manifestd['id'], manifestd['path_python'])
+        class_class = getattr(module,manifestd['class_name'])
+        C = class_class(load_meta=load_meta,**manifestd)
+        from lltk.corpus.corpus import MetaCorpus
+        if issubclass(class_class, MetaCorpus): return C
+        if install_if_nec and (C.meta is None or not len(C.meta)):
+            return C.install(**input_kwargs)
+        return C
+    except Exception as e:
+        return None
 
 
 def gen_manifest(order=['id','name','desc','link']):
@@ -853,7 +861,9 @@ def do_gen_mfw_grp(group,*x,**y):
 CORPUSOBJD={}
 def load(name_or_id,load_meta=False,force=False,install_if_nec=False,**y):
     global CORPUSOBJD
+    # log.debug([force, name_or_id, name_or_id in CORPUSOBJD, CORPUSOBJD.get(name_or_id)])
     if force or not name_or_id in CORPUSOBJD or CORPUSOBJD[name_or_id] is None:
+        # log.debug('Loading...')
         CORPUSOBJD[name_or_id] = load_corpus(name_or_id,load_meta=load_meta,install_if_nec=install_if_nec,**y)
     return CORPUSOBJD[name_or_id]
 #################################################################

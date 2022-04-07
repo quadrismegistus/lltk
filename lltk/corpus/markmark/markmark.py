@@ -1,6 +1,14 @@
+from typing import Text
 from lltk.corpus.corpus import BaseCorpus
+from lltk.imports import *
+
+class TextMarkMark(BaseText): pass
 
 class MarkMark(BaseCorpus):
+	ID='markmark'
+	NAME='MarkMark'
+	TEXT_CLASS=TextMarkMark
+
 	def load_metadata(self,*x,**y):
 		meta=super().load_metadata()
 		meta['genre']='Fiction'

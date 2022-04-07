@@ -159,6 +159,7 @@ class SectionCorpusLetter(SectionCorpus, CharacterSystem):
                 source=row._sender_id,
                 rel='wrote_letter_to',
                 target=row._recip_id,
+                t=(text_id,0),
                 text_id=text_id,
                 source_tok=row[col_sender],
                 target_tok=row[col_recip],
@@ -167,18 +168,21 @@ class SectionCorpusLetter(SectionCorpus, CharacterSystem):
             ## encloser?
             encloser_id=row.get('id_parent')
             if encloser_id:
-                encloser_row = df.loc[encloser_id]
-                enclosed_row = row
+                try:
+                    encloser_row = df.loc[encloser_id]
+                    enclosed_row = row
 
-                # X enclosed a letter written by Y
-                yield dict(
-                    source=encloser_row._sender_id,
-                    rel='enclosed_letter_from',
-                    target=enclosed_row._sender_id,
-                    text_id = encloser_id,
-                    source_tok=encloser_row[col_sender],
-                    target_tok=enclosed_row[col_sender],
-                )
+                    # X enclosed a letter written by Y
+                    yield dict(
+                        source=encloser_row._sender_id,
+                        rel='enclosed_letter_from',
+                        target=enclosed_row._sender_id,
+                        text_id = encloser_id,
+                        source_tok=encloser_row[col_sender],
+                        target_tok=enclosed_row[col_sender],
+                    )
+                except KeyError:
+                    pass
 
                 # X enclosed a letter written to Y
                 # yield dict(
@@ -368,12 +372,16 @@ class TextEpistolary(BaseText):
     def characters(self,systems={'letters','booknlp'},**kwargs):
         return super().characters(systems=systems,**kwargs)
 
-    def interactions(self,**kwargs):
+    def interactions(self,ignore_blank=True,**kwargs):
         odf=super().interactions(**kwargs)
-        
         # overwrite NARRATOR with author
         odf_wrote = odf[odf.rel=='wrote_letter_to']
         writers = dict(zip(odf_wrote.text_id, odf_wrote.source))
+
+        if ignore_blank:
+            odf=odf[~odf.source.isin(BAD_CHAR_IDS)]
+            odf=odf[~odf.target.isin(BAD_CHAR_IDS)]
+
         def getnewsrc(src,text_id):
             if src!=BOOKNLP_NARRATOR_ID: return src
             if text_id not in writers: return src
@@ -385,6 +393,7 @@ class TextEpistolary(BaseText):
             getnewsrc(src,text_id)
             for src,text_id in zip(odf.source, odf.text_id)
         ]
+
         return odf
 
 

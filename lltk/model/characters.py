@@ -1,4 +1,5 @@
 from lltk.imports import *
+from lltk.model.networks import *
 import networkx as nx
 
 
@@ -361,22 +362,35 @@ class CharacterSystem(BaseModel):
         
 
     def graph_iter(self,
-            event_type=None,
+            interactions=None,
             t1=None,
             t2=None,
             min_weight=None,
             remove_isolates=True,
             progress=True,
-            bad_nodes={'',None,'?'},
+            bad_nodes=BAD_CHAR_IDS,
+            nodesep=';',
             **kwargs):
         
         g=nx.DiGraph()
-        for time,events in self.time_events(event_type=event_type,progress=progress):
-            #if t1 and time<t1: continue
-            #if t2 and time>t2: continue
-
+        if interactions is None: interactions=self.interactions()
+        interactions=interactions[interactions.t!=""]
+        
+        oiterr=sorted(list(interactions.groupby('t')))
+        if progress: oiterr=tqdm(oiterr, desc='Iterating over interactions')
+        for time,timedf in sorted(oiterr):
+            events = []
+            for u,v,d in zip(timedf.source, timedf.target, timedf.to_dict('records')):
+                for u2 in u.split(nodesep):
+                    for v2 in v.split(nodesep):
+                        u2x=u2.strip()
+                        v2x=v2.strip()
+                        if u2x in bad_nodes or v2x in bad_nodes: continue
+                        events+=[(u2x, v2x, d)]
+            
+            if not events: continue
+            
             for uvdi,(u,v,d) in enumerate(events):
-                if u in bad_nodes or v in bad_nodes: continue
                 if not 'weight' in d: d['weight']=1
                 if not g.has_edge(u,v):
                     g.add_edge(u,v,t_since=0,**d)
@@ -388,9 +402,12 @@ class CharacterSystem(BaseModel):
                             v_old = g.edges[u,v][dk]
                             vnum=pd.to_numeric(dv,errors='coerce')
                             vnum_old=pd.to_numeric(v_old,errors='coerce')
-                            if not np.isnan(vnum) and not np.isnan(vnum_old):
-                                g.edges[u,v][dk]=vnum_old + vnum
-                            else:
+                            try:
+                                if not np.isnan(vnum) and not np.isnan(vnum_old):
+                                    g.edges[u,v][dk]=vnum_old + vnum
+                                else:
+                                    g.edges[u,v][dk]=v
+                            except ValueError:
                                 g.edges[u,v][dk]=v
                 
                 if not uvdi:
@@ -410,7 +427,7 @@ class CharacterSystem(BaseModel):
             if t1 and time<t1: continue
             if t2 and time>t2: break
             g.t=time
-            yield g
+            if len(g.edges()): yield g
 
             
     
@@ -420,6 +437,28 @@ class CharacterSystem(BaseModel):
         return filter_graph(gnow,min_weight=min_weight,remove_isolates=remove_isolates)
 
     ###
+
+    def draw_graph(self,show=True,**kwargs):
+        from lltk.model.charnet import draw_nx
+        draw_nx(
+            self.graph(),
+            save_to=os.path.join(self.path_chars,'graphs','fig.static_graph.png'),
+            show=show,
+            **kwargs
+        )
+
+    def draw_graph_dynamic(self,fps=5,final_g=True):
+        if final_g is True: final_g=self.graph()
+        from lltk.model.charnet import draw_nx_dynamic
+        fn,fig=draw_nx_dynamic(
+            self.graph_iter(),
+            ofn=os.path.join(self.path_chars,'graphs','fig.dynamic_graph.mp4'),
+            odir_imgs=os.path.join(self.path_chars,'graphs','imgs'),
+            final_g=final_g,
+            fps=fps,
+            color_by='t_new'
+        )
+        return fn
     
     def show_edges(self,**kwargs):
         g=self.static_graph(**kwargs)
@@ -430,18 +469,6 @@ class CharacterSystem(BaseModel):
             if i>=10: break
             
             
-def filter_graph(g,min_weight=None,remove_isolates=True):
-    if min_weight:
-        for a,b,d in list(g.edges(data=True)):
-            if d['weight']<=min_weight:
-                g.remove_edge(a,b)
-    if remove_isolates:
-        degree=dict(g.degree()).items()
-        for node,deg in degree:
-            if not deg:
-                g.remove_node(node)
-    return g
-
 
 
 def clean_character_tok(ctok):

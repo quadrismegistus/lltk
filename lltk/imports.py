@@ -20,6 +20,7 @@ GET_CORPUSD={}
 IDSEP='/'
 COL__ID='_id'
 COL_ID='id'
+COL_ADDR='_addr'
 COL_ID_CORPUS = 'id_corpus'
 COL_ID_TEXT = 'id_text'
 IDSEP_START='_'
@@ -27,7 +28,7 @@ DIR_SECTION_NAME='sections'
 DIR_TEXTS_NAME='texts'
 DIR_CHARS_NAME='characters'
 BOOKNLPD={}
-
+BAD_COLS={'_llp_','Unnamed: 0'}
 
 
 
@@ -47,7 +48,7 @@ from xopen import xopen
 
 import nltk
 
-from tqdm import tqdm
+from tqdm.notebook import tqdm
 from pprint import pprint
 from lltk.tools import tools
 from lltk.tools import *
@@ -157,9 +158,9 @@ MANIFEST_DEFAULTS=dict(
 	paths_text_data=[],
 	paths_rel_data=[],
 	class_name='',
-
 	path_freq_table={},
 	col_id='id',
+	col_addr='_addr',
 	col_id_corpus='id_corpus',
 	col_id_text='id_text',
 	idsep='|',col_t='_text',
@@ -249,6 +250,9 @@ from lltk.text.text import *
 from lltk.corpus.corpus import *
 from lltk.model import *
 
+from lltk.text.text import BaseText,Text
+from lltk.corpus.corpus import BaseCorpus,Corpus
+
 
 
 
@@ -279,3 +283,4 @@ PATH_CLOUD_DEST = '/Share/llp_corpora'
 CLARISSA_ID=CLAR_ID=f'_epistolary/_chadwyck/Eighteenth-Century_Fiction/richards.01'
 MASQ_ID='_epistolary/_chadwyck/Eighteenth-Century_Fiction/haywood.13'
 EVELINA_ID = '_epistolary/_chadwyck/Eighteenth-Century_Fiction/burney.01'
+

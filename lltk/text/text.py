@@ -66,47 +66,52 @@ class BaseText(object):
 
 		if _txt: self._txt=_txt
 		if _xml: self._xml=_xml
-
-		meta[COL_ID]=self.id
-		self._meta=meta
 		
+		for k,v in meta.items():
+			try:
+				v=int(float(v))
+				meta[k]=v
+			except (ValueError,TypeError) as e:
+				if type(v)==str:
+					meta[k]=clean_text(v)
+		meta[COL_ID]=self.id
+		meta[COL_ADDR]=self.addr
+		if self._source is not None:
+			meta['_addr_source']=self._source.addr
+		
+		# meta={**self.init_meta_json(), **meta}
+		
+		self._meta=meta
+		self._orig_cols=set(meta.keys())
+
 
 		if is_corpus_obj(_corpus):
 			self.XML2TXT=_corpus.XML2TXT
 			self.TOKENIZER=_corpus.TOKENIZER
-			# if self.lang is None: self.lang=corpus.lang
 		
 	@property
 	def corpus(self): return self._corpus
 
 	def __repr__(self):
-		# o=f'{self.__class__.__name__}({self.id},  corpus={self.corpus})'
-		# o=f'[{self.__class__.__name__}]({self.id}|{self.corpus})'
-		# o=f'[{self.__class__.__name__}]({self.corpus.id}|{self.id})'
 		o=f'[{self.__class__.__name__}]({self.addr})'
 		return o
 
-	# def __repr__(self):
-	# 	co=self.corpus.name if self.corpus is not None and hasattr(self.corpus,'name') and self.corpus.name else ''
-	# 	au,ti,yr,idx = self.author, self.title, self.year, self.id
-	# 	l = [
-	# 		co if co else 'Corpus',
-	# 		au if au else 'Author',
-	# 		ti if ti else 'Title',
-	# 		yr if yr else 'Year',
-	# 		idx if idx else 'ID',
-	# 	]
+	def init_meta_json(self):
+		if self._meta_json is None and type(self.path_meta_json)==str:
+			if os.path.exists(self.path_meta_json):
+				try:
+					with open(self.path_meta_json) as f:
+						self._meta_json=json.load(f)
+				except Exception as e:
+					log.error(e)
+					self._meta_json={}
+		return self._meta_json if self._meta_json else {}
 
-	# 	co,au,ti,yr,idx = l
-	# 	#o=f'[[<{self.__class__.__name__}> {au}, “{ti}” ({yr}) [{co}: {idx}]]]'
-	# 	o=f'<{self.__class__.__name__}: {self.id} {self.corpus}>'
-	# 	#return str(self.meta)
-	# 	return o
-
-	def metadata(self,force=False):
-		# rewrite this
-		return self._meta
-
+	def cache_meta_json(self):
+		ensure_dir_exists(self.path_meta_json)
+		with open(self.path_meta_json,'w') as of:
+			json.dump(self._meta,of,indent=4,sort_keys=False)
+			# log.debug('Cached: '+self.path_meta_json)
 
 	
 	# convenience
@@ -149,6 +154,9 @@ class BaseText(object):
 	
 	@property
 	def path(self): return self.get_path()
+	@property
+	def path_meta_json(self): return os.path.join(self.path,'meta.json')
+	
 
 	# load text?
 	@property
@@ -156,11 +164,6 @@ class BaseText(object):
 		return f'{IDSEP_START}{self.corpus.id}{IDSEP}{self.id}'
 	@property
 	def txt(self): return self.get_txt()
-		#if self._txt: return self._txt
-		#return clean_text(self.text_plain())
-
-
-
 
 	@property
 	def xml(self):
@@ -221,21 +224,35 @@ class BaseText(object):
 
 
 	@property
-	def meta(self): return self.metadata(force=True)
+	def meta(self): return self.metadata()
+
+	def is_valid(self): return True
 	
-	def metadata(self,force=True):
-		# ?
-		self._meta['_addr']=self.addr
-		if not force and self._meta and len(self._meta)>2:
-			return self._meta
-		# gen
-		self._meta={
-			**(self.source.meta if self.source is not None and self.source.meta is not None else {}),
-			**self._meta
-		}
+
+	
+	def metadata(self,force=False,from_source=True,from_wikidata=False,from_json=True,allow_http=True,**kwargs):
+		meta={COL_ADDR:self.addr}
 		
-		return self._meta
+		if from_source and self.source is not None:
+			meta[f'{COL_ADDR}_source']=self.source.addr
+			for k,v in self.source.metadata(**kwargs).items(): meta[k]=v
 		
+		if from_wikidata:
+			for k,v in self.wikidata.metadata(allow_http=allow_http,**kwargs).items(): meta[k]=v
+			meta[f'{COL_ADDR}_wikidata']=self.source.addr
+		
+		if from_json:
+			for k,v in self.init_meta_json().items(): meta[k]=v
+
+		# from now
+		for k,v in self._meta.items(): meta[k]=v
+
+		return meta
+	
+	def init(self,force=False,**kwargs):
+		if force or not self._init:
+			self.metadata()
+			self._init=True
 
 
 	def text_plain(self, force_xml=None):
@@ -350,7 +367,34 @@ class BaseText(object):
 	@property
 	def ti(self): return to_titlekey(self.title)
 	@property
-	def shorttitle(self): return noPunc(self.title.strip().split(':')[0].split(';')[0].split('.')[0].split('(')[0].split('[')[0].strip())
+	def shorttitle(self,puncs=':;.([,!?',ok={'Mrs','Mr','Dr'}):
+		o=self.title.strip().replace('—','--').replace('–','-')
+		for x in puncs:
+			o2=o.split(x)[0].strip()
+			if o2 in ok: continue
+			o=o2
+		return o
+	
+	@property
+	def shortauthor(self):
+		au=clean_text(self.author)
+		if not au: return ''
+		if not ',' in au: return au
+		
+		parts=[x.strip() for x in au.split(',') if x.strip() and x.strip()[0].isalpha()]
+		if len(parts)==0: return au
+		if len(parts)==1: return parts[0]
+		oparts=[parts[1]] + [parts[0]]
+
+		# parentheses
+		def grabparen(x):
+			if '(' in x and ')' in x: return x.split('(',1)[-1].split(')',1)[0].strip()
+			return x
+		oparts=[grabparen(x) for x in oparts]
+		ostr=' '.join(oparts)
+		return ostr
+
+
 
 	@property
 	def prose_or_verse(t):
@@ -515,7 +559,12 @@ class BaseText(object):
 			from lltk.model.booknlp import ModelBookNLP
 			self._booknlp[self.addr]=ModelBookNLP(self)
 		return self._booknlp[self.addr]
-
+	
+	@property
+	def wikidata(self):
+		t=Text(self.addr, 'wikidata')
+		t.metadata()
+		return t
 	
 
 
@@ -546,42 +595,44 @@ class TextSection(BaseText):
 	# 	o=f'[{self.__class__.__name__}]({self.corpus.id}|{self.id})'
 	# 	return o
 
+TEXT_CACHE={}
 
+def is_text_obj(obj):
+	return issubclass(type(obj), BaseText)
+
+def is_corpus_obj(obj): 
+	from lltk.corpus.corpus import BaseCorpus
+	return issubclass(type(obj), BaseCorpus)
+
+
+def get_addr(text_ref,corpus_ref=None,**kwargs):
+	if is_text_obj(text_ref): text_ref = text_ref.addr
+	if is_corpus_obj(corpus_ref): corpus_ref = corpus_ref.id    
+	addr = text_ref
+	if corpus_ref: 
+		corpus_ref_addr = f'_{corpus_ref}/'
+		if not addr.startswith(corpus_ref_addr):
+			addr = corpus_ref_addr + addr
+	return addr
+
+
+def Text(text_ref=None,corpus_ref=None,force=False,**kwargs):
+	global TEXT_CACHE
 	
-
-
-
-def Text(id=None,corpus=None,**kwargs):
-	text_ref,corpus_ref=id,corpus
 	# log.debug(f'Generating text with id="{text_ref}" and corpus="{corpus_ref}"')
-
-	from lltk.corpus.corpus import Corpus
 	# have text?
-	if issubclass(text_ref.__class__, BaseText):
-		# have text
-		text_obj = text_ref
-		# log.debug(f'called on a text object: {text}')
-		# already?
-		if corpus_ref is None: 
-			# log.debug(f'no new corpus set, returning as-is')
-			# log.debug(f'Returning text: {text}')
-			return text_obj
+	addr = get_addr(text_ref,corpus_ref)
+	if force or addr not in TEXT_CACHE:
+		log.debug(f'Getting text with address {addr}')
+		# log.debug('Genereating text')
+		id_corp,id_text = to_corpus_and_id(addr)
+		# any left?
+		id_text_corp, id_text_text = to_corpus_and_id(id_text)
+		if id_text_corp:
+			sub_text = Text(id_text)
 		else:
-			corpus = Corpus(corpus_ref,**kwargs)
-			text = corpus.text(text_obj.addr,**kwargs)
-			return text
-	
-	elif type(text_ref)==str:
-		corpus_ref_id,text_ref_id = to_corpus_and_id(text_ref)
-		if not corpus_ref and corpus_ref_id:
-			# if no corpus assigned but one is here on the id
-			corpus = Corpus(corpus_ref_id,**kwargs)
-			text = corpus.text(text_ref_id,**kwargs)
-			# log.debug(f'Returning text: {text}')
-			return text
-	
-	# otherwise get this/default corpus
-	corpus = Corpus(corpus_ref,**kwargs)
-	text = corpus.text(text_ref,**kwargs)
-	# log.debug(f'Returning text: {text}')
-	return text
+			sub_text = id_text
+
+		from lltk.corpus.corpus import Corpus
+		TEXT_CACHE[addr] = Corpus(id_corp,force=force).text(sub_text)
+	return TEXT_CACHE.get(addr)

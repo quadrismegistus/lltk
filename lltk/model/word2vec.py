@@ -1,9 +1,7 @@
-from __future__ import absolute_import
-from __future__ import print_function
-import six
-from six.moves import range
-from six.moves import zip
-# -*- coding: utf-8 -*-
+from lltk.imports import *
+from lltk.model import BaseModel
+from scipy.spatial.distance import cosine,pdist,squareform,cdist
+from scipy.stats import pearsonr,spearmanr
 
 PATH_TO_WORD2VEC_BINARY = '/Users/ryan/DH/github/word2vec/bin/word2vec'
 
@@ -20,22 +18,8 @@ TOPALL=dict(n=None,only_pos=None,pos_regex=False,remove_stopwords=False,only_abs
 
 DEFAULT_MFWD=TOPALL
 
-import os,gensim,logging,time,numpy as np,random
-from lltk.model import Model
-from scipy.spatial.distance import cosine,pdist,squareform,cdist
-from scipy.stats import pearsonr,spearmanr
-import multiprocessing as mp,gzip,random,time
-from lltk import tools
-
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.ERROR)
 
-
-#KEYWORDS = {'art','class','culture','democracy','common','economy','economic','genius','humanity','industry','labour','liberty','literature','opinion','public','private','virtue','taste'}
-#KEYWORDS_OTHER = {'passion','abstract','abstraction','literature','writing','poetry','novel','romance','adventure','history','literary','poetic','beautiful','sublime','historical','fiction','fictional','novelistic','invisible','virtual','invisibility','agent','agency','london','suspence','suspense','suspenseful','suspenceful'}
-
-# KEYWORDS = {'art_n','class_n','culture_n','democracy_n','common_j','economy_n','economic_j','genius_n','humanity_n','industry_n','labour_n','liberty_n','literature_n','opinion_n','public_j','public_n','private_j','virtue_n','taste_n'}
-# KEYWORDS_OTHER = {'passion_n','abstract_j','abstraction_n','literature_n','writing_n','poetry_n','novel_n','romance_n','adventure_n','history_n','literary_j','poetic_j','beautiful_j','sublime_j','historical_j','fiction_n','fictional_j','novelistic_j','invisible_j','virtual_j','invisibility_n','agent_n','agency_n','london_n','suspence_n','suspense_n','suspenseful_j','suspenceful_j'}
-# KEYWORDS_BECOMING_ABSTRACT = {'attachment_n', 'plans_n', 'plan_n', 'talents_n', 'plunder_n', 'alarm_n', 'situations_n', 'countrymen_n', 'attack_n', 'situation_n', 'individual_n', 'agriculture_n', 'taste_n', 'attacks_n', 'chance_n', 'fate_n', 'basis_n', 'spirit_n', 'career_n', 'sacrifices_n', 'habit_n', 'rank_n', 'worth_n', 'scenes_n', 'fund_n', 'sex_n', 'woes_n', 'charms_n', 'horrors_n', 'tribunal_n', 'wars_n', 'source_n', 'infancy_n', 'disease_n', 'income_n', 'sources_n', 'tyrants_n', 'annals_n', 'manufactures_n', 'marriage_n', 'sacrifice_n', 'delivery_n', 'revenues_n', 'almighty_n', 'term_n', 'tribute_n', 'murder_n', 'proprietors_n', 'enemies_n', 'complexion_n', 'classes_n', 'debt_n', 'bliss_n', 'woe_n', 'humour_n', 'art_n', 'libel_n', 'thirst_n', 'profits_n', 'pressure_n', 'uses_n', 'experiment_n', 'organs_n', 'passages_n', 'sovereign_n', 'moments_n', 'accident_n', 'testament_n', 'forfeiture_n', 'france_n', 'statute_n', 'secret_n', 'sickness_n', 'right_n', 'sums_n'}
 
 KEYWORDS = {'value','interest','commerce','art','class','culture','democracy','common','economy','economic','genius','humanity','industry','labour','liberty','literature','opinion','public','public','private','virtue','taste'}
 KEYWORDS_OTHER = {'passion','abstract','abstraction','literature','writing','poetry','novel','romance','adventure','history','literary','poetic','beautiful','sublime','historical','fiction','fictional','novelistic','invisible','virtual','invisibility','agent','agency','london','suspence','suspense','suspenseful','suspenceful'}

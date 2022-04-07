@@ -30,7 +30,9 @@ class BaseCorpus(object):
     EXT_FREQS='.json'
     EXT_CADENCE_SCAN='.pkl'
     EXT_CADENCE_PARSE='.pkl'
-    COL_ID='id'
+    # COL_ID='id'
+    COL_ID='_addr'
+    COL_ADDR='_addr'
     col_corpus=COL_CORPUS='corpus'
     COL_FN='fn'
     EXT_HDR='.hdr'
@@ -122,92 +124,78 @@ class BaseCorpus(object):
         else:
             raise StopIteration
 
-
-    # get/make/add
-    def text(self,id=None,init=True,add=True,**kwargs):
-        if issubclass(id.__class__, BaseText):
-            if id.corpus is not None and self.corpus is not None and id.corpus.id == self.corpus.id:
-                return id
-            else:
-                id=id.addr
-        else:
-            if id is None:id=get_idx(id)
-            id_corpus,id_text = to_corpus_and_id(id)
-            if id_corpus==self.id: id=id_text
-
-        # get obj already?
-        obj=self.get_text(id)
-
-        # create new?
-        if obj is None and init:
-            obj=self.init_text(id=id,**kwargs)
-        if obj is not None and add:
-            self.add_text(obj)
-        return obj
+    def null_text(self,id_null='Vnull',**kwargs):
+        return self.init_text(id_null,**kwargs)
     
+    def get_text(self,id_or_text,**kwargs):
+        key = id_or_text.addr if is_text_obj(id_or_text) else id_or_text
+        return self.textd.get(key)
 
-    def get_text(self,id=None,**kwargs):
-        # try to return
-        return self.textd[id]
+    def text(self,
+            id_or_text,
+            add=True,
+            cache=True,
+            *args,
+            **kwargs):
+        t = self.get_text(id_or_text)
+        if t is None: t = self.init_text(id_or_text,**kwargs)
+        # valid?
+        #if t is None or not t.is_valid():
+        #    t = self.null_text()
+        if add:
+            self.add_text(t)
+            #if cache: t.cache_meta_json()
+        return t
 
     
     # def init_text(self,id=None,corpus=None,meta={},**kwargs):
     def init_text(self,id=None,_source=None,**kwargs):
         # log.debug(f'{self}: Initializing text with id="{id}"')
-        if issubclass(_source.__class__, BaseText):
-            # print(f'{_source} is Text')
-            source_text = _source
-            if id is None: id = source_text.addr
-        elif issubclass(id.__class__, BaseText):
-            # print(f'{id} is Text')
-            source_text = id
-            id = source_text.addr
-        else:
-            if id is None: id=get_idx()
+
+        if is_text_obj(_source):
+            log.debug(f'{_source} is Text')
+        elif is_text_obj(id):
+            log.debug(f'{id} is Text')
+            _source = id
+        elif type(id)==str:
             ## get source?
             id_corpus,id_text = to_corpus_and_id(id)
-            
-            source_text = None
-            if id_corpus:
-                if id_corpus==self.id:
-                    # can't be my own source
-                    id=id_text
-                else:
-                    # log.debug(f'Need to get new corpus: {id_corpus}')
-                    # get the referenced text
-                    source_corpus = Corpus(id_corpus)
-                    # assign as source
-                    source_text = source_corpus.text(id_text)
+            if id_corpus and id_corpus!=self.id:
+                _source = Text(id_text,id_corpus)
+        else:
+            log.error('init_text failed')
+            return self.null_text()
         
         ## get text
+        if id is None:
+            if _source is not None:
+                id = _source.addr
+
+        # gen text in my image        
         text = self.TEXT_CLASS(
             id,
             _corpus = self,
-            _source = source_text,
+            _source = _source,
             **kwargs
         )
+        # ensure correct id/addr
+        text._meta[self.col_id]=id
+        text._meta[self.col_addr]=text.addr
 
-        ### add as well
-        # self.add_text(text)
-
-        # need to redo meta
-
-        # log.debug(f'{self}: Returning text: {text}')
         return text
     
     def add_text(self,t,**kwargs):
-        # ensure ours
-        # if t.__class__!=self.TEXT_CLASS:
-            #log.error(f'class of text {t.__class__} is not our own text class {self.TEXT_CLASS}!')
-            #t=self.init_text(t,**kwargs)
-
         # assign by id
         if t is not None and issubclass(t.__class__, BaseText):
-            if t.id not in self._textd:
+            if self._textd.get(t.id) is None:
                 self._textd[t.id]=t
                 self._metadf=None # redo meta
-
     
+    def add_texts(self,corpus_or_texts,**kwargs):
+        c_t = corpus_or_texts
+        texts = c_t.texts(**kwargs) if is_corpus_obj(c_t) else c_t
+        for t in texts: self.text(t,**kwargs)
+
     @property
     def paths(self):
         return self.__paths
@@ -218,7 +206,8 @@ class BaseCorpus(object):
     ####
     @property
     def t(self):
-        return random.choice(self.texts())
+        ol=self.texts()
+        return random.choice(ol) if len(ol) else None
 
     @property
     def au(self): return self.authors
@@ -250,63 +239,98 @@ class BaseCorpus(object):
 
     def init_meta(self,*x,**y):
         meta_files_or_dfs=[self.path_metadata_init,self.path_metadata,self._metadf]
-        # log.debug(meta_files_or_dfs)
-        # for mdf_or_fn in meta_files_or_dfs:
-        #     mdf_or_fn_anno = get_anno_fn_if_exists(mdf_or_fn)
-        #     yield from readgen(mdf_or_fn_anno,progress=False)
-        odd = merge_read_dfs_dict(meta_files_or_dfs, opt_exts=ANNO_EXTS, on=self.col_id, fillna='')
-        yield from odd.values()
+        odd = merge_read_dfs_dict(
+            meta_files_or_dfs,
+            opt_exts=ANNO_EXTS,
+            on=self.col_id,
+            fillna=''
+        )
+        for odx in odd.values():
+            odx[self.col_addr]=f'{IDSEP_START}{self.id}{IDSEP}{odx.get(self.col_id)}'
+            yield odx
+            
 
     # def init(self, meta_final=None, other_meta=[], expand_meta=True, force=False,**kwargs):
-    def init(self,force=False,meta_final=[],**kwargs):
+    def init(self,force=False,meta_final=[],by_files=False,bad_cols=BAD_COLS,**kwargs):
         if not force and self._init: return
-        log.debug(f'Initializing from metadata: {self}')
+        # if not by_files: log.debug(f'Initializing from metadata: {self}')
         i=0
-        for dx in self.init_meta(meta_final):
-            if not self.col_id in dx: continue
-            # init text from meta -- will add itself
+        iterr = self.init_meta_files() if by_files else self.init_meta(meta_final)
+        for dx in iterr:
+            # clean
+            if BAD_COLS & set(dx.keys()):
+                dx=dict((k,v) for k,v in dx.items() if k not in BAD_COLS)
+            # init text from meta
             t = self.init_text(**dx)
             # add text to textd
             self.add_text(t)
             i+=1
-        if i: self._init=True
+        self._init=True
         return
 
+    def init_meta_files(self,force=False,bad_cols=BAD_COLS,meta_fn='meta.json',**kwargs):
+        log.debug(f'Initializing from files: {self}')
+        for root,dirs,fns in os.walk(self.path_texts):
+            if meta_fn in set(fns):
+                idx = os.path.abspath(root).replace(self.path_texts,'')
+                if idx and idx[0]=='/': idx=idx[1:]
+                yield {'id':idx}
+        
+    @property
+    def wikidata(self):
+        if self._wikidata is None:
+            # Corpus
+            from lltk.corpus.corpus import Corpus
+            C = Corpus('wikidata',force=True)
+            C._textd={}
+            for t1 in self.texts():
+                t2 = C.text(t1.addr, _source=t1)
+                if t1 is not None and t2 is not None:
+                    C._textd[t2.id] = t2
+            self._wikidata = C
+        return self._wikidata
+    
+            
 
 
-
-    def metadata(self,force=False,force_inner=False,force_save=False,progress=True,lim=None,**kwargs):
+    def metadata(
+            self,
+            force=False,
+            wikidata=False,
+            allow_http=True,
+            force_inner=False,
+            force_save=True,
+            progress=False,
+            lim=None,
+            fillna='',
+            **kwargs):
+        
         self.init()
-        mdf=self._metadf
-        if not force and mdf is not None and len(mdf) and len(mdf.columns):
-            pass
-        #elif not force and os.path.exists(self.path_metadata):
-        #    mdf=self.load_metadata_file()
-        else:
+        if force or self._metadf is None or not len(self._metadf):
             mdf=pd.DataFrame(
-                t.metadata(force=force)
+                t.metadata(wikidata=wikidata,allow_http=allow_http,force=force)
                 for t in tqdm(self.texts()[:lim],disable=not progress,desc='Iterating over texts')
                 if t is not None
                 and t.metadata is not None
             )
-        # set
-        if self.col_id in set(mdf.columns): mdf=mdf.set_index(self.col_id)
-        self._metadf=mdf
-        self.save_metadata(force=force_save)
-        log.debug(f'Returning dataframe of {self._metadf.shape} dimensions')
-        return mdf
+            if fillna is not None: mdf=mdf.fillna(fillna)
+            if self.col_id in set(mdf.columns): mdf=mdf.set_index(self.col_id)
+            self._metadf=mdf
+            self.save_metadata(mdf,force=force_save)
+        return self._metadf
 
-    def save_metadata(self,*x,force=False,**y):
-        if self._metadf is not None:
+    def save_metadata(self,ometa=None,*x,force=True,force_inner=False,ok_cols=set(),backup=True,**kwargs):
+        if ometa is None: ometa=self.metadata(force=force_inner,**kwargs)
+        if ometa is not None and len(ometa):
+            if not ok_cols: 
+                for t in self.texts(): ok_cols|=set(t._meta.keys())
+                ometa = ometa[[col for col in ometa.columns if col in ok_cols]]
             if force or not os.path.exists(self.path_metadata):
-                save_df(self._metadf, self.path_metadata)
+                ofn = self.path_metadata
+                if backup:
+                    backup_save_df(ometa,ofn,**kwargs)
+                save_df(ometa,ofn,**kwargs)
 
-    # def text(self,idx,meta=None):
-    #     if meta is None:
-    #         if self._textd is not None and idx in self._textd:
-    #             return self._textd[idx]
-    #     else:
-    #         return self.TEXT_CLASS(idx,self,meta=dict(meta))
 
     @property
     def meta(self): return self.metadata(force=False)
@@ -320,9 +344,7 @@ class BaseCorpus(object):
     def metadf(self):
         return self.meta.reset_index() if len(self.meta) else self.meta
 
-    # @property
-    # def metadata(self,*x,**y): return self.meta
-
+    
 
 
     def meta_iter(self,progress=False,**y):
@@ -341,13 +363,15 @@ class BaseCorpus(object):
 
 
     # Get texts
-    def texts(self,text_ids=None):
+    def texts(self,text_ids=None,progress=True):
         self.init()
         if text_ids is not None:
-            text_ids=to_textids(text_ids)
+            text_ids=to_textids(text_ids,col_id=self.col_id)
             return [self._textd[tidx] for tidx in text_ids if tidx in self._textd]
         
-        return list(self._textd.values())
+        o=list(self._textd.values())
+        if progress: o=get_tqdm(o,desc=f'[{self.name}] Iterating texts')
+        yield from o
     
     # Convenience
     @property
@@ -1344,23 +1368,33 @@ class SectionCorpus(BaseCorpus):
         return self._txt
 
 
-
-
-def Corpus(corpus_ref=None,**kwargs):
+CORPUS_CACHE={}
+def Corpus(corpus_ref=None,force=False,**kwargs):
+    global CORPUS_CACHE
     # log.debug(f'Generating corpus object with id="{corpus_ref}"')
-
+    
+    C = None
+    
     if issubclass(corpus_ref.__class__, BaseCorpus):
         C=corpus_ref
     
-    elif type(corpus_ref)==str and corpus_ref:
-        # log.debug(f'Corpus() called on a string: "{corpus_ref}"')
-        try:
-            C=load(corpus_ref,**kwargs)
-        except KeyError:
-            C=BaseCorpus(corpus_ref,**kwargs)
+    if C is None:
+        if not corpus_ref: corpus_ref = TMP_CORPUS_ID
+        if not force and corpus_ref in CORPUS_CACHE:
+            C = CORPUS_CACHE[corpus_ref]
+        else:
+            C=load_corpus(corpus_ref,**kwargs)
+            if C is not None:
+                log.debug(f'Corpus loaded: {C}')
 
-    else:
+    if C is None:
         C=BaseCorpus(corpus_ref,**kwargs)
+        log.debug(f'Corpus begun: {C}')
     
-    # log.debug(f'Returning corpus: {C}')
+    CORPUS_CACHE[C.id]=CORPUS_CACHE[C.name]=C
+
     return C
+
+
+
+

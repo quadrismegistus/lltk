@@ -360,6 +360,7 @@ def clean_text(txt):
 	import ftfy
 	txt=ftfy.fix_text(txt)
 	replacements={
+		'&eacute':'é',
 		'&hyphen;':'-',
 		'&sblank;':'--',
 		'&mdash;':' -- ',
@@ -375,9 +376,15 @@ def clean_text(txt):
 		'&rsquo;':u'’',
 		'&indent;':'     ',
 		'&amp;':'&',
+		'&euml;':'ë',
+		'&uuml;':'ü',
+		'&auml;':'ä',
 	}
 	for k,v in list(replacements.items()):
-		txt=txt.replace(k,v)
+		if k in txt:
+			txt=txt.replace(k,v)
+		elif k.startswith('&') and k.endswith(';') and k[:-1] in txt:
+			txt=txt.replace(k[:-1],v)
 	return txt
 
 def remove_bad_tags(dom, bad_tags):

@@ -1,6 +1,13 @@
 from lltk.imports import *
+from lltk.tools.tools import camel_case_split
 
-class TextTxtLab(BaseText): pass
+class TextTxtLab(BaseText):
+	def __init__(self,*args,**kwargs):
+		super().__init__(*args,**kwargs)
+		if 'title' in self._meta and not ' ' in self._meta.get('title'):
+			self._meta['title'] = ' '.join(camel_case_split(self._meta['title']))
+		
+
 
 class TxtLab(BaseCorpus):
 	TEXT_CLASS=TextTxtLab
@@ -21,8 +28,8 @@ class TxtLab(BaseCorpus):
 		self.compile_extract()
 		# clean
 		self.compile_metadata()
-		
-		
+
+	
 
 	# Extract once downloaded
 	def compile_extract(self):
