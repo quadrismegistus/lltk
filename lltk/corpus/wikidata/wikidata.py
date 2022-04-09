@@ -1,55 +1,217 @@
 from lltk.imports import *
 from lltk.text.text import BaseText
 
+def is_wikidata_key(key):
+    return '|P' in key or '|Q' in key or key.startswith('wd_author') or key.startswith('wd_title') or key in {'query','qid'}
+
+
+def init_wikidata(
+        id,
+        force=False,
+        keys_nec={'wd_title','wd_author'},
+        corpus_id='wikidata',
+        **kwargs):
+    
+    # get address if exists
+    text = Text(id)
+    # plog(f'text = {text}')
+    # already done?
+    tmeta=text.metadata(from_sources=False,**kwargs)
+    qid=get_qid(text,tmeta)
+    # tkeys=set(tmeta.keys())
+    # already_done = not set(keys_nec) - set(tkeys)
+    # if not already_done:
+    #     qmeta = get_wikidata(qid,text=text,**kwargs)
+    # else:
+    #     qmeta = {}
+    
+    ometa={**tmeta, **kwargs}
+    
+    # cache this
+    ometa['id']=qid
+    ometa['corpus']=corpus_id
+    otext = Text(**ometa)
+
+    otext.add_source(text)
+    text.add_source(otext)
+
+    text.cache_meta_json()
+    otext.cache_meta_json()
+    
+    return otext
+
+def get_qid(*x,**y): return get_wikidata_id(*x,**y)
+
+def get_wikidata_id(
+        text=None,
+        meta={},
+        idkey='_id_wikidata',
+        addrkey='_addr_wikidata',
+        prefix='_wikidata/',
+        corpus_id='wikidata',
+    ):
+    tmeta = text.metadata(from_sources=False) if not meta and text is not None else meta
+    log.debug(f'Tmeta = {tmeta}')
+    Qid=''
+    Qaddr = tmeta.get(addrkey,'').split('/')[-1]
+    Qid = tmeta.get(idkey,Qid)
+    if not Qid: Qid = Qaddr
+    if not Qid: Qid = query_wikidata_id(text)
+    Qid=Qid.replace('(','').replace(')','')
+    return Qid
+
+def query_wikidata_id(
+        qstr_or_text,
+        lang="en",
+        what=["work","manuscript","text"],
+        min_match_ratio_au=50,
+        min_match_ratio_ti=50,
+        timeout=30,
+        verbose=True,
+        **kwargs):
+    import requests,wptools,bs4
+    from fuzzywuzzy import fuzz
+
+    if issubclass(type(qstr_or_text), BaseText):
+        text = qstr_or_text
+        qstr=wikidata_query_str(qstr_or_text)
+    else:
+        text = None
+        qstr=qstr_or_text
+
+    if verbose: log.debug('Querying wikidata: '+qstr)
+    
+    safe='+'.join(clean_text(qstr).split())
+    url=f'https://www.wikidata.org/w/index.php?search={safe}'
+    with requests.Session() as s:
+        html = s.get(url,timeout=timeout).text
+    dom=bs4.BeautifulSoup(html,'html')
+
+    qid=''
+    for item in dom.select('.wb-itemlink-id'):
+        itext=item.text
+        qid=itext.replace('(','').replace(')','')
+        break
+    return qid
+
+def query_get_wikidata(qid,verbose=False,**kwargs):
+    import wptools
+    page = wptools.page(wikibase=qid, silent=not verbose)
+    odat = page.get_wikidata().data.get('wikidata')
+    ods = format_wikidata_d_simple(odat)
+    return dict(id=qid,**ods)
+
+def get_wikidata(qid,tmeta={},**kwargs):
+    if not tmeta:         
+        tmeta=t.metadata(from_sources=False,from_cache=True)
+    if not is_valid_wikidata(tmeta):
+        tmeta=query_get_wikidata(qid,**kwargs)
+    if is_valid_wikidata(tmeta):
+        t.cache_meta_json(tmeta)
+    return tmeta
+
+def is_valid_wikidata(meta):
+    for k in meta.keys():
+        if '|P' in k or '|Q'in k:
+            return True
+    return False
+
+    #     what={"work","manuscript","text"},
+    #     min_match_ratio_au=50,
+    #     min_match_ratio_ti=50,
+    #     qstr='',
+    #     timeout=30):
+    # #qid=qid.split('/')[-1]
+    
+    # import wptools
+    # page = wptools.page(wikibase=qid, silent=not verbose)
+    # o = page.get_wikidata()
+    # if os is None or not hasattr(o,'data'): return
+    # data=o.data
+    # whatres = data.get('what','')
+    # for whatx in what:
+    #     if not whatres or not whatx or whatx in whatres:
+    #         odat=data.get('wikidata')
+    #         od = format_wikidata_d(odat)
+    #         wd_au,wd_ti = wikidata_get_author(od), wikidata_get_title(od)
+    #         if not wd_ti: wd_ti=data.get('label')
+    #         # pprint([wd_au,wd_ti,od])
+    #         if not wd_au or not wd_ti: continue
+
+    #         if text is not None:
+    #             t_au,t_ti = text.au, text.shorttitle
+    #             au_ratio=fuzz.token_set_ratio(wd_au, t_au)
+    #             ti_ratio=fuzz.token_set_ratio(wd_ti, t_ti)
+    #             if min_match_ratio_au and au_ratio < min_match_ratio_au: continue
+    #             if min_match_ratio_ti and ti_ratio < min_match_ratio_ti: continue
+    #         else:
+    #             ti_ratio=np.nan
+    #             au_ratio=np.nan
+
+
+    
+def get_wikidata_query_str(query_or_text,**kwargs):
+    if is_text_obj(query_or_text):
+        text = query_or_text
+        query = clean_text(f'{text.au}, {text.shorttitle}')
+    else:
+        query = query_or_text
+    return query
+
 
 class TextWikidata(BaseText):
-
-    def is_valid(self):
-        self.init()
-        return self.id and self.id[0] in {'P','Q'}
     
-    def metadata(self,force=False,cache=True,allow_http=True,**kwargs):
-        # if not force:
-        #     o=self.init_meta_json()
-        #     if o: return o
+    def is_valid(self,meta=None):
+        if meta is None: meta=self._meta
+        metakeys=set(meta.keys()) - {self.corpus.addr, self.corpus.id}
+        return self.id and self.id[0] in {'P','Q'} and len(metakeys)
+    
+    @property
+    def query_str(self): return wikidata_query_str(self)
+
+    def query(self): return get_wikidata(self.id)
+
+    def cache_keys(self,meta=None,meta_sources={},**kwargs):
+        if meta is None: meta=self._meta
+        metakeys=set(meta.keys()) - self.meta_keys_sources(meta_sources,**kwargs)
+        return metakeys
+
+
+    def meta_keys_sources(self,meta_sources=None,**kwargs): 
+        if meta_sources is None:
+            meta_sources=set(self.metadata_sources(**kwargs).keys())
+            return meta_sources
+        return set()
+
+
+    def metadata_sources(self,from_sources=True,**kwargs):
+        return super().metadata(
+            from_sources=False,
+            **kwargs
+        )
+
+    def metadata(self,from_sources=False,from_cache=True,cache=True,**kwargs):
+        #if force or not self._meta or not self.is_valid():
+        ometa=super().metadata(
+            from_sources=False,
+            from_cache=True,
+            cache=False,
+            **kwargs
+        )
+        ometa = self.ensure_id_addr(ometa)
+
+        # if not 'wd_title' in meta:
+        #     id, ometa = self.query()
+        #     for k,v in ometa.items():
+        #         meta[k]=v
+
         
-        if allow_http and ((force or not 'query' in self._meta)) or (cache and not os.path.exists(self.path_meta_json)):
-            text = self.source
-            if text is None: return
-            try:
-                qstr=wikidata_query_str(text)
-                with Capturing() as o:
-                    res = wikidata_search(text, **kwargs)
-            except Exception as e:
-                #log.error(f'Wikidata query failed: {qstr} ({e})')
-                self._meta={'query':qstr}
-                res = None
+        self._meta=ometa
+        if cache and self.is_valid():
+            self.cache_meta_json(ometa)
+        return ometa
 
-            qid='Q0'
-            if res is not None:
-                # self.id=res['id']
-                self._meta = res['meta_simple']
-                self._meta_full = res['meta']
-                for k,v in res.items():
-                    if type(v) not in {dict}:
-                        self._meta[k] = v
-                for x in ['author','title','year']:
-                    if x in self._meta and type(self._meta[k]) in {list,tuple}:
-                        self._meta[x]=self._meta[x][0] if len(self._meta[x]) else ''
-                qid=res.get('qid')
-            
-            self.id = qid
-            
-
-            self.source._meta[f'_id_wikidata']=self.id
-            self.source.cache_meta_json()
-            self.cache_meta_json()
-
-        #if self.is_valid():
-        self._meta[self.corpus.col_id]=self.id
-        self._meta[self.corpus.col_addr]=self.addr
-
-        return self._meta
+        
 
 class Wikidata(BaseCorpus):
     NAME='Wikidata'
@@ -88,37 +250,37 @@ class Wikidata(BaseCorpus):
     def null_text(self,id_null='Q0',**kwargs):
         return super().null_text(id_null=id_null,**kwargs)
 
-    def text(self,
-            id_or_text,
-            force=False,
-            id_key='_id_wikidata',
-            add=True,
-            cache=True,
-            init=True,
-            only_valid=False,
-            *args,
-            **kwargs):
+    # def text(self,
+    #         id,
+    #         force=False,
+    #         id_key='_id_wikidata',
+    #         add=True,
+    #         cache=True,
+    #         init=True,
+    #         only_valid=False,
+    #         *args,
+    #         **kwargs):
 
-        id = id_or_text
-        id_wiki = None
-        is_valid_now = None
+        
+    #     id_wiki = None
+    #     is_valid_now = None
 
-        if is_text_obj(id_or_text):
-            log.debug(f'Is text: {id_or_text}')
-            text = id_or_text
-            id = id_or_text.addr
-            id_wiki = text.meta.get(id_key)
-            if id_wiki:
-                id = id_wiki
-                is_valid_now = True
+    #     if is_text_obj(id):
+    #         text = id
+    #         id = text.addr
+    #         id_wiki = text.meta.get(id_key)
+    #         if id_wiki or id_wiki=='Q0':
+    #             id = id_wiki
+    #             is_valid_now = True
+            
 
-        log.debug(f'Got ID: {id}')
-        otext = super().text(id,**kwargs)
-        log.debug(f'Gen Text: {otext} (valid now = {is_valid_now})')
-        if is_valid_now or otext.is_valid():
-            if add: self._textd[otext.id]=otext
-            if cache: otext.cache_meta_json()
-        return otext
+    #     log.debug(f'Got ID: {id}')
+    #     otext = super().text(id,**kwargs)
+    #     log.debug(f'Gen Text: {otext} (valid now = {is_valid_now})')
+    #     if is_valid_now or otext.is_valid():
+    #         if add: self._textd[otext.id]=otext
+    #         if cache: otext.cache_meta_json()
+    #     return otext
 
 
     # def text(self,id_or_text,force=False,id_key='_id_wikidata',add=True,init=True,only_valid=False,*args,**kwargs):
@@ -148,7 +310,56 @@ class Wikidata(BaseCorpus):
 def wikidata_query_str(text):
     return clean_text(f'{text.au}, {text.shorttitle}')
 
-def wikidata_search(
+def get_wikidata(
+        qid,
+        text=None,
+        verbose=False,
+        lang="en",
+        what={"work","manuscript","text"},
+        min_match_ratio_au=50,
+        min_match_ratio_ti=50,
+        qstr='',
+        timeout=30):
+    #qid=qid.split('/')[-1]
+    
+    import wptools
+    page = wptools.page(wikibase=qid, silent=not verbose)
+    o = page.get_wikidata()
+    if os is None or not hasattr(o,'data'): return
+    data=o.data
+    whatres = data.get('what','')
+    for whatx in what:
+        if not whatres or not whatx or whatx in whatres:
+            odat=data.get('wikidata')
+            od = format_wikidata_d(odat)
+            wd_au,wd_ti = wikidata_get_author(od), wikidata_get_title(od)
+            if not wd_ti: wd_ti=data.get('label')
+            # pprint([wd_au,wd_ti,od])
+            if not wd_au or not wd_ti: continue
+
+            if text is not None:
+                t_au,t_ti = text.au, text.shorttitle
+                au_ratio=fuzz.token_set_ratio(wd_au, t_au)
+                ti_ratio=fuzz.token_set_ratio(wd_ti, t_ti)
+                if min_match_ratio_au and au_ratio < min_match_ratio_au: continue
+                if min_match_ratio_ti and ti_ratio < min_match_ratio_ti: continue
+            else:
+                ti_ratio=np.nan
+                au_ratio=np.nan
+
+            return dict(
+                qid=qid,
+                meta=od,
+                meta_simple=format_wikidata_d_simple(od),
+                wd_title=wd_ti,
+                wd_author=wd_au,
+                wd_author_match=au_ratio,
+                wd_title_match=ti_ratio,
+                query=qstr,
+            )
+    return {}
+
+def get_wikidata_id(
         qstr_or_text,
         lang="en",
         what=["work","manuscript","text"],
@@ -178,52 +389,8 @@ def wikidata_search(
     for item in dom.select('.wb-itemlink-id'):
         itext=item.text
         qid=itext.replace('(','').replace(')','')
-        
-        # check type
-        page = wptools.page(wikibase=qid, silent=True)
-        o = page.get_wikidata()
-        if o is not None and hasattr(o,'data'):
-            data=o.data
-            whatres = data.get('what','')
-            for whatx in what:
-                if not whatres or not whatx or whatx in whatres:
-                    odat=data.get('wikidata')
-                    od = format_wikidata_d(odat)
-                    wd_au,wd_ti = wikidata_get_author(od), wikidata_get_title(od)
-                    if not wd_ti: wd_ti=data.get('label')
-                    # pprint([wd_au,wd_ti,od])
-                    if not wd_au or not wd_ti: continue
-
-                    if text is not None:
-                        t_au,t_ti = text.au, text.shorttitle
-                        au_ratio=fuzz.token_set_ratio(wd_au, t_au)
-                        ti_ratio=fuzz.token_set_ratio(wd_ti, t_ti)
-                        if min_match_ratio_au and au_ratio < min_match_ratio_au: continue
-                        if min_match_ratio_ti and ti_ratio < min_match_ratio_ti: continue
-                    else:
-                        ti_ratio=np.nan
-                        au_ratio=np.nan
-
-                    return dict(
-                        qid=qid,
-                        meta=od,
-                        meta_simple=format_wikidata_d_simple(od),
-                        wd_title=wd_ti,
-                        wd_author=wd_au,
-                        wd_author_match=au_ratio,
-                        wd_title_match=ti_ratio,
-                        query=qstr,
-                    )
-    return dict(
-        qid='Q0',
-        meta={},
-        meta_simple={},
-        wd_title='',
-        wd_author='',
-        wd_author_match=0,
-        wd_title_match=0,
-        query=qstr,
-    )
+        return qid
+    return ''
 
 def format_wikidata_str_simple(qid,name,lower=False,spaces=True,**kwargs):
     name = name.strip()
