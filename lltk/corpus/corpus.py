@@ -30,8 +30,8 @@ class BaseCorpus(object):
     EXT_FREQS='.json'
     EXT_CADENCE_SCAN='.pkl'
     EXT_CADENCE_PARSE='.pkl'
-    # COL_ID='id'
-    COL_ID='_addr'
+    COL_ID='id'
+    # COL_ID='_addr'
     COL_ADDR='_addr'
     col_corpus=COL_CORPUS='corpus'
     COL_FN='fn'
@@ -49,10 +49,12 @@ class BaseCorpus(object):
     def __init__(self,
             id=None,
             _name=None,
+            _path=None,
             _id_allows='_',
             **attrs):
 
         self.id=id
+        self._path=os.path.join(PATH_CORPUS,id) if _path is None else _path
         self._metadf=None
         self._texts=None
         self._textd=defaultdict(lambda: None)
@@ -129,22 +131,25 @@ class BaseCorpus(object):
     
     def get_text(self,id_or_text,**kwargs):
         key = id_or_text.addr if is_text_obj(id_or_text) else id_or_text
-        return self.textd.get(key)
+        return self._textd.get(key)
 
     def text(self,
-            id_or_text,
+            id,
             add=True,
             cache=True,
             *args,
             **kwargs):
-        t = self.get_text(id_or_text)
-        if t is None: t = self.init_text(id_or_text,**kwargs)
+        t = self.get_text(id)
+        if t is None: t = self.init_text(id,**kwargs)
         # valid?
-        #if t is None or not t.is_valid():
-        #    t = self.null_text()
-        if add:
-            self.add_text(t)
-            #if cache: t.cache_meta_json()
+        if t is not None:
+            if add:
+                self.add_text(t)
+            # if cache: 
+                # existing_keys=set(t.init_meta_json().keys())
+                # now_keys=set(t._meta.keys())
+                # if now_keys - existing_keys or len(now_keys)>len(existing_keys):
+                    # t.cache_meta_json()
         return t
 
     
@@ -206,32 +211,39 @@ class BaseCorpus(object):
     ####
     @property
     def t(self):
-        ol=self.texts()
+        ol=list(self.texts(progress=False))
         return random.choice(ol) if len(ol) else None
 
     @property
     def au(self): return self.authors
 
     @property
-    def authors(self,authorkey='author',titlekey='title',idkey=COL_ID):
-        if not hasattr(self,'_authors') or not self._authors:
-            if self._metadf is None or self._textd is None: 
-                self.metadata()
-                return self.authors
+    def authors(self,authorkey='author',titlekey='title',force=False,idkey=None,**kwargs):
+        if idkey is None: idkey=self.col_id
+        if force or self._authors is None:
+            authord={}
 
-            self._authors=au=Bunch()
-            # for author,authordf in tqdm(list(self._metadf.reset_index().groupby(authorkey)),desc='Creating author/title shortcut attributes'):
-            for author,authordf in self._metadf.reset_index().groupby(authorkey):
-                if not author.strip(): continue
-                akey=to_authorkey(author)
-                aobj=AuthorBunch(corpus=self,name=author)
-                setattr(self._authors,akey,aobj)
-                for i,row in authordf.iterrows():
-                    title=row[titlekey]
-                    idx=row[idkey]
-                    tkey=to_titlekey(title)
-                    tobj=self._textd.get(idx)
-                    setattr(aobj,tkey,tobj)
+            meta = self.metadata(**kwargs).reset_index()
+
+            if {authorkey,idkey,titlekey} - set(meta.columns): 
+                self._authors=False
+                return
+
+            meta['_akey']=meta[authorkey].apply(to_authorkey)
+            meta['_tkey']=meta[titlekey].apply(to_titlekey)
+            for akey,tkey,idx in zip(meta._akey, meta._tkey, meta[idkey]):
+                tobj = self.textd.get(idx)
+                if tobj is None: continue
+
+                if not akey in authord:
+                    authord[akey]=AuthorBunch(corpus=self,name=akey)
+                aobj = authord[akey]
+                setattr(aobj,tkey,tobj)
+            
+            au=Bunch()
+            for author,author_obj in authord.items():
+                setattr(au,author,author_obj)
+            self._authors = au
         return self._authors
 
     def load_metadata_file(self,force=False):
@@ -305,25 +317,26 @@ class BaseCorpus(object):
             fillna='',
             **kwargs):
         
-        self.init()
+        # self.init()
         if force or self._metadf is None or not len(self._metadf):
             mdf=pd.DataFrame(
                 t.metadata(wikidata=wikidata,allow_http=allow_http,force=force)
-                for t in tqdm(self.texts()[:lim],disable=not progress,desc='Iterating over texts')
+                for ti,t in enumerate(self.texts(progress=True))
                 if t is not None
                 and t.metadata is not None
+                and not lim or ti<lim
             )
             if fillna is not None: mdf=mdf.fillna(fillna)
             if self.col_id in set(mdf.columns): mdf=mdf.set_index(self.col_id)
             self._metadf=mdf
-            self.save_metadata(mdf,force=force_save)
+            self.save_metadata(ometa=mdf,force=force_save)
         return self._metadf
 
     def save_metadata(self,ometa=None,*x,force=True,force_inner=False,ok_cols=set(),backup=True,**kwargs):
         if ometa is None: ometa=self.metadata(force=force_inner,**kwargs)
         if ometa is not None and len(ometa):
             if not ok_cols: 
-                for t in self.texts(): ok_cols|=set(t._meta.keys())
+                for t in self.texts(progress=False): ok_cols|=set(t._meta.keys())
                 ometa = ometa[[col for col in ometa.columns if col in ok_cols]]
             if force or not os.path.exists(self.path_metadata):
                 ofn = self.path_metadata
@@ -1384,14 +1397,15 @@ def Corpus(corpus_ref=None,force=False,**kwargs):
             C = CORPUS_CACHE[corpus_ref]
         else:
             C=load_corpus(corpus_ref,**kwargs)
-            if C is not None:
-                log.debug(f'Corpus loaded: {C}')
+            # if C is not None:
+                # log.debug(f'Corpus loaded: {C}')
 
     if C is None:
         C=BaseCorpus(corpus_ref,**kwargs)
-        log.debug(f'Corpus begun: {C}')
+        # log.debug(f'Corpus begun: {C}')
     
     CORPUS_CACHE[C.id]=CORPUS_CACHE[C.name]=C
+    # log.debug('Returning C: '+str(C))
 
     return C
 

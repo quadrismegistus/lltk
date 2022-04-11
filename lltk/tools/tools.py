@@ -51,13 +51,22 @@ URL_DEFAULT_DATA='https://www.dropbox.com/s/cq1xb85yaysezx4/lltk_default_data.zi
 
 PATH_LLTK_LOG = os.path.join(PATH_LLTK_HOME,'logs')
 
-def setup_log(to_screen=True):
+def setup_log(to_screen=LOG_BY_DEFAULT):
 	log.remove()
 	ofn=os.path.join(PATH_LLTK_LOG,"lltk_{time}.log")
 	format="""<cyan>[{time:HH:mm:ss}]</cyan> <level>{name}.{function}()</level><cyan>:{line}:</cyan> {message}"""
 	if to_screen: log.add(sys.stderr, colorize=True, format=format)
 	log.add(ofn, rotation="10MB", colorize=False, format=format)
 setup_log()
+
+from pprint import pformat
+def plog(x,*args,pprintpreflen=11,**kwargs):
+	o=x if not args else [x]+list(args)
+	o='\n'+pformat(o,indent=4)
+	pprintpref=' '*pprintpreflen
+	o=o.replace('\n','\n' + pprintpref)
+	log.debug(o)
+
 
 # save txt
 def ensure_abs(path_root,path):

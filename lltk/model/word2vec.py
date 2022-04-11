@@ -2,6 +2,7 @@ from lltk.imports import *
 from lltk.model import BaseModel
 from scipy.spatial.distance import cosine,pdist,squareform,cdist
 from scipy.stats import pearsonr,spearmanr
+import gensim
 
 PATH_TO_WORD2VEC_BINARY = '/Users/ryan/DH/github/word2vec/bin/word2vec'
 
@@ -28,7 +29,7 @@ KEYWORDS_BECOMING_ABSTRACT = {'attachment', 'plans', 'plan', 'talents', 'plunder
 KEYWORDS|=KEYWORDS_OTHER
 KEYWORDS|=KEYWORDS_BECOMING_ABSTRACT
 
-class Word2Vec(Model):
+class Word2Vec(BaseModel):
 	def __init__(self, corpus=None, skipgram_n=10, name=None, mongo_q={}, fn=None, skipgram_fn=None, vocab_size=20000, num_skips_wanted=None,period=None):
 		"""Initialize a Word2Vec object.
 

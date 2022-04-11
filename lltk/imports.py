@@ -7,6 +7,7 @@ except RuntimeError:
 	pass
 
 
+LOG_BY_DEFAULT = True
 nlp=None
 ENGLISH=None
 stopwords=set()
@@ -32,12 +33,7 @@ BAD_COLS={'_llp_','Unnamed: 0'}
 
 
 
-from pprint import pprint
-
-
-
 import imp
-
 import os,sys,ujson as json,pandas as pd,random,gzip,time,inspect
 from functools import partial
 import re,configparser
@@ -49,9 +45,28 @@ from xopen import xopen
 import nltk
 
 from tqdm.notebook import tqdm
-from pprint import pprint
 from lltk.tools import tools
 from lltk.tools import *
+
+setup_log(LOG_BY_DEFAULT)
+
+# def print(x,*args,**kwargs):
+# 	o=x if not args else [x]+list(args)
+# 	log.debug(o)
+
+from pprint import pformat
+def plog(o,*args,pprintpreflen=11,**kwargs):
+	# if type(o)!=str or args:
+	# 	o=format(o,indent=4)
+	o=str(o)
+	if args: o+='\n'+str(args)
+	# pref it
+	pprintpref=' '*pprintpreflen
+	o=f'\n{o}'.replace('\n','\n' + pprintpref)
+	# out
+	log.debug(o)
+
+
 from collections import defaultdict,Counter
 from argparse import Namespace
 import inspect
@@ -241,7 +256,7 @@ EMPTY_GROUP='(all)'
 
 TMP_CORPUS_ID='tmp_corpus'
 
-from pprint import pprint
+
 
 
 from lltk.text.utils import *

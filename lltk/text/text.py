@@ -20,15 +20,21 @@ class AuthorBunch(Bunch):
 	def meta(self): return self.corpus.meta[self.corpus.meta.id.isin(set(self.ids))]
 	
 def get_idx(
-		id='',
+		id=None,
 		i=None,
 		allow='_/.-',
 		prefstr='X',
 		numposs=1000000,
 		numzero=None,
+		author='',
+		title='',
 		**kwargs):
 	if issubclass(id.__class__, BaseText): return id.id
-	if id: return ensure_snake(id,allow=allow,lower=False)
+	
+	if not id and (author and title): id=f'{author}.{title}'
+	if id:
+		return ensure_snake(id,allow=allow,lower=False)
+
 	if not numzero: numzero=len(str(numposs))-1
 	if not i: i=random.randint(1,numposs-1)
 	return f'{prefstr}{i:0{numzero}}'
@@ -45,24 +51,33 @@ class BaseText(object):
 	SECTION_DIR_NAME=DIR_SECTION_NAME
 
 	def __eq__(self,other): return self.addr == other.addr
-
+	def __hash__(self): return hash(self.addr)
 
 	def __init__(self,
 			id=None,
 			_corpus=None,
 			_section_corpus=None,
 			_source=None,
+			_sources=set(),
 			_txt=None,
 			_xml=None,
 			# lang=None,
 			# tokenizer=None,
 			**meta):
 		self.id=get_idx(id)
-		self._source=_source
-		self._corpus=_corpus
+		self._sources=set()
+		for _src in _sources | {_source}:
+			if _src is not None:
+				self._sources|={_src}
+		
+		# self._source=_source
+		from lltk.corpus.corpus import Corpus
+		corpus=Corpus(_corpus)
+		self._corpus=corpus
 		self._section_corpus=_section_corpus
 		# self._sections=[]
 		self._sections={}
+		self._is=set()
 
 		if _txt: self._txt=_txt
 		if _xml: self._xml=_xml
@@ -74,20 +89,13 @@ class BaseText(object):
 			except (ValueError,TypeError) as e:
 				if type(v)==str:
 					meta[k]=clean_text(v)
-		meta[COL_ID]=self.id
-		meta[COL_ADDR]=self.addr
-		if self._source is not None:
-			meta['_addr_source']=self._source.addr
 		
-		# meta={**self.init_meta_json(), **meta}
-		
+		meta[corpus.col_id]=self.id
+		meta[corpus.col_addr]=self.addr
 		self._meta=meta
 		self._orig_cols=set(meta.keys())
-
-
-		if is_corpus_obj(_corpus):
-			self.XML2TXT=_corpus.XML2TXT
-			self.TOKENIZER=_corpus.TOKENIZER
+		self.XML2TXT=corpus.XML2TXT
+		self.TOKENIZER=corpus.TOKENIZER
 		
 	@property
 	def corpus(self): return self._corpus
@@ -95,27 +103,54 @@ class BaseText(object):
 	def __repr__(self):
 		o=f'[{self.__class__.__name__}]({self.addr})'
 		return o
+	
+	def init_meta_json(self,*x,**y):
+		try:
+			with open(self.path_meta_json) as f: return json.load(f)
+		except Exception as e:
+			#log.error(e)
+			pass
+		return {}
+		
 
-	def init_meta_json(self):
-		if self._meta_json is None and type(self.path_meta_json)==str:
-			if os.path.exists(self.path_meta_json):
-				try:
-					with open(self.path_meta_json) as f:
-						self._meta_json=json.load(f)
-				except Exception as e:
-					log.error(e)
-					self._meta_json={}
-		return self._meta_json if self._meta_json else {}
+	def init_cache_meta(self,*x,**y): return self.init_meta_json(*x,**y)
 
-	def cache_meta_json(self):
+	def cache_meta(self,*x,**y): self.cache_meta_json(*x,**y)
+
+	def cache_meta_json(self,meta=None,meta_init=None,**kwargs):
+		kwargs['from_sources'] = False
+		if meta is None: meta=self._meta #metadata(**kwargs)
+		if meta is None:
+			log.error('No metadata to cache')
+			return
+		if meta_init is None: meta_init=self.init_meta_json()
+			
+		## check if diff!!
+		cache_changed = False
+		if meta != meta_init:
+			mkeys=set(meta.keys())|set(meta_init.keys())
+			for mkey in mkeys:
+				val1=meta_init.get(mkey)
+				val2=meta.get(mkey)
+				if type(val1)==type(np.nan): continue
+				if type(val2)==type(np.nan): continue
+				if val1 != val2:
+					#plog(f'{mkey}:\n{val1}-->{val2}')
+					cache_changed=True
+		
+		if not cache_changed:
+			# log.debug('Cache unchanged')
+			return
+		
+		ometa={**meta_init, **meta}
 		ensure_dir_exists(self.path_meta_json)
 		with open(self.path_meta_json,'w') as of:
-			json.dump(self._meta,of,indent=4,sort_keys=False)
-			# log.debug('Cached: '+self.path_meta_json)
+			json.dump(ometa,of,indent=4,sort_keys=True)
+			plog('Cached: '+self.path_meta_json, ometa)
 
 	
-	# convenience
-	def __getattr__(self, name):
+		# convenience
+	def __getattr__(self, name, allow_sources=True, **kwargs):
 		if name.startswith('path_') and hasattr(self.corpus,name):
 			ptype=name[len('path_'):]
 			exttype=f'ext_{ptype}'.upper()
@@ -125,24 +160,31 @@ class BaseText(object):
 			try:
 				opath=os.path.abspath(os.path.join(cpath, self.id + ext))
 			except TypeError as e:
-				log.debug(f'Error getting attribute "{name}": {e}')
+				log.error(f'Error getting attribute "{name}": {e}')
 				return
 
 			# on source?
-			if not os.path.exists(opath) and self.source:
-				opath2=getattr(self.source,name)
-				if os.path.exists(opath2): return opath2
+			if not os.path.exists(opath) and self.sources:
+				for source in self.sources:
+					opath2=getattr(source,name)
+					if os.path.exists(opath2):
+						return opath2
 			return opath
 		
-		if name in self._meta:
-			return self._meta[name]
-		
+		res = self._meta.get(name)
+		if res is not None: return res
 		
 		res = get_from_attrs_if_not_none(self, name)
 		if res is not None: return res
-		res = get_from_attrs_if_not_none(self._source, name)
-		if res is not None: return res
+		
+		if allow_sources:
+			for source in self.sources:
+				# print(f'Consulting source: {source}')
+				res = source.__getattr__(name,allow_sources=False,**kwargs)
+				if res is not None:  return res
+		
 		return None
+
 
 
 	def get_path(t,part='texts'):
@@ -206,52 +248,80 @@ class BaseText(object):
 		
 		return dom
 
+	
+	def get_sources(self,meta=None,key_addr=None,wikidata=False):
+		if meta is None: meta=self._meta
+		if meta is None: return []
+		if key_addr is None: key_addr=self.corpus.col_addr
+		if key_addr is None: return []
+
+		srcs = set()
+		if wikidata: srcs|={self.wikidata}
+		if key_addr: srcs |= {
+			Text(v) for k,v in meta.items() if k.startswith(key_addr+'_')
+		}
+		# sort
+		o=sorted(list(srcs), key=lambda t: t.addr)
+		return o
+		
 	@property
-	def source(self):
-		if self._source is not None: return self._source
-		return self.source_text()
-
-	def source_text(self):
-		if self.id and self.id.startswith(IDSEP_START) and IDSEP in self.id:
-			id_corpus,id_text = self.id[1:].split(IDSEP,1)
-			if id_corpus and id_text:
-				try:
-					C = load(id_corpus,install_if_nec=True)
-					t = C.textd.get(id_text)
-					return t
-				except KeyError:
-					pass
-
-
+	def sources(self): return self.get_sources()
+	
 	@property
 	def meta(self): return self.metadata()
 
-	def is_valid(self): return True
+	def is_valid(self,meta=None,**kwargs):
+		return True
 	
-
+	def add_source(self,source):
+		sourceobj = Text(source)
+		# sources=set(self._source)
+		if not sourceobj in set(self.sources):
+			log.debug(f'Adding source: {sourceobj}')
+			self._sources|={sourceobj}
+			self._meta[f'{sourceobj.corpus.col_addr}_{sourceobj.corpus.id}'] = sourceobj.addr
+		
 	
-	def metadata(self,force=False,from_source=True,from_wikidata=False,from_json=True,allow_http=True,**kwargs):
-		meta={COL_ADDR:self.addr}
+	def metadata(self,
+			from_meta=True,
+			from_sources=True,
+			from_cache=True,
+			cache=False,
+			**kwargs):
+		meta={**self.ensure_id_addr()}
+		# start with json
+		if from_cache: meta={**meta, **self.init_meta_json()}
+		# from now (csv files for meta for corpus)
+		if from_meta: meta={**meta, **self._meta}
+		if cache and len(meta) and self.is_valid(meta):
+			self.cache_meta(meta)
 		
-		if from_source and self.source is not None:
-			meta[f'{COL_ADDR}_source']=self.source.addr
-			for k,v in self.source.metadata(**kwargs).items(): meta[k]=v
+		if from_sources:
+			sources=self.get_sources(meta,**kwargs)
+			for source in sources:
+				srcmeta = source.metadata(from_sources=False,**kwargs)
+				meta={**meta, **srcmeta}
+				meta[f'{source.col_addr}_{source.corpus.id}']=source.addr
 		
-		if from_wikidata:
-			for k,v in self.wikidata.metadata(allow_http=allow_http,**kwargs).items(): meta[k]=v
-			meta[f'{COL_ADDR}_wikidata']=self.source.addr
-		
-		if from_json:
-			for k,v in self.init_meta_json().items(): meta[k]=v
+		return self.ensure_id_addr(meta)
 
-		# from now
-		for k,v in self._meta.items(): meta[k]=v
+	@property
+	def col_addr(self): return self.corpus.col_addr
+	@property
+	def col_id(self): return self.corpus.col_id
 
-		return meta
+	def ensure_id_addr(self,meta={}):
+		return {
+			**meta,
+			**{
+				self.corpus.col_id:self.id,
+				self.corpus.col_addr:self.addr
+			}
+		}
 	
 	def init(self,force=False,**kwargs):
 		if force or not self._init:
-			self.metadata()
+			self.metadata(**kwargs)
 			self._init=True
 
 
@@ -561,10 +631,20 @@ class BaseText(object):
 		return self._booknlp[self.addr]
 	
 	@property
+	def wikidata_id(self):
+		if self._wikidata_id is None or not self._wikidata_id:
+			from lltk.corpus.wikidata import get_wikidata_id
+			qid = get_wikidata_id(self)
+			self._wikidata_id = qid
+		return self._wikidata_id
+
+	@property
 	def wikidata(self):
-		t=Text(self.addr, 'wikidata')
-		t.metadata()
-		return t
+		if self._wikidata is None:
+			qtext = Text(self.wikidata_id,'wikidata')
+			self.add_source(qtext), qtext.add_source(self)
+			self._wikidata = qtext
+		return self._wikidata
 	
 
 
@@ -616,23 +696,35 @@ def get_addr(text_ref,corpus_ref=None,**kwargs):
 	return addr
 
 
-def Text(text_ref=None,corpus_ref=None,force=False,**kwargs):
+def Text(id=None,corpus=None,force=False,col_id=COL_ID,**kwargs):
+	if is_text_obj(id) and not corpus: return id
+	if is_text_obj(id) and is_corpus_obj(corpus) and id.corpus.id == corpus.id: return id
+	
 	global TEXT_CACHE
+	if id is None: id=get_idx(id,**kwargs)
+	text_ref=id
+	
 	
 	# log.debug(f'Generating text with id="{text_ref}" and corpus="{corpus_ref}"')
 	# have text?
-	addr = get_addr(text_ref,corpus_ref)
+	addr = get_addr(text_ref,corpus)
 	if force or addr not in TEXT_CACHE:
-		log.debug(f'Getting text with address {addr}')
+		# log.debug(f'Getting text with address {addr}')
 		# log.debug('Genereating text')
 		id_corp,id_text = to_corpus_and_id(addr)
+		kwargs[col_id] = id_text
 		# any left?
 		id_text_corp, id_text_text = to_corpus_and_id(id_text)
 		if id_text_corp:
-			sub_text = Text(id_text)
+			sub_text = Text(**kwargs)
 		else:
 			sub_text = id_text
 
 		from lltk.corpus.corpus import Corpus
-		TEXT_CACHE[addr] = Corpus(id_corp,force=force).text(sub_text)
+		TEXT_CACHE[addr] = Corpus(id_corp,force=force).text(**kwargs)
 	return TEXT_CACHE.get(addr)
+	# for k,v in kwargs.items():
+		# if k not in {COL_ID,COL_ADDR}:
+			# o._meta[k]=v
+	# return o
+
