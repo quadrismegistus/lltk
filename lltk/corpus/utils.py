@@ -678,22 +678,34 @@ def to_yearbin(year,yearbin):
         return
     
 
+def get_all_sources_recursive(text,sofar=set(),**kwargs):
+    sources = text._sources #get_sources(**kwargs)
+    for src in sources:
+        if src in sofar: continue
+        log.debug(f'{text} --?--> {src}')
+        sofar|=get_all_sources_recursive(src,sofar=sofar|{text,src})
+    sofar|={text} | set(sources)
+    return sofar
 
 
-def load_corpus(name_or_id,manifestd={},load_meta=False,install_if_nec=False,**input_kwargs):
-    if not manifestd: manifestd=load_corpus_manifest(name_or_id,make_path_abs=True)
-    # print('>> loading:',name_or_id,manifestd)
+def load_corpus(id,manifestd={},load_meta=False,force=False,install_if_nec=True,verbose=False,**input_kwargs):
+    if not manifestd: manifestd=load_corpus_manifest(id,make_path_abs=True)
+    # plog('>> loading:',name_or_id,manifestd)
     try:
-        module = imp.load_source(manifestd['id'], manifestd['path_python'])
-        class_class = getattr(module,manifestd['class_name'])
-        C = class_class(load_meta=load_meta,**manifestd)
-        from lltk.corpus.corpus import MetaCorpus
-        if issubclass(class_class, MetaCorpus): return C
-        if install_if_nec and (C.meta is None or not len(C.meta)):
-            return C.install(**input_kwargs)
+        id,path_python,class_name=manifestd.get('id'),manifestd.get('path_python'),manifestd.get('class_name')
+        if verbose: log.debug(f'Importing {class_name} from {id}\n\t[{path_python}]')
+        module = imp.load_source(id,path_python)
+        class_class = getattr(module,class_name)
+        inpd = merge_dict(manifestd, input_kwargs)
+        C = class_class(load_meta=load_meta,**inpd)
+        # if verbose: log.debug('\t\t... done.')
         return C
-    except Exception as e:
+    except FileNotFoundError:
         return None
+    # except AssertionError:
+    #     if verbose: log.error(e)
+    #     return None
+
 
 
 def gen_manifest(order=['id','name','desc','link']):
@@ -891,7 +903,7 @@ def meta_iter_corpora(corpora,**y):
 def meta_iter(corpora,progress=True,total=None,**y):
     iterr=meta_iter_corpora(corpora,progress=False,**y)
     if progress:
-        iterr=tqdm(
+        iterr=get_tqdm(
             iterr,
             desc='Iterating through all corpora metadata',
 #             total=meta_numlines(corpora)
@@ -910,7 +922,7 @@ def load_metadata(corpora,ids=set(),keys=None):
 
 ### Clean all?
 def clean_all_meta():
-    iterr=tqdm(list(corpora(load=False)))
+    iterr=get_tqdm(list(corpora(load=False)))
     for cname,Cd in iterr:
         if cname<'Chicago': continue
         if Cd.get('path_metadata')!='metadata.csv': continue

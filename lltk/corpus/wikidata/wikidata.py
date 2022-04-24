@@ -1,6 +1,272 @@
 from lltk.imports import *
 
 
+class EntityWikidata(BaseText):
+    def __init__(self,id=None,_corpus=None,**kwargs):
+        super().__init__(
+            id=id,
+            _corpus=Corpus('wikidata') if not _corpus else _corpus,
+            **kwargs
+        )
+    
+    def is_valid(self,meta=None): return self.id_is_valid() and self.meta_is_valid(meta)
+    
+    def id_is_valid(self,id=None,bad_ids={NULL_QID}):
+        if id is None: id=self.id
+        return is_valid_qid(id) and id not in bad_ids
+    
+    def meta_is_valid(self,meta=None,**kwargs):
+        if meta is None: meta=self._meta #metadata(from_query=False,from_sources=False,**kwargs)
+        isv=is_valid_meta(meta)
+        # log.debug(f'Valid? = {isv}')
+        # log.debug(f'Meta = {meta}')
+        return isv
+        
+
+    @property
+    def query_str(self): return wikidata_query_str(self)
+
+    def query(self,force=False,**kwargs):
+        if self.id_is_valid() and not self.meta_is_valid():
+            log.debug(f'QUERYING: {self.id}')
+            return query_get_wikidata(self.id,**kwargs)
+        return {}
+
+    def cache_keys(self,meta=None,meta_sources={},**kwargs):
+        if meta is None: meta=self.meta
+        metakeys=set(meta.keys()) - self.meta_keys_sources(meta_sources,**kwargs)
+        return metakeys
+
+
+    def meta_keys_sources(self,meta_sources=None,**kwargs): 
+        if meta_sources is None:
+            meta_sources=set(self.metadata_sources(**kwargs).keys())
+            return meta_sources
+        return set()
+
+
+    def metadata_sources(self,from_sources=True,**kwargs):
+        return super().metadata(
+            from_sources=False,
+            **kwargs
+        )
+
+
+
+class TextWikidataClass(EntityWikidata): pass
+def NullTextWikidata(*x,**y): return Corpus('wikidata').text(NULL_QID)
+
+def TextWikidata(text,_sources=None,force=False,cache=True,verbose=2,*args,**kwargs):
+    if is_wiki_text_obj(text): return text
+    if not force and is_wiki_text_obj(text._wikidata): return text._wikidata
+
+    # from sources?
+    if _sources:
+        res = get_wiki_text_from_sources(_sources,force=force,verbose=verbose,**kwargs)
+        if res: return res
+    
+    # gen?
+    qtext = NullTextWikidata()
+    res = query_get_wikidata_id(text,**kwargs)
+    if type(res)==tuple and len(res)==2:
+        qid,qmeta=res
+        #qmeta['id']=qid
+        #twiki = TextWikidataClass(**qmeta) if is_valid_qid(qid) else NullTextWikidata()
+        qtext = Text(qid, 'wikidata', **qmeta)
+        if verbose>0: log.debug(f'Generated wiki text: {qtext}')
+    
+    if is_wiki_text_obj(qtext):
+        text.add_source(qtext,**kwargs)
+        if qtext.is_valid():  
+            qtext.add_source(text,**kwargs)
+            qtext.zsave()
+        text.zsave()
+
+    return qtext
+
+
+
+
+class Wikidata(BaseCorpus):
+    NAME='Wikidata'
+    ID='wikidata'
+    TEXT_CLASS=TextWikidataClass
+
+    def init(self,force=False,by_files=True,**kwargs): self._init = True
+
+
+
+####
+# FUNCTIONS
+#### 
+
+
+
+###
+### GETTING ID ###
+###
+
+def is_valid_qid(qid):
+    if not qid or type(qid)!=str: return False
+    qid=qid.strip()
+    if qid == NULL_QID: return False
+    if not qid or qid[0]!='Q' or qid=='Q': return False
+    return True
+
+def get_wikidata_id_from_sources(text,null_qid=NULL_QID):
+    return get_source_recursive(text,corpus_id='wikidata',null_qid=null_qid)
+
+def get_all_sources_recursive(text,sofar=set(),**kwargs):
+    sources = text.get_sources(**kwargs)
+    for src in text.sources:
+        log.debug(f'{text} --?--> {src}')
+        sofar|=get_all_sources_recursive(src,sofar=sofar|{text,src})
+    sofar|={text} | set(sources)
+    return sofar
+
+def get_source_recursive(text,**kwargs):
+    kwargs['wikidata']=False
+    for src in text.get_sources(**kwargs):
+        if is_wiki_text_obj(src):
+            return src
+
+def get_wiki_text_from_sources(sources,verbose=2,force=False,**kwargs):
+    for t in sources:
+        if is_wiki_text_obj(t):
+            if t.id_is_valid():
+                if verbose: log.debug('Returning valid wikidata textobj from sources')
+                return t
+            
+            if not force:
+                if verbose>1: log.debug('Will not force a retry')
+                return t
+
+def is_wiki_text_obj(x): return is_text_obj(x) and x.corpus.id=='wikidata'
+
+# def get_wikidata_source(
+#         text=None,
+#         _sources=None,
+#         force=True,
+#         force_inner=False,
+#         meta={},
+#         okey='_id_wikidata',
+#         null_qid=NULL_QID,
+#         verbose=0,
+#         **kwargs
+#     ):
+#     text=Text(text)
+    
+#     # from pre-existing sources?
+#     source = None
+#     if _sources:
+#         source = get_wiki_text_from_sources(_sources)
+#         if source and verbose>1:
+#             log.debug(f'Got from sources: {source} (is wiki text obj? = {is_wiki_text_obj(source)}')
+
+#     if is_wiki_text_obj(source):
+#         if source.id_is_valid():
+#             if verbose: log.debug('Returning valid wikidata textobj from sources')
+#             return source
+        
+#         if not force:
+#             if verbose>1: log.debug('Will not force a retry')
+#             return source
+
+#     # gen?
+#     res = query_get_wikidata_id(text,**kwargs)
+#     if res is not None:
+#         qid,qmeta=res
+#         qmeta['id']=qid
+#         twiki = TextWikidataClass(**qmeta) if is_valid_qid(qid) else NullTextWikidata()
+#         if verbose>0: log.debug(f'Generated wiki text: {twiki}')
+#         return twiki
+#     return NullTextWikidata()
+
+
+def query_get_wikidata_id(
+        text,
+        qstr='',
+        what={"work","manuscript","text"},
+        lim=10,
+        verbose=True,
+        cache=True,
+        null=(NULL_QID,{}),
+        **kwargs):
+    if not qstr: qstr=wikidata_query_str(text)
+    if not qstr or qstr=='None, None': return
+    if verbose: log.debug(f'Querying for ID: '+qstr)
+    
+    for qi,qidx in enumerate(query_iter_wikidata_id(qstr)):
+        if qi>=lim: return null
+        qid_meta = query_get_wikidata(qidx)
+        qid_what = qid_meta.get('what','')
+        if not what or any(whatx in qid_what for whatx in what):
+            return (qidx,qid_meta)
+        elif cache:
+            t=Corpus('wikidata').text(**qid_meta)
+            t.cache_meta()
+    
+
+
+def query_get_html(qstr,timeout=10,**kwargs):
+    import requests
+    from requests.exceptions import ConnectTimeout
+    from urllib.parse import quote_plus
+    
+    sstr=quote_plus(clean_text(qstr))
+    safeurl=f'https://www.wikidata.org/w/index.php?search={sstr}&ns0=1&ns120=1'
+    html=''
+    try:
+        # log.debug(f'Querying: {safeurl}')
+        with requests.Session() as s:
+            html = s.get(safeurl,timeout=timeout).text
+            # log.debug(f'Length of content received: {len(html)}, {type(html)}')
+    except ConnectTimeout as e:
+        log.error(e)
+    return html
+
+
+def query_iter_qids_from_html(html):
+    import bs4
+    dom=bs4.BeautifulSoup(html,'html')
+    res=list(dom.select('.mw-search-result'))
+    # log.debug(f'Found {len(res)} items')
+    for tag in res:
+        item=tag.select_one('.wb-itemlink-id')
+        itext=item.text
+        qid=itext.replace('(','').replace(')','')
+        yield qid
+
+def query_iter_wikidata_id(qstr,timeout=10,**kwargs):
+    html = query_get_html(qstr,timeout=timeout,**kwargs)
+    yield from query_iter_qids_from_html(html)
+
+
+def query_get_wikidata(qid,verbose=False,**kwargs):
+    try:
+        log.debug(f'Querying for data: {qid}')
+        import wptools
+        page = wptools.page(wikibase=qid, silent=not verbose)
+        wpage = page.get_wikidata()
+        wdata = wpage.data
+        odat = wdata.get('wikidata')
+        ods = format_wikidata_d_simple(odat)
+        odx=dict(
+            id=qid,
+            label=wdata.get('label',''),
+            what=wdata.get('what',''),
+            # wd_author=wikidata_get_author(ods),
+            # wd_title=wikidata_get_title(ods),
+            **ods
+        )
+        # log.debug(f'Returning data with {len(odx)} keys')
+        return odx
+    except Exception as e:
+        log.error(f'Could not get wikidata [{e}]')
+        return dict(id=qid)
+
+
+    
 
 
 
@@ -9,115 +275,16 @@ def is_wikidata_key(key):
 
 def is_valid_wikidata(meta):
     if type(meta)!=dict or not meta: return False
-    if not 'what' in meta: return False
+    # if not 'what' in meta: return False
     for k in meta.keys():
         if '|P' in k or '|Q'in k:
             return True
     return False
 
-
-
-def init_wikidata(
-        id,
-        force=False,
-        keys_nec={'wd_title','wd_author'},
-        corpus_id='wikidata',
-        **kwargs):
-    text = Text(id)
-    tmeta=text.metadata(from_sources=False,**kwargs)
-    qid=get_qid(text,tmeta)
-    ometa={**tmeta, **kwargs}
-    
-    # cache this
-    ometa['id']=qid
-    ometa['corpus']=corpus_id
-    otext = Text(**ometa)
-
-    otext.add_source(text)
-    text.add_source(otext)
-
-    text.cache_meta_json()
-    otext.cache_meta_json()
-    
-    return otext
+def is_valid_meta(meta): return is_valid_wikidata(meta)
 
 
 
-
-
-def get_qid(*x,**y): return get_wikidata_id(*x,**y)
-
-def get_wikidata_id(
-        text=None,
-        meta={},
-        idkey='_id_wikidata',
-        addrkey='_addr_wikidata',
-        **kwargs
-    ):
-    text=Text(text)
-    tmeta = text.metadata(from_sources=False) if not meta and text is not None else meta
-    Qid=''
-    Qid = tmeta.get(idkey,Qid)
-    if not Qid: Qid = tmeta.get(addrkey,'').split('/')[-1]
-    if not Qid: Qid = query_get_wikidata_id(text,**kwargs)
-    
-
-    # # add back to text?
-    # changed=False
-    # for k,v in Qmeta.items():
-    #     if k.startswith('wd_') or k.startswith('t_'):
-    #         text._meta[k]=v
-    #         changed=True
-    # if changed: text.cache_meta_json()
-
-    return Qid
-
-def query_get_wikidata_id(
-        text,
-        qstr='',
-        lang="en",
-        what={"work","manuscript","text"},
-        min_match_ratio_au=50,
-        min_match_ratio_ti=50,
-        timeout=30,
-        verbose=True,
-        **kwargs):
-
-    if not qstr: qstr=wikidata_query_str(text)
-    if verbose: log.debug('Querying wikidata: '+qstr)
-    
-    for qid in query_iter_wikidata_id(qstr):
-        qid_meta = get_wikidata_from_qid(qid)
-        qid_what = qid_meta.get('what','')
-        # plog(f'QID: {qid} [{qid_what}]')
-        
-        # filter?
-        if what:
-            if not any(whatx in qid_what for whatx in what):
-                continue
-        
-        # match?
-        if min_match_ratio_au or min_match_ratio_ti:
-            qid_meta = match_au_ti(text,qid_meta)
-            if min_match_ratio_au and qid_meta.get('wd_author_match',0) < min_match_ratio_au: continue
-            if min_match_ratio_ti and qid_meta.get('wd_title_match',0) < min_match_ratio_ti: continue
-        return (qid,qid_meta)    
-    return '',{}
-
-def query_iter_wikidata_id(qstr,timeout=30,**kwargs):
-    import requests,bs4
-    ## Querying
-    safe='+'.join(clean_text(qstr).split())
-    url=f'https://www.wikidata.org/w/index.php?search={safe}'
-    with requests.Session() as s:
-        html = s.get(url,timeout=timeout).text
-    dom=bs4.BeautifulSoup(html,'html')
-
-    qid=''
-    for item in dom.select('.wb-itemlink-id'):
-        itext=item.text
-        qid=itext.replace('(','').replace(')','')
-        yield qid
 
 
 def match_au_ti(text,qmeta):
@@ -137,179 +304,11 @@ def match_au_ti(text,qmeta):
 
 
 
-
-def query_get_wikidata(qid,verbose=False,**kwargs):
-    import wptools
-    page = wptools.page(wikibase=qid, silent=not verbose)
-    wpage = page.get_wikidata()
-    wdata = wpage.data
-    odat = wdata.get('wikidata')
-    ods = format_wikidata_d_simple(odat)
-    return dict(
-        id=qid,
-        label=wdata.get('label',''),
-        what=wdata.get('what',''),
-        # wd_author=wikidata_get_author(ods),
-        # wd_title=wikidata_get_title(ods),
-        **ods
-    )
-
-
-def get_wikidata_from_qid(qid,tmeta={},cache=True,**kwargs):
-    t=Text(qid,'wikidata')
-    if not tmeta: tmeta=t.metadata(from_sources=False,from_cache=True,cache=False)
-    if not is_valid_wikidata(tmeta): tmeta=query_get_wikidata(t,**kwargs)
-    if is_valid_wikidata(tmeta): t.cache_meta_json(tmeta)
-    
-    return tmeta
-
-    
-
-
-class TextWikidataClass(BaseText):
-    
-    def is_valid(self,meta=None):
-        if meta is None: meta=self._meta
-        metakeys=set(meta.keys()) - {self.corpus.addr, self.corpus.id}
-        return self.id and self.id[0] in {'P','Q'} and len(metakeys)
-    
-    @property
-    def query_str(self): return wikidata_query_str(self)
-
-    def query(self): return get_wikidata(self.id)
-
-    def cache_keys(self,meta=None,meta_sources={},**kwargs):
-        if meta is None: meta=self._meta
-        metakeys=set(meta.keys()) - self.meta_keys_sources(meta_sources,**kwargs)
-        return metakeys
-
-
-    def meta_keys_sources(self,meta_sources=None,**kwargs): 
-        if meta_sources is None:
-            meta_sources=set(self.metadata_sources(**kwargs).keys())
-            return meta_sources
-        return set()
-
-
-    def metadata_sources(self,from_sources=True,**kwargs):
-        return super().metadata(
-            from_sources=False,
-            **kwargs
-        )
-
-    # Wiki
-    def metadata(self,meta={},from_cache=True,force=False,cache=True,**kwargs):
-        # get meta
-        if not meta: meta=self._meta
-        if from_cache: meta={**meta, **self.init_meta_json()}
-        if force or not is_valid_wikidata(meta):
-            self._meta=meta={**meta, **query_get_wikidata(self.id,**kwargs)}
-            if cache and is_valid_wikidata(meta): self.cache_meta_json(meta)
-        return meta
-
-
         
 
-def wikidata_query_str(text):
-    return clean_text(f'{text.au}, {text.shorttitle}')
-
-def format_wikidata_str_simple(qid,name,lower=False,spaces=True,**kwargs):
-    name = name.strip()
-    qid = qid.strip()
-    if not spaces: name = name.replace(' ','_')
-    if lower: name=name.lower()
-    return f'{name}|{qid}' if qid else name
-
-def format_wikidata_str(o,simple=False,**kwargs):
-    if type(o)==str:
-        if '(' in o and o.endswith(')'):
-            name,qid = o[:-1].split('(',1)
-            name,qid = name.strip(),qid.strip()
-            if qid and qid[0] in {'Q','P'}:
-                return (qid,name) if not simple else format_wikidata_str_simple(qid,name,**kwargs)
-        return ('',o.strip()) if not simple else o.strip()
-    elif type(o)==list:
-        return [format_wikidata_str(x,simple=simple) for x in o]
-    elif type(o)==tuple:
-        if len(o)==2:
-            qid,name = o
-            return (qid,name) if not simple else format_wikidata_str_simple(qid,name,**kwargs)
-        return tuple([format_wikidata_str(x,simple=simple) for x in o])
-    elif type(o)==dict:
-        return format_wikidata_d(o,simple=simple)
-    return ('',o)
-
-def format_wikidata_d(d,simple=False):
-    od={}
-    for k,v in d.items():
-        od[format_wikidata_str(k,simple=simple)] = format_wikidata_str(v,simple=simple)
-    return od
-
-
-def wikidata_get_title(d): return wikidata_get_prop(d,'P1476','title').replace('_',' ')
-def wikidata_get_author(d): return wikidata_get_prop(d,'P50','author').replace('_',' ')
-
-def wikidata_get_prop(d,prop='',propname='',keep_prop=False):
-    for k,v in d.items():
-        if type(k)!=str: continue
-        if (prop and prop in k) or (propname and propname in k):
-            return v if keep_prop else v.split('|')[0]
-
-
-def format_wikidata_d_simple(d):
-    from unidecode import unidecode
-    od={}
-    for k,v in d.items():
-        key=format_wikidata_str(k,simple=True,lower=True,spaces=False)
-        key=unidecode(key).replace("'","").replace('"','')
-        
-        val = format_wikidata_str(v,simple=True,lower=False,spaces=True)
-        
-        od[key] = val
-    
-    return od
 
 
 
-
-
-class Wikidata(BaseCorpus):
-    NAME='Wikidata'
-    ID='wikidata'
-    TEXT_CLASS=TextWikidata
-
-    def init(self,force=False,by_files=True,**kwargs):
-        self._init = True
-        #if force or not self._init:
-        #    super().init(by_files=by_files,**kwargs)
-            
-
-    def metadata(self,texts=None,allow_http=True,fillna='',progress=True,**kwargs):
-        #return super().metadata(allow_http=allow_http,**kwargs)
-        o=[]
-        okeys=set()
-        iterr=get_tqdm(
-            self.texts(texts),
-            desc='Finding metadata',
-            disable=not progress,
-        )
-        for t in iterr:
-            ometa=t.metadata(allow_http=allow_http,**kwargs)
-            if type(ometa)==dict and ometa and self.col_id in ometa:
-                idx=ometa.get(self.col_id)
-                numkeys = len(ometa) if ometa.get('id')!='Q0' else 0
-                iterr.set_description(f'''Queried wikidata: "{ometa.get('query')}" ... found {numkeys} data points''')
-                if not idx in okeys:
-                    o.append(ometa)
-                    okeys|={idx}
-
-        odf=pd.DataFrame(o)
-        if fillna is not None: odf=odf.fillna(fillna)
-        if self.col_id in set(odf.columns): odf=odf.set_index(self.col_id)
-        return odf
-
-    def null_text(self,id_null='Q0',**kwargs):
-        return super().null_text(id_null=id_null,**kwargs)
 
         
 def wikidata_query_str(text):
@@ -357,6 +356,7 @@ def format_wikidata_d_simple(d):
         key=unidecode(key).replace("'","").replace('"','')
         
         val = format_wikidata_str(v,simple=True,lower=False,spaces=True)
+        if type(val) in {list}: val='; '.join(str(x) for x in val)
         
         od[key] = val
     
@@ -373,160 +373,13 @@ def format_wikidata_d_simple(d):
 
 def get_wikidata_from_meta(
         tmeta,
-        idkey='_id_wikidata',
-        addrkey='_addr_wikidata'):
-    Qid=''
-    Qaddr = tmeta.get(addrkey,'').split('/')[-1]
-    Qid = tmeta.get(idkey,Qid)
-    if not Qid: Qid = Qaddr
-    return Qid
-
-
-def get_wikidata_id(
-        text=None,
-        meta={},
-        **kwargs
-    ):
-    text=Text(text) if not is_text_obj(text) else text
-    tmeta = text.metadata(from_sources=False) if not meta and text is not None else meta
-    # plog(tmeta)
-    Qid = get_wikidata_from_meta(tmeta,**kwargs)
-    # plog(Qid)
-    if not Qid: Qid = query_get_wikidata_id(text,**kwargs)
-    # plog(Qid)
-    if Qid:
-        okey=f'_{text.corpus.col_id}_wikidata'
-        if okey not in text._meta:
-            text._meta[okey]=Qid
-        text.cache_meta_json()
-    # plog(Qid)
-    
-    return Qid
-    
-
-
-    # return Qid
-
-    # # add back to text?
-    # changed=False
-    # for k,v in Qmeta.items():
-    #     if k.startswith('wd_') or k.startswith('t_'):
-    #         text._meta[k]=v
-    #         changed=True
-    # if changed: text.cache_meta_json()
-
-    # return Qid
-
-
-
-def query_get_wikidata_id(
-        text,
-        qstr='',
-        lang="en",
-        what={"work","manuscript","text"},
-        min_match_ratio_au=50,
-        min_match_ratio_ti=50,
-        timeout=30,
+        idkey='id__wikidata',
+        addrkey='_addr_wikidata',
         verbose=True,
         **kwargs):
-
-    if not qstr: qstr=wikidata_query_str(text)
-    if verbose: log.debug('Querying wikidata: '+qstr)
-    
-    for qid in query_iter_wikidata_id(qstr):
-        qid_meta = query_get_wikidata(qid)
-        qid_what = qid_meta.get('what','')
-        plog(f'QID: {qid} [{qid_what}]')
-        # plog(qid_meta)
-        # filter?
-        if what:
-            if not any(whatx in qid_what for whatx in what):
-                continue
-        
-        plog(f'QID returned: {qid} [{qid_what}]')
-        return qid
-        # match?
-
-        # if min_match_ratio_au or min_match_ratio_ti:
-        #     qid_meta = match_au_ti(text,qid_meta)
-        #     if min_match_ratio_au and qid_meta.get('wd_author_match',0) < min_match_ratio_au: continue
-        #     if min_match_ratio_ti and qid_meta.get('wd_title_match',0) < min_match_ratio_ti: continue
-        #     return qid
-        # #return (qid.replace('(','').replace(')',''),qid_meta)    
-    return ''
-
-def query_iter_wikidata_id(qstr,timeout=30,**kwargs):
-    import requests,bs4
-    ## Querying
-    safe='+'.join(clean_text(qstr).split())
-    url=f'https://www.wikidata.org/w/index.php?search={safe}'
-    with requests.Session() as s:
-        html = s.get(url,timeout=timeout).text
-    log.debug(f'Received HTML: {len(html)}')
-    dom=bs4.BeautifulSoup(html,'html')
-
-    qid=''
-    for item in dom.select('.wb-itemlink-id'):
-        itext=item.text
-        qid=itext.replace('(','').replace(')','')
-        log.debug(f'QID: {qid}')
-        yield qid
+    Qaddr = tmeta.get(addrkey,'').split('/')[-1]
+    Qid = tmeta.get(idkey,'')
+    if not Qid: Qid = Qaddr
+    return Qid if Qid and is_valid_qid(Qid) else NULL_QID
 
 
-
-
-class TextWikidataClass(BaseText):
-    
-    def is_valid(self,meta=None):
-        if meta is None: meta=self._meta
-        metakeys=set(meta.keys()) - {self.corpus.addr, self.corpus.id}
-        return self.id and self.id[0] in {'P','Q'} and len(metakeys)
-    
-    @property
-    def query_str(self): return wikidata_query_str(self)
-
-    def query(self): return get_wikidata(self.id)
-
-    def cache_keys(self,meta=None,meta_sources={},**kwargs):
-        if meta is None: meta=self._meta
-        metakeys=set(meta.keys()) - self.meta_keys_sources(meta_sources,**kwargs)
-        return metakeys
-
-
-    def meta_keys_sources(self,meta_sources=None,**kwargs): 
-        if meta_sources is None:
-            meta_sources=set(self.metadata_sources(**kwargs).keys())
-            return meta_sources
-        return set()
-
-
-    def metadata_sources(self,from_sources=True,**kwargs):
-        return super().metadata(
-            from_sources=False,
-            **kwargs
-        )
-
-    # Wiki
-    def metadata(self,meta={},from_cache=True,force=False,cache=True,**kwargs):
-        # get meta
-        if not meta: meta=self._meta
-        if from_cache: meta={**meta, **self.init_meta_json()}
-        if force or not is_valid_wikidata(meta):
-            self._meta=meta={**meta, **query_get_wikidata(self.id,**kwargs)}
-            if cache and is_valid_wikidata(meta): self.cache_meta_json(meta)
-        return meta
-
-
-
-def TextWikidata(text):
-    from lltk.corpus.wikidata import get_wikidata_id
-
-    text = Text(text)
-    qid = get_wikidata_id(text)
-    qtext = Corpus('wikidata').text(qid)
-    text.add_source(qtext)
-    qtext.add_source(text)
-
-    return qtext
-
-    

@@ -349,7 +349,7 @@ class CharacterSystem(BaseModel):
     def time_events(self,event_type=None,progress=True):
         xdf=self.events_df(event_type=event_type)
         iterr=sorted(xdf.groupby('t'))
-        if progress: iterr=tqdm(iterr,desc='Iterating over event',total=xdf.t.nunique())
+        if progress: iterr=get_tqdm(iterr,desc='Iterating over event',total=xdf.t.nunique())
         for t,tdf in iterr:
             yield (t,[(u,v,d) for u,v,d in zip(tdf.u, tdf.v, tdf.d)])
 
@@ -377,7 +377,7 @@ class CharacterSystem(BaseModel):
         interactions=interactions[interactions.t!=""]
         
         oiterr=sorted(list(interactions.groupby('t')))
-        if progress: oiterr=tqdm(oiterr, desc='Iterating over interactions')
+        if progress: oiterr=get_tqdm(oiterr, desc='Iterating over interactions')
         for time,timedf in sorted(oiterr):
             events = []
             for u,v,d in zip(timedf.source, timedf.target, timedf.to_dict('records')):

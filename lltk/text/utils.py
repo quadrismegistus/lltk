@@ -1,40 +1,146 @@
 from lltk.imports import *
 
+def get_prop_ish(d,k):
+	for xk,xv in d.items():
+		if xk.startswith(k) and xv:
+			return xv
+
+def yield_addrs(meta,addr_prefix='_addr_', id_prefix='_id_',ok_corps=set(),*args,**kwargs):
+	od={}
+	for k,v in meta.items():
+		rel,addr,corpid = '','',''
+		if k.startswith(addr_prefix):
+			rel=k
+			addr = v
+			corpid=k[len(addr_prefix):]
+		elif k.startswith(id_prefix):
+			corpid=k[len(id_prefix):]
+			rel=addr_prefix+corpid
+			addr=f'{IDSEP_START}{corpid}{IDSEP}{v}'
+		if rel and addr and corpid and (not ok_corps or corpid in set(ok_corps)) and not rel in od and corpid != meta.get('_corpus'):
+			od[rel]=addr
+	yield from od.items()
+
+def yield_ids(meta,*args,**kwargs):
+	for addr_name, addr in yield_addrs(meta,*args,**kwargs):
+		idcorp,idx = to_corpus_and_id(addr)
+		id_name = f'id__{idcorp}'
+		yield id_name,idx
+
+
+# def get_addr_str(addr=None,corpus=None,**kwargs):
+# 	if is_text_obj(addr): addr=addr.addr
+# 	if not addr: addr=''
+# 	if corpus and addr:
+# 		if is_corpus_obj(corpus): corpus=corpus.id
+# 		addr=f'_{corpus}/{addr}'
+# 	return addr
+
+
+def get_idx(
+		id=None,
+		i=None,
+		allow='_/.-',
+		prefstr='X',
+		numposs=1000000,
+		numzero=None,
+		author='',
+		title='',
+		**kwargs):
+	if is_text_obj(id): return id.id
+	
+	if not id and (author and title): id=f'{author}.{title}'
+	if type(id)==str and id: return ensure_snake(str(id),allow=allow,lower=False)
+	if not numzero: numzero=len(str(numposs))-1
+	if not i:
+		if type(id) in {int,float}:
+			i=int(id)
+		else:
+			i=random.randint(1,numposs-1)
+	return f'{prefstr}{i:0{numzero}}'
+
+
+def get_addr_str(text=None,corpus=None,**kwargs):
+	# takes care of that
+	if not text: return get_addr_str(get_idx(text),corpus,**kwargs)
+	
+	# corpus set? if not, work to get it so
+	if not corpus:
+		if is_text_obj(text): return text.addr
+		if type(text)==str:
+			cx,ix = to_corpus_and_id(text)
+			if cx and ix: return text
+			if ix: return get_addr_str(ix,TMP_CORPUS_ID,**kwargs)
+		return get_addr_str(text,TMP_CORPUS_ID,**kwargs)
+
+	# now can assume we have both corpus and text
+	corpus = corpus.id if is_corpus_obj(corpus) else str(corpus)
+	return f'_{corpus}/{get_idx(text)}'
+
+# get_addr_str(Text(),'test')
+# get_addr_str(Text())
+# get_addr_str(Corpus('markmark').t)
 
 def id_is_addr(idx):
-    return idx and idx.startswith(IDSEP_START) and IDSEP in idx
+	return type(idx)==str and idx and idx.startswith(IDSEP_START) and IDSEP in idx
 
 def to_corpus_and_id(idx):
-    if id_is_addr(idx):
-        return tuple(idx[len(IDSEP_START):].split(IDSEP,1))
-    return ('',idx)
-
-import re
-# as per recommendation from @freylis, compile once only
-CLEANR = re.compile('<.*?>') 
+	if id_is_addr(idx):
+		return tuple(idx[len(IDSEP_START):].split(IDSEP,1))
+	return ('',idx)
 
 def unhtml(raw_html):
-  cleantext = re.sub(CLEANR, '', raw_html)
-  return cleantext
+	import re
+	# as per recommendation from @freylis, compile once only
+	CLEANR = re.compile('<.*?>') 
+	cleantext = re.sub(CLEANR, '', raw_html)
+	return cleantext
 
 
 def grab_tag_text(dom,tagname,limit=None,sep_tag=' || ',sep_ln=' | '):
-    tagnames = [tagname] if type(tagname) not in {tuple,list} else tagname
-    tags = [
-        tag
-        for tagname in tagnames
-        for tag in dom(tagname)
-    ]
-    
-    tags_txt = [
-        unhtml(str(tag)).strip().replace('\n',sep_ln)
-        for tag in tags
-    ]
+	tagnames = [tagname] if type(tagname) not in {tuple,list} else tagname
+	tags = [
+		tag
+		for tagname in tagnames
+		for tag in dom(tagname)
+	]
+	
+	tags_txt = [
+		unhtml(str(tag)).strip().replace('\n',sep_ln)
+		for tag in tags
+	]
 
-    otxt = sep_tag.join(tags_txt).strip()
+	otxt = sep_tag.join(tags_txt).strip()
 
-    return otxt
+	return otxt
 
+
+def read_df_annos(fn,anno_exts=ANNO_EXTS,id_key='id',**kwargs):
+    fnbase,fnext = os.path.splitext(fn)
+    exts = anno_exts + [fnext]
+    fns=[(fnbase+anno_ext,anno_ext) for anno_ext in anno_exts] + [(fn,fnext)]
+    fns=[x for x in fns if os.path.exists(x[0])]
+    o=[read_df(fn).fillna('').assign(ext=ext, ext_i=exts.index(ext)) for fn,ext in fns]
+    o=[x for x in o if type(x)==pd.DataFrame]
+    odf=pd.concat(o) if o else pd.DataFrame()
+    if len(odf) and id_key in set(odf.columns):
+        ol=[]
+        for id,iddf in odf.groupby(id_key):
+            iddf=iddf.sort_values('ext_i',ascending=False)
+            idd = merge_dict(*iddf.to_dict('records'))
+            ol.append(idd)
+        odf=pd.DataFrame(ol)
+    return odf
+
+def read_df_anno(fn,anno_exts=ANNO_EXTS,**kwargs) :
+	fnbase,fnext = os.path.splitext(fn)
+	for anno_ext in anno_exts:
+		if fnext != anno_ext:
+			anno_fn = fnbase + anno_ext
+			if os.path.exists(anno_fn):
+				return read_df(anno_fn,**kwargs)
+	if os.path.exists(fn): return read_df(fn,**kwargs)
+	return None
 
 
 # def load_with_anno(fn,anno_exts=['xlsx','xls','csv'],suffix='anno',**kwargs):
@@ -52,7 +158,7 @@ def load_with_anno_or_orig(fn,**kwargs):
 	df_anno = load_with_anno(fn,**kwargs)
 	if len(df_anno): return df_anno
 	o=read_df(fn)
-	if type(o)==pd.DataFrame is not None and len(o): return o
+	if o is not None and len(o): return o
 	return pd.DataFrame()
 
 def get_anno_fn_if_exists(
@@ -279,6 +385,7 @@ def do_metadata_text(i,text,num_words=False,ocr_accuracy=False):
 	return [md]
 
 
+
 def skipgram_do_text(text,i=0,n=10):
 	from lltk import tools
 	print(i, text.id, '...')
@@ -343,10 +450,104 @@ def save_tokenize_text(text,ofolder=None,force=False):
 		json.dump(tokd,of)
 	#assert 1 == 2
 
+def safebool(x,bad_vals={NULL_QID}):
+	if type(x)==str and x in bad_vals:
+		return False
+	elif type(x) in {pd.DataFrame, pd.Series}:
+		return bool(len(x))
+	else:
+		try:
+			if pd.isnull(x): return False
+		except Exception as e:
+			# log.error(e)
+			pass
+
+	try:
+		return bool(x)
+	except Exception as e:
+		log.error(f'CANNOT ASCERTAIN TRUTH: {e}')
+		return None
+
+def merge_dict(*l):
+	od={}
+	for d in l:
+		if not issubclass(type(d), dict): continue
+		for k,v in d.items():
+			if safebool(k) and safebool(v):
+				# log.debug(f'k,v = {k},{v}')
+				od[k]=v
+	return od
+
+def merge_dict_list(*l):
+	od={}
+	for d in l:
+		if not issubclass(type(d), dict): continue
+		for k,v in d.items():
+			
+			if type(v) in {list,tuple,set}:
+				v='; '.join(str(vx) for vx in v)
+			else:
+				v=str(v)
+			
+			if v and k:
+				if k in od and od[k]:
+					if type(od[k])!=list: od[k] = [od[k]]
+					od[k].append(v)
+				else:
+					od[k]=v
+	
+	return od
+
+def merge_dict_set(*l):
+	od=defaultdict(set)
+	for d in l:
+		if not issubclass(type(d), dict): continue
+		for k,v in d.items():
+			if type(v) in {list,tuple,set}:
+				vset=set(v)
+			else:
+				vset=set(str(v))
+			od[k]|=vset
+	
+	for k,v in od.items():
+		vl=list(v)
+		od[k]=vl[0] if len(vl)==1 else vl
+
+	return od
+
+
+
+def MaybeListDict(key_val_iter):
+	od=defaultdict(set)
+	for key,val in key_val_iter:
+		valstr=str(val)
+		lval=set(val) if type(val) in {list,tuple} else set(valstr.split('; '))
+		# log.debug([key,val,valstr,lval])
+		od[key]|=lval
+	return od
+
+
+
+def is_text_obj(obj):
+    from lltk.text.text import BaseText
+    if issubclass(type(obj), BaseText): return True
+    if hasattr(obj,'__dict__') and (obj.__dict__.get('_meta') or obj.__dict__.get(BROKENSTATE,{}).get('_meta')): return True
+    return False
+
+def is_broken_obj(obj):
+	return hasattr(obj,'__dict__') and BROKENSTATE in obj.__dict__
+	
+
+def is_corpus_obj(obj): 
+	from lltk.corpus.corpus import BaseCorpus
+	return issubclass(type(obj), BaseCorpus)
+
 
 def to_textids(l,col_id='id'):
 	import pandas as pd
 	from lltk import Text
+
+	if all([is_text_obj(t) for t in l]): return [t.id for t in l]
 
 	if issubclass(l.__class__, pd.DataFrame) and col_id in set(l.reset_index().columns):
 		return list(l.reset_index()[col_id])
@@ -388,19 +589,20 @@ def clean_text(txt):
 	return txt
 
 def remove_bad_tags(dom, bad_tags):
-    for tag in bad_tags:
-        for x in dom(tag):
-            x.decompose()
-    return dom
+	for tag in bad_tags:
+		for x in dom(tag):
+			x.decompose()
+	return dom
 
 
-def to_lastname(name):
+def to_lastname(name,last_first=True):
 	name=name.strip()
 	if not name: return 'Unknown'
 	if ',' in name:
 		name=name.split(',')[0]
 	else:
-		name=name.split()[-1]
+		namel=name.split()
+		name=namel[0] if last_first else namel[-1]		
 	return name
 
 
@@ -425,8 +627,8 @@ def default_xml2txt(xml, *x, OK={'p','l'}, BAD=[], body_tag='text', **args):
 	return TXT
 
 def tokenize_agnostic(txt):
-    return re.findall(r"[\w']+|[.,!?; -—–\n]", txt)
-    
+	return re.findall(r"[\w']+|[.,!?; -—–\n]", txt)
+	
 def tokenize_fast(line,lower=False):
 	line = line.lower() if lower else line
 	import re
@@ -506,3 +708,24 @@ def save_freqs_json(obj, lower=True):
 	# return?
 	# return tokd
 
+
+
+def stamp_d(src,sd):
+	stamppref=f'{src.corpus.id}::'
+	stampsuf=f'__{src.corpus.id}'
+
+	return {
+		# (stamppref+sdk):sdv
+		(sdk+stampsuf):sdv
+		for sdk,sdv in sd.items()
+	}
+def unstamp_d(src,sd):
+	stampsuf=f'__{src.corpus.id}'
+	stamppref=f'{src.corpus.id}::'
+	return {
+		sdk:sdv
+		for sdk,sdv in sd.items()
+		if '__' not in sdk
+		# if not sdk.startswith(stamppref)
+		# if not sdk.endswith(stampsuf)
+	}

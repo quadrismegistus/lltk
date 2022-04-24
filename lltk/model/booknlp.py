@@ -245,7 +245,7 @@ class ModelBookNLP(CharacterSystem):
         else:
             o=[]
             iterr=models=self.models()
-            if progress and len(models)>1: iterr=tqdm(models,desc='Iterating models')
+            if progress and len(models)>1: iterr=get_tqdm(models,desc='Iterating models')
             for model in iterr:
                 if not force and model._df_tokens is not None: 
                     mdf=model._df_tokens
@@ -262,7 +262,7 @@ class ModelBookNLP(CharacterSystem):
     def init_tokens(self,allow_empty_chars=False,progress=True,**kwargs):
         o=[]
         iterr=self.models()
-        if progress and len(iterr)>1: iterr=tqdm(iterr,desc='Iterating models')
+        if progress and len(iterr)>1: iterr=get_tqdm(iterr,desc='Iterating models')
         for model in iterr:
             if not os.path.exists(model.path_tokens): model.init()
             if not os.path.exists(model.path_tokens): continue

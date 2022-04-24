@@ -4,7 +4,17 @@ from internetarchive import search_items
 
 
 DEFAULT_COLLECTION='19thcennov'
-class TextInternetArchive(BaseText): pass
+class TextInternetArchive(BaseText):
+	@property
+	def year(self):
+		x=self._meta.get('date')
+		try:
+			return int(str(x)[:4])
+		except Exception:
+			return np.nan
+	@property
+	def author(self): return self._meta.get('creator')
+
 class InternetArchive(BaseCorpus):
 	TEXT_CLASS=TextInternetArchive
 	def get_collection_ids(self,collection=DEFAULT_COLLECTION,iter_as_items=False):
@@ -96,7 +106,7 @@ class InternetArchive(BaseCorpus):
 		return super().install(parts=parts,force=force,**attrs)
 
 
-
+	
 
 	def load_metadata(self,*x,**y):
 		import numpy as np

@@ -509,7 +509,7 @@ def iter_letter_networks_from_dfletters(
         progress=True,
         *x,**y):
     G=nx.DiGraph()
-    iterr=tqdm(
+    iterr=get_tqdm(
         dfletters.to_dict(orient='records'),
         disable=not progress,
         desc='Iterating letters as networks'

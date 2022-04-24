@@ -10,16 +10,21 @@ BAD_NODES= {'Vnull','Q0','P0','V0','X0'}
 def get_node_type(node): return node.split('=',1)[0]
 
 
-class TextCorpusGraph(BaseText): pass
+class MultiText(BaseText): pass
 
-class CorpusGraph(BaseCorpus):
-    ID='corpus_graph'
-    NAME='CorpusGraph'
-    TEXT_CLASS = TextCorpusGraph
-    def __init__(self,corpora=[],*args,**kwargs):
-        super().__init__(*args,**kwargs)
+class MultiCorpus(BaseCorpus):
+    ID='multi_corpus'
+    NAME='MultiCorpus'
+    TEXT_CLASS = MultiText
+
+    def __init__(self,corpora=[],id=None,*args,**kwargs):
+        super().__init__(id = id if id else self.ID, *args,**kwargs)
         self._corpusd={}
         if corpora: self.add_corpus(corpora)
+    
+    def corpus_texts(self,*x,**y):
+        for corpus in self.corpora():
+            yield from corpus.texts()
 
     def add_corpora(self,corpora): self.add_corpus(corpora)
 
@@ -37,7 +42,8 @@ class CorpusGraph(BaseCorpus):
         
         # otherwise
         corpusobj = Corpus(corpus)
-        for t in corpusobj.texts(): self.text(t.addr)
+        self._corpusd[corpusobj.id]=corpusobj
+        # for t in corpusobj.texts(): self.text(t.addr)
 
     def corpora(self): return list(self._corpusd.values())
     def metadata(self,fillna='',**kwargs):
@@ -69,7 +75,9 @@ class CorpusGraph(BaseCorpus):
             g = nx.MultiGraph()
             for t in self.texts(texts):
                 tmeta = t.metadata(wikidata=False)
-                tnode = t.meta.get(self.col_addr)
+                #tnode = tmeta[self.col_addr] = t.addr
+                #tnode = t.meta.get(self.col_addr)
+                tnode = t.addr
                 
                 for propname,propval in tmeta.items():
                     if is_text_obj(propval): propval=propval.addr
@@ -80,7 +88,7 @@ class CorpusGraph(BaseCorpus):
                     if rel.startswith('_id_'):
                         id_corpus=rel.split('_id_',1)[-1]
                         rel='_addr_'+id_corpus
-                        if rel in tmeta: continue
+                        # if rel in tmeta: continue
                         v = IDSEP_START + id_corpus + IDSEP + v
                     if u in bad_nodes or v in bad_nodes: continue 
                     if only_identical:
@@ -108,6 +116,36 @@ class CorpusGraph(BaseCorpus):
 
         g = filter_graph(g=g,min_degree=min_degree,min_weight=min_weight,remove_isolates=remove_isolates,**kwargs)
         return g
+
+
+    def yield_addrs(meta,addr_prefix='_addr_', id_prefix='_id_'):
+    od={}
+    for k,v in meta.items():
+        rel,addr,corpid = '','',''
+        if k.startswith(addr_prefix):
+            rel=k
+            addr = v
+            corpid=k[len(addr_prefix):]
+        elif k.startswith(id_prefix):
+            corpid=k[len(id_prefix):]
+            rel=addr_prefix+corpid
+            addr=f'{IDSEP_START}{corpid}{IDSEP}{v}'
+        if rel and addr and corpid and not rel in od and corpid != meta.get('_corpus'):
+            od[rel]=addr
+    yield from od.items()
+
+
+def graph_is(self,g=None,id_prefix='_id_',rel_is='_is_',**kwargs):
+    g = nx.MultiGraph()
+    for i,text in enumerate(self.corpus_texts()):
+        meta = text.meta
+        for rel,addr in yield_addrs(meta):
+            u,v,r=text.addr, addr, rel
+            uT,vT=Text(u),Text(v)
+            if uT.is_valid() and vT.is_valid():
+                g.add_edge(u,v,rel=r,uT=uT, vT=vT)
+                # print(f'{u} --{r}--> {v}')
+    return g
         
     
 
@@ -214,8 +252,19 @@ class CorpusGraph(BaseCorpus):
     def text_nodes(self,g=None,**kwargs):
         yield from self.nodes_of_type(g=g,typename='text')
 
-    def graph_identity(self,**kwargs):
-        return self.graph(only_identical=True,**kwargs)
+    def graph_identity(self,g=None,id_prefix='_id_',rel_is='_is_',**kwargs):
+        g = nx.MultiGraph()
+        for i,t in enumerate(self.texts()):
+            if i>3: break
+            tmeta = t.metadata(from_sources=True)
+            for k,v in tmeta.items():
+                if k.startswith(id_prefix):
+                    corpid=k[len(id_prefix):]
+                    if corpid==t.corpus.id: continue
+                    textid=v
+                    addr=f'_{corpid}/{textid}'
+                    g.add_edge(t.addr, addr, rel=rel_is)
+        return g
 
     def graph_identity_matches(self,g=None,**kwargs):
         if not g: g=self.graph_identity(**kwargs)

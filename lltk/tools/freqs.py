@@ -1,10 +1,4 @@
-from __future__ import absolute_import
-
-import codecs,configparser,os,re
-from collections import defaultdict
-
-LIT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-from .tools import config
+from lltk.imports import *
 
 def measure_fields(word_counts,fields={},only_fields=None):
 	if not fields: fields=get_fields()
@@ -25,7 +19,7 @@ def get_field2words(fnfn=None,only_fields={},only_pos={},word2fields={},sep='\t'
 	if not fnfn: fnfn=config.get('PATH_TO_FIELDS')
 	#print('2',fnfn)
 	if not fnfn: return {}
-	if not fnfn.startswith(os.path.sep): fnfn=os.path.join(LIT_ROOT,fnfn)
+	if not fnfn.startswith(os.path.sep): fnfn=os.path.join(ROOT,fnfn)
 	#print('3',fnfn)
 
 	from collections import defaultdict

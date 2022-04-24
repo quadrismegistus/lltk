@@ -1,6 +1,7 @@
 notebooks/dev/
 notebooks/figures
 notebooks/graph_imgs
+test_*.ipynb
 *.egg-info
 
 *.pyc

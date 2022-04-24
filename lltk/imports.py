@@ -1,4 +1,4 @@
-import warnings
+import sys,os,warnings
 warnings.filterwarnings('ignore')
 import multiprocessing as mp
 try:
@@ -7,98 +7,90 @@ except RuntimeError:
 	pass
 
 
+# Paths
+HOME = os.path.expanduser('~')
+LLTK_ROOT = PATH_HERE = ROOT = os.path.dirname(os.path.realpath(__file__))
+PATH_BASE_CONF=os.path.join(HOME,'.lltk_config')
+PATH_DEFAULT_LLTK_HOME = os.path.join(HOME,'lltk_data')
+PATH_DEFAULT_CONF=os.path.abspath(os.path.join(PATH_DEFAULT_LLTK_HOME,'config_default.txt'))
+
+# Get tools
 LOG_BY_DEFAULT = True
-nlp=None
-ENGLISH=None
-stopwords=set()
-MANIFEST={}
-spellingd={}
-DEFAULT_NUM_PROC=4
-PARALLELIZED_CMDS=['preprocess']
-PART_REFERRING_CMDS=['install','preprocess','zip','upload','share']
-FUNC_CMDS={'compile','preprocess','install'}
-GET_CORPUSD={}
-IDSEP='/'
-COL__ID='_id'
+BAD_PKL_KEYS=set()
+from loguru import logger as log
+from tools import *
+
+
+### IMPORTANT: SET WHERE LLTK ROOT IS BASED:
+PATH_LLTK_HOME = PATH_DEFAULT_LLTK_HOME
+### CURRENTLY IN ~/lltk_data
+PATH_CORPUS = config.get('PATH_TO_CORPORA', os.path.join(PATH_LLTK_HOME,'corpora') )
+PATH_CORPUS_ZIP = os.path.join(PATH_CORPUS, 'lltk_corpora')
+PATH_TO_CORPUS_CODE = config.get('PATH_TO_CORPUS_CODE', os.path.join(PATH_HERE,'corpus') )
+PATH_TO_DATA_CODE = os.path.abspath(os.path.join(PATH_TO_CORPUS_CODE,'..','..','data'))
+PATH_LLTK_CODE_HOME = os.path.abspath(os.path.join(PATH_TO_CORPUS_CODE,'..','..'))
+# PATH_LLTK_REPO = os.path.abspath(os.path.join(PATH_TO_CORPUS_CODE,'..','..','..'))
+PATH_LLTK_HOME_DATA = PATH_LLTK_DATA = os.path.join(PATH_LLTK_HOME,'data')
+PATH_LLTK_DB = os.path.join(PATH_LLTK_DATA,'db')
+PATH_LLTK_ZODB = os.path.join(PATH_LLTK_DB,'zodb.fs')
+
+DEFAULT_PATH_TO_MANIFEST = os.path.join(PATH_LLTK_HOME,'manifest.txt')
+PATH_MANIFEST=os.path.join(PATH_TO_CORPUS_CODE,'manifest.txt')
+PATH_MANIFEST_USER = config.get('PATH_TO_MANIFEST','')
+PATH_MANIFEST_USER_LAB = PATH_MANIFEST_USER.replace('.txt','_lab.txt')
+PATH_MANIFEST_USER_SHARE = PATH_MANIFEST_USER.replace('.txt','_share.txt')
+
+PATH_MANIFESTS = remove_duplicates([
+	PATH_MANIFEST,
+	os.path.join(PATH_TO_CORPUS_CODE,'manifest_local.txt'),
+	os.path.abspath(os.path.join(PATH_TO_CORPUS_CODE,'..','..','lltk_manifest.txt')),
+	os.path.abspath(os.path.join(PATH_CORPUS,'manifest.txt')),
+	os.path.abspath(os.path.join(PATH_CORPUS,'manifest_local.txt')),
+	os.path.abspath(os.path.join(PATH_HERE,'..','..','config','lltk_manifest.txt')),
+	os.path.join(PATH_TO_CORPUS_CODE,'manifest_lab.txt'),
+	os.path.join(PATH_LLTK_HOME,'manifest_share.txt'),
+	os.path.join(PATH_LLTK_HOME,'manifest_lab.txt'),
+	os.path.join(PATH_LLTK_HOME,'manifest.txt'),
+	os.path.join(HOME,'lltk_manifest.txt'),
+	PATH_MANIFEST_USER,
+	PATH_MANIFEST_USER_LAB,
+	PATH_MANIFEST_USER_SHARE
+], remove_empty=True)
+#print(PATH_MANIFESTS)
+PATH_DEFAULT_DATA = os.path.join(PATH_LLTK_HOME_DATA,'default.zip')
+URL_DEFAULT_DATA='https://www.dropbox.com/s/cq1xb85yaysezx4/lltk_default_data.zip?dl=1'
+PATH_MANIFEST_GLOBAL = os.path.join(ROOT,'corpus','manifest.txt')
+PATH_LLTK_REPO=os.path.abspath(os.path.join(LLTK_ROOT,'..'))
+URL_DEFAULT_DATA='https://www.dropbox.com/s/cq1xb85yaysezx4/lltk_default_data.zip?dl=1'
+PATH_LLTK_LOG_FN = os.path.join(PATH_LLTK_HOME, 'logs','debug.log')
+DIR_SECTION_NAME='sections'
+TEXT_META_DEFAULT = {}
+
+BAD_COLS={'Unnamed: 0','_llp_'}
+
+
+### OPTIONS
 COL_ID='id'
 COL_ADDR='_addr'
-COL_ID_CORPUS = 'id_corpus'
-COL_ID_TEXT = 'id_text'
 IDSEP_START='_'
-DIR_SECTION_NAME='sections'
-DIR_TEXTS_NAME='texts'
-DIR_CHARS_NAME='characters'
-BOOKNLPD={}
-BAD_COLS={'_llp_','Unnamed: 0'}
+IDSEP='/'
+
+USE_ZODB = True
+
+
+NULL_QID='Q0'
+ANNO_EXTS=['.anno.xlsx','.anno.xls','.anno.csv','.xlsx','.xls']
+
+EMPTY_GROUP='(all)'
+
+TMP_CORPUS_ID='tmp_corpus'
+PATH_LLTK_LOG_FN = os.path.join(PATH_LLTK_HOME, 'logs','debug.log')
 
 
 
-import imp
-import os,sys,ujson as json,pandas as pd,random,gzip,time,inspect
-from functools import partial
-import re,configparser
-from datetime import datetime
-import urllib, tempfile
-from os.path import expanduser
-from xopen import xopen
-
-import nltk
-
-from tqdm.notebook import tqdm
-from lltk.tools import tools
-from lltk.tools import *
-
-setup_log(LOG_BY_DEFAULT)
-
-# def print(x,*args,**kwargs):
-# 	o=x if not args else [x]+list(args)
-# 	log.debug(o)
-
-from pprint import pformat
-def plog(o,*args,pprintpreflen=11,**kwargs):
-	# if type(o)!=str or args:
-	# 	o=format(o,indent=4)
-	o=str(o)
-	if args: o+='\n'+str(args)
-	# pref it
-	pprintpref=' '*pprintpreflen
-	o=f'\n{o}'.replace('\n','\n' + pprintpref)
-	# out
-	log.debug(o)
-
-
-from collections import defaultdict,Counter
-from argparse import Namespace
-import inspect
-import numpy as np
-import plotnine as p9, pandas as pd
-from zipfile import ZipFile
-import shutil,zipfile
-import networkx as nx
-import six,shutil
-from urllib.error import HTTPError
-from yapmap import *
-import tarfile,gzip
-import bs4
-
-import time,logging,math
-
-DEFAULT_CORPUS = 'TxtLab'
-DEFAULT_CORPUS_ID = 'txtlab'
-os.environ['NUMEXPR_NUM_THREADS']='8'
-
-ROOT = os.path.dirname(os.path.realpath(__file__))
-
-import warnings,six,shutil
-warnings.filterwarnings('ignore')
-# SPELLING_VARIANT_PATH=os.path.join(ROOT,'data/spelling_variants_from_morphadorner.txt')
-
-HOME=os.path.expanduser("~")
 MODERNIZE_SPELLING=False
-config = tools.config
-
 ZIP_PART_DEFAULTS={'txt','freqs','metadata','xml','data'} # raw
-DOWNLOAD_PART_DEFAULTS=['metadata','freqs','txt','data']
+DOWNLOAD_PART_DEFAULTS=['metadata']
 PREPROC_CMDS=['txt','freqs','mfw','dtm']
 DEST_LLTK_CORPORA=config.get('CLOUD_DEST','/Share/llp_corpora')
 DEFAULT_MFW_N =25000
@@ -110,43 +102,37 @@ TEXT_PATH_KEYS=[
 	'path_txt',
 	'path_xml'
 ]
+BROKENSTATE='__Broken_state__'
+# corenlp
+PATH_CORENLP = '~/lltk_data/tools/corenlp'
 
-BOOKNLP_NARRATOR_ID='NARRATOR'
-BOOKNLP_DEFAULT_LANGUAGE="en"
-BOOKNLP_DEFAULT_MODEL='small'
-BOOKNLP_DEFAULT_PIPELINE="entity,quote,supersense,event,coref"
-BOOKNLP_RENAME_COLS={'paragraph_ID': 'para_i',
-'sentence_ID': 'sent_i',
-'token_ID_within_sentence': 'sent_token_i',
-'token_ID_within_document': 'token_i',
-'word': 'token',
-'lemma': 'lemma',
-'byte_onset': 'onset',
-'byte_offset': 'offset',
-'POS_tag': 'pos',
-'fine_POS_tag': 'pos2',
-'dependency_relation': 'deprel',
-'syntactic_head_ID': 'head',
-'event': 'event'
-}
-BAD_CHAR_IDS={'?','?!','x','nan','None'}
-chardata_metakeys_initial = dict(
-    char_race='',
-    char_gender='',
-    char_class='',
-    char_geo_birth='',
-    char_geo_marriage='',
-    char_geo_death='',
-    char_geo_begin='',
-    char_geo_middle='',
-    char_geo_end='',
-)
+# Files for text processing
+PATH_TO_ENGLISH_WORDLIST = 'data/default/wordlist.aspell.net.with_caps.txt.gz'
+PATH_TO_ENGLISH_STOPWORDS = 'data/default/stopwords.onix.txt.gz'
+PATH_TO_ENGLISH_SPELLING_MODERNIZER = 'data/default/spelling_variants_from_morphadorner.txt.gz'
+PATH_TO_ENGLISH_OCR_CORRECTION_RULES = 'data/default/CorrectionRules.txt.gz'
+PATH_TO_ENGLISH_WORD2POS = 'data/default/word2pos.json.gz'
+
+
+# BookNLP?
+PATH_TO_BOOKNLP_BINARY= 'bin/book-nlp/runjava'
+
+
+# uploaders
+PATH_CLOUD_SHARE_CMD='bin/dropbox_uploader.sh share'
+PATH_CLOUD_UPLOAD_CMD='bin/dropbox_uploader.sh upload'
+PATH_CLOUD_LIST_CMD='bin/dropbox_uploader.sh list'
+PATH_CLOUD_DEST = '/Share/llp_corpora'
 
 
 
+# etc
+CLARISSA_ID=CLAR_ID=f'_epistolary/_chadwyck/Eighteenth-Century_Fiction/richards.01'
+MASQ_ID='_epistolary/_chadwyck/Eighteenth-Century_Fiction/haywood.13'
+EVELINA_ID = '_epistolary/_chadwyck/Eighteenth-Century_Fiction/burney.01'
 
-import logging
-logging.basicConfig(format='%(message)s', level=logging.INFO)
+
+
 
 
 MANIFEST_DEFAULTS=dict(
@@ -203,99 +189,98 @@ MANIFEST_DEFAULTS=dict(
 	year_end=None,
 	lang='en'
 )
+BAD_TAGS={'figdesc','head','edit','note','header','footer','dochead','front'}
+colorconc='#f9b466'
+colorabs='#83b9d8'
 
+
+
+# models: booknlp
+BOOKNLP_NARRATOR_ID='NARRATOR'
+BOOKNLP_DEFAULT_LANGUAGE="en"
+BOOKNLP_DEFAULT_MODEL='small'
+BOOKNLP_DEFAULT_PIPELINE="entity,quote,supersense,event,coref"
+BOOKNLP_RENAME_COLS={'paragraph_ID': 'para_i',
+'sentence_ID': 'sent_i',
+'token_ID_within_sentence': 'sent_token_i',
+'token_ID_within_document': 'token_i',
+'word': 'token',
+'lemma': 'lemma',
+'byte_onset': 'onset',
+'byte_offset': 'offset',
+'POS_tag': 'pos',
+'fine_POS_tag': 'pos2',
+'dependency_relation': 'deprel',
+'syntactic_head_ID': 'head',
+'event': 'event'
+}
+BAD_CHAR_IDS={'?','?!','x','nan','None'}
+chardata_metakeys_initial = dict(
+    char_race='',
+    char_gender='',
+    char_class='',
+    char_geo_birth='',
+    char_geo_marriage='',
+    char_geo_death='',
+    char_geo_begin='',
+    char_geo_middle='',
+    char_geo_end='',
+)
+
+
+
+# objects
+ZODB_CONN=None
+ZODB_OBJ=None
 nlp=None
 ENGLISH=None
 stopwords=set()
 MANIFEST={}
-
-BAD_TAGS={'figdesc','head','edit','note','header','footer','dochead','front'}
-
-colorconc='#f9b466'
-colorabs='#83b9d8'
-
-### Corpus related
+spellingd={}
 
 
-PATH_HERE=os.path.abspath(os.path.dirname(__file__))
-PATH_LLTK_HOME = os.path.join(HOME,'lltk_data')
-PATH_CORPUS = config.get('PATH_TO_CORPORA', os.path.join(PATH_LLTK_HOME,'corpora') )
-PATH_CORPUS_ZIP = os.path.join(PATH_CORPUS, 'lltk_corpora')
-PATH_TO_CORPUS_CODE = config.get('PATH_TO_CORPUS_CODE', os.path.join(PATH_HERE,'corpus') )
-PATH_TO_DATA_CODE = os.path.abspath(os.path.join(PATH_TO_CORPUS_CODE,'..','..','data'))
-PATH_LLTK_CODE_HOME = os.path.abspath(os.path.join(PATH_TO_CORPUS_CODE,'..','..'))
-# PATH_LLTK_REPO = os.path.abspath(os.path.join(PATH_TO_CORPUS_CODE,'..','..','..'))
-
-DEFAULT_PATH_TO_MANIFEST = os.path.join(PATH_LLTK_HOME,'manifest.txt')
-PATH_MANIFEST=os.path.join(PATH_TO_CORPUS_CODE,'manifest.txt')
-PATH_MANIFEST_USER = config.get('PATH_TO_MANIFEST','')
-PATH_MANIFEST_USER_LAB = PATH_MANIFEST_USER.replace('.txt','_lab.txt')
-PATH_MANIFEST_USER_SHARE = PATH_MANIFEST_USER.replace('.txt','_share.txt')
-
-PATH_MANIFESTS = tools.remove_duplicates([
-	PATH_MANIFEST,
-	os.path.join(PATH_TO_CORPUS_CODE,'manifest_local.txt'),
-	os.path.abspath(os.path.join(PATH_TO_CORPUS_CODE,'..','..','lltk_manifest.txt')),
-	os.path.abspath(os.path.join(PATH_CORPUS,'manifest.txt')),
-	os.path.abspath(os.path.join(PATH_CORPUS,'manifest_local.txt')),
-	os.path.abspath(os.path.join(PATH_HERE,'..','..','config','lltk_manifest.txt')),
-	os.path.join(PATH_TO_CORPUS_CODE,'manifest_lab.txt'),
-	os.path.join(PATH_LLTK_HOME,'manifest_share.txt'),
-	os.path.join(PATH_LLTK_HOME,'manifest_lab.txt'),
-	os.path.join(PATH_LLTK_HOME,'manifest.txt'),
-	os.path.join(HOME,'lltk_manifest.txt'),
-	PATH_MANIFEST_USER,
-	PATH_MANIFEST_USER_LAB,
-	PATH_MANIFEST_USER_SHARE
-], remove_empty=True)
-#print(PATH_MANIFESTS)
-
-ANNO_EXTS=['.anno.xlsx','.anno.xls','.anno.csv','.xlsx','.xls']
-
-EMPTY_GROUP='(all)'
-
-TMP_CORPUS_ID='tmp_corpus'
 
 
+
+### BUILTIN MODULES
+import imp,os,sys,json,random,gzip,time,inspect,pickle,re,configparser,urllib,tempfile,six,shutil,tarfile,gzip,time,logging,math
+from pprint import pprint,pformat
+from collections import defaultdict,Counter
+from functools import partial
+from datetime import datetime
+from os.path import expanduser
+from pkg_resources import ensure_directory
+from argparse import Namespace
+from urllib.error import HTTPError
+from zipfile import ZipFile
+
+### EXTERNAL MODULES
+from yapmap import *
+import numpy as np,pandas as pd
+import plotnine as p9
+import networkx as nx
+from yapmap import *
+from xopen import xopen
+
+
+## Setup logger
+setup_log(ofn=PATH_LLTK_LOG_FN, to_screen=LOG_BY_DEFAULT, remove=True, clear=True)
+
+
+
+### MY MODULES
+from lltk.tools import *
 
 
 from lltk.text.utils import *
 from lltk.corpus.utils import *
 from lltk.text.text import *
+
 from lltk.corpus.corpus import *
 from lltk.model import *
-
 from lltk.text.text import BaseText,Text
 from lltk.corpus.corpus import BaseCorpus,Corpus
 
-
-
-
-# corenlp
-PATH_CORENLP = '~/lltk_data/tools/corenlp'
-
-# Files for text processing
-PATH_TO_ENGLISH_WORDLIST = 'data/default/wordlist.aspell.net.with_caps.txt.gz'
-PATH_TO_ENGLISH_STOPWORDS = 'data/default/stopwords.onix.txt.gz'
-PATH_TO_ENGLISH_SPELLING_MODERNIZER = 'data/default/spelling_variants_from_morphadorner.txt.gz'
-PATH_TO_ENGLISH_OCR_CORRECTION_RULES = 'data/default/CorrectionRules.txt.gz'
-PATH_TO_ENGLISH_WORD2POS = 'data/default/word2pos.json.gz'
-
-
-# BookNLP?
-PATH_TO_BOOKNLP_BINARY= 'bin/book-nlp/runjava'
-
-
-# uploaders
-PATH_CLOUD_SHARE_CMD='bin/dropbox_uploader.sh share'
-PATH_CLOUD_UPLOAD_CMD='bin/dropbox_uploader.sh upload'
-PATH_CLOUD_LIST_CMD='bin/dropbox_uploader.sh list'
-PATH_CLOUD_DEST = '/Share/llp_corpora'
-
-
-
-# etc
-CLARISSA_ID=CLAR_ID=f'_epistolary/_chadwyck/Eighteenth-Century_Fiction/richards.01'
-MASQ_ID='_epistolary/_chadwyck/Eighteenth-Century_Fiction/haywood.13'
-EVELINA_ID = '_epistolary/_chadwyck/Eighteenth-Century_Fiction/burney.01'
-
+# if USE_ZODB:
+# 	DB=get_zodb()
+# 	for k,v in DB.root.items(): pass

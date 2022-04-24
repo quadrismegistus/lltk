@@ -641,7 +641,7 @@ class Word2Vec(BaseModel):
 			model2=word2_or_model2
 			return 1-cosine(self.word2array[word1], model2.word2array[word1])
 		else:
-			word2=six.text_type(word2_or_model2)
+			word2=str(word2_or_model2)
 			return self.gensim.similarity(word1,word2)
 
 	@property

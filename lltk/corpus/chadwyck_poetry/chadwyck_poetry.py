@@ -271,7 +271,7 @@ def save_poems_from_raw_author_folder(xxx_todo_changeme, use_bs4=False):
 	print('>>',opath,'...')
 	with codecs.open(author_fnfn,encoding='latin1') as f:
 		txt=f.read()
-		txt=six.text_type(txt.replace('\r\n','\n').replace('\r','\n'))
+		txt=str(txt.replace('\r\n','\n').replace('\r','\n'))
 		if use_bs4:
 			dom = bs4.BeautifulSoup(txt,'lxml')
 			for poem_i,poem in enumerate(dom('poem')):
@@ -280,7 +280,7 @@ def save_poems_from_raw_author_folder(xxx_todo_changeme, use_bs4=False):
 				if not ids: continue
 				idx=ids[0].text
 				if not idx: continue
-				poem_xml_str = six.text_type(poem)
+				poem_xml_str = str(poem)
 
 				ofnfn = os.path.join(opath, idx+'.xml')
 				with codecs.open(ofnfn,'w',encoding='utf-8') as of:
