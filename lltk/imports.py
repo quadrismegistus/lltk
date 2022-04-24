@@ -18,7 +18,7 @@ PATH_DEFAULT_CONF=os.path.abspath(os.path.join(PATH_DEFAULT_LLTK_HOME,'config_de
 LOG_BY_DEFAULT = True
 BAD_PKL_KEYS=set()
 from loguru import logger as log
-from tools import *
+from lltk.tools.tools import *
 
 
 ### IMPORTANT: SET WHERE LLTK ROOT IS BASED:
@@ -33,6 +33,7 @@ PATH_LLTK_CODE_HOME = os.path.abspath(os.path.join(PATH_TO_CORPUS_CODE,'..','..'
 PATH_LLTK_HOME_DATA = PATH_LLTK_DATA = os.path.join(PATH_LLTK_HOME,'data')
 PATH_LLTK_DB = os.path.join(PATH_LLTK_DATA,'db')
 PATH_LLTK_ZODB = os.path.join(PATH_LLTK_DB,'zodb.fs')
+PATH_LLTK_SHELF = os.path.join(PATH_LLTK_DB,'db.shelf')
 
 DEFAULT_PATH_TO_MANIFEST = os.path.join(PATH_LLTK_HOME,'manifest.txt')
 PATH_MANIFEST=os.path.join(PATH_TO_CORPUS_CODE,'manifest.txt')
@@ -72,6 +73,7 @@ BAD_COLS={'Unnamed: 0','_llp_'}
 ### OPTIONS
 COL_ID='id'
 COL_ADDR='_addr'
+COL_CORPUS='_corpus'
 IDSEP_START='_'
 IDSEP='/'
 
@@ -280,7 +282,3 @@ from lltk.corpus.corpus import *
 from lltk.model import *
 from lltk.text.text import BaseText,Text
 from lltk.corpus.corpus import BaseCorpus,Corpus
-
-# if USE_ZODB:
-# 	DB=get_zodb()
-# 	for k,v in DB.root.items(): pass

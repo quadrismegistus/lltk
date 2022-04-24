@@ -208,7 +208,6 @@ class MatcherModel(BaseModel,MutableMapping):
         return val
 
     def add_edge_to_db(self,edge,**edged):
-        return
         u,v,rel=edge
         log.debug(f'[{self.id}] Adding to DB: {u} --> {v}')
         odx={k:v for k,v in edged.items() if k and k[0]!='_'}

@@ -4,6 +4,8 @@ notebooks/graph_imgs
 test_*.ipynb
 *.egg-info
 
+test.*
+
 *.pyc
 backups/
 #corpus/*
