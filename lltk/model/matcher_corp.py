@@ -4,29 +4,33 @@ from collections.abc import MutableMapping
 MATCH_FN='matches.sqlite'
 MATCHRELNAME='rdf:type'
 DEFAULT_COMPAREBY=dict(author=0.9, title=0.9, year=1.0)
+# MATCHER_CACHE={} if not USE_ZODB else get_zodb()
 
-
-MATCHERMODEL=None
-def get_matcher(force=False,**kwargs):
-    global MATCHERMODEL
-    if force or type(MATCHERMODEL) != MatcherModel: MATCHERMODEL = MatcherModel()
-    return MATCHERMODEL
-    
-
-
+# def MatcherModel(*args, corpus=None, **kwargs):
+#     key=f'MatcherModel(corpus="{corpus}")'
+#     if MATCHER is not None: return Match
 
 class MatcherModel(BaseModel,MutableMapping):
     REL=MATCHRELNAME
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, corpus=None, **kwargs):
+        self.corpus=Corpus(corpus)
+        self.id=self.corpus.id
         self.G=nx.Graph()
+        self.store={}
+        self.dd=self.store
+        self._df=None
+        self._db=None
         self._done=set()
+        self.update(dict(*args, **kwargs))  # use the free update to set keys
+        # load?
 
     def __getitem__(self, key): return self.get_neighbs(key)
-    def __setitem__(self, key, value): self.match(key,value)
+    def __setitem__(self, key, value): self.match(Text(key), Text(value))
     def __delitem__(self, key): self.G.remove_node(key) if self.G.has_node(key) else None
     def __iter__(self): return iter(self.G.nodes())
     def __len__(self): return self.G.order()
+    def _keytransform(self, key): return key
 
     def get_rel(self,rel=None,**kwargs): return self.REL if not rel else rel
     def get_ent(self,text,**kwargs): return f'<lltk:{Text(text).addr}>'
@@ -35,7 +39,46 @@ class MatcherModel(BaseModel,MutableMapping):
         if not self.G.has_node(key): return []
         return list(self.G.neighbors(key))
 
-    
+    def get_db_sqlite(self,mode="c"):
+        from sqlitedict import SqliteDict
+        logging.getLogger('sqlitedict').setLevel(logging.WARNING)
+        path=os.path.splitext(self.path_data)[0]+'.sqlite'
+        ensure_dir_exists(path)
+        return SqliteDict(path, outer_stack=False, tablename='edged', autocommit=True)
+        
+    def get_db_pickle(self):
+        import pickledb
+        path=os.path.splitext(self.path_data)[0]+'.pkldb'
+        ensure_dir_exists(path)
+        log.debug('Opening '+path)
+        return pickledb.load(path, True)
+
+    # def get_db_json(self):
+    #     path=os.path.splitext(self.path_data)[0]+'.json'
+    #     ensure_dir_exists(path)
+    #     # return db
+    #     return open(path,'w')
+
+    def get_db_shelve(self,*args,**kwargs):
+        import shelve
+        path=os.path.splitext(self.path_data)[0]
+        ensure_dir_exists(os.path.dirname(path), fn=False)
+        return shelve.open(path)
+
+    def get_db_pup(self):
+        from pupdb.core import PupDB
+        path=os.path.splitext(self.path_data)[0]+'.json'
+        ensure_dir_exists(path)
+        db = PupDB(self.path_data)
+        return db
+
+    def get_db(self,*args,**kwargs):
+        if len(args) and args[0] is not None:
+            odb=args[0]
+        else:
+            odb=self.get_db_shelve(*args,**kwargs)
+        return odb
+
 
     def load(self,force=False,db=None,verbose=False):
         # log.debug('Loading match db...')

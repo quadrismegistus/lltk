@@ -70,6 +70,8 @@ TEXT_META_DEFAULT = {}
 BAD_COLS={'Unnamed: 0','_llp_'}
 
 
+
+
 ### OPTIONS
 COL_ID='id'
 COL_ADDR='_addr'

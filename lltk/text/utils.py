@@ -468,7 +468,7 @@ def safebool(x,bad_vals={NULL_QID}):
 		log.error(f'CANNOT ASCERTAIN TRUTH: {e}')
 		return None
 
-def merge_dict(*l):
+def merge_dict(*l,bad_keys_final=set()):
 	od={}
 	for d in l:
 		if not issubclass(type(d), dict): continue
@@ -476,7 +476,7 @@ def merge_dict(*l):
 			if safebool(k) and safebool(v):
 				# log.debug(f'k,v = {k},{v}')
 				od[k]=v
-	return od
+	return {k:v for k,v in od.items() if k not in bad_keys_final}
 
 def merge_dict_list(*l):
 	od={}

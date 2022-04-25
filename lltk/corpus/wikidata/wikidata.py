@@ -78,10 +78,7 @@ def TextWikidata(text,_sources=None,force=False,cache=True,verbose=2,*args,**kwa
     
     if is_wiki_text_obj(qtext):
         text.add_source(qtext,**kwargs)
-        if qtext.is_valid():  
-            qtext.add_source(text,**kwargs)
-            qtext.cache()
-        text.cache()
+        if qtext.is_valid():  qtext.add_source(text,**kwargs)
 
     return qtext
 
@@ -199,14 +196,15 @@ def query_get_wikidata_id(
     
     for qi,qidx in enumerate(query_iter_wikidata_id(qstr)):
         if qi>=lim: return null
-        qid_meta = query_get_wikidata(qidx)
+        qtext = DBText(f'_wikidata/{qidx}')
+        if is_text_obj(qtext):
+            qid_meta = qtext.meta
+        else:
+            qid_meta = query_get_wikidata(qidx)
+        
         qid_what = qid_meta.get('what','')
         if not what or any(whatx in qid_what for whatx in what):
             return (qidx,qid_meta)
-        # elif cache:
-            # t=Corpus('wikidata').text(**qid_meta)
-            # t.cache_meta()
-    
 
 
 def query_get_html(qstr,timeout=10,**kwargs):
@@ -244,9 +242,6 @@ def query_iter_wikidata_id(qstr,timeout=10,**kwargs):
 
 
 def query_get_wikidata(qid,verbose=False,**kwargs):
-    tcorp,tid,tmeta = lltk_db_get_text(f'_wikidata/{qid}')
-    if tmeta and is_valid_meta(tmeta): return tmeta
-
     try:
         log.debug(f'Querying for data: {qid}')
         import wptools

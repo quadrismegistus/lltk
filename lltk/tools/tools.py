@@ -1,5 +1,11 @@
 from lltk.imports import *
 
+def pf(*x,**y):
+    from pprint import pformat
+    o=' '.join(pformat(_x,indent=2) if type(_x)!=str else _x for _x in x)
+    return o
+
+
 def force_int(x):
     import numpy as np, pandas as pd
     if type(x)==int: return x
@@ -107,8 +113,8 @@ def setup_log(to_screen=LOG_BY_DEFAULT, ofn=None, remove=True, clear=True):
     
     # format
     # format1="""<cyan>[{time:HH:mm:ss}]</cyan> <level>{function}()</level><cyan>:{line}:</cyan> {message}"""
-    format1="""<level>[{time:HH:mm:ss}]</level> <cyan>{message}</cyan>"""
-    # format1="""<level>[{time:HH:mm:ss}]</level> {function}() <cyan>{message}</cyan>"""
+    # format1="""<level>[{time:HH:mm:ss}]</level> <cyan>{message}</cyan>"""
+    format1="""<level>[{time:HH:mm:ss}]</level> {function}() <cyan>{message}</cyan>"""
 
     format2="""[{time:HH:mm:ss}] ({function}) {message}"""
     

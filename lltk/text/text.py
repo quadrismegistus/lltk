@@ -47,8 +47,6 @@ class BaseText(BaseObject):
             _sources=set(),
             _txt=None,
             _xml=None,
-            # lang=None,
-            # tokenizer=None,
             **meta):
         
         if id is None and _source is not None: id=_source.addr
@@ -60,62 +58,64 @@ class BaseText(BaseObject):
         # self._source=_source
         from lltk.corpus.corpus import Corpus
         corpus=Corpus(_corpus)
-        self._corpus=corpus
+        self.corpus=corpus
         self._section_corpus=_section_corpus
         self._sections={}
-        self._is=set()
-        self._meta={}
-
+        self._meta=self.ensure_id(meta)
         if _txt: self._txt=_txt
         if _xml: self._xml=_xml
-
-        self.set_meta(**meta)		
-        self._orig_cols=set(self._meta.keys())
-    
-    def set_meta(self,ensure_id=True,**meta):
-        # self.log('_meta',self._meta)
-        # self.log('meta',meta)
-        ometa = merge_dict(self._meta, meta)
-        # self.log('ometa',ometa)
-        if ensure_id: ometa=self.ensure_id_addr(ometa)
-        # self.log('ometa 2',ometa)
-        self._meta = ometa
-
-    # @property
-    # def XML2T
-    # 	self.XML2TXT=corpus.XML2TXT
-    # 	self.TOKENIZER=corpus.TOKENIZER.__func__
         
-    @property
-    def corpus(self): return self._corpus
-
-    def __repr__(self):
-        # o=f'[{self.__class__.__name__}]({self.addr.split("/")[-1]})'
-        o=f'(({self.addr}))'
-        # o=f'[{self.corpus.name}]({self.idx})'
-        return o
+    def __repr__(self): return f'Text({self.addr})'
     
-    def init_cache(self,*x,**y):
-        newmeta1={}#self.init_cache_json(*x,**y)
-        newmeta2={}#self.init_cache_db(*x,**y)
-        return merge_dict(newmeta1, newmeta2, self._meta)
+    def cache(self, *x, **y):
+        taddr = self.addr
+        new = self._meta
+        with DBt() as db:
+            old = db.get(taddr)
+            if old is None:
+                db[taddr] = new
+                log.debug(pf(f'Cached new: Text({taddr})'))
+            else:
+                from deepdiff import DeepDiff
+                ddiff = DeepDiff(old,new,verbose_level=1)
+                if ddiff:
+                    db[taddr] = new
+                    log.debug(pf(f'Cache changed ({taddr}):\n',ddiff))
+                else:
+                    log.debug(pf(f'Cache unchanged ({taddr})'))
 
-    def init_cache_db(self,*x,**y):
-        with self.corpus.get_cachedb(mode="r") as db: return db.get(self.id,{})
+
+    def init_cache(self,*x,**y):
+        cached = DBt().get(self.addr,{})
+        # self.log(cached)
+        if cached:
+            newmeta = merge_dict(
+                self._meta,
+                cached
+            )
+            from deepdiff import DeepDiff
+            ddiff = DeepDiff(self._meta,newmeta,verbose_level=0)
+            if ddiff:
+                log.debug(pf(f'Refreshed from cache ({self.addr}):\n',ddiff))
+                self._meta = self.ensure_id(newmeta)
+
 
     def init_cache_json(self,*x,**y):
         return read_json(self.path_meta_json)
+    def cache_json(self,ometa):
+        write_json(ometa,self.path_meta_json)
+        log.debug(f'Cached json: {self.path_meta_json}')
     
     def cache_meta(self,cache=True,force=False,from_sources=False,from_query=False,**kwargs):
         return self.metadata(cache=cache,force=force,from_sources=from_sources,from_query=from_query,**kwargs)
         
-    def cache(self, *x, **y):
-        from lltk.tools.db import lltk_db_set_text
-        lltk_db_set_text(self)
-    
-    def cache_json(self,ometa):
-        write_json(ometa,self.path_meta_json)
-        log.debug(f'Cached json: {self.path_meta_json}')
+
+
+
+
+
+    def init_cache_db(self,*x,**y):
+        with self.corpus.get_cachedb(mode="r") as db: return db.get(self.id,{})
     
     def cache_db(self,ometa,verbose=False):
         if verbose: self.log(f'[{self.addr}] Caching',ometa)
@@ -246,18 +246,18 @@ class BaseText(BaseObject):
     def matcher(self): return self.corpus.matcher
     @property
     def matches(self): return self.get_matches()
-    def get_matches(self,**kwargs): 
-        return set(self.matcher[self.addr]) - set([self])
+    def get_matches(self,**kwargs):  return set()
+        # return set(self.matcher[self.addr]) - set([self])
     
     
     # Text
-    def add_source(self,source,viceversa=False,yn='',**kwargs):
+    def add_source(self,source,viceversa=True,yn='',cache=True,**kwargs):
         source=Text(source)
         if not source in self._sources:
             self._sources|={source}
-            self.matcher.match(self,source,yn=yn,**kwargs)
+            # self.matcher.match(self,source,yn=yn,**kwargs)
         if viceversa: source.add_source(self,yn=yn,viceversa=False,**kwargs)
-        # self.cache()
+        if cache: self.cache()
 
 
     @property
@@ -274,7 +274,6 @@ class BaseText(BaseObject):
         return sorted(list(sources),key=lambda t: t.addr)
 
     def get_remote_sources(self,sources=None,wikidata=True,**kwargs):
-        self.log('Sources?',sources)
         sofar=set()
         if wikidata:
             wiki=self.wikidata(sources,**kwargs)
@@ -330,6 +329,8 @@ class BaseText(BaseObject):
 
     @property
     def source(self):
+        srcs=[x for x in self._sources]
+        if srcs: return Text(srcs[0])
         srcs=self.sources
         if srcs: return list(srcs)[0]
 
@@ -371,8 +372,8 @@ class BaseText(BaseObject):
         # self.log('3',ometa)
         ometa = to_numeric_dict(ometa)
         ometa = self.ensure_id_addr(ometa)
-        self._meta = ometa
-        if cache: self.cache()
+        #self._meta = ometa
+        # if cache: self.cache()
         return self._meta
     
     @property
@@ -380,28 +381,21 @@ class BaseText(BaseObject):
     @property
     def col_id(self): return self.corpus.col_id
 
-    def ensure_id_addr(self,meta=None,col_id=COL_ID,col_corpus='_corpus'):
+    def ensure_id_addr(self,*x,**y): return self.ensure_id(*x,**y)
+
+    def ensure_id(self,meta=None,col_id=COL_ID,col_corpus='_corpus'):
         if meta is None: meta=self._meta
-        
-        ometa1={col_id:self.id}
-        # ometa1[f'{col_id}__{self.corpus.id}']=self.id
-        # for src in self.get_sources(meta):
-        # 	ometa1[f'{col_id}__{src.corpus.id}']=src.id
-        
-        ometa={
-            **ometa1,
-            **dict(sorted({k:v for k,v in meta.items() if k!=col_id}.items()))
+        return {
+            **{col_id:self.id},
+            **dict(
+                sorted({
+                    k:v
+                    for k,v in meta.items()
+                    if k!=col_id
+                }.items())
+            )
         }
 
-        return ometa
-        
-        # meta[f'{_id_}{self.corpus.id}']=self.id
-        #meta['_'+col_id]=self.id
-        #meta0 = {k:v for k,v in meta.items() if k==col_id}
-        #meta1 = {k:v for k,v in meta.items() if k!=col_id and k.startswith(_id_)}
-        #meta2 = {k:v for k,v in meta.items() if k!=col_id and not k.startswith(_id_)}
-        # return merge_dict(meta0,meta1,meta2)
-    
     def init(self,force=False,**kwargs):
         if force or not self._init:
             self.metadata(**kwargs)
@@ -821,36 +815,47 @@ TEXT_CACHE=defaultdict(type(None))
 def Text(text=None,corpus=None,addr=None,force=False,verbose=True,use_db=USE_ZODB,col_id=COL_ID,**meta):
     global TEXT_CACHE
     from lltk.corpus.corpus import Corpus
+    t = None    
     
     if is_text_obj(text) and not corpus: return text
     taddr = get_addr_str(text,corpus) if not addr else addr
     if not taddr: 
         log.error(f"!? {taddr}")
         return
-    tcorp,tid = to_corpus_and_id(taddr)
-    # if verbose: log.debug(f'?? Text({taddr})')
-    if not tcorp or not tid:
-        log.error(f"!? {taddr}")
-        return 
-    
-    t=None
+
+    # shortcuts
     if not force:
         if is_text_obj(TEXT_CACHE[taddr]) and TEXT_CACHE[taddr].is_valid():
-            if verbose: log.debug(f'<< Text({taddr})')
-            t=TEXT_CACHE[taddr]
+            t = TEXT_CACHE[taddr]
         elif use_db:
-            tcorp,tid,txmeta = lltk_db_get_text(taddr)
-            # if verbose: log.debug(f'^^ Text({taddr})')
-            meta = merge_dict(txmeta, meta)
-            
-    if not is_text_obj(t) and tcorp and tid:
-        meta[col_id] = tid
-        t = Corpus(tcorp).text(**meta)
-        log.debug(f'Got: {t}')
-        # cache
-        if is_text_obj(t):
-            TEXT_CACHE[taddr] = t
-            t.cache()
-            if verbose: log.debug(f'++ Text({taddr})')
+            t = DBText(taddr,**meta)
+    
+    # main route
+    if not is_text_obj(t):
+        tcorp,tid = to_corpus_and_id(taddr)
+        if tcorp and tid:
+            if verbose: log.debug(f'Generated new: Text({taddr})')
+            meta = merge_dict(meta, {col_id:tid})
+            t = Corpus(tcorp).text(**meta)
+    
+    # caching
+    if is_text_obj(t):
+        TEXT_CACHE[taddr] = t
+        # t.cache()
     
     return t
+
+
+def DBt(): return DB()
+
+def DBText(taddr,**meta):
+    from lltk.corpus.corpus import Corpus
+    tcorp,tid = to_corpus_and_id(taddr)
+    if tcorp and tid:
+        tmeta = DBt().get(taddr)
+        if type(tmeta)==dict and tmeta:
+            tmeta[COL_ID] = tid
+            log.debug(f'Found in DB: {taddr}')
+            t = Corpus(tcorp).text(**tmeta)
+            return t
+

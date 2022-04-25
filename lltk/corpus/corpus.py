@@ -156,20 +156,33 @@ class BaseCorpus(BaseObject):
             add=True,
             init=True,
             cache=True,
-            *args,
-            **kwargs):
-        t = None
+            **meta):
         if init: self.init()
-        if id is not None: t = self.get_text(id,init=init,**kwargs)
-        if t is None: t = self.init_text(id,**kwargs)
-        if t is not None: t._meta = merge_dict(kwargs, t._meta)
+        
+        t = None
+
+        # Get?
+        if id is not None: t = self.get_text(id,init=init,**meta)
+        
+        # Create?
+        if t is None: t = self.init_text(id,**meta)
+        
+        # fail?
+        if t is None:
+            log.error('Could not get or create text')
+            return
+
+        # Customize?        
+
+        if t is not None and kwargs:
+            t._meta = merge_dict(kwargs, t._meta)
         if t is not None and add: self.add_text(t)
-        if t is not None and cache: t.cache()
+        # if t is not None and cache: t.cache()
         return t
 
     
     # def init_text(self,id=None,corpus=None,meta={},**kwargs):
-    def init_text(self,id=None,_source=None,**kwargs):
+    def init_text(self,id=None,_source=None,cache=True,**kwargs):
         # log.debug(f'{self}: Initializing text with id="{id}"')
 
         if is_text_obj(_source): 
@@ -198,12 +211,10 @@ class BaseCorpus(BaseObject):
         # kwargs['_source'] = _source
         # log.debug(kwargs)
         text = self.TEXT_CLASS(id,**kwargs)
-        # log.debug(text)
-        # source?
-        if is_text_obj(_source):
-            text.add_source(_source,yn='y',**kwargs)
+        
+        if is_text_obj(_source): text.add_source(_source,yn='y',cache=False,**kwargs)
         # ensure correct id/addr
-        text._meta=text.ensure_id_addr(text._meta)
+        if cache: text.cache()
         return text
     
     def add_text(self,t,force=True,**kwargs):
