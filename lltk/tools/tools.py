@@ -1,10 +1,19 @@
 from lltk.imports import *
 
+def to_params_meta(_params_or_meta,prefix_params='_'):
+    params={k:v for k,v in _params_or_meta.items() if k and k[0]==prefix_params}
+    meta={k:v for k,v in _params_or_meta.items() if k and k[0]!=prefix_params}
+    return (params,meta)
+
+
 def pf(*x,**y):
     from pprint import pformat
     o=' '.join(pformat(_x,indent=2) if type(_x)!=str else _x for _x in x)
     return o
 
+def diffdict(d1,d2,verbose=1):
+    from deepdiff import DeepDiff
+    return DeepDiff(d1,d2,verbose_level=verbose).to_dict()
 
 def force_int(x):
     import numpy as np, pandas as pd

@@ -4,6 +4,9 @@ from lltk.tools import ensure_dir_exists
 
 
 class BaseObject(object):
+    def __bool__(self): return True
+    def __nonzero__(self): return True
+
     def __getstate__(self,bad_pkl_keys=BAD_PKL_KEYS,bad_pref=''):
         # self.log(f'Bad pickle keys: {bad_pkl_keys}')
         od={

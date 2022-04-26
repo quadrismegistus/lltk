@@ -979,3 +979,32 @@ def get_text(c_id_q):#,sample=True):
     for t in iter_texts(c_id_q): return t
     #return (random.choice(o) if sample else o[0]) if type(o)==list and o else None
     
+
+
+
+
+
+
+
+
+
+
+
+class AuthorBunch(Bunch):
+    def __iter__(self):
+        for v in self.__dict__.values():
+            if is_text_obj(v):
+                yield v
+    def __getitem__(self,i): return list(self)[i]
+    
+    @property
+    def ti(self): return list(self)
+    @property
+    def tl(self): return list(self)
+    @property
+    def ids(self): return [t.id for t in self]
+    @property
+    def id(self): return self.ids    
+    @property
+    def meta(self): return self.corpus.meta[self.corpus.meta.id.isin(set(self.ids))]
+    

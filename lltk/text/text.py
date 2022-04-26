@@ -3,24 +3,6 @@ from lltk.imports import *
 
 ## utility funcs
 
-class AuthorBunch(Bunch):
-    def __iter__(self):
-        for v in self.__dict__.values():
-            if issubclass(v.__class__, BaseText):
-                yield v
-    @property
-    def ti(self): return list(self)
-    @property
-    def tl(self): return list(self)
-    @property
-    def ids(self): return [t.id for t in self]
-    @property
-    def id(self): return self.ids
-    
-    @property
-    def meta(self): return self.corpus.meta[self.corpus.meta.id.isin(set(self.ids))]
-    
-
 
 class BaseText(BaseObject):
     BAD_TAGS={'note','footnote','greek','latin'}
@@ -66,8 +48,32 @@ class BaseText(BaseObject):
         if _xml: self._xml=_xml
         
     def __repr__(self): return f'Text({self.addr})'
+
+    def __getitem__(self, key): return getattr(self,key)
+    def __setitem__(self, key, value): return self.update({key:value})
+    def __delitem__(self, key):
+        if key in self._meta: del self._meta[key]
+    def __iter__(self): return iter(self.meta.items())
+    def __len__(self): return self.num_words
+
+    def update(self,*metal,**metad):
+        imeta = [self._meta] + list(metal) + [metad]
+        meta = merge_dict(*imeta)
+        self.set_meta(meta)
     
-    def cache(self, *x, **y):
+    def set_meta(self,meta,cache=True):
+        newmeta=self.ensure_id(meta)
+        ddiff=diffdict(self._meta, newmeta)
+        # log.debug(pf('Setting meta?',ddiff))
+        # log.debug(pf('V1 =',self._meta))
+        # log.debug(pf('V2 =',newmeta))
+
+        if ddiff:
+            log.debug(pf('Metadata updated:',ddiff))
+            self._meta = newmeta
+            if cache: self.cache()
+    
+    def cache(self, verbose=1,*x, **y):
         taddr = self.addr
         new = self._meta
         with DBt() as db:
@@ -76,28 +82,35 @@ class BaseText(BaseObject):
                 db[taddr] = new
                 log.debug(pf(f'Cached new: Text({taddr})'))
             else:
-                from deepdiff import DeepDiff
-                ddiff = DeepDiff(old,new,verbose_level=1)
+                ddiff = diffdict(old,new)
+                # log.debug(pf('OLD',old))
+                # log.debug(pf('NEW',new))
+                # log.debug(pf('DIFF',ddiff))
+                # log.debug('')
                 if ddiff:
                     db[taddr] = new
-                    log.debug(pf(f'Cache changed ({taddr}):\n',ddiff))
+                    if verbose>0: log.debug(pf(f'Cache changed ({taddr}):\n',ddiff))
                 else:
-                    log.debug(pf(f'Cache unchanged ({taddr})'))
+                    if verbose>1: log.debug(pf(f'Cache unchanged ({taddr})'))
 
 
+    def load_cache(self,*x,**y):
+        return DBt().get(self.addr,{})
+    
     def init_cache(self,*x,**y):
-        cached = DBt().get(self.addr,{})
+        cached = self.load_cache(*x,**y)
+
         # self.log(cached)
         if cached:
             newmeta = merge_dict(
                 self._meta,
                 cached
             )
-            from deepdiff import DeepDiff
-            ddiff = DeepDiff(self._meta,newmeta,verbose_level=0)
+            ddiff = diffdict(self._meta,newmeta)
             if ddiff:
                 log.debug(pf(f'Refreshed from cache ({self.addr}):\n',ddiff))
                 self._meta = self.ensure_id(newmeta)
+        return self._meta
 
 
     def init_cache_json(self,*x,**y):
@@ -246,8 +259,8 @@ class BaseText(BaseObject):
     def matcher(self): return self.corpus.matcher
     @property
     def matches(self): return self.get_matches()
-    def get_matches(self,**kwargs):  return set()
-        # return set(self.matcher[self.addr]) - set([self])
+    def get_matches(self,**kwargs):
+        return set(self.matcher[self.addr]) - set([self])
     
     
     # Text
@@ -255,7 +268,7 @@ class BaseText(BaseObject):
         source=Text(source)
         if not source in self._sources:
             self._sources|={source}
-            # self.matcher.match(self,source,yn=yn,**kwargs)
+            self.matcher.match(self,source,yn=yn,**kwargs)
         if viceversa: source.add_source(self,yn=yn,viceversa=False,**kwargs)
         if cache: self.cache()
 
@@ -270,8 +283,8 @@ class BaseText(BaseObject):
         if remote:
             self.get_remote_sources(sources,**kwargs)
             sources=self.get_local_sources(**kwargs)
-        
-        return sorted(list(sources),key=lambda t: t.addr)
+        return set(sources)
+        #return sorted(list(sources),key=lambda t: t.addr)
 
     def get_remote_sources(self,sources=None,wikidata=True,**kwargs):
         sofar=set()
@@ -794,15 +807,15 @@ class TextSection(BaseText):
     def path_xml(self): return self.get_path_text('xml')
     
     
-def get_addr(text_ref,corpus_ref=None,**kwargs):
-    if is_text_obj(text_ref): text_ref = text_ref.addr
-    if is_corpus_obj(corpus_ref): corpus_ref = corpus_ref.id    
-    addr = text_ref
-    if corpus_ref: 
-        corpus_ref_addr = f'_{corpus_ref}/'
-        if not addr.startswith(corpus_ref_addr):
-            addr = corpus_ref_addr + addr
-    return addr
+# def get_addr(text_ref,corpus_ref=None,**kwargs):
+#     if is_text_obj(text_ref): text_ref = text_ref.addr
+#     if is_corpus_obj(corpus_ref): corpus_ref = corpus_ref.id    
+#     addr = text_ref
+#     if corpus_ref: 
+#         corpus_ref_addr = f'_{corpus_ref}/'
+#         if not addr.startswith(corpus_ref_addr):
+#             addr = corpus_ref_addr + addr
+#     return addr
 
 
 
@@ -812,36 +825,58 @@ def get_addr(text_ref,corpus_ref=None,**kwargs):
 
 
 TEXT_CACHE=defaultdict(type(None))
-def Text(text=None,corpus=None,addr=None,force=False,verbose=True,use_db=USE_ZODB,col_id=COL_ID,**meta):
+def Text(
+        text=None,
+        _corpus=None,
+        _force=False,
+        _add=True,
+        _init=False,
+        _cache=True,
+        _verbose=1,
+        _use_db=USE_DB,
+        **_params_or_meta):
+    
     global TEXT_CACHE
     from lltk.corpus.corpus import Corpus
     t = None    
-    
-    if is_text_obj(text) and not corpus: return text
-    taddr = get_addr_str(text,corpus) if not addr else addr
-    if not taddr: 
-        log.error(f"!? {taddr}")
-        return
+    params,meta = to_params_meta(_params_or_meta)
+    if is_text_obj(text) and not _corpus: return text
+    taddr = get_addr_str(text,_corpus)
+    if not taddr: raise Exception(f"Cannot get address for {[text,_corpus]}")
+    tcorp,tid = to_corpus_and_id(taddr)
 
-    # shortcuts
-    if not force:
+
+    # set kwargs
+    kwargs=dict(
+        id=tid,
+        _add=_add,
+        _init=_init,
+        _cache=_cache,
+        _force=_force,
+        **_params_or_meta
+    )
+
+    if not _force:
         if is_text_obj(TEXT_CACHE[taddr]) and TEXT_CACHE[taddr].is_valid():
             t = TEXT_CACHE[taddr]
-        elif use_db:
-            t = DBText(taddr,**meta)
+        elif _use_db:
+            t = DBText(taddr,**kwargs)
     
     # main route
     if not is_text_obj(t):
-        tcorp,tid = to_corpus_and_id(taddr)
         if tcorp and tid:
-            if verbose: log.debug(f'Generated new: Text({taddr})')
-            meta = merge_dict(meta, {col_id:tid})
-            t = Corpus(tcorp).text(**meta)
+            if _verbose>0: log.debug(f'Generating new: Text({taddr})')
+            t = Corpus(tcorp).text(**kwargs)
+            if _verbose>1: log.debug(f'Generated: {t})')
+    
+    # if it IS a text object but we have extra metadata for it
     
     # caching
     if is_text_obj(t):
+        # extra meta for it?
+        if meta: t.update(meta)
+        # add to local cache
         TEXT_CACHE[taddr] = t
-        # t.cache()
     
     return t
 
@@ -854,8 +889,25 @@ def DBText(taddr,**meta):
     if tcorp and tid:
         tmeta = DBt().get(taddr)
         if type(tmeta)==dict and tmeta:
-            tmeta[COL_ID] = tid
-            log.debug(f'Found in DB: {taddr}')
-            t = Corpus(tcorp).text(**tmeta)
+            log.debug(f'Found text in DB: {taddr}')
+            ometa=merge_dict(tmeta,meta)
+            ometa[COL_ID]=tid
+            # log.debug(pf('Found meta:',tmeta))
+            # log.debug(pf('Regen meta:',ometa))
+            t = Corpus(tcorp).text(**ometa)
             return t
 
+def dbget(key,default={},dbname=DEFAULT_DB,**kwargs):
+    return DB(dbname).get(key,default=default,**kwargs)
+
+
+
+
+
+
+
+
+
+
+
+    

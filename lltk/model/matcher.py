@@ -13,70 +13,88 @@ def get_matcher(force=False,**kwargs):
     return MATCHERMODEL
     
 
-
-
 class MatcherModel(BaseModel,MutableMapping):
     REL=MATCHRELNAME
 
     def __init__(self, *args, **kwargs):
         self.G=nx.Graph()
-        self._done=set()
+        self._init=False
 
-    def __getitem__(self, key): return self.get_neighbs(key)
+    def __getitem__(self, key): return set(self.get_neighbs(key))
     def __setitem__(self, key, value): self.match(key,value)
     def __delitem__(self, key): self.G.remove_node(key) if self.G.has_node(key) else None
     def __iter__(self): return iter(self.G.nodes())
     def __len__(self): return self.G.order()
 
-    def get_rel(self,rel=None,**kwargs): return self.REL if not rel else rel
-    def get_ent(self,text,**kwargs): return f'<lltk:{Text(text).addr}>'
-    def get_key(self,t1,t2,rel=None,**kwargs): return f'{self.get_ent(t1)} {self.get_rel(rel)} {self.get_ent(t2)}'
-    def get_neighbs(self,key):
-        if not self.G.has_node(key): return []
-        return list(self.G.neighbors(key))
 
-    
+    def db(self,*args,**kwargs): return DB('matches')
 
-    def load(self,force=False,db=None,verbose=False):
-        # log.debug('Loading match db...')
-        with self.get_db(db) as db:
-            for estr in db.keys():
-                edged = db.get(estr)
-                u,v,rel=edge=tuple(estr.split('||'))
-                if verbose: log.debug(f'{u} -> {v}')
-                self.add_edge_to_graph(edge,force=force,**edged)
-
-
-    @property
-    def path_data(self,match_fn=MATCH_FN): return os.path.join(self.corpus.path_data,match_fn)
-
-    def data(self,g=None,**kwargs):
-        if g is None: g=self.G
-        o=[]
-        for u,v,d in list(g.edges(data=True)):
-            text=Text(u)
-            source=Text(v)
-            matchd=dict(
-                title1=text.title,
-                title2=source.title,
-                author1=text.author,
-                author2=source.author,
-                query1=text.qstr,
-                query2=source.qstr,
-            )
-            od={**d, **matchd}
-            o.append(od)
-        return pd.DataFrame(o).fillna('').sort_values('id')        
+    def init(self,force=False,db=None,verbose=False):
+        if force or not self._init:
+            log.debug('Loading match db...')
+            with self.db() as db:
+                for estr,edged in db.items():
+                    u,v,rel=edge=tuple(estr.split('||'))
+                    if verbose: log.debug(f'{u} -> {v}')
+                    self.add_edge_to_graph(edge,force=force,**edged)
+            self._init=True
 
     def match(self, text, source, rel=MATCHRELNAME, force=False, save=True, **edged):
-        u,v,rel = (Text(text), Text(source), rel)
-        if u and v and u.id_is_valid() and v.id_is_valid() and rel:
+        u,v = Text(text), Text(source)
+        # log.debug(f'u = {u}')
+        # log.debug(f'v = {v}')
+        # log.debug(f'rel = {rel}')
+        # log.debug(f'u.is_valid = {u.is_valid()}')
+        # log.debug(f'v.is_valid = {v.is_valid()}')
+        if rel and u.id_is_valid() and v.id_is_valid():
             edge = (u.addr, v.addr, rel)
-            log.debug(f'Edge: {edge}')
             if self.add_edge_to_graph(edge, force=force, **edged):
+                log.debug(f'{u} --> {v}')
                 self.add_edge_to_db(edge,**edged)
 
-    def match_records(self,C1,C2,compare_by=DEFAULT_COMPAREBY,method_string='levenshtein',full=False,force=False,**kwargs):
+
+
+    def add_edge_to_graph(self,edge,force=False,verbose=False,**edged):
+        g=self.G
+        u,v,rel=edge
+        did=False
+        if u and v and rel:
+            if not g.has_node(u): g.add_node(u,node_type='text',namespace='lltk')
+            if not g.has_node(v): g.add_node(v,node_type='text',namespace='lltk')
+            if not g.has_edge(u,v):
+                g.add_edge(u,v,rel=rel,**edged)
+                if verbose: log.debug(f'Adding to graph: {u} --> {v}')
+                did=True
+            else:
+                #g.edges[(u,v)] = merge_dict(g.edges[(u,v)], edged)
+                for ek,ev in edged.items(): 
+                    try:
+                        g.edges[(u,v)][ek]=ev
+                    except KeyError as e:
+                        log.error(f'{u} --X?--> {v}')
+    
+        return did
+
+    def add_edge_to_db(self,edge,**edged):
+        u,v,rel=edge
+        log.debug(f'[{self.id}] Adding to DB: {u} --> {v}')
+        odx={k:v for k,v in edged.items() if k and k[0]!='_'}
+        estr='||'.join(edge)
+        self.db().set(estr,odx)
+
+
+
+
+
+
+
+
+
+
+
+
+
+    def find_matches(self,C1,C2,compare_by=DEFAULT_COMPAREBY,method_string='levenshtein',full=False,force=False,**kwargs):
         # get corpora
         C1,C2=Corpus(C1),Corpus(C2)
 
@@ -122,56 +140,36 @@ class MatcherModel(BaseModel,MutableMapping):
         return res
 
     
+    def data(self,g=None,**kwargs):
+        if g is None: g=self.G
+        o=[]
+        for u,v,d in list(g.edges(data=True)):
+            text=Text(u)
+            source=Text(v)
+            matchd=dict(
+                title1=text.title,
+                title2=source.title,
+                author1=text.author,
+                author2=source.author,
+                query1=text.qstr,
+                query2=source.qstr,
+            )
+            od={**d, **matchd}
+            o.append(od)
+        return pd.DataFrame(o).fillna('').sort_values('id')        
 
 
-    def add_edge_to_graph(self,edge,force=False,verbose=False,**edged):
-        if force or edge not in self._done:
-            g=self.G
-            u,v,rel=edge
-            u,v,rel=u.strip(),v.strip(),rel.strip()
-            if u and v and rel:
-                if not g.has_node(u): g.add_node(u,node_type='text',namespace='lltk')
-                if not g.has_node(v): g.add_node(v,node_type='text',namespace='lltk')
-                if not g.has_edge(u,v):
-                    g.add_edge(u,v,rel=rel,**edged)
-                    if verbose: log.debug(f'[{self.id}] Adding to graph: {u} --> {v}')
-                    self._done|={edge}
-                    return True
-                else:
-                    for k,v in edged.items():
-                        log.debug(f'Adding to edge: {u} --> {v} ({k} = {v})')
-
-                        try:
-                            g.edges[u,v][k]=v
-                        except KeyError:
-                            pass
-        return False
-
-    def set_db_key(self,key,val,db=None):
-        return
-        if not val: return
-        oldval = self.get_db_key(key,db=db)
-        if val != oldval:
-            with self.get_db(db) as odb:
-                #odb.set(key,val)
-                odb[key]=val
-            # log.debug(f'Set in DB: "{key}" = {pformat(val)}')
-        
-    def get_db_key(self,key,db=None):
-        return 
-        with self.get_db(db) as odb: val=odb.get(key)
-        # if val is not None: 
-            # log.debug(f'Got from DB: "{key}" = {pformat(val)}')
-        return val
-
-    def add_edge_to_db(self,edge,**edged):
-        u,v,rel=edge
-        log.debug(f'[{self.id}] Adding to DB: {u} --> {v}')
-        odx={k:v for k,v in edged.items() if k and k[0]!='_'}
-        estr='||'.join(edge)
-        self.set_db_key(estr,odx)
 
 
+
+
+    def get_rel(self,rel=None,**kwargs): return self.REL if not rel else rel
+    def get_ent(self,text,**kwargs): return f'<lltk:{Text(text).addr}>'
+    def get_key(self,t1,t2,rel=None,**kwargs): return f'{self.get_ent(t1)} {self.get_rel(rel)} {self.get_ent(t2)}'
+    def get_neighbs(self,key):
+        if is_text_obj(key): key=key.addr
+        if not self.G.has_node(key): return []
+        return list(self.G.neighbors(key))
 
 
 

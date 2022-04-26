@@ -79,7 +79,7 @@ COL_CORPUS='_corpus'
 IDSEP_START='_'
 IDSEP='/'
 
-USE_ZODB = True
+USE_DB = True
 
 
 NULL_QID='Q0'

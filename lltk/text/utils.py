@@ -5,6 +5,9 @@ def get_prop_ish(d,k):
 		if xk.startswith(k) and xv:
 			return xv
 
+
+
+
 def yield_addrs(meta,addr_prefix='_addr_', id_prefix='_id_',ok_corps=set(),*args,**kwargs):
 	od={}
 	for k,v in meta.items():
@@ -41,8 +44,8 @@ def get_idx(
 		id=None,
 		i=None,
 		allow='_/.-',
-		prefstr='X',
-		numposs=1000000,
+		prefstr='T',
+		numposs=100000,
 		numzero=None,
 		author='',
 		title='',
@@ -51,14 +54,19 @@ def get_idx(
 	
 	if not id and (author and title): id=f'{author}.{title}'
 	if type(id)==str and id: return ensure_snake(str(id),allow=allow,lower=False)
-	if not numzero: numzero=len(str(numposs))-1
+	if numzero is None: numzero=len(str(numposs))-1
 	if not i:
 		if type(id) in {int,float}:
 			i=int(id)
 		else:
 			i=random.randint(1,numposs-1)
 	return f'{prefstr}{i:0{numzero}}'
+    
 
+
+
+def get_addr(*x,**y): return get_addr_str(*x,**y)
+def is_addr(*x,**y): return id_is_addr(*x,**y)
 
 def get_addr_str(text=None,corpus=None,**kwargs):
 	# takes care of that
@@ -116,21 +124,21 @@ def grab_tag_text(dom,tagname,limit=None,sep_tag=' || ',sep_ln=' | '):
 
 
 def read_df_annos(fn,anno_exts=ANNO_EXTS,id_key='id',**kwargs):
-    fnbase,fnext = os.path.splitext(fn)
-    exts = anno_exts + [fnext]
-    fns=[(fnbase+anno_ext,anno_ext) for anno_ext in anno_exts] + [(fn,fnext)]
-    fns=[x for x in fns if os.path.exists(x[0])]
-    o=[read_df(fn).fillna('').assign(ext=ext, ext_i=exts.index(ext)) for fn,ext in fns]
-    o=[x for x in o if type(x)==pd.DataFrame]
-    odf=pd.concat(o) if o else pd.DataFrame()
-    if len(odf) and id_key in set(odf.columns):
-        ol=[]
-        for id,iddf in odf.groupby(id_key):
-            iddf=iddf.sort_values('ext_i',ascending=False)
-            idd = merge_dict(*iddf.to_dict('records'))
-            ol.append(idd)
-        odf=pd.DataFrame(ol)
-    return odf
+	fnbase,fnext = os.path.splitext(fn)
+	exts = anno_exts + [fnext]
+	fns=[(fnbase+anno_ext,anno_ext) for anno_ext in anno_exts] + [(fn,fnext)]
+	fns=[x for x in fns if os.path.exists(x[0])]
+	o=[read_df(fn).fillna('').assign(ext=ext, ext_i=exts.index(ext)) for fn,ext in fns]
+	o=[x for x in o if type(x)==pd.DataFrame]
+	odf=pd.concat(o) if o else pd.DataFrame()
+	if len(odf) and id_key in set(odf.columns):
+		ol=[]
+		for id,iddf in odf.groupby(id_key):
+			iddf=iddf.sort_values('ext_i',ascending=False)
+			idd = merge_dict(*iddf.to_dict('records'))
+			ol.append(idd)
+		odf=pd.DataFrame(ol)
+	return odf
 
 def read_df_anno(fn,anno_exts=ANNO_EXTS,**kwargs) :
 	fnbase,fnext = os.path.splitext(fn)
@@ -450,23 +458,32 @@ def save_tokenize_text(text,ofolder=None,force=False):
 		json.dump(tokd,of)
 	#assert 1 == 2
 
-def safebool(x,bad_vals={NULL_QID}):
-	if type(x)==str and x in bad_vals:
-		return False
-	elif type(x) in {pd.DataFrame, pd.Series}:
-		return bool(len(x))
-	else:
-		try:
-			if pd.isnull(x): return False
-		except Exception as e:
-			# log.error(e)
-			pass
-
+def is_hashable(v):
+	"""Determine whether `v` can be hashed."""
 	try:
-		return bool(x)
-	except Exception as e:
-		log.error(f'CANNOT ASCERTAIN TRUTH: {e}')
-		return None
+		hash(v)
+		return True
+	except Exception:
+		return False
+
+def is_iterable(v):
+	from collections.abc import Hashable,Iterable
+	return isinstance(v,Iterable)
+
+def is_hashable(v):
+	"""Determine whether `v` can be hashed."""
+	try:
+		hash(v)
+	except TypeError:
+		return False
+	return True
+
+def safebool(x,bad_vals={np.nan}):
+	import pandas as pd
+	if is_hashable(x) and x in bad_vals: return False
+	if is_iterable(x): return bool(len(x))
+	if pd.isnull(x) is True: return False
+	return bool(x)
 
 def merge_dict(*l,bad_keys_final=set()):
 	od={}
@@ -529,10 +546,10 @@ def MaybeListDict(key_val_iter):
 
 
 def is_text_obj(obj):
-    from lltk.text.text import BaseText
-    if issubclass(type(obj), BaseText): return True
-    if hasattr(obj,'__dict__') and (obj.__dict__.get('_meta') or obj.__dict__.get(BROKENSTATE,{}).get('_meta')): return True
-    return False
+	from lltk.text.text import BaseText
+	if issubclass(type(obj), BaseText): return True
+	if hasattr(obj,'__dict__') and (obj.__dict__.get('_meta') or obj.__dict__.get(BROKENSTATE,{}).get('_meta')): return True
+	return False
 
 def is_broken_obj(obj):
 	return hasattr(obj,'__dict__') and BROKENSTATE in obj.__dict__
@@ -595,7 +612,7 @@ def remove_bad_tags(dom, bad_tags):
 	return dom
 
 
-def to_lastname(name,last_first=True):
+def to_lastname(name,last_first=False):
 	name=name.strip()
 	if not name: return 'Unknown'
 	if ',' in name:

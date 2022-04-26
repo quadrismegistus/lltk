@@ -95,6 +95,37 @@ class BaseCorpus(BaseObject):
         # if res is None: res = get_from_attrs_if_not_none(self._source, name)
         return res
 
+    def dbkeys(self,force=True):
+        if force or self._dbkeys is None:
+            l=[]
+            with DB() as db:
+                for key in get_tqdm(db,desc='Gathering keys'):
+                    if key.startswith(IDSEP_START+self.id+IDSEP):
+                        l.append(key)
+            self._dbkeys=set(l)
+        return self._dbkeys
+    
+    def dbclear(self,keys=None):
+        if keys is None: keys=self.dbkeys(force=True)
+        with DB() as db:
+            for key in get_tqdm(keys,desc='Clearing keys'):
+                del db[key]
+
+    def clear(self,db=True,files=False):
+        self._metadf=None
+        self._texts=None
+        self._textd=defaultdict(lambda: None)
+        self._dtmd={}
+        self._mfwd={}
+        self._init=False
+        self._source=None
+        if db: self.dbclear()
+        if files: pass # @TODO
+
+    def clear_files(self): 
+        # @TODO
+        pass
+
 
     def get_path(self,name):
         path = get_from_attrs_if_not_none(self, name)
@@ -111,9 +142,9 @@ class BaseCorpus(BaseObject):
     @property
     def matcher(self):
         if self._matcher is None:
-            from lltk.model.matcher import MatcherModel
-            self._matcher=MatcherModel(corpus=self)
-            self._matcher.load()
+            from lltk.model.matcher import get_matcher
+            self._matcher=get_matcher()
+            self._matcher.init()
         return self._matcher
 
 
@@ -146,43 +177,63 @@ class BaseCorpus(BaseObject):
     def null_text(self,id_null='Vnull',**kwargs):
         return self.init_text(id_null,**kwargs)
     
-    def get_text(self,id,init=True,**kwargs):
-        if init: self.init()
-        key = id.addr if is_text_obj(id) else id
+    def get_text(self,id,**kwargs):
+        key = id.id if is_text_obj(id) else id
         return self._textd.get(key)
+    
+    def remove_text(self,id):
+        key = id.id if is_text_obj(id) else id
+        if key in self._textd:
+            del self._textd[key]        
 
     def text(self,
             id=None,
-            add=True,
-            init=True,
-            cache=True,
-            **meta):
-        if init: self.init()
-        
-        t = None
+            _add=True,
+            _cache=True,
+            _force=False,
+            **_params_or_meta):
 
-        # Get?
-        if id is not None: t = self.get_text(id,init=init,**meta)
+        # Init corpus?
+        self.init()
+
+        # Defaults
+        t = None
+        cacheworthy=False
+        params,meta = to_params_meta(_params_or_meta)
+
+        # clear?
+        if _force: self.remove_text(id)
+        
+        # get?
+        if not _force and id is not None:
+            t = self._textd.get(id)
         
         # Create?
-        if t is None: t = self.init_text(id,**meta)
+        if t is None or _force:
+            t = self.init_text(id,**meta)
+            cacheworthy = True
         
-        # fail?
-        if t is None:
-            log.error('Could not get or create text')
-            return
+        # Fail?
+        if t is None: raise Exception('Could not get or create text')
 
         # Customize?        
+        if meta:
+            t.update(meta)
+            cacheworthy = True
+        
+        # Cache?
+        if _cache and cacheworthy:
+            t.cache()
 
-        if t is not None and kwargs:
-            t._meta = merge_dict(kwargs, t._meta)
-        if t is not None and add: self.add_text(t)
-        # if t is not None and cache: t.cache()
+        # Add to my own dictionary?
+        if _add: self.add_text(t)
+
+        # Return text
         return t
 
     
     # def init_text(self,id=None,corpus=None,meta={},**kwargs):
-    def init_text(self,id=None,_source=None,cache=True,**kwargs):
+    def init_text(self,id=None,_source=None,_cache=True,**kwargs):
         # log.debug(f'{self}: Initializing text with id="{id}"')
 
         if is_text_obj(_source): 
@@ -203,8 +254,12 @@ class BaseCorpus(BaseObject):
                 # log.debug(f'_source = {_source}')
         else:
             # log.error(f'init_text failed?? \nid = {id}\n_source={_source}')
-            return self.null_text()
-        
+            # return self.null_text()
+            _i=len(self._textd)+1
+            id = get_idx(i=_i)
+            while id in self._textd:
+                _i+=1
+                id = get_idx(i=_i)
 
         # gen text in my image        
         kwargs['_corpus'] = self
@@ -214,7 +269,7 @@ class BaseCorpus(BaseObject):
         
         if is_text_obj(_source): text.add_source(_source,yn='y',cache=False,**kwargs)
         # ensure correct id/addr
-        if cache: text.cache()
+        # if cache: text.cache()
         return text
     
     def add_text(self,t,force=True,**kwargs):
@@ -248,35 +303,6 @@ class BaseCorpus(BaseObject):
 
     @property
     def au(self): return self.authors
-
-    # @property
-    # def authors(self,authorkey='author',titlekey='title',force=False,idkey=None,**kwargs):
-    #     if idkey is None: idkey=self.col_id
-    #     if force or self._authors is None:
-    #         authord={}
-
-    #         meta = self.metadata(**kwargs).reset_index()
-
-    #         if {authorkey,idkey,titlekey} - set(meta.columns): 
-    #             self._authors=False
-    #             return
-
-    #         meta['_akey']=meta[authorkey].apply(to_authorkey)
-    #         meta['_tkey']=meta[titlekey].apply(to_titlekey)
-    #         for akey,tkey,idx in zip(meta._akey, meta._tkey, meta[idkey]):
-    #             tobj = self.textd.get(idx)
-    #             if tobj is None: continue
-
-    #             if not akey in authord:
-    #                 authord[akey]=AuthorBunch(corpus=self,name=akey)
-    #             aobj = authord[akey]
-    #             setattr(aobj,tkey,tobj)
-            
-    #         au=Bunch()
-    #         for author,author_obj in authord.items():
-    #             setattr(au,author,author_obj)
-    #         self._authors = au
-    #     return self._authors
 
     @property
     def authors(self,authorkey='author',titlekey='title',force=False,idkey=None,**kwargs):
@@ -1481,7 +1507,7 @@ class SectionCorpus(BaseCorpus):
 
 CORPUS_CACHE={}
 
-def Corpus(corpus=None,force=False,init=True,**kwargs):
+def Corpus(corpus=None,force=False,init=True,clear=False,**kwargs):
     global CORPUS_CACHE
     
     C = None
@@ -1489,11 +1515,7 @@ def Corpus(corpus=None,force=False,init=True,**kwargs):
     if is_corpus_obj(corpus):
         C=corpus
         CORPUS_CACHE[C.id]=CORPUS_CACHE[C.name]=C
-        return C
-
-    
-
-    if type(corpus)==str and corpus:
+    elif type(corpus)==str and corpus:
         if corpus in CORPUS_CACHE:
             C=CORPUS_CACHE[corpus]
         else:
@@ -1504,7 +1526,14 @@ def Corpus(corpus=None,force=False,init=True,**kwargs):
         C=BaseCorpus(corpus,_init=init,**kwargs)
         # if init: C.matcher.load()
     
-    if C is not None: CORPUS_CACHE[C.id]=CORPUS_CACHE[C.name]=C
+    if C is not None:
+        CORPUS_CACHE[C.id]=CORPUS_CACHE[C.name]=C
+
+    if clear: C.clear()
+    elif init: C.init()
 
     return C
+
+
+
 

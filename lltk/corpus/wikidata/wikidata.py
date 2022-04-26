@@ -64,7 +64,7 @@ def TextWikidata(text,_sources=None,force=False,cache=True,verbose=2,*args,**kwa
     sources = ([] if not _sources else list(_sources)) + list(text._sources)
     if sources:
         res = get_wiki_text_from_sources(sources,force=force,verbose=verbose,**kwargs)
-        if res: return res
+        if is_wiki_text_obj(res): return res
     
     # gen?
     qtext = NullTextWikidata()

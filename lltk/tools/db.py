@@ -24,7 +24,7 @@ class LLDB():
     def __getitem__(self, key): return self.get(key)
     def __setitem__(self, key, value): return self.set(key,value)
     def __delitem__(self, key): return self.delete(key)
-    def __iter__(self): return self.iterkeys()
+    def __iter__(self): return self.iteritems()
     def __len__(self): return self.length
 
     def get(self,k,default=None,**kwargs):
@@ -52,10 +52,12 @@ class LLDB():
         with self as db: return len(db)
     def iterkeys(self): 
         with self as db: return iter(db)
+    def iteritems(self): 
+        with self as db: return iter(db.items())
 
 
 def DB(name=DEFAULT_DB,path=None,fn=None):
-    if not DBSD.get(name):
+    if DBSD.get(name) is None:
         if not path:
             from lltk import PATH_LLTK_DB
             path = PATH_LLTK_DB
