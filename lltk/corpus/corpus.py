@@ -95,23 +95,50 @@ class BaseCorpus(BaseObject):
         # if res is None: res = get_from_attrs_if_not_none(self._source, name)
         return res
 
-    def dbkeys(self,force=True):
+    def addrs_textdb(self,force=True):
         if force or self._dbkeys is None:
             l=[]
             with DB() as db:
-                for key in get_tqdm(db,desc='Gathering keys'):
+                for key in db:
                     if key.startswith(IDSEP_START+self.id+IDSEP):
                         l.append(key)
             self._dbkeys=set(l)
         return self._dbkeys
-    
-    def dbclear(self,keys=None):
-        if keys is None: keys=self.dbkeys(force=True)
-        with DB() as db:
-            for key in get_tqdm(keys,desc='Clearing keys'):
-                del db[key]
 
-    def clear(self,db=True,files=False):
+    def addrs_matchdb(self,force=True):
+        if force or self._keys_g is None:
+            l=[]
+            for addr in self.matcher:
+                if addr.startswith(IDSEP_START+self.id+IDSEP):
+                    l.append(addr)
+            self._keys_g=set(l)
+        return self._keys_g
+
+    def addrs_textd(self,force=True):
+        return {self.get_addr(id) for id in self.textd.keys()}
+
+    def addrs(self, textdb=True, matchdb=True, textd=True, force=True):
+        o=set()
+        if textdb: o|=set(self.addrs_textdb(force=force))
+        if matchdb: o|=set(self.addrs_matchdb(force=force))
+        if textd: o|=set(self.addrs_textd(force=force))
+        return o
+    
+    def clear_db(self,keys=None):
+        if keys is None: keys=self.addrs_textdb(force=True)
+        log.debug(f'[{self.id}] Clearing textdb entries for {len(keys)} addrs')
+        with DB() as db:
+            for key in keys:
+                del db[key]
+    def clear_matches(self,keys=None):
+        if keys is None: keys=self.addrs_matchdb()
+        log.debug(f'[{self.id}] Clearing matchdb entries for {len(keys)} addrs')
+        self.matcher.remove_nodes(keys)
+
+    def clear(self,db=True,files=False,matches=True,**kwargs):
+        if db: self.clear_db()
+        if matches: self.clear_matches()
+        if files: pass # @TODO
         self._metadf=None
         self._texts=None
         self._textd=defaultdict(lambda: None)
@@ -119,8 +146,6 @@ class BaseCorpus(BaseObject):
         self._mfwd={}
         self._init=False
         self._source=None
-        if db: self.dbclear()
-        if files: pass # @TODO
 
     def clear_files(self): 
         # @TODO
@@ -142,9 +167,9 @@ class BaseCorpus(BaseObject):
     @property
     def matcher(self):
         if self._matcher is None:
-            from lltk.model.matcher import get_matcher
-            self._matcher=get_matcher()
-            self._matcher.init()
+            from lltk.model.matcher import Matcher
+            self._matcher=Matcher()
+            # self._matcher.init()
         return self._matcher
 
 
@@ -181,10 +206,21 @@ class BaseCorpus(BaseObject):
         key = id.id if is_text_obj(id) else id
         return self._textd.get(key)
     
-    def remove_text(self,id):
-        key = id.id if is_text_obj(id) else id
-        if key in self._textd:
-            del self._textd[key]        
+    def get_addr(self,id):
+        if is_text_obj(id): return id.addr
+        return get_addr_str(id,self.id)
+
+    def remove_text(self,id,matches=True):
+        id = id.id if is_text_obj(id) else id
+        addr = self.get_addr(id)
+
+        if id in self._textd:
+            log.debug(f'Removing text from _textd: {addr}')
+            del self._textd[id]
+
+        if matches and len(self.matcher[addr]):
+            log.debug(f'Removing text from matches: {addr}')
+            del self.matcher[addr]
 
     def text(self,
             id=None,
@@ -202,7 +238,8 @@ class BaseCorpus(BaseObject):
         params,meta = to_params_meta(_params_or_meta)
 
         # clear?
-        if _force: self.remove_text(id)
+        if _force and id is not None:
+            self.remove_text(id)
         
         # get?
         if not _force and id is not None:
@@ -484,16 +521,14 @@ class BaseCorpus(BaseObject):
     def texts(self,*args,**kwargs): return list(self.iter_texts(*args,**kwargs))
     def itexts(self,*x,**y): return self.iter_texts(*x,**y)
 
-    def iter_texts(self,texts=None,progress=True,shuffle=False,lim=None,verbose=False,**kwargs):
+    def iter_texts(self,texts=None,progress=False,shuffle=False,lim=None,verbose=False,**kwargs):
         if not texts: texts=list(self.textd.values())
         if not texts: return []
         if texts: o=list(map(Text, texts))
         if shuffle: random.shuffle(o)
         if lim: o=o[:lim]
         if progress: o=get_tqdm(o,desc=f'[{self.name}] Iterating texts')
-        for t in o:
-            # if verbose: log.debug(f'>> {t}')
-            yield t
+        yield from o
     
     def corpus_texts(self,*args,**kwargs): yield from self.texts(*args,**kwargs)
     
@@ -1528,9 +1563,10 @@ def Corpus(corpus=None,force=False,init=True,clear=False,**kwargs):
     
     if C is not None:
         CORPUS_CACHE[C.id]=CORPUS_CACHE[C.name]=C
-
-    if clear: C.clear()
-    elif init: C.init()
+        if clear:
+            C.clear(**kwargs)
+        elif init:
+            C.init(**kwargs)
 
     return C
 

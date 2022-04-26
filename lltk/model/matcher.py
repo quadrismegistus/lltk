@@ -4,54 +4,70 @@ from collections.abc import MutableMapping
 MATCH_FN='matches.sqlite'
 MATCHRELNAME='rdf:type'
 DEFAULT_COMPAREBY=dict(author=0.9, title=0.9, year=1.0)
+DEFAULT_MATCHER_ID='global'
 
+MATCHERMODELD={}
+def Matcher(id=DEFAULT_MATCHER_ID,force=False,**kwargs):
+    global MATCHERMODELD
+    if force or type(MATCHERMODELD.get(id)) != MatcherModel:
+        MATCHERMODELD[id] = MatcherModel(id,**kwargs)
+    return MATCHERMODELD[id]
 
-MATCHERMODEL=None
-def get_matcher(force=False,**kwargs):
-    global MATCHERMODEL
-    if force or type(MATCHERMODEL) != MatcherModel: MATCHERMODEL = MatcherModel()
-    return MATCHERMODEL
-    
 
 class MatcherModel(BaseModel,MutableMapping):
     REL=MATCHRELNAME
 
-    def __init__(self, *args, **kwargs):
-        self.G=nx.Graph()
-        self._init=False
-
-    def __getitem__(self, key): return set(self.get_neighbs(key))
+    def __init__(self,
+            id=DEFAULT_MATCHER_ID,
+            init=True,
+            clear=False,
+            *args,
+            **kwargs):
+        self.id=id
+        self._G=None
+        if clear:
+            self.clear()
+        elif init:
+            self.init()
+        
+    def __getitem__(self, key): return set(self.get_connected(key))
     def __setitem__(self, key, value): self.match(key,value)
-    def __delitem__(self, key): self.G.remove_node(key) if self.G.has_node(key) else None
+    def __delitem__(self, key): self.remove_node(key)
     def __iter__(self): return iter(self.G.nodes())
     def __len__(self): return self.G.order()
 
 
-    def db(self,*args,**kwargs): return DB('matches')
+    @property
+    def dbkey(self): return f'_G_{self.id}'
+    @property
+    def g(self): return self._G
+    @property
+    def G(self): return self._G
 
-    def init(self,force=False,db=None,verbose=False):
-        if force or not self._init:
-            log.debug('Loading match db...')
-            with self.db() as db:
-                for estr,edged in db.items():
-                    u,v,rel=edge=tuple(estr.split('||'))
-                    if verbose: log.debug(f'{u} -> {v}')
-                    self.add_edge_to_graph(edge,force=force,**edged)
-            self._init=True
+
+    def db(self,*args,**kwargs): return DB('matches')
+    
+    def init(self,force=False):
+        if force or self._G is None:
+            res = self.load()
+            self._G = res if res is not None else nx.Graph()
+    
+    def load(self): return self.db().get(self.dbkey)
+    def cache(self): 
+        if self.G is not None:
+            self.db().set(self.dbkey,self.G)
+    def clear(self):
+        self.db().delete(self.dbkey)
+        self._G=nx.Graph()
+
 
     def match(self, text, source, rel=MATCHRELNAME, force=False, save=True, **edged):
         u,v = Text(text), Text(source)
-        # log.debug(f'u = {u}')
-        # log.debug(f'v = {v}')
-        # log.debug(f'rel = {rel}')
-        # log.debug(f'u.is_valid = {u.is_valid()}')
-        # log.debug(f'v.is_valid = {v.is_valid()}')
         if rel and u.id_is_valid() and v.id_is_valid():
             edge = (u.addr, v.addr, rel)
             if self.add_edge_to_graph(edge, force=force, **edged):
                 log.debug(f'{u} --> {v}')
-                self.add_edge_to_db(edge,**edged)
-
+                if save: self.cache()
 
 
     def add_edge_to_graph(self,edge,force=False,verbose=False,**edged):
@@ -75,19 +91,17 @@ class MatcherModel(BaseModel,MutableMapping):
     
         return did
 
-    def add_edge_to_db(self,edge,**edged):
-        u,v,rel=edge
-        log.debug(f'[{self.id}] Adding to DB: {u} --> {v}')
-        odx={k:v for k,v in edged.items() if k and k[0]!='_'}
-        estr='||'.join(edge)
-        self.db().set(estr,odx)
-
-
-
-
-
-
-
+    def remove_node(self,node,cache=True):
+        if self.G.has_node(node):
+            self.G.remove_node(node)
+            if cache: self.cache()
+    
+    def remove_nodes(self,nodes,cache=True):
+        for node in nodes: self.remove_node(node,cache=False)
+        if cache: self.cache()
+        
+    
+    
 
 
 
@@ -166,10 +180,16 @@ class MatcherModel(BaseModel,MutableMapping):
     def get_rel(self,rel=None,**kwargs): return self.REL if not rel else rel
     def get_ent(self,text,**kwargs): return f'<lltk:{Text(text).addr}>'
     def get_key(self,t1,t2,rel=None,**kwargs): return f'{self.get_ent(t1)} {self.get_rel(rel)} {self.get_ent(t2)}'
+    
     def get_neighbs(self,key):
         if is_text_obj(key): key=key.addr
-        if not self.G.has_node(key): return []
-        return list(self.G.neighbors(key))
+        if not self.G.has_node(key): return set()
+        return set(self.G.neighbors(key))
+    
+    def get_connected(self,key):
+        if is_text_obj(key): key=key.addr
+        if not self.G.has_node(key): return set()
+        return set(nx.shortest_path(self.G,key).keys())
 
 
 

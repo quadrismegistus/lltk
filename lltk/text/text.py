@@ -264,7 +264,7 @@ class BaseText(BaseObject):
     
     
     # Text
-    def add_source(self,source,viceversa=True,yn='',cache=True,**kwargs):
+    def add_source(self,source,viceversa=False,yn='',cache=True,**kwargs):
         source=Text(source)
         if not source in self._sources:
             self._sources|={source}
@@ -295,7 +295,7 @@ class BaseText(BaseObject):
         return sofar - {self}
 
 
-    def get_local_sources(self,sofar=None,recursive=True,verbose=False,**kwargs):
+    def get_local_sources(self,sofar=None,recursive=False,verbose=True,**kwargs):
         if verbose: self.log(f'get_sources(sofar = {sofar}, recursive = {recursive}, **kwargs')
         sofar = set() if not sofar else set([x for x in sofar])
 
@@ -315,24 +315,24 @@ class BaseText(BaseObject):
                 if src not in sofar:
                     if verbose: self.log('Found source:',src)
                     sofar|={src}
-                    srcs_recursive|={src}
-        
-        if recursive:
-            if srcs_recursive and verbose: self.log('_recursive: ',srcs_recursive)
-            for src in (srcs_recursive - {self}):
-                if src.id_is_valid():
-                    if verbose: self.log(f'Src: {src}')
-                    try:
-                        sofar|=set(src.get_local_sources(
-                            sofar=sofar, 
-                            recursive=recursive,
-                            **kwargs
-                        ))
-                    except AttributeError as e:
-                        log.error(e)
-                        pass
+                    # srcs_recursive|={src}
+        # 
+        # if recursive:
+        #     if srcs_recursive and verbose: self.log('_recursive: ',srcs_recursive)
+        #     for src in (srcs_recursive - {self}):
+        #         if src.id_is_valid():
+        #             if verbose: self.log(f'Src: {src}')
+        #             try:
+        #                 sofar|=set(src.get_local_sources(
+        #                     sofar=sofar, 
+        #                     recursive=False, # only one deep
+        #                     **kwargs
+        #                 ))
+        #             except AttributeError as e:
+        #                 log.error(e)
+        #                 pass
                 
-                sofar|={src}
+        #         sofar|={src}
         
         return sofar - {self}
 
@@ -377,7 +377,6 @@ class BaseText(BaseObject):
         # sources?
         if from_sources:
             for src in self.get_sources(ometa):
-                self.log('src',src)
                 # if not wikidata and src.corpus.id=='wikidata': continue
                 sd = src.metadata(from_sources=False,**kwargs)
                 sd2={k:v for k,v in sd.items() if k!=self.corpus.col_id}
@@ -387,7 +386,7 @@ class BaseText(BaseObject):
         ometa = self.ensure_id_addr(ometa)
         #self._meta = ometa
         # if cache: self.cache()
-        return self._meta
+        return ometa
     
     @property
     def col_addr(self): return self.corpus.col_addr
@@ -411,8 +410,11 @@ class BaseText(BaseObject):
 
     def init(self,force=False,**kwargs):
         if force or not self._init:
+            log.debug(f'Init metadata: {self}')
             self.metadata(**kwargs)
+            # self.get_sources()
             self._init=True
+        return self
 
 
     def text_plain(self, force_xml=None):
@@ -834,6 +836,7 @@ def Text(
         _cache=True,
         _verbose=1,
         _use_db=USE_DB,
+        # _col_id=COL_ID,
         **_params_or_meta):
     
     global TEXT_CACHE
@@ -847,6 +850,7 @@ def Text(
 
 
     # set kwargs
+    if 'id' in _params_or_meta: del _params_or_meta['id']
     kwargs=dict(
         id=tid,
         _add=_add,

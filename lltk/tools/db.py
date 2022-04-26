@@ -1,31 +1,39 @@
 from lltk.imports import *
 DBSD={}
 DEFAULT_DB='texts'
+DEFAULT_FN='db.shelf'
 
 
 class LLDB():
-    def __init__(self,fn=None,**kwargs):
-        from lltk.imports import PATH_LLTK_SHELF
-        self.fn=fn if fn else PATH_LLTK_SHELF
-        self.db=None
-    
-    def __enter__(self):
+    ext='.db'
+    table='data'
+
+    def __init__(self,fn,**kwargs):
         from lltk.tools import ensure_dir_exists
-        ensure_dir_exists(self.fn,fn=True)
-        import shelve
-        self.db=shelve.open(self.fn)
-        return self.db
+        if type(fn)!=str or not fn: raise Exception('No fn for db given')
+        ensure_dir_exists(fn,fn=True)
+        self._fn=fn
+        self._db=None
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.db is not None: 
-            self.db.close()
-            self.db = None
+        if self._db is not None: 
+            self._db.close()
+            self._db = None
     
     def __getitem__(self, key): return self.get(key)
     def __setitem__(self, key, value): return self.set(key,value)
     def __delitem__(self, key): return self.delete(key)
     def __iter__(self): return self.iteritems()
     def __len__(self): return self.length
+
+    @property
+    def path(self): return os.path.splitext(self._fn)[0]+self.ext
+    @property
+    def fn(self): return self.path
+
+    @property
+    def db(self):
+        with self as db: return db
 
     def get(self,k,default=None,**kwargs):
         with self as db:
@@ -47,6 +55,10 @@ class LLDB():
                 del db[k]
                 return True
 
+    def drop(self):
+        from lltk.tools import rmfn
+        rmfn(self.path)
+
     @property
     def length(self):
         with self as db: return len(db)
@@ -56,13 +68,40 @@ class LLDB():
         with self as db: return iter(db.items())
 
 
-def DB(name=DEFAULT_DB,path=None,fn=None):
-    if DBSD.get(name) is None:
+class LLDBShelve(LLDB):
+    ext='.shelf'
+    
+    def __enter__(self):
+        import shelve
+        self._db=shelve.open(self.path)
+        return self._db
+    
+class LLDBSqlite(LLDB):
+    ext='.sqlite'
+
+    def __enter__(self):
+        from sqlitedict import SqliteDict
+        self._db=SqliteDict(
+            self.path,
+            tablename=self.table,
+            autocommit=True
+        )
+        return self._db
+
+
+
+def DB(name=DEFAULT_DB,path=None,fn=None,force=False,engine='sqlite',**kwargs):
+    if force or DBSD.get(name) is None:
         if not path:
             from lltk import PATH_LLTK_DB
             path = PATH_LLTK_DB
-        if not fn: fn=os.path.join(path, name+'.shelf')
-        DBSD[name]=LLDB(fn)
+        if not fn: fn=os.path.join(path, name)
+
+        if engine=='sqlite':
+            db=LLDBSqlite(fn, **kwargs)
+        else:
+            db=LLDBShelve(fn, **kwargs)
+        DBSD[name]=db
     return DBSD[name]
 
 

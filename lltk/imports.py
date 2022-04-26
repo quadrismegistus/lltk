@@ -34,6 +34,7 @@ PATH_LLTK_HOME_DATA = PATH_LLTK_DATA = os.path.join(PATH_LLTK_HOME,'data')
 PATH_LLTK_DB = os.path.join(PATH_LLTK_DATA,'db')
 PATH_LLTK_ZODB = os.path.join(PATH_LLTK_DB,'zodb.fs')
 PATH_LLTK_SHELF = os.path.join(PATH_LLTK_DB,'db.shelf')
+PATH_LLTK_SQLITEDICT = os.path.join(PATH_LLTK_DB,'db.shelf')
 
 DEFAULT_PATH_TO_MANIFEST = os.path.join(PATH_LLTK_HOME,'manifest.txt')
 PATH_MANIFEST=os.path.join(PATH_TO_CORPUS_CODE,'manifest.txt')
