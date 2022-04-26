@@ -66,7 +66,7 @@ class MatcherModel(BaseModel,MutableMapping):
         if rel and u.id_is_valid() and v.id_is_valid():
             edge = (u.addr, v.addr, rel)
             if self.add_edge_to_graph(edge, force=force, **edged):
-                log.debug(f'{u} --> {v}')
+                log.debug(f'Matching: {u} --> {v}')
                 if save: self.cache()
 
 
@@ -184,12 +184,12 @@ class MatcherModel(BaseModel,MutableMapping):
     def get_neighbs(self,key):
         if is_text_obj(key): key=key.addr
         if not self.G.has_node(key): return set()
-        return set(self.G.neighbors(key))
+        return set(self.G.neighbors(key)) - {key}
     
     def get_connected(self,key):
         if is_text_obj(key): key=key.addr
         if not self.G.has_node(key): return set()
-        return set(nx.shortest_path(self.G,key).keys())
+        return set(nx.shortest_path(self.G,key).keys()) - {key}
 
 
 

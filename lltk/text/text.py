@@ -260,17 +260,24 @@ class BaseText(BaseObject):
     @property
     def matches(self): return self.get_matches()
     def get_matches(self,**kwargs):
-        return set(self.matcher[self.addr]) - set([self])
+        return set(self.matcher[self.addr]) - {self}
     
     
     # Text
-    def add_source(self,source,viceversa=False,yn='',cache=True,**kwargs):
-        source=Text(source)
-        if not source in self._sources:
-            self._sources|={source}
-            self.matcher.match(self,source,yn=yn,**kwargs)
-        if viceversa: source.add_source(self,yn=yn,viceversa=False,**kwargs)
-        if cache: self.cache()
+    
+    def add_source(self,source,yn='',**kwargs):
+        return self.match(self,source,yn=yn,**kwargs)
+    
+    def match(self,other,yn='',**kwargs):
+        return self.matcher.match(self,other,yn=yn,**kwargs)
+    
+    # def add_source(self,source,viceversa=False,yn='',cache=True,**kwargs):
+    #     source=Text(source)
+    #     if not source in self._sources:
+    #         self._sources|={source}
+    #         self.matcher.match(self,source,yn=yn,**kwargs)
+    #     if viceversa: source.add_source(self,yn=yn,viceversa=False,**kwargs)
+    #     if cache: self.cache()
 
 
     @property
