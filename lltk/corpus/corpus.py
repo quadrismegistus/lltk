@@ -270,13 +270,15 @@ class BaseCorpus(BaseObject):
         # log incoming
         log.debug(pf(f'id={id}, _source={_source}, _cache={_cache}, **kwargs =', _params_or_meta))
 
-        # Init corpus?
-        self.init()
-
         # Defaults
         tocache=False
         t = None
         params,meta = to_params_meta(_params_or_meta)
+        log.debug(pf('params =',params))
+        log.debug(pf('meta =',meta))
+
+        # Init corpus? from csv, first time only
+        self.init()
 
         # clear?
         if _force and id is not None: 
@@ -331,7 +333,8 @@ class BaseCorpus(BaseObject):
         
 
     
-    def init_text(self,id=None,_source=None,_cache=True,_use_db=True,**kwargs):
+    def init_text(self,id=None,_source=None,_cache=True,**kwargs):
+
         log.debug(pf(f'id={id}, _source={_source}, _cache={_cache}', kwargs))
 
         if is_text_obj(_source): 
