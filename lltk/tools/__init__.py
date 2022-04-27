@@ -1,3 +1,4 @@
+from .errors import *
 from .tools import *
 from .db import *
 from .baseobj import *

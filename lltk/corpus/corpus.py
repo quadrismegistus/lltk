@@ -1,26 +1,10 @@
 from lltk.imports import *
 
-
-def fixpath(path):
-    if type(path)==str and path and not os.path.isabs(path):
-        if '~' in path:
-            path=path.split('~')[-1]
-            path=os.path.join(os.path.expanduser('~'), path[1:])
-        path=os.path.abspath(path)
-    return path
-
-def unrelfile(path):
-    if type(path)==str and path and not os.path.isabs(path):
-        path = path.replace('~', os.path.expanduser('~'))
-        path=path.replace(os.path.sep + os.path.sep, os.path.sep)
-    elif not path:
-        path=''
-    return path
-
-
-
-
 class BaseCorpus(BaseObject):
+    #################
+    # Defaults
+    #################
+
     ID=None
     NAME=None
     EXT_TXT='.txt'
@@ -44,6 +28,11 @@ class BaseCorpus(BaseObject):
     MODERNIZE=MODERNIZE_SPELLING
     LANG='en'
     t = default_xml2txt
+
+
+    #################
+    # Overloaded functions
+    #################
     
 
     def __init__(self,
@@ -90,12 +79,68 @@ class BaseCorpus(BaseObject):
     
     def __getattr__(self, name):
         if name.startswith('path_'): return self.get_path(name)
+        res = getattribute(self,name)
+        return res
+    
+    def __len__(self): return self.num_texts
+    def __getitem__(self, id): return self.text(id)
+    def __setitem__(self, id, text): 
+        if is_text_obj(text) or is_addr(text):
+            return self.text(id, _source=text, _force=True)
+    def __delitem__(self, key): self.remove_text(id)
+    def __iter__(self): return iter(self.iter_texts())
+    def __repr__(self): return f'[{self.__class__.__name__}]({self.id})'
 
-        res = get_from_attrs_if_not_none(self,name)
-        # if res is None: res = get_from_attrs_if_not_none(self._source, name)
+    #################
+    # PATHS
+    #################
+
+
+    def get_path(self,name):
+        path = getattribute(self, name)
+        if path is None: path = getattribute(self, '_'+name)
+        if path is not None and not os.path.isabs(path):
+            if '~' in path:
+                path=path.split('~')[-1]
+                path=os.path.join(os.path.expanduser('~'), path[1:])
+            else:
+                path=os.path.join(self.path, path)
+        return path
+
+    
+    @property
+    def path(self):
+        res=getattribute(self,'_path')
+        if res is None: res=os.path.join(PATH_CORPUS,self.id)
         return res
 
-    def addrs_textdb(self,force=True):
+    # DB
+
+    def db(self):
+        return DB(
+            os.path.splitext(self.path_metadata)[0],
+            force=False,
+            engine=PATH_LLTK_DB_ENGINE
+        )
+
+    #################
+    # ADDRS
+    #################
+
+    # Corpus addr
+    @property
+    def addr(self): return IDSEP_START+self.id
+    
+
+    # Text addrs
+    def get_addr(self,id):
+        if is_text_obj(id): return id.addr
+        return get_addr_str(id,self.id)
+    
+    @property
+    def addrs(self): return self.addrs_all()
+
+    def addrs_cachedb(self,force=True):
         if force or self._dbkeys is None:
             l=[]
             with DB() as db:
@@ -117,23 +162,30 @@ class BaseCorpus(BaseObject):
     def addrs_textd(self,force=True):
         return {self.get_addr(id) for id in self.textd.keys()}
 
-    def addrs(self, textdb=True, matchdb=True, textd=True, force=True):
+    def addrs_all(self, cachedb=True, matchdb=True, textd=True, force=True):
         o=set()
-        if textdb: o|=set(self.addrs_textdb(force=force))
+        if cachedb: o|=set(self.addrs_cachedb(force=force))
         if matchdb: o|=set(self.addrs_matchdb(force=force))
         if textd: o|=set(self.addrs_textd(force=force))
         return o
+
+    #################
+    # Clearing DB
+    #################
     
     def clear_db(self,keys=None):
-        if keys is None: keys=self.addrs_textdb(force=True)
-        log.debug(f'[{self.id}] Clearing textdb entries for {len(keys)} addrs')
-        with DB() as db:
-            for key in keys:
-                del db[key]
+        if keys is None: keys=self.addrs_cachedb(force=True)
+        if len(keys):
+            log.debug(f'[{self.id}] Deleting {len(keys)} cachedb entries')
+            with DB() as db:
+                for key in keys:
+                    del db[key]
+    
     def clear_matches(self,keys=None):
         if keys is None: keys=self.addrs_matchdb()
-        log.debug(f'[{self.id}] Clearing matchdb entries for {len(keys)} addrs')
-        self.matcher.remove_nodes(keys)
+        if len(keys):
+            log.debug(f'[{self.id}] Deleting {len(keys)} matchdb entries')
+            self.matcher.remove_nodes(keys)
 
     def clear(self,db=True,files=False,matches=True,**kwargs):
         if db: self.clear_db()
@@ -152,17 +204,10 @@ class BaseCorpus(BaseObject):
         pass
 
 
-    def get_path(self,name):
-        path = get_from_attrs_if_not_none(self, name)
-        if path is None:
-            path = get_from_attrs_if_not_none(self, '_'+name)
-        if path is not None and not os.path.isabs(path):
-            if '~' in path:
-                path=path.split('~')[-1]
-                path=os.path.join(os.path.expanduser('~'), path[1:])
-            else:
-                path=os.path.join(self.path, path)
-        return path
+
+    #################
+    # Matcher
+    #################
 
     @property
     def matcher(self):
@@ -174,112 +219,132 @@ class BaseCorpus(BaseObject):
 
 
     def match(self,corpus,**kwargs):
-        return self.matcher.match_records(self,corpus,**kwargs)
-
-
-    @property
-    def path(self):
-        res=get_from_attrs_if_not_none(self,'_path')
-        if res is None: res=os.path.join(PATH_CORPUS,self.id)
-        return res
-
-    def __repr__(self):
-        return f'[{self.__class__.__name__}]({self.id})'
+        return self.matcher.find_matches(self,corpus,**kwargs)
 
 
 
-    def __iter__(self):
-        self._iter_i=-1
-        self._texts=self.texts()
-        return self
-    def __next__(self):
-        self._iter_i+=1
-        if self._iter_i<len(self._texts):
-            return self._texts[self._iter_i]
-        else:
-            raise StopIteration
 
-    def null_text(self,id_null='Vnull',**kwargs):
-        return self.init_text(id_null,**kwargs)
-    
-    def get_text(self,id,**kwargs):
-        key = id.id if is_text_obj(id) else id
-        return self._textd.get(key)
-    
-    def get_addr(self,id):
-        if is_text_obj(id): return id.addr
-        return get_addr_str(id,self.id)
+    #################
+    # TEXTS
+    #################
 
-    def remove_text(self,id,matches=True):
-        id = id.id if is_text_obj(id) else id
-        addr = self.get_addr(id)
-
-        if id in self._textd:
-            log.debug(f'Removing text from _textd: {addr}')
-            del self._textd[id]
-
-        if matches and len(self.matcher[addr]):
-            log.debug(f'Removing text from matches: {addr}')
-            del self.matcher[addr]
 
     def text(self,
-            id=None,
-            _add=True,
-            _cache=True,
-            _force=False,
-            **_params_or_meta):
+            id: Union[str,BaseText,None] = None,
+            _add: bool = True,
+            _cache: bool = True,
+            _force: bool = False,
+            _source: Union[str,BaseText,None] = None,
+            **_params_or_meta) -> BaseText:
+        """
+        The one function users need to interact with a corpus's texts. Use this function both to get an existing text or to create a new one. Returns a text of type `corpus.TEXT_CLASS`. If an `id` is not specified, one will be auto-generated.
+
+        Parameters
+        ----------
+        id : Union[str,BaseText,None], optional
+            If an `id` is specified, this will be used as the text's ID. If `id` is a text object, the incoming text's address (`text.addr`) will be used as the new text's ID as well as its source (added to the set, `text._sources`. Default: None.
+
+        _add : bool, optional
+            Add the text to the corpus? Default: True.
+        
+        _cache : bool, optional
+            Cache the text in the database? Default: True.
+        
+        _force : bool, optional
+            Whether to force the creation of the text. Default: False.
+        
+        _source : Union[str,BaseText,None], optional
+            An explicitly declared source text. Default: None.
+
+        Returns
+        -------
+        BaseText
+            A text of a class given in `corpus.TEXT_CLASS`.
+
+        Raises
+        ------
+        CorpusTextException
+            If text creation fails.
+        """        
+
+        # log incoming
+        log.debug(pf(f'id={id}, _source={_source}, _cache={_cache}, **kwargs =', _params_or_meta))
 
         # Init corpus?
         self.init()
 
         # Defaults
+        tocache=False
         t = None
-        cacheworthy=False
         params,meta = to_params_meta(_params_or_meta)
 
         # clear?
-        if _force and id is not None:
+        if _force and id is not None: 
             self.remove_text(id)
         
         # get?
         if not _force and id is not None:
-            t = self._textd.get(id)
+            t = self.get_text(id)
+            if t is not None:
+                log.debug(f'found in _textd: id={id}')
         
         # Create?
-        if t is None or _force:
-            t = self.init_text(id,**meta)
-            cacheworthy = True
+        if _force or t is None:
+            t = self.init_text(id,_source=_source,**meta)
+            tocache = True
+        
+        elif meta and is_text_obj(t):
+            log.debug(pf(f'Updating text metadata:',meta))
+            t.update(meta,_cache=False)
+            tocache = True
         
         # Fail?
-        if t is None: raise Exception('Could not get or create text')
-
-        # Customize?        
-        if meta:
-            t.update(meta)
-            cacheworthy = True
-        
-        # Cache?
-        if _cache and cacheworthy:
-            t.cache()
-
+        if t is None: raise CorpusTextException('Could not get or create text')
         # Add to my own dictionary?
         if _add: self.add_text(t)
-
+        # Cache?
+        if _cache and tocache: t.cache()
         # Return text
         return t
 
     
-    # def init_text(self,id=None,corpus=None,meta={},**kwargs):
-    def init_text(self,id=None,_source=None,_cache=True,**kwargs):
-        # log.debug(f'{self}: Initializing text with id="{id}"')
+    def get_text(self,id:str,_use_db:bool=True) -> Union[BaseText,None]:
+        """Attempt to get a pre-existing text.
+
+        Parameters
+        ----------
+        id : str
+            ID, not address.
+        _use_db : bool, optional
+            Look in database?, by default True
+
+        Returns
+        -------
+        Union[BaseText,None]
+            Either a text object if found, or None if not.
+        """        
+
+        if id in self._textd:
+            log.debug(f'id="{id}" is in {self.id}._textd')
+            return self._textd[id]
+        log.debug(f'id="{id}" is not in {self.id}._textd')
+        
+
+    
+    def init_text(self,id=None,_source=None,_cache=True,_use_db=True,**kwargs):
+        log.debug(pf(f'id={id}, _source={_source}, _cache={_cache}', kwargs))
 
         if is_text_obj(_source): 
-            log.debug(f'Source "{_source}" is Text')
-            if id is None: id=_source.addr
+            log.debug(f'Source is text: {_source}')
+            if id is None:
+                id=_source.addr
+                log.debug(f'Source is set, but I have no ID. Setting ID to source addr: {id}')
+
         elif is_text_obj(id):
-            log.debug(f'ID "{id}" is Text')
+            log.debug(f'"{id}" is already a text')
             _source = id
             id = _source.addr
+
         elif type(id)==str:
             ## get source?
             # log.debug(f'{id} is string')
@@ -299,14 +364,14 @@ class BaseCorpus(BaseObject):
                 id = get_idx(i=_i)
 
         # gen text in my image        
-        kwargs['_corpus'] = self
-        # kwargs['_source'] = _source
         # log.debug(kwargs)
-        text = self.TEXT_CLASS(id,**kwargs)
-        
-        if is_text_obj(_source): text.add_source(_source,yn='y',cache=False,**kwargs)
-        # ensure correct id/addr
-        # if cache: text.cache()
+        text = self.TEXT_CLASS(
+            id=id,
+            _corpus=self,
+            _source=_source,
+            **kwargs
+        )
+
         return text
     
     def add_text(self,t,force=True,**kwargs):
@@ -324,20 +389,18 @@ class BaseCorpus(BaseObject):
     @property
     def paths(self):
         return self.__paths
-
-
-        
     
-
-
-    #####
-    # Metadata
-    ####
+    
     @property
     def t(self):
         ol=list(self.texts(progress=False))
         return random.choice(ol) if len(ol) else None
 
+
+
+    #####
+    # Metadata
+    ####
     @property
     def au(self): return self.authors
 
@@ -370,7 +433,6 @@ class BaseCorpus(BaseObject):
                 idx = idx[1:] if idx.startswith('/') else idx
                 yield idx, read_json(meta_fnfn)
 
-
     def init_meta_csv(self,*x,**y):
         # log.debug(f'Initializing from csv: {self}')
         if not os.path.exists(self.path_metadata): self.install_metadata()
@@ -381,6 +443,8 @@ class BaseCorpus(BaseObject):
                 o1=df.index
                 o2=df.to_dict('records')
                 yield from zip(o1,o2)
+
+    def init_meta_db(self): pass
 
     def init_meta(self,sources=['csv'],merger=merge_dict,allow_hidden=False,*x,**y):
         id2ld=defaultdict(list)
@@ -401,28 +465,26 @@ class BaseCorpus(BaseObject):
             yield id, odx
             
 
-    def iter_init(self,progress=False,add=True,cache=True,**kwargs):
+    def iter_init(self,progress=False,add=True,cache=True,force=False,**kwargs):
         iterr=self.init_meta(**kwargs)
         if progress: iterr=get_tqdm(list(iterr), desc=f'[{self.name}] Iterating texts')
         for id,d in iterr:
             # init text object from meta
             od={k:v for k,v in d.items() if k not in {'id','add','cache'}}
-            t = self.text(id=id,add=add,cache=cache,init=False,**od)
+            t = self.text(id=id,_add=add,_cache=cache,_force=force,**od)
             yield t
         
     def init(self,force=False,**kwargs):
         if not force and self._init: return
+        log.debug(f'...')
         for i,x in enumerate(self.iter_init(**kwargs)): pass
         self._init=True
 
 
     @property
-    def path_cachedb(self): return os.path.join(self.path_data,'cachedb.sqlite')
-        
-
+    def path_cachedb(self): return os.path.join(self.path_data,'cachedb')    
     
-    @property
-    def addr(self): return IDSEP_START+self.id
+    
 
     def get_cachedb(self,*x,**y):
         return self.get_cachedb_shelve(*x,**y)
@@ -534,11 +596,9 @@ class BaseCorpus(BaseObject):
     
     # Convenience
     @property
-    def num_texts(self): return len(self.meta)
-    # @property
-    # def textd(self): return self._textd if self._textd is not None else {}
+    def num_texts(self): return len(self._textd)
     @property
-    def text_ids(self): return list(self.meta.id)
+    def text_ids(self): return list(self._textd.keys())
 
 
     # # Groups?

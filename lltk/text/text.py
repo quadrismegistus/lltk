@@ -35,9 +35,6 @@ class BaseText(BaseObject):
         if id is None and len(_sources): id=list(_sources)[0].addr
         self.id=get_idx(id)
         
-        self._sources = {src for src in list(_sources) + [_source] if src is not None}
-        
-        # self._source=_source
         from lltk.corpus.corpus import Corpus
         corpus=Corpus(_corpus)
         self.corpus=corpus
@@ -46,6 +43,10 @@ class BaseText(BaseObject):
         self._meta=self.ensure_id(meta)
         if _txt: self._txt=_txt
         if _xml: self._xml=_xml
+
+        # matches?
+        srcs = {src for src in list(_sources) + [_source] if src is not None}
+        self._sources = srcs
         
     def __repr__(self): return f'Text({self.addr})'
 
@@ -56,46 +57,41 @@ class BaseText(BaseObject):
     def __iter__(self): return iter(self.meta.items())
     def __len__(self): return self.num_words
 
-    def update(self,*metal,**metad):
+    def update(self,*metal,_cache=True,**metad):
         imeta = [self._meta] + list(metal) + [metad]
         meta = merge_dict(*imeta)
-        self.set_meta(meta)
+        self.set_meta(meta,cache=_cache)
     
     def set_meta(self,meta,cache=True):
         newmeta=self.ensure_id(meta)
         ddiff=diffdict(self._meta, newmeta)
-        # log.debug(pf('Setting meta?',ddiff))
-        # log.debug(pf('V1 =',self._meta))
-        # log.debug(pf('V2 =',newmeta))
-
         if ddiff:
             log.debug(pf('Metadata updated:',ddiff))
             self._meta = newmeta
             if cache: self.cache()
     
-    def cache(self, verbose=1,*x, **y):
+    def db(self): return self.corpus.db()
+    
+    def cache(self, verbose=2,*x, **y):
         taddr = self.addr
+        tid = self.id
         new = self._meta
-        with DBt() as db:
-            old = db.get(taddr)
+        with self.db() as db:
+            old = db.get(tid)
             if old is None:
-                db[taddr] = new
-                log.debug(pf(f'Cached new: Text({taddr})'))
+                db[tid] = new
+                if verbose>0: log.debug(pf(f'Cached new: Text({taddr})'))
             else:
                 ddiff = diffdict(old,new)
-                # log.debug(pf('OLD',old))
-                # log.debug(pf('NEW',new))
-                # log.debug(pf('DIFF',ddiff))
-                # log.debug('')
                 if ddiff:
-                    db[taddr] = new
+                    db[tid] = new
                     if verbose>0: log.debug(pf(f'Cache changed ({taddr}):\n',ddiff))
                 else:
                     if verbose>1: log.debug(pf(f'Cache unchanged ({taddr})'))
 
 
     def load_cache(self,*x,**y):
-        return DBt().get(self.addr,{})
+        return self.db().get(self.id,{})
     
     def init_cache(self,*x,**y):
         cached = self.load_cache(*x,**y)
@@ -160,7 +156,7 @@ class BaseText(BaseObject):
         res = self._meta.get(name)
         if res is not None: return res
         
-        res = get_from_attrs_if_not_none(self, name)
+        res = getattribute(self, name)
         if res is not None: return res
 
         # res = get_prop_ish(self.meta, name)
@@ -266,7 +262,7 @@ class BaseText(BaseObject):
     # Text
     
     def add_source(self,source,yn='',**kwargs):
-        return self.match(self,source,yn=yn,**kwargs)
+        return self.match(source,yn=yn,**kwargs)
     
     def match(self,other,yn='',**kwargs):
         return self.matcher.match(self,other,yn=yn,**kwargs)
@@ -310,36 +306,18 @@ class BaseText(BaseObject):
         if matches and verbose: self.log('Matches:',matches)
 
         _sources = {Text(sx) for sx in set(self._sources)}# - {self}}
-        if verbose: self.log('My _sources:',_sources)    
+        if verbose: self.log('My _sources:',_sources)
 
-        srcs_recursive = set()
-        newsrcs = (_sources | matches) - set(sofar) - {self}
+        # missing match?
+        for src in (_sources - matches): self.match(src,cache=False)
+        
+        newsrcs = {Text(x) for x in (((_sources | matches) - set(sofar)) - {self})}
         if newsrcs and verbose: self.log('New sources:',newsrcs)
 
         for src in newsrcs:
             if src not in sofar:
-                src = Text(src)
-                if src not in sofar:
-                    if verbose: self.log('Found source:',src)
-                    sofar|={src}
-                    # srcs_recursive|={src}
-        # 
-        # if recursive:
-        #     if srcs_recursive and verbose: self.log('_recursive: ',srcs_recursive)
-        #     for src in (srcs_recursive - {self}):
-        #         if src.id_is_valid():
-        #             if verbose: self.log(f'Src: {src}')
-        #             try:
-        #                 sofar|=set(src.get_local_sources(
-        #                     sofar=sofar, 
-        #                     recursive=False, # only one deep
-        #                     **kwargs
-        #                 ))
-        #             except AttributeError as e:
-        #                 log.error(e)
-        #                 pass
-                
-        #         sofar|={src}
+                if verbose: self.log('Found source:',src)
+                sofar|={src}
         
         return sofar - {self}
 
@@ -870,8 +848,8 @@ def Text(
     if not _force:
         if is_text_obj(TEXT_CACHE[taddr]) and TEXT_CACHE[taddr].is_valid():
             t = TEXT_CACHE[taddr]
-        elif _use_db:
-            t = DBText(taddr,**kwargs)
+        # elif _use_db:
+            # t = DBText(taddr,**kwargs)
     
     # main route
     if not is_text_obj(t):

@@ -1,5 +1,23 @@
 from lltk.imports import *
 
+
+def fixpath(path):
+    if type(path)==str and path and not os.path.isabs(path):
+        if '~' in path:
+            path=path.split('~')[-1]
+            path=os.path.join(os.path.expanduser('~'), path[1:])
+        path=os.path.abspath(path)
+    return path
+
+def unrelfile(path):
+    if type(path)==str and path and not os.path.isabs(path):
+        path = path.replace('~', os.path.expanduser('~'))
+        path=path.replace(os.path.sep + os.path.sep, os.path.sep)
+    elif not path:
+        path=''
+    return path
+
+
 def to_params_meta(_params_or_meta,prefix_params='_'):
     params={k:v for k,v in _params_or_meta.items() if k and k[0]==prefix_params}
     meta={k:v for k,v in _params_or_meta.items() if k and k[0]!=prefix_params}
@@ -123,7 +141,8 @@ def setup_log(to_screen=LOG_BY_DEFAULT, ofn=None, remove=True, clear=True):
     # format
     # format1="""<cyan>[{time:HH:mm:ss}]</cyan> <level>{function}()</level><cyan>:{line}:</cyan> {message}"""
     # format1="""<level>[{time:HH:mm:ss}]</level> <cyan>{message}</cyan>"""
-    format1="""<level>[{time:HH:mm:ss}]</level> {function}() <cyan>{message}</cyan>"""
+    format1="""<level>[{time:HH:mm:ss}]</level> {name}.{function}( <cyan>{message}</cyan> )"""
+    # fmt = "{time} | {level: <8} | {name: ^15} | {function: ^15} | {line: >3} | {message}"
 
     format2="""[{time:HH:mm:ss}] ({function}) {message}"""
     
@@ -224,7 +243,7 @@ def unescape_linebreaks(txt,sep='↵'):
     return txt.replace(sep,'\n').strip()
 
 
-def get_from_attrs_if_not_none(obj,name):
+def getattribute(obj,name):
     try:
         return obj.__getattribute__(name)
     except AttributeError:

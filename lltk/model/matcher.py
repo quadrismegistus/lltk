@@ -3,7 +3,7 @@ import networkx as nx
 from collections.abc import MutableMapping
 MATCH_FN='matches.sqlite'
 MATCHRELNAME='rdf:type'
-DEFAULT_COMPAREBY=dict(author=0.9, title=0.9, year=1.0)
+DEFAULT_COMPAREBY=dict(author=0.9, title=0.9)
 DEFAULT_MATCHER_ID='global'
 
 MATCHERMODELD={}
@@ -45,7 +45,7 @@ class MatcherModel(BaseModel,MutableMapping):
     def G(self): return self._G
 
 
-    def db(self,*args,**kwargs): return DB('matches')
+    def db(self,*args,**kwargs): return DB(PATH_LLTK_DB_MATCHES)
     
     def init(self,force=False):
         if force or self._G is None:
@@ -53,7 +53,7 @@ class MatcherModel(BaseModel,MutableMapping):
             self._G = res if res is not None else nx.Graph()
     
     def load(self): return self.db().get(self.dbkey)
-    def cache(self): 
+    def cache(self):
         if self.G is not None:
             self.db().set(self.dbkey,self.G)
     def clear(self):
@@ -61,13 +61,13 @@ class MatcherModel(BaseModel,MutableMapping):
         self._G=nx.Graph()
 
 
-    def match(self, text, source, rel=MATCHRELNAME, force=False, save=True, **edged):
+    def match(self, text, source, rel=MATCHRELNAME, force=False, cache=True, **edged):
         u,v = Text(text), Text(source)
         if rel and u.id_is_valid() and v.id_is_valid():
             edge = (u.addr, v.addr, rel)
             if self.add_edge_to_graph(edge, force=force, **edged):
                 log.debug(f'Matching: {u} --> {v}')
-                if save: self.cache()
+                if cache: self.cache()
 
 
     def add_edge_to_graph(self,edge,force=False,verbose=False,**edged):
@@ -78,16 +78,16 @@ class MatcherModel(BaseModel,MutableMapping):
             if not g.has_node(u): g.add_node(u,node_type='text',namespace='lltk')
             if not g.has_node(v): g.add_node(v,node_type='text',namespace='lltk')
             if not g.has_edge(u,v):
-                g.add_edge(u,v,rel=rel,**edged)
+                g.add_edge(u,v,rel=rel)#,**edged)
                 if verbose: log.debug(f'Adding to graph: {u} --> {v}')
                 did=True
-            else:
-                #g.edges[(u,v)] = merge_dict(g.edges[(u,v)], edged)
-                for ek,ev in edged.items(): 
-                    try:
-                        g.edges[(u,v)][ek]=ev
-                    except KeyError as e:
-                        log.error(f'{u} --X?--> {v}')
+            # else:
+            #     #g.edges[(u,v)] = merge_dict(g.edges[(u,v)], edged)
+            #     for ek,ev in edged.items(): 
+            #         try:
+            #             g.edges[(u,v)][ek]=ev
+            #         except KeyError as e:
+            #             log.error(f'{u} --X?--> {v}')
     
         return did
 
@@ -101,21 +101,14 @@ class MatcherModel(BaseModel,MutableMapping):
         if cache: self.cache()
         
     
-    
 
-
-
-
-
-
-    def find_matches(self,C1,C2,compare_by=DEFAULT_COMPAREBY,method_string='levenshtein',full=False,force=False,**kwargs):
+    def find_matches(self,C1,C2=None,compare_by=DEFAULT_COMPAREBY,method_string='levenshtein',full=True,force=False,cache=True,**kwargs):
         # get corpora
-        C1,C2=Corpus(C1),Corpus(C2)
+        C1=Corpus(C1)
+        C2=C1 if C2 is None else Corpus(C2)
 
         # get minimal records
         df1,df2=reclink_get_df(C1),reclink_get_df(C2)
-        # display(df1)
-        # display(df2)
 
         # set up index
         import recordlinkage as rl
@@ -135,7 +128,6 @@ class MatcherModel(BaseModel,MutableMapping):
         res = res[res.id_1 != res.id_2]
         res = res[res.match==True]
         
-
         ## to match df
         def renamedf(df,n=1): return df.reset_index().rename({col:f'{col}_{n}' for col in df.reset_index().columns},axis=1)
         res = res.merge(renamedf(df1,1),on='id_1')
@@ -147,9 +139,8 @@ class MatcherModel(BaseModel,MutableMapping):
 
         # to matches
         for addr1,addr2 in res.index:
-            # print(f'{addr1} --> {addr2}')
-            self.match(addr1, addr2,force=force,**kwargs)
-
+            self.match(addr1, addr2,force=force, cache=False, **kwargs)
+        if cache: self.cache()
 
         return res
 

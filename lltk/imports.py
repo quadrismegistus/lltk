@@ -1,5 +1,5 @@
 import sys,os,warnings
-warnings.filterwarnings('ignore')
+# warnings.filterwarnings('ignore')
 import multiprocessing as mp
 try:
 	mp.set_start_method('fork')
@@ -32,9 +32,10 @@ PATH_LLTK_CODE_HOME = os.path.abspath(os.path.join(PATH_TO_CORPUS_CODE,'..','..'
 # PATH_LLTK_REPO = os.path.abspath(os.path.join(PATH_TO_CORPUS_CODE,'..','..','..'))
 PATH_LLTK_HOME_DATA = PATH_LLTK_DATA = os.path.join(PATH_LLTK_HOME,'data')
 PATH_LLTK_DB = os.path.join(PATH_LLTK_DATA,'db')
+PATH_LLTK_DB_FN = os.path.join(PATH_LLTK_DB,'database')
+PATH_LLTK_DB_MATCHES = os.path.join(PATH_LLTK_DB,'matches')
+PATH_LLTK_DB_ENGINE = 'sqlite'
 PATH_LLTK_ZODB = os.path.join(PATH_LLTK_DB,'zodb.fs')
-PATH_LLTK_SHELF = os.path.join(PATH_LLTK_DB,'db.shelf')
-PATH_LLTK_SQLITEDICT = os.path.join(PATH_LLTK_DB,'db.shelf')
 
 DEFAULT_PATH_TO_MANIFEST = os.path.join(PATH_LLTK_HOME,'manifest.txt')
 PATH_MANIFEST=os.path.join(PATH_TO_CORPUS_CODE,'manifest.txt')
@@ -90,7 +91,7 @@ EMPTY_GROUP='(all)'
 
 TMP_CORPUS_ID='tmp_corpus'
 PATH_LLTK_LOG_FN = os.path.join(PATH_LLTK_HOME, 'logs','debug.log')
-
+LOG_VERBOSE=2  # 0-3
 
 
 MODERNIZE_SPELLING=False
@@ -258,6 +259,9 @@ from pkg_resources import ensure_directory
 from argparse import Namespace
 from urllib.error import HTTPError
 from zipfile import ZipFile
+from typing import *
+
+
 
 ### EXTERNAL MODULES
 from yapmap import *

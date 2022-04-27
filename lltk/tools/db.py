@@ -4,7 +4,7 @@ DEFAULT_DB='texts'
 DEFAULT_FN='db.shelf'
 
 
-class LLDB():
+class LLDBBase():    
     ext='.db'
     table='data'
 
@@ -14,6 +14,9 @@ class LLDB():
         ensure_dir_exists(fn,fn=True)
         self._fn=fn
         self._db=None
+
+    def __enter__(self):
+        raise Exception('This must be subclassed')
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self._db is not None: 
@@ -68,7 +71,7 @@ class LLDB():
         with self as db: return iter(db.items())
 
 
-class LLDBShelve(LLDB):
+class LLDBShelve(LLDBBase):
     ext='.shelf'
     
     def __enter__(self):
@@ -76,7 +79,7 @@ class LLDBShelve(LLDB):
         self._db=shelve.open(self.path)
         return self._db
     
-class LLDBSqlite(LLDB):
+class LLDBSqlite(LLDBBase):
     ext='.sqlite'
 
     def __enter__(self):
@@ -88,23 +91,43 @@ class LLDBSqlite(LLDB):
         )
         return self._db
 
+def LLDB(path,engine='sqlite',**kwargs):
+    if engine=='sqlite':
+        return LLDBSqlite(path, **kwargs)
+    else:
+        return LLDBShelve(path, **kwargs)
 
+def DB(
+        path:str=None,
+        force:bool=False,
+        engine:str='sqlite',
+        **kwargs) -> LLDBBase:
+    """Get a sqlitedict or shelve persistent dictionary at file `path`.
 
-def DB(name=DEFAULT_DB,path=None,fn=None,force=False,engine='sqlite',**kwargs):
-    if force or DBSD.get(name) is None:
-        if not path:
-            from lltk import PATH_LLTK_DB
-            path = PATH_LLTK_DB
-        if not fn: fn=os.path.join(path, name)
+    Parameters
+    ----------
+    path : str, optional
+        A path without a file extension (which will be supplied depending on database engine, by default `PATH_LLTK_DB_FN`
+    
+    engine : str, optional
+        Options are: 'sqlite' for sqlitedict; otherwise shelve. Default: 'sqlite'.
 
-        if engine=='sqlite':
-            db=LLDBSqlite(fn, **kwargs)
-        else:
-            db=LLDBShelve(fn, **kwargs)
-        DBSD[name]=db
-    return DBSD[name]
+    force : bool, optional
+        Force creation of database object?, by default False
 
-
+    Returns
+    -------
+    LLDBBase
+        A simple persistent dictionary database.
+    """
+    
+    if not path: 
+        from lltk import PATH_LLTK_DB_FN
+        path=PATH_LLTK_DB_FN
+    
+    if force or DBSD.get(path) is None:
+        DBSD[path]=LLDB(path,engine=engine,**kwargs)
+    return DBSD[path]
 
 
 
