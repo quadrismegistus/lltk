@@ -1,4 +1,5 @@
 from heapq import merge
+from tracemalloc import stop
 from lltk.imports import *
 
 ## utility funcs
@@ -31,13 +32,15 @@ class BaseText(BaseObject):
             _xml=None,
             **meta):
         
+        from lltk import Corpus
+        self.corpus=corpus=Corpus(_corpus)
+        
         if id is None and _source is not None: id=_source.addr
         if id is None and len(_sources): id=list(_sources)[0].addr
-        self.id=get_idx(id)
+        self.id=get_idx(id,i=len(self.corpus._textd)+1,**meta)
+
+        if log.verbose>0: log(f'{self.__class__.__name__}({get_imsg(id,_corpus,_source,**meta)})')
         
-        from lltk.corpus.corpus import Corpus
-        corpus=Corpus(_corpus)
-        self.corpus=corpus
         self._section_corpus=_section_corpus
         self._sections={}
         self._meta=self.ensure_id(meta)
@@ -45,12 +48,56 @@ class BaseText(BaseObject):
         if _xml: self._xml=_xml
 
         # matches?
-        srcs = {src for src in list(_sources) + [_source] if src is not None}
+        srcs = {
+            Text(src)
+            for src in list(_sources) + [_source]
+            if src is not None
+            and src is not self
+            and src != self.addr
+        }
+        if srcs and log.verbose>1: log.debug(f'{self} has sources: {srcs}')
         self._sources = srcs
         
-    def __repr__(self): return f'Text({self.addr})'
+    #def __repr__(self): return f'Text({self.addr})'
+    def __repr__(self): 
+        cname=self.__class__.__name__
+        if not cname.endswith('Text') and not cname.startswith('Text'): cname='Text'+cname
+        return f'{cname}({self.id})'
 
-    def __getitem__(self, key): return getattr(self,key)
+    def __getitem__(self, key): self.get(key)
+
+    def get_ish(self,meta,key,before_suf='|'):
+        keys=[k for k in meta.keys() if k.startswith(key)]
+        numkeys=len(keys)
+        if numkeys==0: return None
+        if numkeys==1: return keys[0]
+        log.warning(f'more than one metadata key begins with "{key}": {keys}.')
+
+        def get_rank(k,sep='__'):
+            if not sep in k: return np.inf
+            corp=k.split(sep)[-1]
+            crnk=CORPUS_SOURCE_RANKS.get(corp,np.inf)
+            return crnk
+
+        keys.sort(key=lambda k: get_rank(k))
+        keyname=keys[0]
+
+        log.warning(f'using key: {keyname}')
+        res = meta.get(keyname)
+
+        if before_suf and type(res)==str and res:
+            res = res.split('|')[0]
+        
+        return res
+
+
+    def get(self,key,ish=True):
+        res = self._meta.get(key) if not ish else self.get_ish(self._meta,key)
+        if res is None:
+            meta = self.meta
+            res = meta.get(key) if not ish else self.get_ish(meta,key)
+        return res
+    
     def __setitem__(self, key, value): return self.update({key:value})
     def __delitem__(self, key):
         if key in self._meta: del self._meta[key]
@@ -80,14 +127,14 @@ class BaseText(BaseObject):
             old = db.get(tid)
             if old is None:
                 db[tid] = new
-                if verbose>0: log.debug(pf(f'Cached new: Text({taddr})'))
+                if verbose>0: log.debug(f'CACHE <-- {self}')
             else:
                 ddiff = diffdict(old,new)
                 if ddiff:
                     db[tid] = new
-                    if verbose>0: log.debug(pf(f'Cache changed ({taddr}):\n',ddiff))
-                else:
-                    if verbose>1: log.debug(pf(f'Cache unchanged ({taddr})'))
+                    if verbose>0: log.debug(pf(f'CACHE <- {self}',ddiff))
+                # else:
+                    # if verbose>1: log.debug(pf(f'cache -- {self}'))
 
 
     def load_cache(self,*x,**y):
@@ -95,16 +142,15 @@ class BaseText(BaseObject):
     
     def init_cache(self,*x,**y):
         cached = self.load_cache(*x,**y)
-
         # self.log(cached)
         if cached:
             newmeta = merge_dict(
+                cached,
                 self._meta,
-                cached
             )
             ddiff = diffdict(self._meta,newmeta)
             if ddiff:
-                log.debug(pf(f'Refreshed from cache ({self.addr}):\n',ddiff))
+                log.debug(pf(f'changes loaded from cache:',ddiff))
                 self._meta = self.ensure_id(newmeta)
         return self._meta
 
@@ -115,70 +161,76 @@ class BaseText(BaseObject):
         write_json(ometa,self.path_meta_json)
         log.debug(f'Cached json: {self.path_meta_json}')
     
-    def cache_meta(self,cache=True,force=False,from_sources=False,from_query=False,**kwargs):
-        return self.metadata(cache=cache,force=force,from_sources=from_sources,from_query=from_query,**kwargs)
-        
 
+    def get_path_old(t,part='texts'):
+        if not t.corpus: return ''
+        partattr='path_'+part
+        extattr='ext_'+part
+        res=getattr(t.corpus, partattr)
+        if res:
+            o=os.path.join(res,t.id)
+            resext=getattr(t.corpus, extattr)
+            if resext: o+=resext
+            return o
 
+    # def get_path_orig(self,name):
+    #     ptype=name
+    #     exttype=f'ext_{ptype}'.upper()
+    #     if not hasattr(self.corpus, exttype): raise Exception(f'Corpus has no {exttype}') 
+    #     ext=getattr(self.corpus,exttype)
+    #     cpath=getattr(self.corpus,name)
+    #     try:
+    #         opath=os.path.abspath(os.path.join(cpath, self.id + ext))
+    #     except TypeError as e:
+    #         log.error(f'Error getting attribute "{name}": {e}')
+    #         return
+    #     # on source?
+    #     # if allow_sources and not os.path.exists(opath):
+    #     #     for source in self.sources:
+    #     #         opath2=getattribute(source,name)
+    #     #         if os.path.exists(opath2):
+    #     #             return opath2
+    #     return opath
 
-
-
-    def init_cache_db(self,*x,**y):
-        with self.corpus.get_cachedb(mode="r") as db: return db.get(self.id,{})
-    
-    def cache_db(self,ometa,verbose=False):
-        if verbose: self.log(f'[{self.addr}] Caching',ometa)
-        with self.corpus.get_cachedb() as db: db[self.id]=ometa
-
-    
-        # convenience
     def __getattr__(self, name, allow_sources=True, **kwargs):
-        if name.startswith('path_') and hasattr(self.corpus,name):
-            ptype=name[len('path_'):]
-            exttype=f'ext_{ptype}'.upper()
-            if not hasattr(self.corpus, exttype): raise Exception(f'Corpus has no {exttype}') 
-            ext=getattr(self.corpus,exttype)
-            cpath=getattr(self.corpus,name)
-            try:
-                opath=os.path.abspath(os.path.join(cpath, self.id + ext))
-            except TypeError as e:
-                log.error(f'Error getting attribute "{name}": {e}')
-                return
+        if name.startswith('path_'): return self.get_path_old(name)
 
-            # on source?
-            if not os.path.exists(opath) and self.sources:
-                for source in self.sources:
-                    opath2=getattr(source,name)
-                    if os.path.exists(opath2):
-                        return opath2
-            return opath
-        
-        res = self._meta.get(name)
-        if res is not None: return res
-        
         res = getattribute(self, name)
         if res is not None: return res
 
-        # res = get_prop_ish(self.meta, name)
-        # if res is not None: return res
-        # log.debug('??')
+        if name[0]!='_':
+            res = self.get(name)
+            if res is not None: return res
+        
+
+        #res = self._meta.get(name)
+        #if res is not None: return res
         
         # if allow_sources:
-        # 	for source in self.get_sources(wikidata=False):
-        # 		# print(f'Consulting source: {source}')
-        # 		res = source.__getattr__(name,allow_sources=False,**kwargs)
-        # 		if res is not None:  return res
+            # res = self.meta.get(name)
+            # if res is not None: return res
+            # for source in self._sources:
+            #     log.debug(f'getattr consulting source: {source}')
+            #     res = getattribute(source,name)
+            #     if res is not None:  return res
         
         return None
 
 
 
-    def get_path(t,part='texts'):
-        if not t.corpus: return ''
-        partattr='path_'+part
-        if hasattr(t.corpus, partattr):
-            croot=getattr(t.corpus,partattr)
-            return os.path.join(croot,t.id)
+    # def get_path(t,part='texts'):
+    #     if not t.corpus: return ''
+    #     partattr='path_'+part
+    #     extattr='ext_'+part
+    #     res=getattribute(t.corpus, partattr)
+    #     if res:
+    #         o=os.path.join(res,t.id)
+    #         resext=getattribute(t.corpus, extattr)
+    #         if resext: o+='.'+resext
+    #         return o
+
+
+
     
     @property
     def path(self): return self.get_path()
@@ -286,8 +338,9 @@ class BaseText(BaseObject):
         if remote:
             self.get_remote_sources(sources,**kwargs)
             sources=self.get_local_sources(**kwargs)
-        return set(sources)
-        #return sorted(list(sources),key=lambda t: t.addr)
+        return list(sources)
+        # return set(sources)
+        # return sorted(list(sources),key=lambda t: t.addr)
 
     def get_remote_sources(self,sources=None,wikidata=True,**kwargs):
         sofar=set()
@@ -298,25 +351,25 @@ class BaseText(BaseObject):
         return sofar - {self}
 
 
-    def get_local_sources(self,sofar=None,recursive=False,verbose=True,**kwargs):
-        if verbose: self.log(f'get_sources(sofar = {sofar}, recursive = {recursive}, **kwargs')
+    def get_local_sources(self,sofar=None,recursive=False,verbose=1,**kwargs):
+        if verbose>1: self.log(f'get_sources(sofar = {sofar}, recursive = {recursive}, **kwargs')
         sofar = set() if not sofar else set([x for x in sofar])
 
         matches = set(self.get_matches(**kwargs)) - {self}
-        if matches and verbose: self.log('Matches:',matches)
+        if matches and verbose>1: self.log('Matches:',matches)
 
-        _sources = {Text(sx) for sx in set(self._sources)}# - {self}}
-        if verbose: self.log('My _sources:',_sources)
+        _sources = self._sources - {self}
+        if verbose>1: self.log('My _sources:',_sources)
 
         # missing match?
         for src in (_sources - matches): self.match(src,cache=False)
         
         newsrcs = {Text(x) for x in (((_sources | matches) - set(sofar)) - {self})}
-        if newsrcs and verbose: self.log('New sources:',newsrcs)
+        if newsrcs and verbose>1: self.log('New sources:',newsrcs)
 
         for src in newsrcs:
             if src not in sofar:
-                if verbose: self.log('Found source:',src)
+                if verbose>0: self.log('found source:',src)
                 sofar|={src}
         
         return sofar - {self}
@@ -343,6 +396,8 @@ class BaseText(BaseObject):
             cache=True,
             stamped=False,
             unstamped=False,
+            remote=True,
+            sep='__',
             **kwargs):
         # get meta
         # return self._meta
@@ -361,15 +416,19 @@ class BaseText(BaseObject):
         # self.log('2',ometa)
         # sources?
         if from_sources:
-            for src in self.get_sources(ometa):
+            sources_present = {x.split(sep)[-1] for x in ometa if sep in x}
+            if log.verbose>1: log(f'sources_present = {sources_present}')
+            for src in self.get_sources(remote=remote,**kwargs):
+                if src in sources_present: continue
+                if log.verbose>0: log(f'adding metadata from source: {src}')
                 # if not wikidata and src.corpus.id=='wikidata': continue
                 sd = src.metadata(from_sources=False,**kwargs)
-                sd2={k:v for k,v in sd.items() if k!=self.corpus.col_id}
+                sd2={k+sep+src.corpus.id:v for k,v in sd.items() if k!=self.corpus.col_id}
                 ometa = merge_dict(ometa, sd2)
         # self.log('3',ometa)
         ometa = to_numeric_dict(ometa)
         ometa = self.ensure_id_addr(ometa)
-        #self._meta = ometa
+        self._meta = ometa
         # if cache: self.cache()
         return ometa
     
@@ -395,7 +454,7 @@ class BaseText(BaseObject):
 
     def init(self,force=False,**kwargs):
         if force or not self._init:
-            log.debug(f'Init metadata: {self}')
+            if log.verbose>1: log.debug(f'Init metadata: {self}')
             self.metadata(**kwargs)
             # self.get_sources()
             self._init=True
@@ -510,9 +569,9 @@ class BaseText(BaseObject):
     @property
     def century_str(self): return self.yearbin(100,as_str=True)
     @property
-    def title(self): return get_prop_ish(self._meta, 'title')
+    def title(self): return self.get('title',ish=True)
     @property
-    def author(self): return get_prop_ish(self._meta, 'author')
+    def author(self): return self.get('author',ish=True)
     @property
     def au(self): return to_authorkey(self.author)
     @property
@@ -558,7 +617,8 @@ class BaseText(BaseObject):
         return o
     
     @property
-    def qstr(self): return clean_text(f'{self.au}, {self.shorttitle}')
+    def qstr(self):
+        return clean_text(f'{self.au}, {self.shorttitle}')
     
     @property
     def shortauthor(self):
@@ -763,11 +823,16 @@ class BaseText(BaseObject):
                 force=force_inner if force_inner is not None else force,
                 **kwargs
             )			
-            # log.debug(f'Adding to sources: {self._wikidata}')
+            log.debug(f'Adding to sources: {self._wikidata}')
             if self._wikidata is not None:
                 self._sources|={self._wikidata}
         return self._wikidata
+
+
     
+
+
+
 
 
 
@@ -815,85 +880,59 @@ TEXT_CACHE=defaultdict(type(None))
 def Text(
         text=None,
         _corpus=None,
+        _source=None,
         _force=False,
+        _new=False,
         _add=True,
         _init=False,
-        _cache=True,
-        _verbose=1,
+        _cache=False,
         _use_db=USE_DB,
         # _col_id=COL_ID,
         **_params_or_meta):
     
     global TEXT_CACHE
-    from lltk.corpus.corpus import Corpus
-    t = None    
-    params,meta = to_params_meta(_params_or_meta)
     if is_text_obj(text) and not _corpus: return text
-    taddr = get_addr_str(text,_corpus)
-    if not taddr: raise Exception(f"Cannot get address for {[text,_corpus]}")
-    tcorp,tid = to_corpus_and_id(taddr)
-
-
-    # set kwargs
-    if 'id' in _params_or_meta: del _params_or_meta['id']
-    kwargs=dict(
-        id=tid,
-        _add=_add,
-        _init=_init,
-        _cache=_cache,
-        _force=_force,
+    if log.verbose>0: log(f'<- {get_imsg(text,_corpus,_source,**_params_or_meta)}')
+    if _new: _force=True
+    
+    taddr = get_addr_str(
+        text=text,
+        corpus=_corpus,
+        source=_source,
         **_params_or_meta
     )
+    if not taddr: raise CorpusTextException(f"cannot get address for {(text,_corpus)}")
+    if log.verbose>0: log.debug(f'<- addr = {taddr}')
 
-    if not _force:
-        if is_text_obj(TEXT_CACHE[taddr]) and TEXT_CACHE[taddr].is_valid():
-            t = TEXT_CACHE[taddr]
-        # elif _use_db:
-            # t = DBText(taddr,**kwargs)
-    
-    # main route
-    if not is_text_obj(t):
-        if tcorp and tid:
-            if _verbose>0: log.debug(f'Generating new: Text({taddr})')
-            t = Corpus(tcorp).text(**kwargs)
-            if _verbose>1: log.debug(f'Generated: {t})')
-    
-    # if it IS a text object but we have extra metadata for it
+    # set kwargs
+    tcorp,tid = to_corpus_and_id(taddr)
+    if 'id' in _params_or_meta: del _params_or_meta['id']
+
+    if not _force and is_text_obj(TEXT_CACHE.get(taddr)) and TEXT_CACHE[taddr].is_valid():
+        if log.verbose>1: log.debug('found in `TEXT_CACHE`')
+        t = TEXT_CACHE[taddr]
+        params,meta = to_params_meta(_params_or_meta)
+        if t and meta: t.update(meta)
+
+    elif tcorp and tid:
+        if log.verbose>1: log.debug(f'Corpus( {tcorp} ).text( {tid} ) ->')
+        from lltk.corpus.corpus import Corpus
+        t = Corpus(tcorp).text(
+            id=tid,
+            _source=_source,
+            _add=_add,
+            _init=_init,
+            _cache=_cache,
+            _force=_force,
+            _new=_new,
+            **_params_or_meta
+        )
     
     # caching
-    if is_text_obj(t):
-        # extra meta for it?
-        if meta: t.update(meta)
-        # add to local cache
-        TEXT_CACHE[taddr] = t
+    if is_text_obj(t): TEXT_CACHE[t.addr] = t
+    if log.verbose>0: log.debug(f'-> {t}' if is_text_obj(t) else "?")
     
     return t
-
-
-def DBt(): return DB()
-
-def DBText(taddr,**meta):
-    from lltk.corpus.corpus import Corpus
-    tcorp,tid = to_corpus_and_id(taddr)
-    if tcorp and tid:
-        tmeta = DBt().get(taddr)
-        if type(tmeta)==dict and tmeta:
-            log.debug(f'Found text in DB: {taddr}')
-            ometa=merge_dict(tmeta,meta)
-            ometa[COL_ID]=tid
-            # log.debug(pf('Found meta:',tmeta))
-            # log.debug(pf('Regen meta:',ometa))
-            t = Corpus(tcorp).text(**ometa)
-            return t
-
-def dbget(key,default={},dbname=DEFAULT_DB,**kwargs):
-    return DB(dbname).get(key,default=default,**kwargs)
-
-
-
-
-
-
 
 
 
