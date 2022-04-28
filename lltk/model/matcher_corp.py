@@ -4,7 +4,6 @@ from collections.abc import MutableMapping
 MATCH_FN='matches.sqlite'
 MATCHRELNAME='rdf:type'
 DEFAULT_COMPAREBY=dict(author=0.9, title=0.9, year=1.0)
-# MATCHER_CACHE={} if not USE_ZODB else get_zodb()
 
 # def MatcherModel(*args, corpus=None, **kwargs):
 #     key=f'MatcherModel(corpus="{corpus}")'

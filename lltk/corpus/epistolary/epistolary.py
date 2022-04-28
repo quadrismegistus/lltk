@@ -95,7 +95,7 @@ class TextSectionLetterChadwyck(TextSectionLetter):
             with open(self.path_txt) as f:
                 return f.read()
     
-        dom = bs4.BeautifulSoup(self.xml)
+        dom = bs4.BeautifulSoup(self.xml,'lxml')
         ltr_dom = remove_bad_tags(dom, BAD_TAGS)
         letters = list(ltr_dom(self.LTR))
         ltxts=[]
@@ -249,7 +249,7 @@ class SectionCorpusLetterChadwyck(SectionCorpusLetter):
                 divxml2 = f'<{self.DIV_LTR}>{_xmldiv_hdr}<{self.LTR}>{_xmldiv_body}</{self.LTR}></{self.DIV_LTR}>'
                 newxml.append(divxml2)
             newxml+=[f'</{self.DIV_VOL}>']
-        return bs4.BeautifulSoup('\n'.join(newxml))
+        return bs4.BeautifulSoup('\n'.join(newxml),'lxml')
 
     def init(self,force=False,lim=None,progress=True,**kwargs):
         if not force and self._init: return

@@ -1,10 +1,8 @@
 from lltk.imports import *
 
-class BaseCorpus(BaseObject):
-    #################
-    # Defaults
-    #################
 
+
+class BaseCorpus(BaseObject):
     ID=None
     NAME=None
     EXT_TXT='.txt'
@@ -30,9 +28,14 @@ class BaseCorpus(BaseObject):
     t = default_xml2txt
 
 
-    #################
+
+
+
+
+
+    ####################################################################
     # Overloaded functions
-    #################
+    ####################################################################
     
 
     def __init__(self,
@@ -40,8 +43,10 @@ class BaseCorpus(BaseObject):
             _name=None,
             _path=None,
             _id_allows='_',
-            _init=True,
+            _init=False,
+            _quiet=True,
             **attrs):
+
 
         self.id=id
         self._metadf=None
@@ -52,6 +57,9 @@ class BaseCorpus(BaseObject):
         self._init=False
         self._source=None
         self.name=_name
+
+        if log.verbose>1: log(f'{self.__class__.__name__}({get_imsg(id,**attrs)})')
+        elif log.verbose>0: log(f'{self.__class__.__name__}(...)')
 
         # make sure we have a name and ID
         if self.id is None and self.ID: self.id=self.ID
@@ -75,6 +83,7 @@ class BaseCorpus(BaseObject):
             setattr(self,k,v)
         
         # init?
+        self._quiet = _quiet
         if _init: self.init()
     
     def __getattr__(self, name):
@@ -89,11 +98,37 @@ class BaseCorpus(BaseObject):
             return self.text(id, _source=text, _force=True)
     def __delitem__(self, key): self.remove_text(id)
     def __iter__(self): return iter(self.iter_texts())
-    def __repr__(self): return f'[{self.__class__.__name__}]({self.id})'
+    # def __repr__(self): return f'[{self.__class__.__name__}]({self.id})'
+    # def __repr__(self): 
+        # return f'Corpus({self.id})'
+    
+    # def __repr__(self):
+    #     if type(self)!=BaseCorpus:
+    #         return f'[{self.__class__.__name__}]'
+    #     else:
+    #         return f'[{self.id}]'
 
-    #################
+    # def __repr__(self):
+    #     if type(self)!=BaseCorpus:
+    #         return f'{self.__class__.__name__}Corpus({self.id})'
+    #     else:
+    #         return f'Corpus({self.id})'
+
+    def __repr__(self): 
+        cname=self.__class__.__name__
+        if not cname.endswith('Corpus') and not cname.startswith('Corpus'): cname+='Corpus'
+        return f'{cname}({self.id})'
+
+
+
+
+
+
+
+
+    ####################################################################
     # PATHS
-    #################
+    ####################################################################
 
 
     def get_path(self,name):
@@ -113,8 +148,25 @@ class BaseCorpus(BaseObject):
         res=getattribute(self,'_path')
         if res is None: res=os.path.join(PATH_CORPUS,self.id)
         return res
+    @property
+    def path_data(self): return os.path.join(self.path,'data')
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+    ####################################################################
     # DB
+    ####################################################################
 
     def db(self):
         return DB(
@@ -123,9 +175,23 @@ class BaseCorpus(BaseObject):
             engine=PATH_LLTK_DB_ENGINE
         )
 
-    #################
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    ####################################################################
     # ADDRS
-    #################
+    ####################################################################
 
     # Corpus addr
     @property
@@ -134,57 +200,73 @@ class BaseCorpus(BaseObject):
 
     # Text addrs
     def get_addr(self,id):
-        if is_text_obj(id): return id.addr
-        return get_addr_str(id,self.id)
+        return IDSEP_START + self.id + IDSEP + id
     
     @property
     def addrs(self): return self.addrs_all()
 
-    def addrs_cachedb(self,force=True):
-        if force or self._dbkeys is None:
-            l=[]
-            with DB() as db:
-                for key in db:
-                    if key.startswith(IDSEP_START+self.id+IDSEP):
-                        l.append(key)
-            self._dbkeys=set(l)
-        return self._dbkeys
+    def addrs_db(self,force=True):
+        with self.db() as db:
+            o={self.get_addr(id) for id in db.keys()}
+        if log.verbose>1: log.debug(f'-> {o}')
+        return o
 
     def addrs_matchdb(self,force=True):
-        if force or self._keys_g is None:
-            l=[]
-            for addr in self.matcher:
-                if addr.startswith(IDSEP_START+self.id+IDSEP):
-                    l.append(addr)
-            self._keys_g=set(l)
-        return self._keys_g
+        o={
+            addr
+            for addr in self.matcher
+            if addr.startswith(IDSEP_START+self.id+IDSEP)
+        }
+        if log.verbose>1: log.debug(f'-> {o}')
+        return o
 
     def addrs_textd(self,force=True):
-        return {self.get_addr(id) for id in self.textd.keys()}
+        o={self.get_addr(id) for id in self.textd.keys()}
+        if log.verbose>1: log.debug(f'-> {o}')
+        return o
 
-    def addrs_all(self, cachedb=True, matchdb=True, textd=True, force=True):
+    def addrs_all(self, db=True, matchdb=True, textd=True, force=True):
         o=set()
-        if cachedb: o|=set(self.addrs_cachedb(force=force))
+        if db: o|=set(self.addrs_db(force=force))
         if matchdb: o|=set(self.addrs_matchdb(force=force))
         if textd: o|=set(self.addrs_textd(force=force))
         return o
 
-    #################
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    ####################################################################
     # Clearing DB
-    #################
+    ####################################################################
     
     def clear_db(self,keys=None):
-        if keys is None: keys=self.addrs_cachedb(force=True)
-        if len(keys):
-            log.debug(f'[{self.id}] Deleting {len(keys)} cachedb entries')
-            with DB() as db:
-                for key in keys:
-                    del db[key]
+        self.db().drop()
+    
+        # if keys is None: keys=self.addrs_db(force=True)
+        # if len(keys):
+        #     if log.verbose>0: log(f'[{self.id}] Deleting {len(keys)} db entries')
+        #     with self.db() as db:
+        #         for key in keys:
+        #             del db[key]
     
     def clear_matches(self,keys=None):
         if keys is None: keys=self.addrs_matchdb()
         if len(keys):
-            log.debug(f'[{self.id}] Deleting {len(keys)} matchdb entries')
+            if log.verbose>0: log.debug(f'[{self.id}] Deleting {len(keys)} matchdb entries')
             self.matcher.remove_nodes(keys)
 
     def clear(self,db=True,files=False,matches=True,**kwargs):
@@ -205,9 +287,15 @@ class BaseCorpus(BaseObject):
 
 
 
-    #################
+
+
+
+
+
+
+    ####################################################################
     # Matcher
-    #################
+    ####################################################################
 
     @property
     def matcher(self):
@@ -224,17 +312,29 @@ class BaseCorpus(BaseObject):
 
 
 
-    #################
+
+
+
+
+
+
+
+
+
+    ####################################################################
     # TEXTS
-    #################
+    ####################################################################
 
 
     def text(self,
             id: Union[str,BaseText,None] = None,
-            _add: bool = True,
-            _cache: bool = True,
-            _force: bool = False,
             _source: Union[str,BaseText,None] = None,
+            _add: bool = True,
+            _cache: bool = False,
+            _force: bool = False,
+            _new: bool = False,
+            _init: bool = True,
+            _verbose: int = 1,
             **_params_or_meta) -> BaseText:
         """
         The one function users need to interact with a corpus's texts. Use this function both to get an existing text or to create a new one. Returns a text of type `corpus.TEXT_CLASS`. If an `id` is not specified, one will be auto-generated.
@@ -244,6 +344,9 @@ class BaseCorpus(BaseObject):
         id : Union[str,BaseText,None], optional
             If an `id` is specified, this will be used as the text's ID. If `id` is a text object, the incoming text's address (`text.addr`) will be used as the new text's ID as well as its source (added to the set, `text._sources`. Default: None.
 
+        _source : Union[str,BaseText,None], optional
+            An explicitly declared source text. Default: None.
+
         _add : bool, optional
             Add the text to the corpus? Default: True.
         
@@ -251,10 +354,17 @@ class BaseCorpus(BaseObject):
             Cache the text in the database? Default: True.
         
         _force : bool, optional
-            Whether to force the creation of the text. Default: False.
-        
-        _source : Union[str,BaseText,None], optional
-            An explicitly declared source text. Default: None.
+            Whether to overwrite existing cache of the text. Default: False.
+
+        _new : bool, optional
+            Whether to force the creation of a new text (iterating id if necesssary). Default: False.
+
+        _init : bool, optional
+            Whether to initialize corpus if not done so yet. Default: True.
+
+        _verbose : int, optional
+            Verbosity level, by default 1
+
 
         Returns
         -------
@@ -268,25 +378,38 @@ class BaseCorpus(BaseObject):
         """        
 
         # log incoming
-        log.debug(pf(f'id={id}, _source={_source}, _cache={_cache}, **kwargs =', _params_or_meta))
+        if log.verbose>0: log.debug(f'<- {get_imsg(id,None,_source,**_params_or_meta)}')
 
         # Init corpus?
-        self.init()
+        if _init: self.init()
 
         # Defaults
         tocache=False
         t = None
         params,meta = to_params_meta(_params_or_meta)
 
-        # clear?
-        if _force and id is not None: 
-            self.remove_text(id)
+        # Get ID immediately
+        id1 = id
+        # log.debug(f'id <- {id}')
+        id = get_id_str(id,corpus=self,source=_source,**meta)
         
+        newsep='_'
+        while _new and id in self._textd:
+            if log.verbose>0: log(f'{id} already in {self.id}._textd and {_new} set')
+            idsuf=id.split(newsep)[-1]
+            if idsuf.isdigit():
+                isuf=int(idsuf)+1
+                id=f'{newsep.join(id.split(newsep)[:-1])}{newsep}{isuf}'
+            else:
+                isuf=2
+                id=f'{id}{newsep}{isuf}'
+            
+            if log.verbose>0: log(f'new id set: {id}')
+
+
         # get?
         if not _force and id is not None:
             t = self.get_text(id)
-            if t is not None:
-                log.debug(f'found in _textd: id={id}')
         
         # Create?
         if _force or t is None:
@@ -294,17 +417,21 @@ class BaseCorpus(BaseObject):
             tocache = True
         
         elif meta and is_text_obj(t):
-            log.debug(pf(f'Updating text metadata:',meta))
+            # log.debug(pf(f'Updating text metadata:',meta))
             t.update(meta,_cache=False)
             tocache = True
         
         # Fail?
         if t is None: raise CorpusTextException('Could not get or create text')
+        
         # Add to my own dictionary?
         if _add: self.add_text(t)
+        
         # Cache?
         if _cache and tocache: t.cache()
+        
         # Return text
+        if log.verbose>0: log.debug(f'-> {t}' if is_text_obj(t) else "-> ?")
         return t
 
     
@@ -324,56 +451,51 @@ class BaseCorpus(BaseObject):
             Either a text object if found, or None if not.
         """        
 
-        if id in self._textd:
-            log.debug(f'id="{id}" is in {self.id}._textd')
-            return self._textd[id]
-        log.debug(f'id="{id}" is not in {self.id}._textd')
+        if log.verbose>1: log(f'<- id = {id}')
+        t=self._textd.get(id)
+        if log.verbose>1: log(f'-> {t}' if is_text_obj(t) else "-> ?")
+        return t
         
 
     
-    def init_text(self,id=None,_source=None,_cache=True,_use_db=True,**kwargs):
-        log.debug(pf(f'id={id}, _source={_source}, _cache={_cache}', kwargs))
+    def init_text(self,id=None,_source=None,_cache=False,_use_db=True,**kwargs):
+        # log.debug('...')
+        if log.verbose>0: log.debug(f'<- {get_imsg(id,None,_source,**kwargs)}')
 
         if is_text_obj(_source): 
-            log.debug(f'Source is text: {_source}')
+            if log.verbose>1: log(f'Source is text: {_source}')
             if id is None:
                 id=_source.addr
-                log.debug(f'Source is set, but I have no ID. Setting ID to source addr: {id}')
+                if log.verbose>1: log(f'Source is set, but I have no ID. Setting ID to source addr: {id}')
 
         elif is_text_obj(id):
-            log.debug(f'"{id}" is already a text')
+            if log.verbose>1: log(f'"{id}" is already a text')
             _source = id
             id = _source.addr
 
         elif type(id)==str:
             ## get source?
-            # log.debug(f'{id} is string')
             id_corpus,id_text = to_corpus_and_id(id)
             if id_corpus and id_corpus!=self.id:
-                # log.debug(f'{id_corpus} is hidden source')
-                # log.debug(f'{id_text} is hidden ID')
-                _source = Text(id_text,id_corpus)
-                # log.debug(f'_source = {_source}')
+                if log.verbose>1: log(f'_source = {id}')
+                if log.verbose>1: log(f'_source = Corpus( {id_corpus} ).text( {id_text} ) ...')
+                _source = Corpus(id_corpus).text(id_text)
+                if log.verbose>1: log(f'_source = {_source}')
         else:
-            # log.error(f'init_text failed?? \nid = {id}\n_source={_source}')
-            # return self.null_text()
-            _i=len(self._textd)+1
-            id = get_idx(i=_i)
-            while id in self._textd:
-                _i+=1
-                id = get_idx(i=_i)
+            id = get_idx(i=len(self._textd), **kwargs)
+            if log.verbose>1: log(f'id auto set to {id}')
 
         # gen text in my image        
         # log.debug(kwargs)
-        text = self.TEXT_CLASS(
+        t = self.TEXT_CLASS(
             id=id,
             _corpus=self,
             _source=_source,
             **kwargs
         )
+        if log.verbose>0: log(f'-> {t}' if is_text_obj(t) else "-> ?")
+        return t
 
-        return text
-    
     def add_text(self,t,force=True,**kwargs):
         # assign by id
         if t is not None and is_text_obj(t):
@@ -398,9 +520,49 @@ class BaseCorpus(BaseObject):
 
 
 
-    #####
-    # Metadata
-    ####
+
+    # Get texts
+    @property
+    def textd(self):
+        self.init()
+        return self._textd
+        
+    def texts(self,*args,**kwargs): return list(self.iter_texts(*args,**kwargs))
+    def itexts(self,*x,**y): return self.iter_texts(*x,**y)
+
+    def iter_texts(self,texts=None,progress=False,shuffle=False,lim=None,verbose=False,**kwargs):
+        if not texts: texts=list(self.textd.values())
+        if not texts: return []
+        if texts: o=list(map(Text, texts))
+        if shuffle: random.shuffle(o)
+        if lim: o=o[:lim]
+        if progress: o=get_tqdm(o,desc=f'[{self.name}] Iterating texts')
+        yield from o
+    
+    def corpus_texts(self,*args,**kwargs): yield from self.texts(*args,**kwargs)
+    
+    # Convenience
+    @property
+    def num_texts(self): return len(self._textd)
+    @property
+    def text_ids(self): return list(self._textd.keys())
+
+
+
+
+
+
+
+
+
+
+
+
+    ####################################################################
+    # METADATA
+    ####################################################################
+
+
     @property
     def au(self): return self.authors
 
@@ -425,6 +587,7 @@ class BaseCorpus(BaseObject):
         
     def init_meta_json(self,force=False,bad_cols=BAD_COLS,meta_fn='meta.json',**kwargs):
         # log.debug(f'Initializing from json files: {self}')
+        if log.verbose>0: log(self)
         for root,dirs,fns in os.walk(self.path_texts):
             if meta_fn in set(fns):
                 meta_root=os.path.abspath(root)
@@ -434,7 +597,7 @@ class BaseCorpus(BaseObject):
                 yield idx, read_json(meta_fnfn)
 
     def init_meta_csv(self,*x,**y):
-        # log.debug(f'Initializing from csv: {self}')
+        if log.verbose>0: log(self)
         if not os.path.exists(self.path_metadata): self.install_metadata()
         if os.path.exists(self.path_metadata):
             df=read_df_anno(self.path_metadata,dtype=str)
@@ -444,9 +607,9 @@ class BaseCorpus(BaseObject):
                 o2=df.to_dict('records')
                 yield from zip(o1,o2)
 
-    def init_meta_db(self): pass
 
     def init_meta(self,sources=['csv'],merger=merge_dict,allow_hidden=False,*x,**y):
+        if log.verbose>0: log(self)
         id2ld=defaultdict(list)
         for source in sources:
             if source=='csv':
@@ -466,63 +629,34 @@ class BaseCorpus(BaseObject):
             
 
     def iter_init(self,progress=False,add=True,cache=True,force=False,**kwargs):
+        if log.verbose>0: log(self)
         iterr=self.init_meta(**kwargs)
         if progress: iterr=get_tqdm(list(iterr), desc=f'[{self.name}] Iterating texts')
         for id,d in iterr:
             # init text object from meta
             od={k:v for k,v in d.items() if k not in {'id','add','cache'}}
-            t = self.text(id=id,_add=add,_cache=cache,_force=force,**od)
+            t = self.text(id=id,_add=add,_cache=False,_force=force,_init=False,**od)
             yield t
         
-    def init(self,force=False,**kwargs):
+    def init(self,force=False,quiet=None,**kwargs):
         if not force and self._init: return
-        log.debug(f'...')
-        for i,x in enumerate(self.iter_init(**kwargs)): pass
         self._init=True
-
-
-    @property
-    def path_cachedb(self): return os.path.join(self.path_data,'cachedb')    
-    
-    
-
-    def get_cachedb(self,*x,**y):
-        return self.get_cachedb_shelve(*x,**y)
-
-    def get_cachedb_sqlite(self,mode="c"):
-        from sqlitedict import SqliteDict
-        #logging.getLogger('sqlitedict').setLevel(logging.WARNING)
-        ensure_dir_exists(self.path_cachedb)
-        return SqliteDict(self.path_cachedb, tablename="cachedb", flag="c")
-    
-    def get_cachedb_shelve(self,*args,**kwargs):
-        import shelve
-        path=os.path.splitext(self.path_data)[0]
-        ensure_dir_exists(os.path.dirname(path))
-        return shelve.open(path)
-
-    @property
-    def path_data(self): return os.path.join(self.path,'data')
-
-    def iter_sources(self,texts=[],include_t=True,**kwargs):
-        for t in self.texts(texts=texts,**kwargs):
-            tsrcs=t.get_sources(**kwargs)
-            yield (t,tsrcs) if include_t else tsrcs
+        if log.verbose>0: log(self)
+        # stop
+        # log.debug(self)
+        def do_it():
+            i=0
+            for x in self.iter_init(**kwargs): i+=1
+            return i
         
-    def get_sources(self,**kwargs):
-        return list(self.iter_sources(**kwargs))
+        if quiet is True or self._quiet is True:
+            with log.hidden():
+                numdone = do_it()
+        else:
+            numdone = do_it()
 
-        
-    # @property
-    def wikidata(self,**kwargs): return list(self.iter_wikidata(**kwargs))
-    
-    def iter_wikidata(self,texts=[],force=True,**kwargs):
-        for t in self.corpus_texts(texts=texts,**kwargs):
-            #log.debug(f't = {t}')
-            tw=t.wikidata(force=force,**kwargs)
-            #log.debug(f'tw = {tw}')
-            yield tw
-            
+        if numdone and log.verbose>0: log(f'initialized {numdone} texts')
+
 
 
     def metadata(
@@ -564,46 +698,76 @@ class BaseCorpus(BaseObject):
                     backup_save_df(ometa,ofn,**kwargs)
                 save_df(ometa,ofn,**kwargs)
 
-
     @property
     def meta(self): return self.metadata(force=False)
+    @property
+    def metadf(self): return self.meta
+    @property
+    def df(self): return self.metadf
+
 
     @property
-    def textd(self):
-        self.init()
-        return self._textd
+    def addr2meta(self):
+        if not hasattr(self,'_addr2meta'):
+            self._addr2meta=a2m={}
+            for t in self.texts():
+                meta=t.meta
+                a2m[t.addr]=meta
+        return self._addr2meta
+
+    @property
+    def metad(self):
+        if not hasattr(self,'_metad'):
+            self._metad=dict(list(zip(self.text_ids,self.meta)))
+        return self._metad
+
+
+
+
+
+
+
+
+
+
+
+
+
+    ####################################################################
+    # SOURCES
+    ####################################################################
+
+    def iter_sources(self,texts=[],include_t=True,**kwargs):
+        for t in self.texts(texts=texts,**kwargs):
+            tsrcs=t.get_sources(**kwargs)
+            yield (t,tsrcs) if include_t else tsrcs
+        
+    def get_sources(self,**kwargs):
+        return list(self.iter_sources(**kwargs))
+
+
+        
+    ## WIKIDATA    
+    def wikidata(self,**kwargs): return list(self.iter_wikidata(**kwargs))    
+    def iter_wikidata(self,texts=[],force=True,**kwargs):
+        for t in self.corpus_texts(texts=texts,**kwargs):
+            tw=t.wikidata(force=force,**kwargs)
+            yield tw
+            
+
+
     
-    @property
-    def metadf(self):
-        return self.meta.reset_index() if len(self.meta) else self.meta
-
-
-
-    # Get texts
-    def texts(self,*args,**kwargs): return list(self.iter_texts(*args,**kwargs))
-    def itexts(self,*x,**y): return self.iter_texts(*x,**y)
-
-    def iter_texts(self,texts=None,progress=False,shuffle=False,lim=None,verbose=False,**kwargs):
-        if not texts: texts=list(self.textd.values())
-        if not texts: return []
-        if texts: o=list(map(Text, texts))
-        if shuffle: random.shuffle(o)
-        if lim: o=o[:lim]
-        if progress: o=get_tqdm(o,desc=f'[{self.name}] Iterating texts')
-        yield from o
     
-    def corpus_texts(self,*args,**kwargs): yield from self.texts(*args,**kwargs)
-    
-    # Convenience
-    @property
-    def num_texts(self): return len(self._textd)
-    @property
-    def text_ids(self): return list(self._textd.keys())
 
 
-    # # Groups?
-    # def new_grouping(self):
-    # 	return CorpusGroups(self)
+
+
+
+
+
+
+
+
 
 
     #################
@@ -650,9 +814,6 @@ class BaseCorpus(BaseObject):
             desc=f'[{self.name}] Saving word freqs as jsons',
             **attrs
         )
-
-
-
 
 
 
@@ -891,24 +1052,10 @@ class BaseCorpus(BaseObject):
         return getattr(self,ppart)
 
 
-    @property
-    def df(self): return self.metadf
+    
 
-    @property
-    def addr2meta(self):
-        if not hasattr(self,'_addr2meta'):
-            self._addr2meta=a2m={}
-            for t in self.texts():
-                meta=t.meta
-                a2m[t.addr]=meta
-        return self._addr2meta
+    
 
-    @property
-    def metad(self):
-        if not hasattr(self,'_metad'):
-            #if not hasattr(self,'_meta'): self.meta
-            self._metad=dict(list(zip(self.text_ids,self.meta)))
-        return self._metad
 
     def export(self,folder,meta_fn=None,txt_folder=None,compress=False):
         """
@@ -1267,17 +1414,6 @@ class BaseCorpus(BaseObject):
         self._mfwd[key]=odf
         return self._mfwd[key]
 
-    def log(self,*x,**y):
-        xstr=' '.join(str(xx) for xx in x)
-        import logging
-        logging.info(f'[{self.name}] {xstr}')
-        # from loguru import logger
-        # logger.remove()f
-        # logger.add(sys.stderr, format="[LLTK] ({time:HH:mm:ss}) {message}", level="INFO")
-        # logger.add(sys.stderr, format="{message} ({time:HH:mm:ss})", level="INFO")
-        # logger.add(sys.stderr, format="{message}", filter="lltk", level="INFO")
-        # logger.info(f'[{self.name}] {xstr}')
-        # logger.remove()
 
 
     ###################################
@@ -1609,17 +1745,18 @@ def Corpus(corpus=None,force=False,init=True,clear=False,**kwargs):
     
     if is_corpus_obj(corpus):
         C=corpus
-        CORPUS_CACHE[C.id]=CORPUS_CACHE[C.name]=C
-    elif type(corpus)==str and corpus:
-        if corpus in CORPUS_CACHE:
-            C=CORPUS_CACHE[corpus]
-        else:
-            C=load_corpus(corpus,_init=init,**kwargs)
-            # if init: C.matcher.load()
+        logg=False
+    else:
+        if log.verbose>0: log.debug(f'<- id = {corpus}')
+        logg=True
+        
+        if type(corpus)==str and corpus:
+            if corpus in CORPUS_CACHE:
+                C=CORPUS_CACHE[corpus]
+            else:
+                C=load_corpus(corpus,_init=init,**kwargs)
 
-    if C is None:
-        C=BaseCorpus(corpus,_init=init,**kwargs)
-        # if init: C.matcher.load()
+    if C is None: C=BaseCorpus(corpus,_init=init,**kwargs)
     
     if C is not None:
         CORPUS_CACHE[C.id]=CORPUS_CACHE[C.name]=C
@@ -1628,6 +1765,7 @@ def Corpus(corpus=None,force=False,init=True,clear=False,**kwargs):
         elif init:
             C.init(**kwargs)
 
+    if logg and log.verbose>0: log.debug(f'-> {C}')
     return C
 
 

@@ -172,7 +172,7 @@ def brute(fn_or_url):
 # Convert xml to text via a set of content tags
 def xml2txt(content,ctagnames):
     import bs4
-    dom=bs4.BeautifulSoup(content)
+    dom=bs4.BeautifulSoup(content,'lxml')
     for ctagname in ctagnames:
         ctags=list(dom(ctagname))
         for ctag in ctags:

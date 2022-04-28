@@ -688,23 +688,31 @@ def get_all_sources_recursive(text,sofar=set(),**kwargs):
     return sofar
 
 
-def load_corpus(id,manifestd={},load_meta=False,force=False,install_if_nec=True,verbose=False,**input_kwargs):
+def load_corpus(id,manifestd={},load_meta=False,force=False,install_if_nec=True,**input_kwargs):
     if not manifestd: manifestd=load_corpus_manifest(id,make_path_abs=True)
     # plog('>> loading:',name_or_id,manifestd)
+    if log.verbose>0: log.debug(f'<- id = {id}')
+    id,path_python,class_name=(
+        manifestd.get('id'),
+        manifestd.get('path_python'),
+        manifestd.get('class_name')
+    )
+    if not path_python or not os.path.exists(path_python): 
+        if log.verbose>0: log.debug(f'-> ?')
+        return
+
+    inpd = merge_dict(manifestd, input_kwargs)
+    if log.verbose>0: log.debug(f'Importing corpus class "{class_name}" from {path_python}')
+    
     try:
-        id,path_python,class_name=manifestd.get('id'),manifestd.get('path_python'),manifestd.get('class_name')
-        if verbose: log.debug(f'Importing {class_name} from {id}\n\t[{path_python}]')
         module = imp.load_source(id,path_python)
         class_class = getattr(module,class_name)
-        inpd = merge_dict(manifestd, input_kwargs)
-        C = class_class(load_meta=load_meta,**inpd)
-        # if verbose: log.debug('\t\t... done.')
+        C = class_class(**inpd)
+        if log.verbose>0: log(f'-> {C}')
         return C
-    except FileNotFoundError:
-        return None
-    # except AssertionError:
-    #     if verbose: log.error(e)
-    #     return None
+    except Exception as e:
+        log.error(f'corpus loading failed: {e}')    
+    return None
 
 
 

@@ -1,6 +1,6 @@
 from lltk.imports import *
 from lltk.tools import ensure_dir_exists
-
+from lltk.tools.logs import *
 
 
 class BaseObject(object):
@@ -28,11 +28,11 @@ class BaseObject(object):
 
     def cache(self,*x,**y): log.error('Not implemented at top level')
 
-    def log(self,*x,**y):
-        from pprint import pformat
-        o=' '.join(pformat(_x,indent=2) if type(_x)!=str else _x for _x in x)
-        # o=f'{self}: {o if o not in {None,""} else ""}'
-        # o=f'{o if o not in {None,""} else ""}'
-        log.debug(o)
+    # def log(self,*x,**y):
+    #     from pprint import pformat
+    #     o=' '.join(pformat(_x,indent=2) if type(_x)!=str else _x for _x in x)
+    #     # o=f'{self}: {o if o not in {None,""} else ""}'
+    #     # o=f'{o if o not in {None,""} else ""}'
+    #     log.debug(o)
 
-
+    log = Log()

@@ -196,11 +196,14 @@ def query_get_wikidata_id(
     
     for qi,qidx in enumerate(query_iter_wikidata_id(qstr)):
         if qi>=lim: return null
-        qtext = DBText(f'_wikidata/{qidx}')
-        if is_text_obj(qtext):
-            qid_meta = qtext.meta
-        else:
+        qid_meta = Corpus('wikidata').db().get(qidx)
+        log.debug(f'qid_meta from db: {len(qid_meta)} keys')
+        if not qid_meta:
             qid_meta = query_get_wikidata(qidx)
+            log.debug(f'qid_meta from query: {len(qid_meta)} keys')
+        
+        qid_meta[COL_ID] = qidx
+        Corpus('wikidata').text(_cache=True, **qid_meta)
         
         qid_what = qid_meta.get('what','')
         if not what or any(whatx in qid_what for whatx in what):
@@ -227,7 +230,7 @@ def query_get_html(qstr,timeout=10,**kwargs):
 
 def query_iter_qids_from_html(html):
     import bs4
-    dom=bs4.BeautifulSoup(html,'html')
+    dom=bs4.BeautifulSoup(html,'lxml')
     res=list(dom.select('.mw-search-result'))
     # log.debug(f'Found {len(res)} items')
     for tag in res:

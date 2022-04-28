@@ -1,4 +1,4 @@
-import sys,os,warnings
+import sys,os,warnings,shutil
 # warnings.filterwarnings('ignore')
 import multiprocessing as mp
 try:
@@ -15,9 +15,11 @@ PATH_DEFAULT_LLTK_HOME = os.path.join(HOME,'lltk_data')
 PATH_DEFAULT_CONF=os.path.abspath(os.path.join(PATH_DEFAULT_LLTK_HOME,'config_default.txt'))
 
 # Get tools
-LOG_BY_DEFAULT = True
+LOG_TO_SCREEN = True
+LOG_TO_FILE = True
+
 BAD_PKL_KEYS=set()
-from loguru import logger as log
+from lltk.tools.logs import *
 from lltk.tools.tools import *
 
 
@@ -71,6 +73,8 @@ TEXT_META_DEFAULT = {}
 
 BAD_COLS={'Unnamed: 0','_llp_'}
 
+CHECKMARK='✓'#✅'
+CROSSMARK='✗'#❌'
 
 
 
@@ -89,7 +93,7 @@ ANNO_EXTS=['.anno.xlsx','.anno.xls','.anno.csv','.xlsx','.xls']
 
 EMPTY_GROUP='(all)'
 
-TMP_CORPUS_ID='tmp_corpus'
+TMP_CORPUS_ID='tmp'
 PATH_LLTK_LOG_FN = os.path.join(PATH_LLTK_HOME, 'logs','debug.log')
 LOG_VERBOSE=2  # 0-3
 
@@ -234,6 +238,19 @@ chardata_metakeys_initial = dict(
 )
 
 
+CORPUS_SOURCE_RANKS={
+	'wikidata':1,
+	'chicago':3,
+	'chadwyck':5,
+}
+
+
+
+
+
+
+
+
 
 # objects
 ZODB_CONN=None
@@ -259,7 +276,7 @@ from pkg_resources import ensure_directory
 from argparse import Namespace
 from urllib.error import HTTPError
 from zipfile import ZipFile
-from typing import *
+from typing import Union
 
 
 
@@ -273,13 +290,14 @@ from xopen import xopen
 
 
 ## Setup logger
-setup_log(ofn=PATH_LLTK_LOG_FN, to_screen=LOG_BY_DEFAULT, remove=True, clear=True)
-
-
-
 ### MY MODULES
 from lltk.tools import *
-
+log = Log(
+	to_screen=LOG_TO_SCREEN,
+	to_file=LOG_TO_FILE,
+	fn=PATH_LLTK_LOG_FN,
+	force=True
+)
 
 from lltk.text.utils import *
 from lltk.corpus.utils import *

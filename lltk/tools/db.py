@@ -28,6 +28,12 @@ class LLDBBase():
     def __delitem__(self, key): return self.delete(key)
     def __iter__(self): return self.iteritems()
     def __len__(self): return self.length
+    
+    
+    def keys(self):
+        with self as db: return list(db.keys())
+    def values(self):
+        with self as db: return list(db.values())
 
     @property
     def path(self): return os.path.splitext(self._fn)[0]+self.ext
@@ -60,7 +66,9 @@ class LLDBBase():
 
     def drop(self):
         from lltk.tools import rmfn
-        rmfn(self.path)
+        if os.path.exists(self.path):
+            log.debug(f'removing: {self.path}')
+            rmfn(self.path)
 
     @property
     def length(self):

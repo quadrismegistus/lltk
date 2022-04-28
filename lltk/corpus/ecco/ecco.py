@@ -28,7 +28,7 @@ class TextECCO(BaseText):
 		md={}
 		## IDs
 		import bs4
-		dom=bs4.BeautifulSoup(mtxt,'html.parser')
+		dom=bs4.BeautifulSoup(mtxt,'lxml')
 		md={}
 
 		simples = ['documentID','ESTCID','pubDate','releaseDate','sourceLibrary','language','model','documentType','marcName','birthDate','deathDate','marcDate','fullTitle','currentVolume','totalVolumes','imprintFull','imprintCity','imprintPublisher','imprintYear','collation','publicationPlace','totalPages']

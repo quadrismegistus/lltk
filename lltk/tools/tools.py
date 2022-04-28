@@ -24,14 +24,18 @@ def to_params_meta(_params_or_meta,prefix_params='_'):
     return (params,meta)
 
 
-def pf(*x,**y):
+def pf(*x,sep='\n',pad_start=False,pad_end=False,**y):
     from pprint import pformat
-    o=' '.join(pformat(_x,indent=2) if type(_x)!=str else _x for _x in x)
+    o=sep.join(pformat(_x,indent=2) if type(_x)!=str else _x for _x in x)
+    if pad_start: o=sep+o
+    if pad_end: o=o+sep
     return o
 
-def diffdict(d1,d2,verbose=1):
+def diffdict(d1,d2,verbose=1,type_changes=False):
     from deepdiff import DeepDiff
-    return DeepDiff(d1,d2,verbose_level=verbose).to_dict()
+    ddiff=DeepDiff(d1,d2,verbose_level=verbose).to_dict()
+    # if not type_changes and 'type_changes' in ddiff: del ddiff['type_changes']
+    return ddiff
 
 def force_int(x):
     import numpy as np, pandas as pd
@@ -94,82 +98,12 @@ def camel_case_split(str):
 
 
 
-# if not 'lltk.py' in os.listdir(LLTK_ROOT):
-#     LLTK_ROOT = ROOT = os.path.join(LLTK_ROOT,'lltk')
-
-# if not 'lltk.py' in os.listdir(LLTK_ROOT):
-#     print('!?',LLTK_ROOT)
-
-# #print('LLTK root:',ROOT)
-
-# PATH_LLTK_HOME = os.path.join(HOME,'lltk_data')
-# PATH_LLTK_HOME_DATA = os.path.join(HOME,'lltk_data','data')
-# PATH_DEFAULT_DATA = os.path.join(PATH_LLTK_HOME_DATA,'default.zip')
-# URL_DEFAULT_DATA='https://www.dropbox.com/s/cq1xb85yaysezx4/lltk_default_data.zip?dl=1'
-
-# PATH_BASE_CONF=os.path.join(HOME,'.lltk_config')
-# PATH_DEFAULT_CONF=os.path.abspath(os.path.join(ROOT,'..','config_default.txt'))
-
-# PATH_MANIFEST_GLOBAL = os.path.join(ROOT,'corpus','manifest.txt')
-# #print(PATH_MANIFEST_GLOBAL, os.path.exists(PATH_MANIFEST_GLOBAL))
-
-
-# PATH_LLTK_REPO=os.path.abspath(os.path.join(LLTK_ROOT,'..'))
-
-# URL_DEFAULT_DATA='https://www.dropbox.com/s/cq1xb85yaysezx4/lltk_default_data.zip?dl=1'
-
-# PATH_LLTK_LOG_FN = os.path.join(PATH_LLTK_HOME, 'logs','debug.log')
-
-
 def rmfn(fn):
     if os.path.exists(fn):
         try:
             os.unlink(fn)
         except Exception as e:
             pass
-    
-
-def setup_log(to_screen=LOG_BY_DEFAULT, ofn=None, remove=True, clear=True):
-    
-    # prep
-    if remove: log.remove()
-    
-    if not ofn: ofn=PATH_LLTK_LOG_FN
-    ensure_dir_exists(ofn)
-    if clear: rmfn(ofn)
-    
-    # format
-    # format1="""<cyan>[{time:HH:mm:ss}]</cyan> <level>{function}()</level><cyan>:{line}:</cyan> {message}"""
-    # format1="""<level>[{time:HH:mm:ss}]</level> <cyan>{message}</cyan>"""
-    format1="""<level>[{time:HH:mm:ss}]</level> {name}.{function}( <cyan>{message}</cyan> )"""
-    # fmt = "{time} | {level: <8} | {name: ^15} | {function: ^15} | {line: >3} | {message}"
-
-    format2="""[{time:HH:mm:ss}] ({function}) {message}"""
-    
-    # to file
-    log.add(ofn, rotation="10MB", colorize=False, format=format2)
-    
-    # to screen
-    if to_screen: log.add(sys.stderr, colorize=True, format=format1)
-    
-
-# from pprint import pformat
-# def plog(x,*args,pprintpreflen=11,**kwargs):
-#     o=x if not args else [x]+list(args)
-#     o='\n'+pformat(o,indent=4)
-#     pprintpref=' '*pprintpreflen
-#     o=o.replace('\n','\n' + pprintpref)
-#     log.debug(o)
-def plog(o,*args,pprintpreflen=11,**kwargs):
-	# if type(o)!=str or args:
-	# 	o=format(o,indent=4)
-	o=str(o)
-	if args: o+='\n'+str(args)
-	# pref it
-	pprintpref=' '*pprintpreflen
-	o=f'\n{o}'.replace('\n','\n' + pprintpref)
-	# out
-	log.debug(o)
 
 
 
@@ -700,7 +634,7 @@ def save_df(df,ofn,move_prev=False,index=None,key='',log=print,verbose=False,**k
     if verbose: print('Saved:',ofn)
 
 
-def read_df(ifn,key='',fmt='',error_bad_lines=False,**attrs):
+def read_df(ifn,key='',fmt='',on_bad_lines='skip',**attrs):
     if not os.path.exists(ifn): return
     import pandas as pd
     if issubclass(ifn.__class__,pd.DataFrame): return ifn
@@ -710,7 +644,7 @@ def read_df(ifn,key='',fmt='',error_bad_lines=False,**attrs):
     try:
 
         if fmt=='csv' or ext=='csv':
-            return pd.read_csv(ifn,error_bad_lines=error_bad_lines,**attrs)
+            return pd.read_csv(ifn,on_bad_lines=on_bad_lines,**attrs)
         elif fmt=='tsv' or ext=='tsv':
             return pd.read_csv(ifn,sep='\t',error_bad_lines=error_bad_lines,**attrs)
         elif ext in {'xls','xlsx'}:
@@ -1329,7 +1263,7 @@ def fn2ld(fn,header=[],sep='\t',nsep='\n'):
 
 def goog2tsv(googsrc):
     import bs4
-    dom=bs4.BeautifulSoup(googsrc,'html.parser')
+    dom=bs4.BeautifulSoup(googsrc,'lxml')
     header=[th.text for th in dom('thead')[0]('th')]
     header=header if True in [bool(hx) for hx in header] else None
     old=[]
