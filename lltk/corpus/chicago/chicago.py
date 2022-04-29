@@ -52,7 +52,7 @@ First, place into the folder {self.path_raw} the following files:
 
 		path_texts = os.path.join(self.path_raw,self.RAW_FOLDER_TEXTS)
 		if not os.path.exists(self.path_txt): os.makedirs(self.path_txt)
-		for fn in tqdm(os.listdir(path_texts)):
+		for fn in get_tqdm(os.listdir(path_texts)):
 			if not fn.endswith('.txt') or not fn.startswith('0'): continue
 			fnfn=os.path.join(path_texts,fn)
 			ofnfn=os.path.join(self.path_txt,fn)

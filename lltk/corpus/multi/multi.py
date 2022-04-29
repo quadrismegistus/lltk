@@ -161,7 +161,7 @@ class MultiCorpus(BaseCorpus):
                                 noded['node_type']='text_root'
                         if not g.has_node(node): g.add_node(node, **noded)
 
-                    log.debug(f'Adding edge: {u} --({rel})--> {v}')
+                    if log.verbose>0: log(f'Adding edge: {u} --({rel})--> {v}')
                     g.add_edge(u, v, rel = rel)
 
         g = filter_graph(g=g,min_degree=min_degree,min_weight=min_weight,remove_isolates=remove_isolates,**kwargs)
@@ -190,9 +190,9 @@ class MultiCorpus(BaseCorpus):
             if not g.has_node(text.addr): g.add_node(text.addr)
             if text.is_valid():
                 for rel,addr in yield_addrs(meta, ok_corps=ok_corps):
-                    # log.debug(f'?: {text.addr} {addr} ({rel})')
+                    # log(f'?: {text.addr} {addr} ({rel})')
                     if addr!=text.addr and Text(addr).id_is_valid():
-                        # log.debug(f'>> {text.addr} {addr} ({rel})')
+                        # log(f'>> {text.addr} {addr} ({rel})')
                         g.add_edge(text.addr, addr)
         ensure_dir_exists(gfn)
         nx.write_gexf(g, gfn)

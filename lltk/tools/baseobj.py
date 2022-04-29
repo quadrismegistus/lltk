@@ -33,6 +33,6 @@ class BaseObject(object):
     #     o=' '.join(pformat(_x,indent=2) if type(_x)!=str else _x for _x in x)
     #     # o=f'{self}: {o if o not in {None,""} else ""}'
     #     # o=f'{o if o not in {None,""} else ""}'
-    #     log.debug(o)
+    #     if log.verbose>0: log(o)
 
     log = Log()

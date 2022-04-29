@@ -18,8 +18,8 @@ class EntityWikidata(BaseText):
     def meta_is_valid(self,meta=None,**kwargs):
         if meta is None: meta=self._meta #metadata(from_query=False,from_sources=False,**kwargs)
         isv=is_valid_meta(meta)
-        # log.debug(f'Valid? = {isv}')
-        # log.debug(f'Meta = {meta}')
+        # log(f'Valid? = {isv}')
+        # log(f'Meta = {meta}')
         return isv
         
 
@@ -28,7 +28,7 @@ class EntityWikidata(BaseText):
 
     def query(self,force=False,**kwargs):
         if self.id_is_valid() and not self.meta_is_valid():
-            log.debug(f'QUERYING: {self.id}')
+            if log.verbose>0: log(f'QUERYING: {self.id}')
             return query_get_wikidata(self.id,**kwargs)
         return {}
 
@@ -56,7 +56,7 @@ class EntityWikidata(BaseText):
 class TextWikidataClass(EntityWikidata): pass
 def NullTextWikidata(*x,**y): return Corpus('wikidata').text(NULL_QID)
 
-def TextWikidata(text,_sources=None,force=False,cache=True,verbose=2,*args,**kwargs):
+def TextWikidata(text,_sources=None,force=False,cache=True,verbose=2,remote=True,*args,**kwargs):
     if is_wiki_text_obj(text): return text
     if not force and is_wiki_text_obj(text._wikidata): return text._wikidata
 
@@ -74,11 +74,17 @@ def TextWikidata(text,_sources=None,force=False,cache=True,verbose=2,*args,**kwa
         #qmeta['id']=qid
         #twiki = TextWikidataClass(**qmeta) if is_valid_qid(qid) else NullTextWikidata()
         qtext = Text(qid, 'wikidata', **qmeta)
-        if verbose>0: log.debug(f'Generated wiki text: {qtext}')
+        if verbose>0: log(f'Generated wiki text: {qtext}')
     
     if is_wiki_text_obj(qtext):
-        text.add_source(qtext,**kwargs)
-        if qtext.is_valid():  qtext.add_source(text,**kwargs)
+        text.add_source(qtext,cache=False,**kwargs)
+        if qtext.is_valid():
+            qtext.add_source(text,cache=False,**kwargs)
+            qtext.metadata(remote=remote,cache=True,from_sources=False,from_cache=True)
+            if cache:
+                qtext.metadata(remote=False,cache=True,from_sources=True,from_cache=False)
+                text.metadata(remote=False,cache=True,from_sources=True,from_cache=False)
+        
 
     return qtext
 
@@ -117,7 +123,7 @@ def get_wikidata_id_from_sources(text,null_qid=NULL_QID):
 def get_all_sources_recursive(text,sofar=set(),**kwargs):
     sources = text.get_sources(**kwargs)
     for src in text.sources:
-        log.debug(f'{text} --?--> {src}')
+        if log.verbose>0: log(f'{text} --?--> {src}')
         sofar|=get_all_sources_recursive(src,sofar=sofar|{text,src})
     sofar|={text} | set(sources)
     return sofar
@@ -132,11 +138,11 @@ def get_wiki_text_from_sources(sources,verbose=2,force=False,**kwargs):
     for t in sources:
         if is_wiki_text_obj(t):
             if t.id_is_valid():
-                if verbose: log.debug('Returning valid wikidata textobj from sources')
+                if verbose: log('Returning valid wikidata textobj from sources')
                 return t
             
             if not force:
-                if verbose>1: log.debug('Will not force a retry')
+                if verbose>1: log('Will not force a retry')
                 return t
 
 def is_wiki_text_obj(x): return is_text_obj(x) and x.corpus.id=='wikidata'
@@ -159,15 +165,15 @@ def is_wiki_text_obj(x): return is_text_obj(x) and x.corpus.id=='wikidata'
 #     if _sources:
 #         source = get_wiki_text_from_sources(_sources)
 #         if source and verbose>1:
-#             log.debug(f'Got from sources: {source} (is wiki text obj? = {is_wiki_text_obj(source)}')
+#             if log.verbose>0: log(f'Got from sources: {source} (is wiki text obj? = {is_wiki_text_obj(source)}')
 
 #     if is_wiki_text_obj(source):
 #         if source.id_is_valid():
-#             if verbose: log.debug('Returning valid wikidata textobj from sources')
+#             if verbose: log('Returning valid wikidata textobj from sources')
 #             return source
         
 #         if not force:
-#             if verbose>1: log.debug('Will not force a retry')
+#             if verbose>1: log('Will not force a retry')
 #             return source
 
 #     # gen?
@@ -176,7 +182,7 @@ def is_wiki_text_obj(x): return is_text_obj(x) and x.corpus.id=='wikidata'
 #         qid,qmeta=res
 #         qmeta['id']=qid
 #         twiki = TextWikidataClass(**qmeta) if is_valid_qid(qid) else NullTextWikidata()
-#         if verbose>0: log.debug(f'Generated wiki text: {twiki}')
+#         if verbose>0: log(f'Generated wiki text: {twiki}')
 #         return twiki
 #     return NullTextWikidata()
 
@@ -192,15 +198,16 @@ def query_get_wikidata_id(
         **kwargs):
     if not qstr: qstr=wikidata_query_str(text)
     if not qstr or qstr=='None, None': return
-    if verbose: log.debug(f'Querying for ID: '+qstr)
+    if verbose: log(f'Querying for ID: '+qstr)
     
     for qi,qidx in enumerate(query_iter_wikidata_id(qstr)):
         if qi>=lim: return null
         qid_meta = Corpus('wikidata').db().get(qidx)
-        log.debug(f'qid_meta from db: {len(qid_meta)} keys')
-        if not qid_meta:
+        if qid_meta: 
+            if log.verbose>0: log(f'qid_meta from db: {len(qid_meta)} keys')
+        else:
             qid_meta = query_get_wikidata(qidx)
-            log.debug(f'qid_meta from query: {len(qid_meta)} keys')
+            if log.verbose>0: log(f'qid_meta from query: {len(qid_meta)} keys')
         
         qid_meta[COL_ID] = qidx
         Corpus('wikidata').text(_cache=True, **qid_meta)
@@ -219,10 +226,10 @@ def query_get_html(qstr,timeout=10,**kwargs):
     safeurl=f'https://www.wikidata.org/w/index.php?search={sstr}&ns0=1&ns120=1'
     html=''
     try:
-        # log.debug(f'Querying: {safeurl}')
+        # log(f'Querying: {safeurl}')
         with requests.Session() as s:
             html = s.get(safeurl,timeout=timeout).text
-            # log.debug(f'Length of content received: {len(html)}, {type(html)}')
+            # log(f'Length of content received: {len(html)}, {type(html)}')
     except ConnectTimeout as e:
         log.error(e)
     return html
@@ -232,7 +239,7 @@ def query_iter_qids_from_html(html):
     import bs4
     dom=bs4.BeautifulSoup(html,'lxml')
     res=list(dom.select('.mw-search-result'))
-    # log.debug(f'Found {len(res)} items')
+    # log(f'Found {len(res)} items')
     for tag in res:
         item=tag.select_one('.wb-itemlink-id')
         itext=item.text
@@ -246,7 +253,7 @@ def query_iter_wikidata_id(qstr,timeout=10,**kwargs):
 
 def query_get_wikidata(qid,verbose=False,**kwargs):
     try:
-        log.debug(f'Querying for data: {qid}')
+        if log.verbose>0: log(f'Querying for data: {qid}')
         import wptools
         page = wptools.page(wikibase=qid, silent=not verbose)
         wpage = page.get_wikidata()
@@ -261,7 +268,7 @@ def query_get_wikidata(qid,verbose=False,**kwargs):
             # wd_title=wikidata_get_title(ods),
             **ods
         )
-        # log.debug(f'Returning data with {len(odx)} keys')
+        # log(f'Returning data with {len(odx)} keys')
         return odx
     except Exception as e:
         log.error(f'Could not get wikidata [{e}]')
@@ -314,7 +321,7 @@ def match_au_ti(text,qmeta):
 
         
 def wikidata_query_str(text):
-    return clean_text(f'{text.au}, {text.shorttitle}')
+    return clean_text(f'{text.shorttitle} {text.au}')
 
 def format_wikidata_str_simple(qid,name,lower=False,spaces=True,**kwargs):
     name = name.strip()
@@ -358,8 +365,7 @@ def format_wikidata_d_simple(d):
         key=unidecode(key).replace("'","").replace('"','')
         
         val = format_wikidata_str(v,simple=True,lower=False,spaces=True)
-        if type(val) in {list}: val='; '.join(str(x) for x in val)
-        
+        # if type(val) in {list}: val='; '.join(str(x) for x in val)
         od[key] = val
     
     return od

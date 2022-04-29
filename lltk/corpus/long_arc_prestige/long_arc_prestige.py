@@ -45,7 +45,7 @@ class TextLongArcPrestige(BaseText):
         return txt
 
 def xml2txt(xml_txt_or_fn,*x,**y):
-    return default_xml2txt(xml_txt_or_fn,*x,**y)
+    return xml2txt_default(xml_txt_or_fn,*x,**y)
 
 def tsv2json(inp):
     ifnfn,ofnfn=inp

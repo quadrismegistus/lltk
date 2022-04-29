@@ -39,7 +39,7 @@ class JstorDFR(BaseCorpus):
 		with ZipFile(self.path_dataset) as zip_file:
 			namelist=zip_file.namelist()
 			# Loop over each file
-			for member in tqdm(iterable=namelist, total=len(namelist)):
+			for member in get_tqdm(iterable=namelist, total=len(namelist)):
 				filename = os.path.basename(member)
 				ext=os.path.splitext(filename)[1]
 				idx=os.path.splitext(filename)[0].split('-ngram')[0].replace('-','/')

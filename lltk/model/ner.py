@@ -112,7 +112,7 @@ def ner_txt2names(txt,incl_labels={}):
     # clean
     # txt = txt.replace('--','—')
     para_txts = txt.split('\n\n')
-    for para in tqdm(para_txts,desc="Parsing paragraphs"):
+    for para in get_tqdm(para_txts,desc="Parsing paragraphs"):
         pdoc = nlp(para)
         for entd in pdoc.ents:
             countd[entd.text]+=1
@@ -160,7 +160,7 @@ def ner_txt2names_spacy(txt,incl_labels={}): # 'PERSON'
     # print(f'done in {int(time.time()-now)} seconds')
 
     para_txts = txt.split('\n\n')
-    for para in tqdm(para_txts,desc="Parsing paragraphs"):
+    for para in get_tqdm(para_txts,desc="Parsing paragraphs"):
         pdoc = nlp(para)
         for entd in pdoc.ents:
             countd[entd.text]+=1

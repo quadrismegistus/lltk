@@ -5,7 +5,12 @@ try:
 	mp.set_start_method('fork')
 except RuntimeError:
 	pass
-
+# default num proc is?
+mp_cpu_count=mp.cpu_count()
+DEFAULT_NUM_PROC = mp_cpu_count - 2
+if mp_cpu_count==1: DEFAULT_NUM_PROC=1
+if mp_cpu_count==2: DEFAULT_NUM_PROC=2
+if mp_cpu_count==3: DEFAULT_NUM_PROC=2
 
 # Paths
 HOME = os.path.expanduser('~')
@@ -36,6 +41,7 @@ PATH_LLTK_HOME_DATA = PATH_LLTK_DATA = os.path.join(PATH_LLTK_HOME,'data')
 PATH_LLTK_DB = os.path.join(PATH_LLTK_DATA,'db')
 PATH_LLTK_DB_FN = os.path.join(PATH_LLTK_DB,'database')
 PATH_LLTK_DB_MATCHES = os.path.join(PATH_LLTK_DB,'matches')
+PATH_LLTK_MATCHES = os.path.join(PATH_LLTK_DATA,'matches')
 PATH_LLTK_DB_ENGINE = 'sqlite'
 PATH_LLTK_ZODB = os.path.join(PATH_LLTK_DB,'zodb.fs')
 
@@ -44,6 +50,7 @@ PATH_MANIFEST=os.path.join(PATH_TO_CORPUS_CODE,'manifest.txt')
 PATH_MANIFEST_USER = config.get('PATH_TO_MANIFEST','')
 PATH_MANIFEST_USER_LAB = PATH_MANIFEST_USER.replace('.txt','_lab.txt')
 PATH_MANIFEST_USER_SHARE = PATH_MANIFEST_USER.replace('.txt','_share.txt')
+
 
 PATH_MANIFESTS = remove_duplicates([
 	PATH_MANIFEST,
@@ -75,7 +82,7 @@ BAD_COLS={'Unnamed: 0','_llp_'}
 
 CHECKMARK='✓'#✅'
 CROSSMARK='✗'#❌'
-
+DIR_TEXTS_NAME='texts'
 
 
 ### OPTIONS
@@ -95,7 +102,8 @@ EMPTY_GROUP='(all)'
 
 TMP_CORPUS_ID='tmp'
 PATH_LLTK_LOG_FN = os.path.join(PATH_LLTK_HOME, 'logs','debug.log')
-LOG_VERBOSE=2  # 0-3
+LOG_VERBOSE_TERMINAL=1  # 0-3
+LOG_VERBOSE_JUPYTER=0
 
 
 MODERNIZE_SPELLING=False
@@ -260,7 +268,7 @@ ENGLISH=None
 stopwords=set()
 MANIFEST={}
 spellingd={}
-
+CORPUS_FUNCS={}
 
 
 
@@ -276,7 +284,7 @@ from pkg_resources import ensure_directory
 from argparse import Namespace
 from urllib.error import HTTPError
 from zipfile import ZipFile
-from typing import Union
+from typing import Union,Literal,Optional
 
 
 
@@ -296,8 +304,11 @@ log = Log(
 	to_screen=LOG_TO_SCREEN,
 	to_file=LOG_TO_FILE,
 	fn=PATH_LLTK_LOG_FN,
-	force=True
+	force=True,
+	verbose=LOG_VERBOSE_JUPYTER if in_jupyter() else LOG_VERBOSE_TERMINAL
 )
+def log_start(*x,**y): log.show()
+def log_stop(*x,**y): log.hide()
 
 from lltk.text.utils import *
 from lltk.corpus.utils import *
@@ -307,3 +318,8 @@ from lltk.corpus.corpus import *
 from lltk.model import *
 from lltk.text.text import BaseText,Text
 from lltk.corpus.corpus import BaseCorpus,Corpus
+
+# models
+from lltk.model.matcher import Matcher,MatcherModel
+from lltk.model.preprocess import *
+with log.hidden(): M = Matcher()

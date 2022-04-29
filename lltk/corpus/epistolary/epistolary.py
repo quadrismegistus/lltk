@@ -228,12 +228,12 @@ class SectionCorpusLetterChadwyck(SectionCorpusLetter):
         vols = dom(self.DIV_VOL)
         if not len(vols): vols=[dom]
         newxml = []   
-        for voldom in tqdm(vols,desc='Iterating volumes 1',position=0): 
+        for voldom in get_tqdm(vols,desc='Iterating volumes 1',position=0): 
             divs = voldom(self.DIV_LTR)
             if not len(divs): divs=[voldom]
             newxml+=[f'<{self.DIV_VOL}>']
             
-            for divdom in tqdm(divs,desc='Iterating volume letters',position=1,disable=True):
+            for divdom in get_tqdm(divs,desc='Iterating volume letters',position=1,disable=True):
                 _xmldiv = clean_text(getxmlcontents(divdom))
                 for tagposs in [self.LTR,self.BODY,self.P+'>']:
                     try:
@@ -258,7 +258,7 @@ class SectionCorpusLetterChadwyck(SectionCorpusLetter):
         super().init(force=force)
         if not force and self._init: return
         
-        log.debug(f'Initializing: {self}')
+        if log.verbose>0: log(f'Initializing: {self}')
         from string import ascii_lowercase
         alpha=ascii_lowercase#.replace('x','')
         alpha = (alpha*1000)
@@ -271,13 +271,13 @@ class SectionCorpusLetterChadwyck(SectionCorpusLetter):
         if not len(vols): vols=[dom]
         vol_i=0
 
-        for voldom in tqdm(vols,desc='Iterating volumes',position=0): 
+        for voldom in get_tqdm(vols,desc='Iterating volumes',position=0): 
             vol_i+=1
             divs = voldom(self.DIV_LTR)
             # if not len(divs): continue
             if not len(divs): divs=[voldom]
 
-            for divdom in tqdm(divs,desc='Iterating volume letters',position=1,disable=True):
+            for divdom in get_tqdm(divs,desc='Iterating volume letters',position=1,disable=True):
                 ltrs=divdom(self.LTR)
                 num_letters = len(ltrs)
                 # if not num_letters: continue

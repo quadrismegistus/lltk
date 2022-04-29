@@ -1,5 +1,14 @@
 from lltk.imports import *
 
+
+
+# nec?
+def register_corpus_func(func,name=None):
+    global CORPUS_FUNCS
+    if not name: name=func.__name__
+    CORPUS_FUNCS[name]=func
+    
+
 ### Accessing corpora
 
 def is_corpus_obj(x):
@@ -136,7 +145,7 @@ def status_corpora_markdown(maxcolwidth=45,link=False,**attrs):
 
 def yield_corpora_meta(corpora,incl_meta=[]):
     o=[]
-    for cname in tqdm(corpora,desc='Loading metadata'):
+    for cname in get_tqdm(corpora,desc='Loading metadata'):
         C=load_corpus(cname) if type(cname)==str else cname
         for dx in C.meta_iter():
             if incl_meta:
@@ -218,6 +227,7 @@ def status_corpora_readme():
 
 def to_authorkey(name):
     return zeropunc(to_lastname(name))
+
 def to_titlekey(title):
     return zeropunc(''.join(x.title() for x in title[:30].split()))[:25]
 
@@ -584,7 +594,7 @@ def load_corpus_manifest(name_or_id,manifestd={},make_path_abs=True):
     if not manifestd.get('path_python'):
         manifestd['path_python'] = os.path.join(manifestd['path_root'], manifestd['id']+'.py')
     
-    # log.debug(f'Corpus python path: {manifestd["path_python"]}')
+    # log(f'Corpus python path: {manifestd["path_python"]}')
 
     return manifestd
 
@@ -682,7 +692,7 @@ def get_all_sources_recursive(text,sofar=set(),**kwargs):
     sources = text._sources #get_sources(**kwargs)
     for src in sources:
         if src in sofar: continue
-        log.debug(f'{text} --?--> {src}')
+        if log.verbose>0: log(f'{text} --?--> {src}')
         sofar|=get_all_sources_recursive(src,sofar=sofar|{text,src})
     sofar|={text} | set(sources)
     return sofar
@@ -691,18 +701,18 @@ def get_all_sources_recursive(text,sofar=set(),**kwargs):
 def load_corpus(id,manifestd={},load_meta=False,force=False,install_if_nec=True,**input_kwargs):
     if not manifestd: manifestd=load_corpus_manifest(id,make_path_abs=True)
     # plog('>> loading:',name_or_id,manifestd)
-    if log.verbose>0: log.debug(f'<- id = {id}')
+    if log.verbose>0: log(f'<- id = {id}')
     id,path_python,class_name=(
         manifestd.get('id'),
         manifestd.get('path_python'),
         manifestd.get('class_name')
     )
     if not path_python or not os.path.exists(path_python): 
-        if log.verbose>0: log.debug(f'-> ?')
+        if log.verbose>0: log(f'-> ?')
         return
 
     inpd = merge_dict(manifestd, input_kwargs)
-    if log.verbose>0: log.debug(f'Importing corpus class "{class_name}" from {path_python}')
+    if log.verbose>0: log(f'Importing corpus class "{class_name}" from {path_python}')
     
     try:
         module = imp.load_source(id,path_python)
@@ -881,9 +891,9 @@ def do_gen_mfw_grp(group,*x,**y):
 CORPUSOBJD={}
 def load(name_or_id,load_meta=False,force=False,install_if_nec=False,**y):
     global CORPUSOBJD
-    # log.debug([force, name_or_id, name_or_id in CORPUSOBJD, CORPUSOBJD.get(name_or_id)])
+    # log([force, name_or_id, name_or_id in CORPUSOBJD, CORPUSOBJD.get(name_or_id)])
     if force or not name_or_id in CORPUSOBJD or CORPUSOBJD[name_or_id] is None:
-        # log.debug('Loading...')
+        # log('Loading...')
         CORPUSOBJD[name_or_id] = load_corpus(name_or_id,load_meta=load_meta,install_if_nec=install_if_nec,**y)
     return CORPUSOBJD[name_or_id]
 #################################################################
@@ -1004,6 +1014,12 @@ class AuthorBunch(Bunch):
             if is_text_obj(v):
                 yield v
     def __getitem__(self,i): return list(self)[i]
+    
+    def __len__(self):
+        i=0
+        for x in self:
+            i+=1
+        return i
     
     @property
     def ti(self): return list(self)

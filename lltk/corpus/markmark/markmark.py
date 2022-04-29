@@ -1,4 +1,3 @@
-from typing import Text
 from lltk.corpus.corpus import BaseCorpus
 from lltk.imports import *
 

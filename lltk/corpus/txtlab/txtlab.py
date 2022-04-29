@@ -40,7 +40,7 @@ class TxtLab(BaseCorpus):
 		with ZipFile(zipfn) as zip_file:
 			namelist=zip_file.namelist()
 			# Loop over each file
-			for member in tqdm(iterable=namelist, total=len(namelist), desc=f'[{self.name}] Extracting texts from {os.path.basename(zipfn)}'):
+			for member in get_tqdm(iterable=namelist, total=len(namelist), desc=f'[{self.name}] Extracting texts from {os.path.basename(zipfn)}'):
 				# copy file (taken from zipfile's extract)
 				source = zip_file.open(member)
 				filename = os.path.basename(member)

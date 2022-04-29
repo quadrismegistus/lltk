@@ -62,7 +62,7 @@ def untar_to_freqs_folder(args):
 	with gzip.GzipFile(fnfn) as f:
 		with tarfile.open(fileobj=f) as tf:
 			members=tf.getmembers()
-			for member in tqdm(members,position=position,desc='untarring a file'):
+			for member in get_tqdm(members,position=position,desc='untarring a file'):
 				if not member.name.endswith('.tsv'): continue
 				if os.path.basename(member.name).startswith('.'): continue
 				try:

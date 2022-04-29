@@ -84,13 +84,13 @@ class Logger():
     def hidden(self,verbose=0): return log_hidden(verbose=verbose,log=self)
     def shown(self,verbose=1): return log_shown(verbose=verbose,log=self)
     def hide(self,verbose=0):
-        self('hiding log')
+        if self.verbose>1: self('hiding log')
         self.verbose_was=self.verbose
         self.verbose=verbose
     def show(self,verbose=1):
         self.verbose_was=self.verbose
         self.verbose=verbose
-        self('showing log')
+        if self.verbose>1: self('showing log')
     
     __call__ = logger.debug
 
@@ -125,3 +125,4 @@ class log_shown():
 
 def hide_log(): return log_hidden()
 def show_log(): return log_shown()
+

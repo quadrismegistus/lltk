@@ -63,7 +63,7 @@ class BaseObject(object):
         from pprint import pformat
         o=' '.join(pformat(_x,indent=2) if type(_x)!=str else _x for _x in x)
         o=f'{self}: {o if o not in {None,""} else ""}'
-        log.debug(o)
+        if log.verbose>0: log(o)
 
 
 class ZDB(object):
@@ -101,7 +101,7 @@ class ZDB(object):
         with self.db.transaction() as conn:
             root=conn.root()
             root[key]=value
-            log.debug(f'DB["{key}"] = {value}')
+            if log.verbose>0: log(f'DB["{key}"] = {value}')
         # with ZConnection(self.db) as (conn,root):
             oldvalue = root.get(key)
             #if value != oldvalue:

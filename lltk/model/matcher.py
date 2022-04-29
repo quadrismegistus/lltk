@@ -4,7 +4,7 @@ from collections.abc import MutableMapping
 MATCH_FN='matches.sqlite'
 MATCHRELNAME='rdf:type'
 DEFAULT_COMPAREBY=dict(author=0.9, title=0.9)
-DEFAULT_MATCHER_ID='global'
+DEFAULT_MATCHER_ID='lltk_public_match_graph'
 
 MATCHERMODELD={}
 def Matcher(id=DEFAULT_MATCHER_ID,force=False,**kwargs):
@@ -37,37 +37,105 @@ class MatcherModel(BaseModel,MutableMapping):
     def __len__(self): return self.G.order()
 
 
-    @property
-    def dbkey(self): return f'_G_{self.id}'
-    @property
-    def g(self): return self._G
-    @property
-    def G(self): return self._G
 
 
-    def db(self,*args,**kwargs): return DB(PATH_LLTK_DB_MATCHES)
+    @property
+    def dbkey(self): return f'{self.id}'
+    @property
+    def path(self): return PATH_LLTK_MATCHES
+    @property
+    def path_g(self): return os.path.join(self.path, self.dbkey) + '.edgelist'
+    @property
+    def path_db(self): return PATH_LLTK_DB_MATCHES
+    def db(self,*args,**kwargs): return DB(self.path_db)
+    @property
+    def g(self): return self.G
+    @property
+    def G(self): 
+        if self._G is None: self.init()
+        return self._G
     
-    def init(self,force=False):
+
+
+
+    
+
+    def cache(self,db=False,g=True):
+        if db: self.cache_db()
+        if g: self.cache_g()
+
+    def cache_db(self,g=None):
+        g=g if g else self.g
+        if g is not None:
+            if log.verbose>0: log(f'caching match db')
+            self.db().set(self.dbkey,g)
+        
+    def cache_g(self,g=None,data=True,**kwargs):
+        g=g if g else self.g
+        if g is not None:
+            ensure_dir_exists(self.path_g,fn=True)
+            if os.path.exists(self.path_g): backup_fn(self.path_g)
+            nx.write_edgelist(
+                g,
+                self.path_g,
+                data=data,
+                delimiter='\t',
+                **kwargs
+            )
+            if log.verbose>0: log(f'cached edgelist to {self.path_g}')
+    
+
+
+    def init_g(self):
+        if os.path.exists(self.path_g):
+            g=nx.read_edgelist(
+                self.path_g,
+                delimiter='\t',
+                create_using=nx.MultiGraph
+            )
+            if g is not None:
+                if log.verbose>0: log(f'initializing match graph from {self.path_g}')
+                self._G=g
+                return g
+    
+    def init_db(self):
+        G=self.db().get(self.dbkey)
+        if G is not None:
+            if log.verbose>1: log(f'initializing match graph from db')
+            self._G=G
+            return G
+    
+    def init(self,force=False,g=True,db=False):
         if force or self._G is None:
-            res = self.load()
-            self._G = res if res is not None else nx.Graph()
+            if log.verbose>1: log(f'...')
+            if g: self.init_g()
+            elif db: self.init_db()
+        if self._G is None: self._G=nx.MultiGraph()
+            
     
-    def load(self): return self.db().get(self.dbkey)
-    def cache(self):
-        if self.G is not None:
-            self.db().set(self.dbkey,self.G)
+    
+    
+    
+    
+
     def clear(self):
         self.db().delete(self.dbkey)
-        self._G=nx.Graph()
+        if log.verbose>0: log(f'removing: {self.path_g}')
+        rmfn(self.path_g)
+        self._G=nx.MultiGraph()
+
+
 
 
     def match(self, text, source, rel=MATCHRELNAME, force=False, cache=True, **edged):
         u,v = Text(text), Text(source)
+        if log.verbose>0: log(f'Match? {u} --> {v}')
         if rel and u.id_is_valid() and v.id_is_valid():
             edge = (u.addr, v.addr, rel)
+            if log.verbose>0: log(f'Match? {edge}')
             if self.add_edge_to_graph(edge, force=force, **edged):
-                log.debug(f'Matching: {u} --> {v}')
-                if cache: self.cache()
+                if log.verbose>0: log(f'Matching: {u} --> {v}')
+            if cache: self.cache()
 
 
     def add_edge_to_graph(self,edge,force=False,verbose=False,**edged):
@@ -79,7 +147,7 @@ class MatcherModel(BaseModel,MutableMapping):
             if not g.has_node(v): g.add_node(v,node_type='text',namespace='lltk')
             if not g.has_edge(u,v):
                 g.add_edge(u,v,rel=rel)#,**edged)
-                if verbose: log.debug(f'Adding to graph: {u} --> {v}')
+                if verbose: log(f'Adding to graph: {u} --> {v}')
                 did=True
             # else:
             #     #g.edges[(u,v)] = merge_dict(g.edges[(u,v)], edged)
@@ -93,6 +161,7 @@ class MatcherModel(BaseModel,MutableMapping):
 
     def remove_node(self,node,cache=True):
         if self.G.has_node(node):
+            if log.verbose>0: log(f'removing {node} from matchdb')
             self.G.remove_node(node)
             if cache: self.cache()
     

@@ -130,7 +130,7 @@ class CharacterNetwork:
             for stg in df[setting_col]
             for x in stg.split(';')
         }
-        # for setting in tqdm(list(settings),desc='Geolocating settings'):
+        # for setting in get_tqdm(list(settings),desc='Geolocating settings'):
         for setting in settings:#),desc='Geolocating settings'):
             if setting in cacheloc:
                 settingd[setting]=cacheloc[setting]
@@ -220,7 +220,7 @@ class CharacterNetwork:
                 **{'id':n},
                 **d
             }
-            for n,d in tqdm(self.g.nodes(data=True),desc='Building df_nodes from g')
+            for n,d in get_tqdm(self.g.nodes(data=True),desc='Building df_nodes from g')
         ]).set_index('id')
         
         # make edge table
@@ -229,7 +229,7 @@ class CharacterNetwork:
                 **{'source':a, 'target':b},
                 **d
             }
-            for a,b,d in tqdm(self.g.edges(data=True), desc='Building df_edges from g')
+            for a,b,d in get_tqdm(self.g.edges(data=True), desc='Building df_edges from g')
         ])
         
     def df2nx(self,t_max=None,t_min=None,i_min=None,i_max=None):
@@ -336,7 +336,7 @@ def make_gif_from_folder(folder,ofn=None,fps=5):
     from IPython.display import HTML
 
     images = []
-    # for fn in tqdm(sorted(os.listdir(folder)),desc='Building gif from images'):
+    # for fn in get_tqdm(sorted(os.listdir(folder)),desc='Building gif from images'):
     for fn in sorted(os.listdir(folder)):#,desc='Building gif from images'):
         if fn.endswith('.png'):
             with open(os.path.join(folder,fn),'rb') as f:
@@ -472,11 +472,11 @@ def save_nets(
     size_max_val = cnet.df_nodes[size_by].max() if size_by else None
     weight_max_val = max(d.get('weight',1) for a,b,d in g.edges(data=True))
 
-    # for t in tqdm(timesteps,f'Saving graph images to {odir}'):
+    # for t in get_tqdm(timesteps,f'Saving graph images to {odir}'):
     objs = []
 
     last_kwds={}
-    for i,row in tqdm(cnet.df_edges.sort_values('i').iterrows(),total=len(cnet.df_edges),desc=f'Generating graphs over time'):
+    for i,row in get_tqdm(cnet.df_edges.sort_values('i').iterrows(),total=len(cnet.df_edges),desc=f'Generating graphs over time'):
 #     for i,row in cnet.df_edges.iterrows():#,total=len(cnet.df_edges),desc=f'Generating graphs over time'):
         # title and fn
         title=f'Interaction #{str(i+1).zfill(4)}: {row.source} to {row.target}'
@@ -576,7 +576,7 @@ def combo_imgs(folder1, folder2, ofolder):
     fns1=sorted([x for x in os.listdir(folder1) if x.endswith('.png')])
     fns2=sorted([x for x in os.listdir(folder2) if x.endswith('.png')])
     
-    for fn1,fn2 in tqdm(list(zip(fns1,fns2)),desc='Combining images'):
+    for fn1,fn2 in get_tqdm(list(zip(fns1,fns2)),desc='Combining images'):
         images = []
         images+=[Image.open(os.path.join(folder1,fn1))]
         images+=[Image.open(os.path.join(folder2,fn2))]

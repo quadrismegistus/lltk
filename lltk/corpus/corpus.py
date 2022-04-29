@@ -25,7 +25,7 @@ class BaseCorpus(BaseObject):
     TOKENIZER=tokenize
     MODERNIZE=MODERNIZE_SPELLING
     LANG='en'
-    t = default_xml2txt
+    xml2txt = xml2txt_default
 
 
 
@@ -50,6 +50,7 @@ class BaseCorpus(BaseObject):
 
         self.id=id
         self._metadf=None
+        self._metadfd={}
         self._texts=None
         self._textd=defaultdict(lambda: None)
         self._dtmd={}
@@ -97,7 +98,7 @@ class BaseCorpus(BaseObject):
         if is_text_obj(text) or is_addr(text):
             return self.text(id, _source=text, _force=True)
     def __delitem__(self, key): self.remove_text(id)
-    def __iter__(self): return iter(self.iter_texts())
+    def __iter__(self): return iter(self.iter_texts(progress=True))
     # def __repr__(self): return f'[{self.__class__.__name__}]({self.id})'
     # def __repr__(self): 
         # return f'Corpus({self.id})'
@@ -155,8 +156,9 @@ class BaseCorpus(BaseObject):
 
 
 
-
-
+    @property
+    def xml2txt_func(self): self.XML2TXT.__func__
+    def xml2txt(self,*x,**y): return self.XML2TXT.__func__(*x,**y)
 
 
 
@@ -208,7 +210,7 @@ class BaseCorpus(BaseObject):
     def addrs_db(self,force=True):
         with self.db() as db:
             o={self.get_addr(id) for id in db.keys()}
-        if log.verbose>1: log.debug(f'-> {o}')
+        if log.verbose>1: log(f'-> {o}')
         return o
 
     def addrs_matchdb(self,force=True):
@@ -217,12 +219,12 @@ class BaseCorpus(BaseObject):
             for addr in self.matcher
             if addr.startswith(IDSEP_START+self.id+IDSEP)
         }
-        if log.verbose>1: log.debug(f'-> {o}')
+        if log.verbose>1: log(f'-> {o}')
         return o
 
     def addrs_textd(self,force=True):
         o={self.get_addr(id) for id in self.textd.keys()}
-        if log.verbose>1: log.debug(f'-> {o}')
+        if log.verbose>1: log(f'-> {o}')
         return o
 
     def addrs_all(self, db=True, matchdb=True, textd=True, force=True):
@@ -266,7 +268,7 @@ class BaseCorpus(BaseObject):
     def clear_matches(self,keys=None):
         if keys is None: keys=self.addrs_matchdb()
         if len(keys):
-            if log.verbose>0: log.debug(f'[{self.id}] Deleting {len(keys)} matchdb entries')
+            if log.verbose>0: log(f'[{self.id}] Deleting {len(keys)} matchdb entries')
             self.matcher.remove_nodes(keys)
 
     def clear(self,db=True,files=False,matches=True,**kwargs):
@@ -330,7 +332,7 @@ class BaseCorpus(BaseObject):
             id: Union[str,BaseText,None] = None,
             _source: Union[str,BaseText,None] = None,
             _add: bool = True,
-            _cache: bool = False,
+            _cache: bool = True,
             _force: bool = False,
             _new: bool = False,
             _init: bool = True,
@@ -378,7 +380,7 @@ class BaseCorpus(BaseObject):
         """        
 
         # log incoming
-        if log.verbose>0: log.debug(f'<- {get_imsg(id,None,_source,**_params_or_meta)}')
+        if log.verbose>0: log(f'<- {get_imsg(id,None,_source,**_params_or_meta)}')
 
         # Init corpus?
         if _init: self.init()
@@ -390,7 +392,7 @@ class BaseCorpus(BaseObject):
 
         # Get ID immediately
         id1 = id
-        # log.debug(f'id <- {id}')
+        # log(f'id <- {id}')
         id = get_id_str(id,corpus=self,source=_source,**meta)
         
         newsep='_'
@@ -417,7 +419,7 @@ class BaseCorpus(BaseObject):
             tocache = True
         
         elif meta and is_text_obj(t):
-            # log.debug(pf(f'Updating text metadata:',meta))
+            # log(pf(f'Updating text metadata:',meta))
             t.update(meta,_cache=False)
             tocache = True
         
@@ -431,7 +433,7 @@ class BaseCorpus(BaseObject):
         if _cache and tocache: t.cache()
         
         # Return text
-        if log.verbose>0: log.debug(f'-> {t}' if is_text_obj(t) else "-> ?")
+        if log.verbose>0: log(f'-> {t}' if is_text_obj(t) else "-> ?")
         return t
 
     
@@ -449,18 +451,24 @@ class BaseCorpus(BaseObject):
         -------
         Union[BaseText,None]
             Either a text object if found, or None if not.
-        """        
+        """
 
         if log.verbose>1: log(f'<- id = {id}')
         t=self._textd.get(id)
         if log.verbose>1: log(f'-> {t}' if is_text_obj(t) else "-> ?")
         return t
         
+    def remove_text(self,id,db=True,matches=True):
+        if id in self._textd:
+            if log.verbose>0: log(f'removing {id} from {self.id}._textd')
+            del self._textd[id]
+        if db: self.db().delete(id)
+        if matches: self.matcher.remove_node(self.get_addr(id))
 
     
     def init_text(self,id=None,_source=None,_cache=False,_use_db=True,**kwargs):
-        # log.debug('...')
-        if log.verbose>0: log.debug(f'<- {get_imsg(id,None,_source,**kwargs)}')
+        # log('...')
+        if log.verbose>0: log(f'<- {get_imsg(id,None,_source,**kwargs)}')
 
         if is_text_obj(_source): 
             if log.verbose>1: log(f'Source is text: {_source}')
@@ -486,7 +494,7 @@ class BaseCorpus(BaseObject):
             if log.verbose>1: log(f'id auto set to {id}')
 
         # gen text in my image        
-        # log.debug(kwargs)
+        # log(kwargs)
         t = self.TEXT_CLASS(
             id=id,
             _corpus=self,
@@ -527,7 +535,7 @@ class BaseCorpus(BaseObject):
         self.init()
         return self._textd
         
-    def texts(self,*args,**kwargs): return list(self.iter_texts(*args,**kwargs))
+    def texts(self,*args,**kwargs): return self.iter_texts(*args,**kwargs) #list(self.iter_texts(*args,**kwargs))
     def itexts(self,*x,**y): return self.iter_texts(*x,**y)
 
     def iter_texts(self,texts=None,progress=False,shuffle=False,lim=None,verbose=False,**kwargs):
@@ -586,7 +594,7 @@ class BaseCorpus(BaseObject):
 
         
     def init_meta_json(self,force=False,bad_cols=BAD_COLS,meta_fn='meta.json',**kwargs):
-        # log.debug(f'Initializing from json files: {self}')
+        # log(f'Initializing from json files: {self}')
         if log.verbose>0: log(self)
         for root,dirs,fns in os.walk(self.path_texts):
             if meta_fn in set(fns):
@@ -613,11 +621,11 @@ class BaseCorpus(BaseObject):
         id2ld=defaultdict(list)
         for source in sources:
             if source=='csv':
-                # log.debug('Init from csv')
+                # log('Init from csv')
                 for id,dx in self.init_meta_csv(*x,**y):
                     id2ld[id].append(dx)
             elif source=='json':
-                # log.debug('Init from json')
+                # log('Init from json')
                 for id,dx in self.init_meta_json(*x,**y):
                     id2ld[id].append(dx)
         
@@ -643,7 +651,7 @@ class BaseCorpus(BaseObject):
         self._init=True
         if log.verbose>0: log(self)
         # stop
-        # log.debug(self)
+        # log(self)
         def do_it():
             i=0
             for x in self.iter_init(**kwargs): i+=1
@@ -666,13 +674,26 @@ class BaseCorpus(BaseObject):
             progress=True,
             lim=None,
             fillna='',
+            from_cache=False,
+            from_sources=False,
+            cache=False,
+            remote=False,
+            sep='__',
+            meta={},
             **kwargs):
         
         # self.init()
-        if force or self._metadf is None or not len(self._metadf):
-            mdf=pd.DataFrame(
+        key=(lim,fillna,from_cache,from_sources,remote)
+        old_metadf=self._metadfd.get(key)
+        if force or old_metadf is None:
+            new_metadf=pd.DataFrame(
                 t.metadata(
-                    force=force,
+                    from_cache=from_cache,
+                    from_sources=from_sources,
+                    remote=remote,
+                    cache=cache,
+                    sep=sep,
+                    meta=meta,
                     **kwargs
                 )
                 for ti,t in enumerate(self.texts(progress=progress))
@@ -680,11 +701,14 @@ class BaseCorpus(BaseObject):
                 and t.metadata is not None
                 and not lim or ti<lim
             )
-            if fillna is not None: mdf=mdf.fillna(fillna)
-            if self.col_id in set(mdf.columns): mdf=mdf.set_index(self.col_id)
-            self._metadf=mdf
+            if fillna is not None:
+                new_metadf=new_metadf.fillna(fillna)
+            if self.col_id in set(new_metadf.columns):
+                new_metadf=new_metadf.set_index(self.col_id)
+            self._metadfd[key]=new_metadf
+            if self._metadf is None: self._metadf=new_metadf
             # self.save_metadata(ometa=mdf,force=force_save)
-        return self._metadf
+        return self._metadfd.get(key,pd.DataFrame())
 
     def save_metadata(self,ometa=None,*x,force=True,force_inner=False,ok_cols=set(),backup=True,**kwargs):
         if ometa is None: ometa=self.metadata(force=force_inner,**kwargs)
@@ -770,50 +794,50 @@ class BaseCorpus(BaseObject):
 
 
 
-    #################
-    #### PROCESSING
-    #################
+    # #################
+    # #### PROCESSING
+    # #################
 
-    def preprocess_txt(self,force=False,num_proc=DEFAULT_NUM_PROC,verbose=True,**attrs): #force=False,slingshot=False,slingshot_n=1,slingshot_opts=''):
-        if not self._texts: return
-        paths = [(t.path_xml,t.path_txt) for t in self.texts() if t.path_xml and os.path.exists(t.path_xml)]
-        if not paths:
-            if verbose: self.log('No XML files to produce plain text files from')
-            return
-        objs = [
-            (pxml,ptxt,self.XML2TXT.__func__)
-            for pxml,ptxt in paths
-            if force or not os.path.exists(ptxt)
-        ]
-        if not objs:
-            if verbose: self.log('Plain text files already saved')
-            return
-        tools.pmap(
-            do_preprocess_txt,
-            objs,
-            num_proc=num_proc,
-            desc=f'[{self.name}] Saving plain text versions of XML files',
-            **attrs
-        )
+    # def preprocess_txt(self,force=False,num_proc=DEFAULT_NUM_PROC,verbose=True,**attrs): #force=False,slingshot=False,slingshot_n=1,slingshot_opts=''):
+    #     if not self._texts: return
+    #     paths = [(t.path_xml,t.path_txt) for t in self.texts() if t.path_xml and os.path.exists(t.path_xml)]
+    #     if not paths:
+    #         if verbose: self.log('No XML files to produce plain text files from')
+    #         return
+    #     objs = [
+    #         (pxml,ptxt,self.XML2TXT.__func__)
+    #         for pxml,ptxt in paths
+    #         if force or not os.path.exists(ptxt)
+    #     ]
+    #     if not objs:
+    #         if verbose: self.log('Plain text files already saved')
+    #         return
+    #     tools.pmap(
+    #         do_preprocess_txt,
+    #         objs,
+    #         num_proc=num_proc,
+    #         desc=f'[{self.name}] Saving plain text versions of XML files',
+    #         **attrs
+    #     )
 
-    def preprocess_freqs(self,force=False,kwargs={},verbose=True,**attrs): #force=False,slingshot=False,slingshot_n=1,slingshot_opts=''):
-        objs = [
-            (t.path_txt,t.path_freqs,self.TOKENIZER.__func__)
-            for t in self.texts()
-            if os.path.exists(t.path_txt) and (force or not os.path.exists(t.path_freqs))
-        ]
-        if not objs:
-            if verbose:
-                self.log('Word freqs already saved')
-            return
-        # print('parallel',parallel)
-        tools.pmap(
-            save_freqs_json,
-            objs,
-            kwargs=kwargs,
-            desc=f'[{self.name}] Saving word freqs as jsons',
-            **attrs
-        )
+    # def preprocess_freqs(self,force=False,kwargs={},verbose=True,**attrs): #force=False,slingshot=False,slingshot_n=1,slingshot_opts=''):
+    #     objs = [
+    #         (t.path_txt,t.path_freqs,self.TOKENIZER.__func__)
+    #         for t in self.texts()
+    #         if os.path.exists(t.path_txt) and (force or not os.path.exists(t.path_freqs))
+    #     ]
+    #     if not objs:
+    #         if verbose:
+    #             self.log('Word freqs already saved')
+    #         return
+    #     # print('parallel',parallel)
+    #     tools.pmap(
+    #         save_freqs_json,
+    #         objs,
+    #         kwargs=kwargs,
+    #         desc=f'[{self.name}] Saving word freqs as jsons',
+    #         **attrs
+    #     )
 
 
 
@@ -879,7 +903,7 @@ class BaseCorpus(BaseObject):
                 paths=list(_paths(path2,pathpart)) if os.path.isdir(path2) else [path2]
                 #print(type(paths),paths[:3])
                 zipper = zipdir(path2, zipf, pathpart=pathpart, paths=paths)
-                for ofnfn in tqdm(zipper, total=len(paths), desc=f'[{self.name}] Compressing {fname}'):
+                for ofnfn in self.get_tqdm(zipper, total=len(paths), desc=f'[{self.name}] Compressing {fname}'):
                     pass
 
         for part in part2ok:
@@ -922,7 +946,7 @@ class BaseCorpus(BaseObject):
         # cmdstr="\n".join(cmds)
         # print(f'Executing:\n{cmdstr}')
 
-        for cmd in tqdm(cmds,desc=f'[{self.name}] Uploading zip files'):
+        for cmd in self.get_tqdm(cmds,desc=f'[{self.name}] Uploading zip files'):
             os.system(cmd)
 
         os.chdir(here)
@@ -950,6 +974,10 @@ class BaseCorpus(BaseObject):
         print()
         #return '\n'.join(ol)
 
+    def get_tqdm(self,*x,desc='',**y):
+        if desc: desc=f'[{self.id}] {desc}'
+        return get_tqdm(*x,desc=desc,**y)
+
 
     def mkdir_root(self):
         if not os.path.exists(self.path_root): os.makedirs(self.path_root)
@@ -958,6 +986,16 @@ class BaseCorpus(BaseObject):
     def urls(self):
         urls=[(x[4:], getattr(self,x)) for x in dir(self) if x.startswith('url_') and getattr(self,x)]
         return urls
+
+    def compile_db(self,ld):
+        if log.verbose>1: log('compiling database')
+        with self.db() as db:
+            for d in self.get_tqdm(ld,desc='Adding to database'):
+                id = d.get(self.col_id)
+                if id: db[self.col_id]=d
+        if log.verbose>1: log('finished compiling database')
+        
+        
 
     def compile(self, **attrs):
         ## THIS NEEDS TO BE OVERWRITTEN BY CHILD CLASS
@@ -1005,13 +1043,29 @@ class BaseCorpus(BaseObject):
             tools.download(url,tmpfnfn,desc=f'[{self.name}] Downloading {tmpfn} to {mask_home_dir(tmpfnfn)}',force=force)
         if unzip:
             odir=self.path_raw if part=='raw' else (os.path.dirname(opath) if not flatten else opath)
-            tools.extract(tmpfnfn,odir,desc=f'[{self.name}] Unzipping {tmpfn} to {mask_home_dir(odir)}',flatten=flatten)
+            from zipfile import BadZipFile
+            try:
+                tools.extract(tmpfnfn,odir,desc=f'[{self.name}] Unzipping {tmpfn} to {mask_home_dir(odir)}',flatten=flatten)
+            except BadZipFile:
+                log.error(f'Bad zip file: {tmpfnfn}')
+                rmfn(tmpfnfn)
+                return self.install(ask=ask, urls=urls, force=force, part=part, flatten=flatten, parts=parts, unzip=unzip, **attrs)
             #if os.path.exists(self.path_raw) and os.listdir(self.path_raw)==['raw']:
             #	os.rename(os.path.join(self.path_raw,'raw'), self.path_raw)
         return self
 
     def path_zip(self,part):
         return os.path.join(PATH_CORPUS_ZIP,f'{self.id}_{part}.zip')
+
+    # def get_path_text(self,text,part):
+    #     if part.startswith('path_'): part=part[5:]
+    #     if part == 'txt': return os.path.join(text.path,'text.txt')
+    #     if part == 'xml': return os.path.join(text.path,'text.xml')
+    #     if part in {'json','meta','meta_json'}: return os.path.join(text.path,'meta.json')
+    #     if part == 'freqs': return os.path.join(text.path,'freqs.json')
+    #     return None
+    
+    def get_path_text(self,text,*x,**y): return text.get_path(*x,**y)
 
 
     def compile_download(self,unzip=True):
@@ -1022,6 +1076,7 @@ class BaseCorpus(BaseObject):
         if type(parts)==str: parts=[p.strip().lower() for p in parts.split(',')]
         for part in parts:
             fname='preprocess_'+part
+            if log.verbose>0: log(pf(part,fname,getattr(self,fname)))
             if not hasattr(self,fname): continue
             func=getattr(self,fname)
             try:
@@ -1641,7 +1696,7 @@ class MetaCorpus0(BaseCorpus):
     def textd(self):
         if self._textd is None or not len(self._textd):
             self._textd={}
-            for C in tqdm(self.corpora,desc='Assembling dictionary of text objects'):
+            for C in self.get_tqdm(self.corpora,desc='Assembling dictionary of text objects'):
                 for t in C.texts():
                     self._textd[(C.name, t.id)]=t
         return self._textd
@@ -1747,7 +1802,7 @@ def Corpus(corpus=None,force=False,init=True,clear=False,**kwargs):
         C=corpus
         logg=False
     else:
-        if log.verbose>0: log.debug(f'<- id = {corpus}')
+        if log.verbose>0: log(f'<- id = {corpus}')
         logg=True
         
         if type(corpus)==str and corpus:
@@ -1765,7 +1820,7 @@ def Corpus(corpus=None,force=False,init=True,clear=False,**kwargs):
         elif init:
             C.init(**kwargs)
 
-    if logg and log.verbose>0: log.debug(f'-> {C}')
+    if logg and log.verbose>0: log(f'-> {C}')
     return C
 
 

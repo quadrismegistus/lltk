@@ -55,7 +55,7 @@ class ModelBookNLP(CharacterSystem):
             yield self
         else:
             oiterr=self.text.sections(section_type).texts()
-            for tx in tqdm(oiterr):
+            for tx in get_tqdm(oiterr):
                 yield ModelBookNLP(tx)
     
     def models(self,**kwargs):
@@ -476,7 +476,7 @@ def parse_booknlp(
     
     ## path to parse even exist?
     if not os.path.exists(path_txt):
-        log.debug(f'File does not exist: {path_txt}')
+        if log.verbose>0: log(f'File does not exist: {path_txt}')
         return
     
     # get path
@@ -500,7 +500,7 @@ def parse_booknlp(
             outputFolder=odir,
             idd='text'
         )
-        # log.debug(f'Parsing BookNLP with args: {okwargs}')
+        # log(f'Parsing BookNLP with args: {okwargs}')
         try:
             return booknlp.process(**okwargs)
         except AttributeError:

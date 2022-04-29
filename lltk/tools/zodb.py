@@ -112,7 +112,7 @@ def make_mini_db(keys=['author','title','year','genre','medium'],extra_keys=[]):
 	total=dbtable.count()
 
 	def _writegen():
-		for dx in tqdm(dbtable.find(),total=total,desc='>> saving tsv from mongo'):
+		for dx in get_tqdm(dbtable.find(),total=total,desc='>> saving tsv from mongo'):
 			minidx=dict( [ (k,dx.get(k,'')) for k in keys+extra_keys ] )
 			minidx['_addr']=str(dx.get('corpus','Corpus')) + ADDR_SEP + str(dx.get('id','ID'))
 			yield minidx
@@ -161,7 +161,7 @@ class ZDB(object):
         with self.db.transaction() as conn:
             root=conn.root()
             root[key]=value
-            log.debug(f'DB["{key}"] = {value}')
+            if log.verbose>0: log(f'DB["{key}"] = {value}')
         # with ZConnection(self.db) as (conn,root):
             oldvalue = root.get(key)
             #if value != oldvalue:

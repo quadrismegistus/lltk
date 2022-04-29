@@ -48,7 +48,7 @@ class LLDBBase():
         with self as db:
             v=db.get(k)
             if v is not None:
-                # log.debug(f'Getting: "{k}"')# -> {v}')
+                # log(f'Getting: "{k}"')# -> {v}')
                 return v
         return default
     
@@ -59,6 +59,8 @@ class LLDBBase():
                 return True
 
     def delete(self,k,**kwargs):
+        from lltk import log
+        if log.verbose>0: log(f'removing {k} from db')
         with self as db:
             if k in db:
                 del db[k]
@@ -67,7 +69,8 @@ class LLDBBase():
     def drop(self):
         from lltk.tools import rmfn
         if os.path.exists(self.path):
-            log.debug(f'removing: {self.path}')
+            from lltk import log
+            if log.verbose>0: log(f'removing: {self.path}')
             rmfn(self.path)
 
     @property
@@ -182,9 +185,6 @@ def unpicklify(obj,objtype=None):
     if objtype=='Corpus' and type(obj)==str: return Corpus(obj)
     if type(obj)==str and id_is_addr(obj): return Text(obj)
     return obj
-
-
-
 
 
 

@@ -1,5 +1,14 @@
 from lltk.imports import *
 
+def get_ideal_cpu_count():
+    mp_cpu_count=mp.cpu_count()
+    DEFAULT_NUM_PROC = mp_cpu_count - 2
+    if mp_cpu_count==1: DEFAULT_NUM_PROC=1
+    if mp_cpu_count==2: DEFAULT_NUM_PROC=2
+    if mp_cpu_count==3: DEFAULT_NUM_PROC=2
+    from lltk.imports import log
+    if log.verbose>0: log(f'ideal cpu count = {DEFAULT_NUM_PROC}')
+    return DEFAULT_NUM_PROC
 
 def fixpath(path):
     if type(path)==str and path and not os.path.isabs(path):
@@ -34,8 +43,23 @@ def pf(*x,sep='\n',pad_start=False,pad_end=False,**y):
 def diffdict(d1,d2,verbose=1,type_changes=False):
     from deepdiff import DeepDiff
     ddiff=DeepDiff(d1,d2,verbose_level=verbose).to_dict()
-    # if not type_changes and 'type_changes' in ddiff: del ddiff['type_changes']
+    if not type_changes and 'type_changes' in ddiff: del ddiff['type_changes']
     return ddiff
+
+def is_cacheworthy(new,old,**kwargs):
+    from lltk.imports import log
+
+    if old is None:
+        if log.verbose>0: log(f'new cache')
+        return True
+    else:
+        ddiff = diffdict(old,new,**kwargs)
+        if ddiff:
+            if log.verbose>0: log(pf(f'cache updated',ddiff))
+            return True
+        else:
+            if log.verbose>0: log(pf(f'cache unchanged'))
+            return False
 
 def force_int(x):
     import numpy as np, pandas as pd
@@ -473,7 +497,7 @@ import csv
 def get_tqdm(iterable,*args,**kwargs):
     l=iterable
     if type(l)==list and len(l)==1: return l
-    if 0: #in_jupyter():
+    if in_jupyter():
         from tqdm.notebook import tqdm as tqdmx
     else:
         from tqdm import tqdm as tqdmx
@@ -660,7 +684,7 @@ def read_df(ifn,key='',fmt='',on_bad_lines='skip',**attrs):
         else:
             raise Exception(f'[save_df()] What kind of df is this: {ifn}')
     except Exception as e:
-        log.debug(f'Error: {e}')
+        if log.verbose>0: log(f'Error: {e}')
         pass
     
     return pd.DataFrame()
@@ -1027,7 +1051,7 @@ def readgen_csv(fnfn,sep=None,encoding='utf-8',errors='ignore',header=[],progres
         if header_line==None: return
         header=list(reader([header_line.strip()]))[0]
         if header!=None:
-            iterr=f if not progress else tqdm(f,total=num_lines,desc=desc)
+            iterr=f if not progress else get_tqdm(f,total=num_lines,desc=desc)
             for row in iterr:
                 try:
                     data = list(reader([row.strip()]))[0]
@@ -2039,7 +2063,7 @@ def copyfileobj(fsrc, fdst, total, length=16*1024):
     This is like shutil.copyfileobj but with a progressbar.
     """
     from tqdm import tqdm
-    with tqdm(unit='bytes', total=total, unit_scale=True) as pbar:
+    with get_tqdm(unit='bytes', total=total, unit_scale=True) as pbar:
         while 1:
             buf = fsrc.read(length)
             if not buf:
@@ -2117,7 +2141,7 @@ def download_pycurl(url, save_to,desc=''):
 
     def do_download(url, local, *, safe=True):
         rv = False
-        with tqdm(desc=url if not desc else desc, total=1, unit='b', unit_scale=True) as progress:
+        with get_tqdm(desc=url if not desc else desc, total=1, unit='b', unit_scale=True) as progress:
             xfer = XferInfoDl(url, progress)
             if safe:
                 local_tmp = local + '.tmp'
@@ -2232,7 +2256,7 @@ def download_tqdm(url, save_to):
     total_size = int(r.headers.get('content-length', 0))
 
     with open(save_to, 'wb') as f:
-        for chunk in tqdm(r.iter_content(32*1024), total=total_size, unit='B',unit_scale=True):
+        for chunk in get_tqdm(r.iter_content(32*1024), total=total_size, unit='B',unit_scale=True):
             if chunk:
                 f.write(chunk)
 

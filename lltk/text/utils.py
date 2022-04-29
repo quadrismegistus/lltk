@@ -1,11 +1,31 @@
 from lltk.imports import *
 
-def get_prop_ish(d,k):
-    for xk,xv in d.items():
-        if xk.startswith(k) and xv:
-            return xv
+def get_prop_ish(meta,key,before_suf='|'):
+    keys=[k for k in meta.keys() if k.startswith(key)]
+    numkeys=len(keys)
+    if numkeys==0: return None
+    if numkeys==1: 
+        keyname = keys[0]
+    else:
+        log.warning(f'more than one metadata key begins with "{key}": {keys}.')
+        keyname=keys[0]
+        log.warning(f'using key: {keyname}')
+    
+    res = meta.get(keyname)
+
+    if before_suf and type(res)==str and res:
+        res = res.split('|')[0]
+    
+    return res
 
 
+
+
+def dbget(addr):
+    c,i = to_corpus_and_id(addr)
+
+    from lltk.corpus.corpus import Corpus
+    return Corpus(c).db().get(i,{})
 
 
 def yield_addrs(meta,addr_prefix='_addr_', id_prefix='_id_',ok_corps=set(),*args,**kwargs):
@@ -99,7 +119,7 @@ def get_idx(
                 lower=False
             )
             if log.verbose>2:
-                log(f'id set via `id` str: {id1} -> {id}')
+                if log.verbose>0: log(f'id set via `id` str: {id1} -> {id}')
         
         elif type(id) in {int,float}:
             id = get_idx_from_int(int(id))
@@ -155,7 +175,7 @@ def get_addr_str(text=None,corpus=None,source=None,**kwargs):
     idx=get_idx(text)
     cpref=IDSEP_START + corpus + IDSEP
     o=cpref + idx if not idx.startswith(cpref) else idx
-    if log.verbose>3: log.debug(f'-> {o}')
+    if log.verbose>3: log(f'-> {o}')
     return o
 
 def get_imsg(text=None,corpus=None,source=None,**kwargs):
@@ -164,7 +184,8 @@ def get_imsg(text=None,corpus=None,source=None,**kwargs):
     if corpus: o.append(f'corpus = {corpus}')
     if source: o.append(f'source = {source}')
     if kwargs:
-        oo=', '.join([f'{k} = {v}' for k,v in kwargs.items()])
+        #oo=', '.join([f'{k} = {v}' for k,v in kwargs.items()])
+        oo=pf(kwargs)
         o.append(f'kwargs = dict({oo})')
     return ', '.join(o) if o else ''
 
@@ -172,7 +193,7 @@ def get_id_str(text=None,corpus=None,source=None,**kwargs):
     if log.verbose>3: log(f'<- {get_imsg(text,corpus,source,**kwargs)}')
     addr=get_addr_str(text,corpus,source,**kwargs)
     o=to_corpus_and_id(addr)[-1]
-    if log.verbose>3: log.debug(f'-> {o}')
+    if log.verbose>3: log(f'-> {o}')
     return o
 
 def id_is_addr(idx):
@@ -281,7 +302,7 @@ def merge_read_dfs_iter(fns_or_dfs, opt_exts=[]):
             for opt_ext in opt_exts:
                 newfn = os.path.splitext(fn_or_df)[0]+opt_ext
                 if os.path.exists(newfn):
-                    # log.debug(f'Overwriting dataframe with data from: {newfn}')
+                    # log(f'Overwriting dataframe with data from: {newfn}')
                     yield from readgen(newfn,progress=False)
             
 
@@ -313,35 +334,6 @@ def merge_read_dfs(fns_or_dfs, opt_exts=[], on='id'):
 
 def merge_read_dfs_anno(fns_or_dfs, on='id'):
     return merge_read_dfs(fns_or_dfs, opt_exts=ANNO_EXTS, on=on)
-
-
-
-
-def xml2txt_prose(path_xml, para_tag='p', bad_tags=BAD_TAGS, body_tag='doc'):
-    import bs4
-
-    if not os.path.exists(path_xml): return ''
-    with open(path_xml) as f: xml=f.read()
-    xml = clean_text(xml)
-    dom = bs4.BeautifulSoup(xml,'lxml')
-    body = dom.find(body_tag)    
-    if body is None: body = dom
-    for tag in bad_tags:
-        for x in body(tag):
-            x.extract()
-    
-    paras = [para.text.strip() for para in body(para_tag)]
-    if paras:
-        paras=[' '.join(para.strip().split()) for para in paras]
-        paras=[para for para in paras if para]
-        txt='\n\n'.join(paras)
-    else:
-        txt = body.text.strip()
-    return txt
-
-
-
-
 
 
 
@@ -577,7 +569,7 @@ def merge_dict(*l,bad_keys_final=set()):
         if not issubclass(type(d), dict): continue
         for k,v in d.items():
             if safebool(k) and safebool(v):
-                # log.debug(f'k,v = {k},{v}')
+                # log(f'k,v = {k},{v}')
                 od[k]=v
     return {k:v for k,v in od.items() if k not in bad_keys_final}
 
@@ -625,7 +617,7 @@ def MaybeListDict(key_val_iter):
     for key,val in key_val_iter:
         valstr=str(val)
         lval=set(val) if type(val) in {list,tuple} else set(valstr.split('; '))
-        # log.debug([key,val,valstr,lval])
+        # log([key,val,valstr,lval])
         od[key]|=lval
     return od
 
@@ -698,36 +690,92 @@ def remove_bad_tags(dom, bad_tags):
     return dom
 
 
-def to_lastname(name,last_first=False):
+def to_lastname(name):
     name=name.strip()
     if not name: return 'Unknown'
     if ',' in name:
-        name=name.split(',')[0]
+        namel=[x.strip() for x in name.split(',') if x.strip()]
+        name=namel[0] if namel else name
     else:
-        namel=name.split()
-        name=namel[0] if last_first else namel[-1]		
+        namel=[x.strip() for x in name.split() if x.strip()]
+        name=namel[-1] if namel else name
     return name
 
 
-def default_xml2txt(xml, *x, OK={'p','l'}, BAD=[], body_tag='text', **args):
+
+
+
+
+# def xml2txt_prose(path_xml, para_tag='p', bad_tags=BAD_TAGS, body_tag='doc'):
+#     import bs4
+
+#     if not os.path.exists(path_xml): return ''
+#     with open(path_xml) as f: xml=f.read()
+#     xml = clean_text(xml)
+#     dom = bs4.BeautifulSoup(xml,'lxml')
+#     body = dom.find(body_tag)    
+#     if body is None: body = dom
+#     for tag in bad_tags:
+#         for x in body(tag):
+#             x.extract()
+    
+#     paras = [para.text.strip() for para in body(para_tag)]
+#     if paras:
+#         paras=[' '.join(para.strip().split()) for para in paras]
+#         paras=[para for para in paras if para]
+#         txt='\n\n'.join(paras)
+#     else:
+#         txt = body.text.strip()
+#     return txt
+
+
+
+
+
+
+
+
+def xml2txt_default(xml, *x, OK={'p','l'}, BAD=None, body_tags={'text','doc'}, **args):
     #print '>> text_plain from stored XML file...'
     import bs4
+    if log.verbose>1: log(f'xml = {xml}')
     if '\n' not in xml and os.path.exists(xml):
+        if log.verbose>1: log(f'is filename = {xml}')
         with open(xml) as f: xml=f.read()
+
+    # clean
+    xml = clean_text(xml)
+    if log.verbose>1: log([xml[:1000]])
 
     ## get dom
     dom = bs4.BeautifulSoup(xml,'lxml') if type(xml)==str else xml
-    txt=[]
     ## remove bad tags
-    for tag in BAD:
-        [x.extract() for x in dom.findAll(tag)]
+    if BAD is None: BAD = BAD_TAGS
+    if log.verbose>1: log([str(dom)[:1000]])
+    for tag in BAD: [x.extract() for x in dom.findAll(tag)]
     ## get text
-    for doc in dom.find_all(body_tag):
+    txt=[]
+
+    docl=[]
+    for btag in body_tags:
+        btagl = list(dom(btag))
+        if btagl:
+            docl+=btagl
+            break
+    docl=[dom]
+    for doc in docl:
         for tag in doc.find_all():
-            if tag.name in OK:
-                txt+=[clean_text(tag.text)]
-    TXT='\n\n'.join(txt).replace(u'∣','')
-    return TXT
+            if tag.name not in OK: continue
+            if tag.name=='p':
+                txt+='\n' + tag.text.replace('\n',' ').replace('  ',' ').strip()+'\n'
+            elif tag.name=='l':
+                txt+=tag.text.strip()+'\n'
+    o=''.join(txt).strip()
+    if log.verbose>1: log([o[:1000]])
+    return o
+
+xml2txt_prose = xml2txt_default
+
 
 def tokenize_agnostic(txt):
     return re.findall(r"[\w']+|[.,!?; -—–\n]", txt)
