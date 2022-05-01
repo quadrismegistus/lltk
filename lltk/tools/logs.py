@@ -14,7 +14,7 @@ class Logger():
             start=True,
             format="""[{time:HH:mm:ss}] {name}.<level>{function}</level>( <cyan>{message}</cyan> )""",
             fn_clear=True,
-            fn_rotation="10MB",
+            fn_rotation="50MB",
             ):
         # set attrs
         self.format=format
@@ -60,8 +60,11 @@ class Logger():
 
     def start_file(self):
         if self.id_file is None and self.fn:
-            from lltk.tools.tools import ensure_dir_exists
+            from lltk.tools.tools import ensure_dir_exists,backup_fn,rmfn
             ensure_dir_exists(self.fn)
+            if os.path.exists(self.fn): backup_fn(self.fn)
+            rmfn(self.fn)
+            
             self.id_file=logger.add(self.fn, rotation=self.fn_rotation, colorize=False, format=self.format)
             #logger.debug(f'log added: {self.id_file}')
 
@@ -83,14 +86,19 @@ class Logger():
 
     def hidden(self,verbose=0): return log_hidden(verbose=verbose,log=self)
     def shown(self,verbose=1): return log_shown(verbose=verbose,log=self)
-    def hide(self,verbose=0):
-        if self.verbose>1: self('hiding log')
-        self.verbose_was=self.verbose
-        self.verbose=verbose
-    def show(self,verbose=1):
-        self.verbose_was=self.verbose
-        self.verbose=verbose
-        if self.verbose>1: self('showing log')
+    
+    def hide(self): self.stop_screen()
+    def show(self): self.start_screen()
+
+    
+    # def hide(self,verbose=0):
+    #     if self.verbose>1: self('hiding log')
+    #     self.verbose_was=self.verbose
+    #     self.verbose=verbose
+    # def show(self,verbose=1):
+    #     self.verbose_was=self.verbose
+    #     self.verbose=verbose
+    #     if self.verbose>1: self('showing log')
     
     __call__ = logger.debug
 
@@ -104,24 +112,28 @@ def Log(force=False,**kwargs):
 class log_hidden():
     def __init__(self,verbose=0,log=None):
         self.log=log if log is not None else Log()
-        self.verbose=verbose
+        # self.verbose=verbose
     def __enter__(self): 
-        self.log.verbose_was=self.log.verbose
-        self.log.verbose=self.verbose
+        # self.log.verbose_was=self.log.verbose
+        # self.log.verbose=self.verbose
+        self.log.stop_screen()
     def __exit__(self,*x):
-        self.log.verbose=self.log.verbose_was
-        self.log.verbose_was=self.verbose
+        # self.log.verbose=self.log.verbose_was
+        # self.log.verbose_was=self.verbose
+        if self.log.to_screen: self.log.start_screen()
 
 class log_shown():
     def __init__(self,verbose=1,log=None):
         self.log=log if log is not None else Log()
-        self.verbose=verbose
+        # self.verbose=verbose
     def __enter__(self): 
-        self.log.verbose_was=self.log.verbose
-        self.log.verbose=self.verbose
+        # self.log.verbose_was=self.log.verbose
+        # self.log.verbose=self.verbose
+        self.log.start_screen()
     def __exit__(self,*x):
-        self.log.verbose=self.log.verbose_was
-        self.log.verbose_was=self.verbose
+        # self.log.verbose=self.log.verbose_was
+        # self.log.verbose_was=self.verbose
+        if not self.log.to_screen: self.log.stop_screen()
 
 def hide_log(): return log_hidden()
 def show_log(): return log_shown()

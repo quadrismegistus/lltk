@@ -7,9 +7,9 @@ def get_prop_ish(meta,key,before_suf='|'):
     if numkeys==1: 
         keyname = keys[0]
     else:
-        log.warning(f'more than one metadata key begins with "{key}": {keys}.')
+        if log.verbose>0: log.warning(f'more than one metadata key begins with "{key}": {keys}.')
         keyname=keys[0]
-        log.warning(f'using key: {keyname}')
+        if log.verbose>0: log.warning(f'using key: {keyname}')
     
     res = meta.get(keyname)
 
@@ -178,22 +178,21 @@ def get_addr_str(text=None,corpus=None,source=None,**kwargs):
     if log.verbose>3: log(f'-> {o}')
     return o
 
-def get_imsg(text=None,corpus=None,source=None,**kwargs):
+def get_imsg(_id=None,_corpus=None,_source=None,**kwargs):
     o=[]
-    if text: o.append(f'id = {text}')
-    if corpus: o.append(f'corpus = {corpus}')
-    if source: o.append(f'source = {source}')
-    if kwargs:
-        #oo=', '.join([f'{k} = {v}' for k,v in kwargs.items()])
-        oo=pf(kwargs)
-        o.append(f'kwargs = dict({oo})')
+    if _id: o.append(f'id = {_id}')
+    if _corpus: o.append(f'corpus = {_corpus}')
+    if _source: o.append(f'source = {_source}')
+    # if kwargs: o.append(f'kwargs = {pf(kwargs)})')
+    if kwargs: o.append(f'kwargs = [{len(kwargs)} keys])')
     return ', '.join(o) if o else ''
 
 def get_id_str(text=None,corpus=None,source=None,**kwargs):
     if log.verbose>3: log(f'<- {get_imsg(text,corpus,source,**kwargs)}')
     addr=get_addr_str(text,corpus,source,**kwargs)
-    o=to_corpus_and_id(addr)[-1]
-    if log.verbose>3: log(f'-> {o}')
+    id_corp,id_text=to_corpus_and_id(addr)
+    o=id_text if corpus==id_corp else addr
+    # log(f'-> {o}')
     return o
 
 def id_is_addr(idx):

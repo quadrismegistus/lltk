@@ -699,6 +699,7 @@ def get_all_sources_recursive(text,sofar=set(),**kwargs):
 
 
 def load_corpus(id,manifestd={},load_meta=False,force=False,install_if_nec=True,**input_kwargs):
+    from lltk.imports import log
     if not manifestd: manifestd=load_corpus_manifest(id,make_path_abs=True)
     # plog('>> loading:',name_or_id,manifestd)
     if log.verbose>0: log(f'<- id = {id}')
@@ -720,7 +721,8 @@ def load_corpus(id,manifestd={},load_meta=False,force=False,install_if_nec=True,
         C = class_class(**inpd)
         if log.verbose>0: log(f'-> {C}')
         return C
-    except Exception as e:
+    # except Exception as e:
+    except AssertionError:
         log.error(f'corpus loading failed: {e}')    
     return None
 
@@ -1032,3 +1034,53 @@ class AuthorBunch(Bunch):
     @property
     def meta(self): return self.corpus.meta[self.corpus.meta.id.isin(set(self.ids))]
     
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def picklify(obj):
+    # return obj
+    from lltk.text.utils import is_text_obj,is_corpus_obj
+    if is_text_obj(obj): return obj.addr
+    if is_corpus_obj(obj): return obj.id
+    if type(obj)==set: return {picklify(x) for x in obj}
+    if type(obj)==list: return [picklify(x) for x in obj]
+    if type(obj)==tuple: return set([picklify(x) for x in obj])
+    if type(obj)==dict: return {picklify(k):picklify(v) for k,v in obj.items()}
+    return obj
+
+def unpicklify(obj,objtype=None):
+    # return obj
+    from lltk.text.utils import id_is_addr
+    from lltk.text.text import Text
+    from lltk.corpus.corpus import Corpus
+
+    if type(obj)==set: return {unpicklify(x) for x in obj}
+    if type(obj)==list: return [unpicklify(x) for x in obj]
+    if type(obj)==tuple: return set([unpicklify(x) for x in obj])
+    if type(obj)==dict: 
+        return {
+            unpicklify(k):unpicklify(v,objtype='Corpus' if k in {'_corpus','_section_corpus'} else '')
+            for k,v in obj.items()
+        }
+    if objtype=='Corpus' and type(obj)==str: return Corpus(obj)
+    if type(obj)==str and id_is_addr(obj): return Text(obj)
+    return obj
+
+
+

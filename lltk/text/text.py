@@ -1,5 +1,3 @@
-from heapq import merge
-from tracemalloc import stop
 from lltk.imports import *
 
 ## utility funcs
@@ -32,17 +30,19 @@ class BaseText(BaseObject):
             _xml=None,
             _add_sources=True,
             _cache_g=True,
-            **meta):
+            **kwargs):
         
         from lltk import Corpus
         self.corpus=corpus=Corpus(_corpus)
+
+        params,meta = to_params_meta(kwargs)
+        if log.verbose>0:  log(f'<- {get_imsg(id,_corpus,_source,**meta)}')
         
         if id is None and _source is not None: id=_source.addr
         if id is None and len(_sources): id=list(_sources)[0].addr
-        self.id=get_idx(id,i=len(self.corpus._textd)+1,**meta)
+        self.id=id=get_idx(**merge_dict( dict(id=id,i=len(self.corpus._textd)+1), meta ))
 
-        if log.verbose>0:
-            log(f'{self.__class__.__name__}({get_imsg(id,_corpus,_source,**meta)})')
+        if log.verbose>0: log(f'{self.__class__.__name__}({get_imsg(id,_corpus,_source,**meta)})')
         
         self._section_corpus=_section_corpus
         self._sections={}
@@ -92,7 +92,7 @@ class BaseText(BaseObject):
     def get(self,
             key,
             ish=True,
-            from_cache=False,
+            from_cache=True,
             from_sources=True,
             cache=False,
             remote=False,
@@ -127,7 +127,7 @@ class BaseText(BaseObject):
             keys.sort(key=lambda k: get_rank(k))
             keyname=keys[0]
 
-            log.warning(f'more than one metadata key begins with "{key}": {", ".join(keys)}. Using key: "{keyname}".')
+            if log.verbose>0: log.warning(f'more than one metadata key begins with "{key}": {", ".join(keys)}. Using key: "{keyname}".')
         
         res = meta.get(keyname)
 
@@ -160,14 +160,18 @@ class BaseText(BaseObject):
     def db(self): return self.corpus.db()
     
     def cache(self, json=True,db=False,*x, **y):
+        meta={k:v for k,v in self._meta.items() if k and not '__' in k and v}
         if log.verbose>0: log(self)
-        if db: self.cache_db()
-        if json: self.cache_json()
+        if db: self.cache_db(meta=meta)
+        if json: self.cache_json(meta=meta)
 
     def init_cache(self,json=True,db=False,*x,**y):
         if json: self._meta=merge_dict(self._meta,self.init_cache_json())
         if db: self._meta=merge_dict(self._meta,self.init_cache_db())
         return self._meta
+
+
+
 
         
     def cache_db(self,meta=None):
@@ -213,7 +217,7 @@ class BaseText(BaseObject):
     
     
 
-    def get_path_old(t,part='texts'):
+    def get_path_old(t,part='texts',**kwargs):
         if not t.corpus: return ''
         partattr='path_'+part
         extattr='ext_'+part
@@ -227,6 +231,13 @@ class BaseText(BaseObject):
 
     def get_path(self,part,**kwargs):
         if part.startswith('path_'): part=part[5:]
+        path = self.get_path_new(part,**kwargs)
+        if path and os.path.exists(path): return path
+        path = self.get_path_old(part,**kwargs)
+        if path and os.path.exists(path): return path
+        return ''
+
+    def get_path_new(self,part,**kwargs):
         if part == 'txt': return os.path.join(self.path,'text.txt')
         if part == 'xml': return os.path.join(self.path,'text.xml')
         if part in {'json','meta','meta_json'}: return os.path.join(self.path,'meta.json')
@@ -315,53 +326,60 @@ class BaseText(BaseObject):
     @property
     def matcher(self): return self.corpus.matcher
     @property
+    def matcher_global(self): return self.corpus.matcher_global
+
+
+    @property
     def matches(self): return self.get_matches()
     def get_matches(self,as_text=True,**kwargs):
-        return [
+        matches = (set(self.matcher[self.addr]) | set(self.matcher_global[self.addr])) - {self.addr}
+        o=[
             Text(x) if as_text else x
-            for x in set(self.matcher[self.addr]) - {self}
+            for x in matches
         ]
-    
+        return [x for x in o if (not as_text or x.id_is_valid())]
     
     # Text
     
-    def add_source(self,source,yn='',**kwargs):
-        return self.match(source,yn=yn,**kwargs)
+    def add_source(self,source,viceversa=True,yn='',**kwargs):
+        match=self.match(source,yn=yn,**kwargs)
+        if log.verbose>0: log(f'found match: {match}')
+        if viceversa:
+            if log.verbose>0: log('adding source vice versa')
+            source.add_source(self,viceversa=False,yn=yn,**kwargs)
+        return match
     
     def match(self,other,yn='',**kwargs):
-        return self.matcher.match(self,other,yn=yn,**kwargs)
-    
-    # def add_source(self,source,viceversa=False,yn='',cache=True,**kwargs):
-    #     source=Text(source)
-    #     if not source in self._sources:
-    #         self._sources|={source}
-    #         self.matcher.match(self,source,yn=yn,**kwargs)
-    #     if viceversa: source.add_source(self,yn=yn,viceversa=False,**kwargs)
-    #     if cache: self.cache()
-
+        return (
+            self.matcher.match(self,other,yn=yn,**kwargs),
+            self.matcher_global.match(self,other,yn=yn,**kwargs)
+        )
 
     @property
     def idx(self): return self.id.split('/')[-1]
     
-        
-
     def get_sources(self,remote=False,cache=True,**kwargs):
+        if not self.id_is_valid(): return []
         sources=self.get_local_sources(**kwargs)
         if remote:
             self.get_remote_sources(sources,**kwargs)
             sources=self.get_local_sources(**kwargs)
         if cache: self.matcher.cache()
-        return list(sources)
+        return [x for x in sources if x.id_is_valid()]
         # return set(sources)
         # return sorted(list(sources),key=lambda t: t.addr)
 
-    def get_remote_sources(self,sources=None,wikidata=True,**kwargs):
-        sofar=set()
-        if wikidata:
-            wiki=self.wikidata(sources,**kwargs)
-            if wiki is not None:
-                sofar|={wiki}
-        return sofar - {self}
+    def get_remote_sources(self,*args,**kwargs):
+        # OVERWRITE?
+        return set()
+
+    # def get_remote_sources(self,sources=None,wikidata=True,**kwargs):
+    #     sofar=set()
+    #     if wikidata:
+    #         wiki=self.wikidata(sources,**kwargs)
+    #         if wiki is not None:
+    #             sofar|={wiki}
+    #     return sofar - {self}
 
 
     def get_local_sources(self,sofar=None,recursive=False,verbose=1,**kwargs):
@@ -411,12 +429,12 @@ class BaseText(BaseObject):
             **kwargs):
         # get meta
         # return self._meta
-        self.corpus.init()					
+        # self.corpus.init()					
         # query?
         ometa={}
         if from_cache: 
             self.init_cache()
-            if log.verbose>0: log(f'loaded from cache: {self._meta}')
+            if log.verbose>1: log(f'loaded from cache: {self._meta}')
         
         ometa=merge_dict(TEXT_META_DEFAULT, self.META, ometa, self._meta, meta)
         ometa={k:v for k,v in ometa.items() if k not in {'_source'}}
@@ -439,9 +457,10 @@ class BaseText(BaseObject):
                 # if not wikidata and src.corpus.id=='wikidata': continue
                 sd = src.metadata(
                     from_sources=False,
-                    from_cache=False,
-                    remote=False,
-                    cache=False,
+                    # from_cache=False,
+                    from_cache=from_cache,
+                    remote=remote,
+                    cache=cache,
                     **kwargs
                 )
                 sd2={k+sep+src.corpus.id:v for k,v in sd.items() if k!=self.corpus.col_id and not sep in k}
@@ -830,29 +849,6 @@ class BaseText(BaseObject):
     
 
 
-    # @property
-    @property
-    def wiki(self): return self.wikidata()
-
-    def wikidata(self,sources=None,force=False,force_inner=None,**kwargs):
-        from lltk.corpus.wikidata import is_wiki_text_obj
-
-        # if type(self._wikidata) == str and self._wikidata:
-        #     self._wikidata=Text(self._wikidata)
-
-        if force or not is_wiki_text_obj(self._wikidata):
-            from lltk.corpus.wikidata import TextWikidata
-            self._wikidata = TextWikidata(
-                self,
-                _sources=sources,
-                force=force_inner if force_inner is not None else force,
-                cache=True,
-                **kwargs
-            )			
-        return self._wikidata
-
-
-    
 
 
 
@@ -915,7 +911,8 @@ def Text(
     
     global TEXT_CACHE
     if is_text_obj(text) and not _corpus: return text
-    if log.verbose>0: log(f'<- {get_imsg(text,_corpus,_source,**_params_or_meta)}')
+    params,meta = to_params_meta(_params_or_meta)
+    if log.verbose>0: log(f'<- {get_imsg(text,_corpus,_source,**meta)}')
     if _new: _force=True
     
     taddr = get_addr_str(
@@ -934,7 +931,6 @@ def Text(
     if not _force and is_text_obj(TEXT_CACHE.get(taddr)) and TEXT_CACHE[taddr].is_valid():
         if log.verbose>1: log('found in `TEXT_CACHE`')
         t = TEXT_CACHE[taddr]
-        params,meta = to_params_meta(_params_or_meta)
         if t and meta: t.update(meta)
 
     elif tcorp and tid:

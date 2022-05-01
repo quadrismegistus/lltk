@@ -4,14 +4,17 @@ from collections.abc import MutableMapping
 MATCH_FN='matches.sqlite'
 MATCHRELNAME='rdf:type'
 DEFAULT_COMPAREBY=dict(author=0.9, title=0.9)
-DEFAULT_MATCHER_ID='lltk_public_match_graph'
+DEFAULT_MATCHER_ID='semantic_web'
 
 MATCHERMODELD={}
 def Matcher(id=DEFAULT_MATCHER_ID,force=False,**kwargs):
     global MATCHERMODELD
-    if force or type(MATCHERMODELD.get(id)) != MatcherModel:
-        MATCHERMODELD[id] = MatcherModel(id,**kwargs)
-    return MATCHERMODELD[id]
+    idx=id.id if is_corpus_obj(id) else id
+    if force or type(MATCHERMODELD.get(idx)) != MatcherModel:
+        if log.verbose>0: log(f'<- {idx}')
+        MATCHERMODELD[idx] = m = MatcherModel(id,**kwargs)
+        if log.verbose>0: log(f'-> {m}')
+    return MATCHERMODELD[idx]
 
 
 class MatcherModel(BaseModel,MutableMapping):
@@ -19,107 +22,167 @@ class MatcherModel(BaseModel,MutableMapping):
 
     def __init__(self,
             id=DEFAULT_MATCHER_ID,
+            path=PATH_LLTK_MATCHES,
             init=True,
+            corpus=None,
             clear=False,
             *args,
             **kwargs):
-        self.id=id
+        
         self._G=None
-        if clear:
-            self.clear()
-        elif init:
-            self.init()
+        if is_corpus_obj(id):
+            C=id
+            self.id=C.id
+            self.path=C.path_matches
+        else:
+            self.id=id
+            self.path=path
+        
+        
+        if clear: self.clear()
+        elif init: self.init(force=True)
+
+
+    
         
     def __getitem__(self, key): return set(self.get_connected(key))
     def __setitem__(self, key, value): self.match(key,value)
     def __delitem__(self, key): self.remove_node(key)
     def __iter__(self): return iter(self.G.nodes())
     def __len__(self): return self.G.order()
+    
+    def __getattr__(self,name):
+        res = getattribute(self,name)
+        if res is None:
+            if name.startswith('path_'):
+                return self.pathd.get(name[5:])
 
 
-
-
-    @property
-    def dbkey(self): return f'{self.id}'
-    @property
-    def path(self): return PATH_LLTK_MATCHES
-    @property
-    def path_g(self): return os.path.join(self.path, self.dbkey) + '.edgelist'
-    @property
-    def path_db(self): return PATH_LLTK_DB_MATCHES
-    def db(self,*args,**kwargs): return DB(self.path_db)
-    @property
-    def g(self): return self.G
+    
+    
     @property
     def G(self): 
         if self._G is None: self.init()
         return self._G
+    g=G
+
+
+
+
+    @property
+    def pathd(self):
+        return dict(
+            root=self.path,
+            db=self.path,
+            triples=os.path.join(self.path, 'triples.txt'),
+            edgelist=os.path.join(self.path, 'edgelist.txt')
+        )
     
-
-
-
+    def db(self,*args,**kwargs): return DB(self.path_db)
     
-
+    
+    
     def cache(self,db=False,g=True):
         if db: self.cache_db()
-        if g: self.cache_g()
+        if g: self.cache_g_triples()
+
+    def init(self,force=False,g=True,db=False):
+        if force or self._G is None:
+            if log.verbose>1: log(f'...')
+            if g: self._G=self.init_g()
+            elif db: self._G=self.init_db()
+        if self._G is None: self._G=nx.MultiGraph()
 
     def cache_db(self,g=None):
         g=g if g else self.g
         if g is not None:
             if log.verbose>0: log(f'caching match db')
-            self.db().set(self.dbkey,g)
-        
-    def cache_g(self,g=None,data=True,**kwargs):
+            self.db().set(self.id,g)
+
+    def cache_g_edgelist(self,g=g,data=True,**kwargs):
         g=g if g else self.g
         if g is not None:
-            ensure_dir_exists(self.path_g,fn=True)
-            if os.path.exists(self.path_g): backup_fn(self.path_g)
             nx.write_edgelist(
                 g,
-                self.path_g,
+                self.path_edgelist,
                 data=data,
                 delimiter='\t',
                 **kwargs
             )
-            if log.verbose>0: log(f'cached edgelist to {self.path_g}')
+            if log.verbose>0: log(f'cached edgelist to {self.path_edgelist}')
     
+    def cache_g_triples(self,g=None,pref='lltk:'):
+        g=g if g else self.g
+        if g is not None and self.path_triples:
+            ensure_dir_exists(self.path_triples)
+            with open(self.path_triples,'w') as of:
+                for u,v,d in g.edges(data=True):
+                    if 'rel' in d:
+                        rel=d.pop('rel')
+                    else:
+                        rel=MATCHRELNAME
+
+                    # o=f'lltk:{str(u):<50} {str(rel):<12} lltk:{str(v):<50} {str(d):<12}\n'
+                    # o=f'{u}\t{rel}\t{v}\t{d if d else ""}'
+                    o=f'{pref}{u}\t{rel}\t{pref}{v}\t{d if d else ""}'
+                    of.write(o.strip() + '\n')
+                if log.verbose>0: log(f'cached graph to {self.path_triples}')
+
+    
+    
+    def init_g(self): return self.init_g_triples()            
+    def init_g_triples(self,pref='lltk:'):
+        if os.path.exists(self.path_triples):
+            with open(self.path_triples) as f:
+                g=nx.MultiGraph()
+                for ln in f:
+                    ln=ln.strip()
+                    if ln:
+                        try:
+                            lndat = ln.split('\t')
+                            if len(lndat)==3:
+                                u,rel,v = lndat
+                                d={}
+                            elif len(lndat)==4:
+                                u,rel,v,dstr = lndat
+                                d=json.loads(dstr) if dstr else {}
+                            else:
+                                continue
+                            ux,vx=u[len(pref):],v[len(pref):]
+                            edge = (ux,vx,rel)
+                            if self.add_edge_to_graph(edge, g=g):
+                                #g.add_edge(ux,vx,key=rel,rel=rel,**d)
+                                if log.verbose>1: log(f'{u} --{rel}--> {v}')
+                        except Exception as e:
+                            log.error(e)
+                
+                if log.verbose>0: log(f'read graph from {self.path_triples}')
+                return g
 
 
-    def init_g(self):
-        if os.path.exists(self.path_g):
+    def init_g_edgelist(self):
+        if os.path.exists(self.path_edgelist):
             g=nx.read_edgelist(
-                self.path_g,
+                self.path_edgelist,
                 delimiter='\t',
                 create_using=nx.MultiGraph
             )
+            # log(pf(list(g.edges(data=True))[:5]))
             if g is not None:
-                if log.verbose>0: log(f'initializing match graph from {self.path_g}')
-                self._G=g
+                if log.verbose>0: log(f'initializing match graph from {self.path_edgelist}')
                 return g
     
     def init_db(self):
-        G=self.db().get(self.dbkey)
+        G=self.db().get(self.id)
         if G is not None:
             if log.verbose>1: log(f'initializing match graph from db')
-            self._G=G
             return G
     
-    def init(self,force=False,g=True,db=False):
-        if force or self._G is None:
-            if log.verbose>1: log(f'...')
-            if g: self.init_g()
-            elif db: self.init_db()
-        if self._G is None: self._G=nx.MultiGraph()
-            
-    
-    
-    
-    
+
     
 
     def clear(self):
-        self.db().delete(self.dbkey)
+        self.db().delete(self.id)
         if log.verbose>0: log(f'removing: {self.path_g}')
         rmfn(self.path_g)
         self._G=nx.MultiGraph()
@@ -129,35 +192,29 @@ class MatcherModel(BaseModel,MutableMapping):
 
     def match(self, text, source, rel=MATCHRELNAME, force=False, cache=True, **edged):
         u,v = Text(text), Text(source)
-        if log.verbose>0: log(f'Match? {u} --> {v}')
-        if rel and u.id_is_valid() and v.id_is_valid():
+        if log.verbose>1: log(f'Match? {u} --{rel}--> {v} [cache={cache}, force={force}]')
+        if rel:# and u.id_is_valid() and v.id_is_valid():
             edge = (u.addr, v.addr, rel)
-            if log.verbose>0: log(f'Match? {edge}')
+            if log.verbose>2: log(f'In graph? {edge}')
             if self.add_edge_to_graph(edge, force=force, **edged):
-                if log.verbose>0: log(f'Matching: {u} --> {v}')
-            if cache: self.cache()
+                if log.verbose>1: log(f'Matching: {u} --> {v}')
+                if cache: self.cache()
+                return True
 
 
-    def add_edge_to_graph(self,edge,force=False,verbose=False,**edged):
-        g=self.G
+    def add_edge_to_graph(self,edge,g=None,force=False,verbose=False,**edged):
+        g=self.G if g is None else g
         u,v,rel=edge
-        did=False
         if u and v and rel:
             if not g.has_node(u): g.add_node(u,node_type='text',namespace='lltk')
             if not g.has_node(v): g.add_node(v,node_type='text',namespace='lltk')
-            if not g.has_edge(u,v):
-                g.add_edge(u,v,rel=rel)#,**edged)
-                if verbose: log(f'Adding to graph: {u} --> {v}')
-                did=True
-            # else:
-            #     #g.edges[(u,v)] = merge_dict(g.edges[(u,v)], edged)
-            #     for ek,ev in edged.items(): 
-            #         try:
-            #             g.edges[(u,v)][ek]=ev
-            #         except KeyError as e:
-            #             log.error(f'{u} --X?--> {v}')
-    
-        return did
+            if not g.has_edge(u,v,key=rel):
+                g.add_edge(u,v,key=rel,rel=rel)#,**edged)
+                if log.verbose>1: log(f'{u} --{rel}--> {v}')
+                return True
+            else:
+                return None
+        return False
 
     def remove_node(self,node,cache=True):
         if self.G.has_node(node):
@@ -170,6 +227,26 @@ class MatcherModel(BaseModel,MutableMapping):
         if cache: self.cache()
         
     
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     def find_matches(self,C1,C2=None,compare_by=DEFAULT_COMPAREBY,method_string='levenshtein',full=True,force=False,cache=True,**kwargs):
         # get corpora

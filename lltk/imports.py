@@ -20,7 +20,7 @@ PATH_DEFAULT_LLTK_HOME = os.path.join(HOME,'lltk_data')
 PATH_DEFAULT_CONF=os.path.abspath(os.path.join(PATH_DEFAULT_LLTK_HOME,'config_default.txt'))
 
 # Get tools
-LOG_TO_SCREEN = True
+LOG_TO_SCREEN = False
 LOG_TO_FILE = True
 
 BAD_PKL_KEYS=set()
@@ -40,9 +40,9 @@ PATH_LLTK_CODE_HOME = os.path.abspath(os.path.join(PATH_TO_CORPUS_CODE,'..','..'
 PATH_LLTK_HOME_DATA = PATH_LLTK_DATA = os.path.join(PATH_LLTK_HOME,'data')
 PATH_LLTK_DB = os.path.join(PATH_LLTK_DATA,'db')
 PATH_LLTK_DB_FN = os.path.join(PATH_LLTK_DB,'database')
-PATH_LLTK_DB_MATCHES = os.path.join(PATH_LLTK_DB,'matches')
-PATH_LLTK_MATCHES = os.path.join(PATH_LLTK_DATA,'matches')
-PATH_LLTK_DB_ENGINE = 'sqlite'
+PATH_LLTK_MATCHES = os.path.join(PATH_LLTK_DATA,'rels')
+PATH_LLTK_DB_MATCHES = os.path.join(PATH_LLTK_MATCHES, 'db')
+PATH_LLTK_DB_ENGINE = 'rdict'
 PATH_LLTK_ZODB = os.path.join(PATH_LLTK_DB,'zodb.fs')
 
 DEFAULT_PATH_TO_MANIFEST = os.path.join(PATH_LLTK_HOME,'manifest.txt')
@@ -101,9 +101,9 @@ ANNO_EXTS=['.anno.xlsx','.anno.xls','.anno.csv','.xlsx','.xls']
 EMPTY_GROUP='(all)'
 
 TMP_CORPUS_ID='tmp'
-PATH_LLTK_LOG_FN = os.path.join(PATH_LLTK_HOME, 'logs','debug.log')
+# PATH_LLTK_LOG_FN = os.path.join(PATH_LLTK_HOME, 'logs','debug_{time}.log')
 LOG_VERBOSE_TERMINAL=1  # 0-3
-LOG_VERBOSE_JUPYTER=0
+LOG_VERBOSE_JUPYTER=1
 
 
 MODERNIZE_SPELLING=False
@@ -295,6 +295,7 @@ import plotnine as p9
 import networkx as nx
 from yapmap import *
 from xopen import xopen
+from lmdbm import Lmdb
 
 
 ## Setup logger
@@ -320,6 +321,6 @@ from lltk.text.text import BaseText,Text
 from lltk.corpus.corpus import BaseCorpus,Corpus
 
 # models
-from lltk.model.matcher import Matcher,MatcherModel
-from lltk.model.preprocess import *
+from lltk.model.matcher import *
+from lltk.model.wikidata import *
 with log.hidden(): M = Matcher()

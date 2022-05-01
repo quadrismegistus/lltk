@@ -60,7 +60,7 @@ class BaseCorpus(BaseObject):
         self.name=_name
 
         if log.verbose>1: log(f'{self.__class__.__name__}({get_imsg(id,**attrs)})')
-        elif log.verbose>0: log(f'{self.__class__.__name__}(...)')
+        elif log.verbose>0: log(f'{self.__class__.__name__}({id})')
 
         # make sure we have a name and ID
         if self.id is None and self.ID: self.id=self.ID
@@ -151,6 +151,8 @@ class BaseCorpus(BaseObject):
         return res
     @property
     def path_data(self): return os.path.join(self.path,'data')
+    @property
+    def path_matches(self): return os.path.join(self.path_data,'rels')
 
 
 
@@ -303,9 +305,15 @@ class BaseCorpus(BaseObject):
     def matcher(self):
         if self._matcher is None:
             from lltk.model.matcher import Matcher
-            self._matcher=Matcher()
-            # self._matcher.init()
+            self._matcher=Matcher(self)
         return self._matcher
+    
+    @property
+    def matcher_global(self):
+        if self._matcher_global is None:
+            from lltk.model.matcher import Matcher
+            self._matcher_global=Matcher()
+        return self._matcher_global
 
 
     def match(self,corpus,**kwargs):
@@ -335,7 +343,7 @@ class BaseCorpus(BaseObject):
             _cache: bool = True,
             _force: bool = False,
             _new: bool = False,
-            _init: bool = True,
+            _init: bool = False,
             _verbose: int = 1,
             **_params_or_meta) -> BaseText:
         """
@@ -380,7 +388,8 @@ class BaseCorpus(BaseObject):
         """        
 
         # log incoming
-        if log.verbose>0: log(f'<- {get_imsg(id,None,_source,**_params_or_meta)}')
+        params,meta = to_params_meta(_params_or_meta)
+        if log.verbose>0:  log(f'<- {get_imsg(id,self,_source,**meta)}')
 
         # Init corpus?
         if _init: self.init()
@@ -388,12 +397,27 @@ class BaseCorpus(BaseObject):
         # Defaults
         tocache=False
         t = None
-        params,meta = to_params_meta(_params_or_meta)
 
         # Get ID immediately
         id1 = id
         # log(f'id <- {id}')
-        id = get_id_str(id,corpus=self,source=_source,**meta)
+        kwargs=merge_dict(meta,dict(corpus=self,source=_source))
+        #id = get_id_str(id,**kwargs)
+        ikwargs=merge_dict(
+            dict(
+                id=id1,
+                i=len(self._textd),
+                allow='_/.-:,=',
+                prefstr='T',
+                numzero=5,
+                use_meta=True,
+                force_meta=True,
+            ),
+            meta
+        )
+
+        id=get_idx(**ikwargs)
+        if log.verbose>1: log(f'id = {id}')
         
         newsep='_'
         while _new and id in self._textd:
@@ -419,7 +443,7 @@ class BaseCorpus(BaseObject):
             tocache = True
         
         elif meta and is_text_obj(t):
-            # log(pf(f'Updating text metadata:',meta))
+            if log.verbose>0: log(pf(f'Updating text metadata:',meta))
             t.update(meta,_cache=False)
             tocache = True
         
@@ -468,7 +492,8 @@ class BaseCorpus(BaseObject):
     
     def init_text(self,id=None,_source=None,_cache=False,_use_db=True,**kwargs):
         # log('...')
-        if log.verbose>0: log(f'<- {get_imsg(id,None,_source,**kwargs)}')
+        params,meta = to_params_meta(kwargs)
+        if log.verbose>0:  log(f'<- {get_imsg(id,self,_source,**meta)}')
 
         if is_text_obj(_source): 
             if log.verbose>1: log(f'Source is text: {_source}')
@@ -485,10 +510,10 @@ class BaseCorpus(BaseObject):
             ## get source?
             id_corpus,id_text = to_corpus_and_id(id)
             if id_corpus and id_corpus!=self.id:
-                if log.verbose>1: log(f'_source = {id}')
-                if log.verbose>1: log(f'_source = Corpus( {id_corpus} ).text( {id_text} ) ...')
+                if log.verbose>0: log(f'hidden source -> {id}')
+                if log.verbose>1: log(f'source = Corpus( {id_corpus} ).text( {id_text} ) ...')
                 _source = Corpus(id_corpus).text(id_text)
-                if log.verbose>1: log(f'_source = {_source}')
+                if log.verbose>0: log(f'hidden source <- {_source}')
         else:
             id = get_idx(i=len(self._textd), **kwargs)
             if log.verbose>1: log(f'id auto set to {id}')
@@ -535,7 +560,8 @@ class BaseCorpus(BaseObject):
         self.init()
         return self._textd
         
-    def texts(self,*args,**kwargs): return self.iter_texts(*args,**kwargs) #list(self.iter_texts(*args,**kwargs))
+    def texts(self,*args,**kwargs):
+        return self.iter_texts(*args,**kwargs)
     def itexts(self,*x,**y): return self.iter_texts(*x,**y)
 
     def iter_texts(self,texts=None,progress=False,shuffle=False,lim=None,verbose=False,**kwargs):
@@ -544,8 +570,14 @@ class BaseCorpus(BaseObject):
         if texts: o=list(map(Text, texts))
         if shuffle: random.shuffle(o)
         if lim: o=o[:lim]
-        if progress: o=get_tqdm(o,desc=f'[{self.name}] Iterating texts')
-        yield from o
+        if progress:
+            iterr=get_tqdm(o,desc=f'[{self.name}] Iterating texts')
+        else:
+            iterr=o
+        for t in iterr:
+            # if progress: iterr.set_description(f'[{self.name}] Iterating texts: {t.id}')
+            if progress: iterr.set_description(f'{t}')
+            yield t
     
     def corpus_texts(self,*args,**kwargs): yield from self.texts(*args,**kwargs)
     
@@ -674,8 +706,8 @@ class BaseCorpus(BaseObject):
             progress=True,
             lim=None,
             fillna='',
-            from_cache=False,
-            from_sources=False,
+            from_cache=True,
+            from_sources=True,
             cache=False,
             remote=False,
             sep='__',
@@ -708,6 +740,9 @@ class BaseCorpus(BaseObject):
             self._metadfd[key]=new_metadf
             if self._metadf is None: self._metadf=new_metadf
             # self.save_metadata(ometa=mdf,force=force_save)
+            # close dbs?
+            close_dbs()
+
         return self._metadfd.get(key,pd.DataFrame())
 
     def save_metadata(self,ometa=None,*x,force=True,force_inner=False,ok_cols=set(),backup=True,**kwargs):
@@ -748,8 +783,12 @@ class BaseCorpus(BaseObject):
 
 
 
-
-
+    def get_text_cache(self,id,**kwargs):
+        return self.get_text_cache_json(id,**kwargs)
+    def get_text_cache_json(self,id,meta_fn='meta.json'):
+        fn=os.path.join(self.path_texts,id,meta_fn)
+        return read_json(fn)
+        
 
 
 
@@ -770,19 +809,6 @@ class BaseCorpus(BaseObject):
         return list(self.iter_sources(**kwargs))
 
 
-        
-    ## WIKIDATA    
-    def wikidata(self,**kwargs): return list(self.iter_wikidata(**kwargs))    
-    def iter_wikidata(self,texts=[],force=True,**kwargs):
-        for t in self.corpus_texts(texts=texts,**kwargs):
-            tw=t.wikidata(force=force,**kwargs)
-            yield tw
-            
-
-
-    
-    
-
 
 
 
@@ -802,7 +828,7 @@ class BaseCorpus(BaseObject):
     #     if not self._texts: return
     #     paths = [(t.path_xml,t.path_txt) for t in self.texts() if t.path_xml and os.path.exists(t.path_xml)]
     #     if not paths:
-    #         if verbose: self.log('No XML files to produce plain text files from')
+    #         if log.verbose>0: self.log('No XML files to produce plain text files from')
     #         return
     #     objs = [
     #         (pxml,ptxt,self.XML2TXT.__func__)
@@ -810,7 +836,7 @@ class BaseCorpus(BaseObject):
     #         if force or not os.path.exists(ptxt)
     #     ]
     #     if not objs:
-    #         if verbose: self.log('Plain text files already saved')
+    #         if log.verbose>0: self.log('Plain text files already saved')
     #         return
     #     tools.pmap(
     #         do_preprocess_txt,
@@ -827,7 +853,7 @@ class BaseCorpus(BaseObject):
     #         if os.path.exists(t.path_txt) and (force or not os.path.exists(t.path_freqs))
     #     ]
     #     if not objs:
-    #         if verbose:
+    #         if log.verbose>0:
     #             self.log('Word freqs already saved')
     #         return
     #     # print('parallel',parallel)
@@ -1411,8 +1437,8 @@ class BaseCorpus(BaseObject):
         }
         odf=None
         if not force and os.path.exists(keyfn):
-            # if verbose: self.log(f'MFW is cached for key {key}')
-            if verbose: self.log(f'Loading MFW from {ppath(keyfn)}')
+            # if log.verbose>0: self.log(f'MFW is cached for key {key}')
+            if log.verbose>0: self.log(f'Loading MFW from {ppath(keyfn)}')
             odf=read_df(keyfn)
             self._mfwd[key]=odf
             return odf
@@ -1423,7 +1449,7 @@ class BaseCorpus(BaseObject):
             textdf[col_group+'_int']=textdf[col_group].apply(lambda y: int(y[:4]))
             
             if not len(textdf.path_freqs):
-                if verbose: self.log('No freqs files found to generate MFW')
+                if log.verbose>0: self.log('No freqs files found to generate MFW')
                 if try_create_freqs:
                     self.preprocess_freqs()
                     return self.preprocess_mfw(
@@ -1463,7 +1489,7 @@ class BaseCorpus(BaseObject):
             odf=do_gen_mfw_grp(pathdf,progress=progress,num_proc=num_proc)
 
         if odf is not None:
-            if verbose: self.log(f'Saving MFW to {ppath(keyfn)}')
+            if log.verbose>0: self.log(f'Saving MFW to {ppath(keyfn)}')
             save_df(odf, keyfn, verbose=False)
 
         self._mfwd[key]=odf
@@ -1507,11 +1533,11 @@ class BaseCorpus(BaseObject):
         keyfn=os.path.join(self.path_dtm,wordkey+'.pkl')
         if not force:
             if os.path.exists(keyfn):
-                # if verbose: self.log(f'DTM already saved for key {key}')
-                if verbose: self.log(f'Loading DTM from {ppath(keyfn)}')
+                # if log.verbose>0: self.log(f'DTM already saved for key {key}')
+                if log.verbose>0: self.log(f'Loading DTM from {ppath(keyfn)}')
                 df=read_df(keyfn)
                 self._dtmd[wordkey]=df
-                if verbose: self.log(f'Returning DTM from {ppath(keyfn)}')
+                if log.verbose>0: self.log(f'Returning DTM from {ppath(keyfn)}')
                 return df
 
         # get
@@ -1527,7 +1553,7 @@ class BaseCorpus(BaseObject):
         ]
 
         if not objs:
-            if verbose: self.log(f'No frequency files found to generate DTM. Run preprocess_freqs()?')
+            if log.verbose>0: self.log(f'No frequency files found to generate DTM. Run preprocess_freqs()?')
             return
 
         ld = pmap(
@@ -1544,7 +1570,7 @@ class BaseCorpus(BaseObject):
 
         # df.to_csv(self.path_dtm)
         # df.reset_index().to_feather(self.path_dtm)
-        if verbose: self.log(f'Saving DTM to {ppath(keyfn)}')
+        if log.verbose>0: self.log(f'Saving DTM to {ppath(keyfn)}')
         save_df(dtm.reset_index(), keyfn, verbose=False)
         self._dtmd[wordkey]=dtm
         return dtm
@@ -1793,7 +1819,7 @@ class SectionCorpus(BaseCorpus):
 
 CORPUS_CACHE={}
 
-def Corpus(corpus=None,force=False,init=True,clear=False,**kwargs):
+def Corpus(corpus=None,force=False,init=False,clear=False,**kwargs):
     global CORPUS_CACHE
     
     C = None

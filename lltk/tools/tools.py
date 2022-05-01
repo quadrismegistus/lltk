@@ -1,5 +1,15 @@
 from lltk.imports import *
 
+def safeget(x,k):
+    try:
+        return x.get(k)
+    except Exception:    
+        try:
+            return x[k]
+        except Exception:
+            pass
+    
+
 def get_ideal_cpu_count():
     mp_cpu_count=mp.cpu_count()
     DEFAULT_NUM_PROC = mp_cpu_count - 2
@@ -157,24 +167,25 @@ def write_json(obj, path, indent=4):
     try:
         import orjson
         with open(path,'wb') as f:
-            return f.write(
+            f.write(
                 orjson.dumps(
                     obj,
                     option=orjson.OPT_INDENT_2
                 )
             )
+            return True
     except Exception as e:
         log.error(e)
         try:
             import ujson
-            with open(path,'w') as f:
-                return ujson.dump(obj, f, indent=indent)
+            with open(path,'w') as f: ujson.dump(obj, f, indent=indent)
+            return True
         except Exception as e:
             log.error(e)
             try:
                 import json as jsonog
-                with open(path,'w') as f:
-                    return jsonog.dump(obj, f, indent=indent)
+                with open(path,'w') as f: jsonog.dump(obj, f, indent=indent)
+                return True
             except Exception as e:
                 log.error(e)
                 pass
@@ -655,7 +666,7 @@ def save_df(df,ofn,move_prev=False,index=None,key='',log=print,verbose=False,**k
         # try again as csv?
         ofn=os.path.splitext(ofn)[0]+'.csv'
         df.to_csv(ofn)
-    if verbose: print('Saved:',ofn)
+    if log.verbose>0: print('Saved:',ofn)
 
 
 def read_df(ifn,key='',fmt='',on_bad_lines='skip',**attrs):
@@ -684,6 +695,7 @@ def read_df(ifn,key='',fmt='',on_bad_lines='skip',**attrs):
         else:
             raise Exception(f'[save_df()] What kind of df is this: {ifn}')
     except Exception as e:
+        from lltk import log
         if log.verbose>0: log(f'Error: {e}')
         pass
     
@@ -2104,7 +2116,7 @@ def download_file_tqdm(url, filename=False, verbose = False, desc=None):
     chunk = 1
     chunk_size=1024
     num_bars = int(file_size) // chunk_size if file_size else None
-    if verbose:
+    if verbose>0:
         print(dict(file_size=file_size))
         print(dict(num_bars=num_bars))
 

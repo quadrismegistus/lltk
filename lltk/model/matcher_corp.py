@@ -85,7 +85,7 @@ class MatcherModel(BaseModel,MutableMapping):
             for estr in db.keys():
                 edged = db.get(estr)
                 u,v,rel=edge=tuple(estr.split('||'))
-                if verbose: log(f'{u} -> {v}')
+                if log.verbose>0: log(f'{u} -> {v}')
                 self.add_edge_to_graph(edge,force=force,**edged)
 
 
@@ -176,7 +176,7 @@ class MatcherModel(BaseModel,MutableMapping):
                 if not g.has_node(v): g.add_node(v,node_type='text',namespace='lltk')
                 if not g.has_edge(u,v):
                     g.add_edge(u,v,rel=rel,**edged)
-                    if verbose: log(f'[{self.id}] Adding to graph: {u} --> {v}')
+                    if log.verbose>0: log(f'[{self.id}] Adding to graph: {u} --> {v}')
                     self._done|={edge}
                     return True
                 else:
