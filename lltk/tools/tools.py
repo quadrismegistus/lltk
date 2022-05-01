@@ -17,7 +17,7 @@ def get_ideal_cpu_count():
     if mp_cpu_count==2: DEFAULT_NUM_PROC=2
     if mp_cpu_count==3: DEFAULT_NUM_PROC=2
     from lltk.imports import log
-    if log.verbose>0: log(f'ideal cpu count = {DEFAULT_NUM_PROC}')
+    if log>0: log(f'ideal cpu count = {DEFAULT_NUM_PROC}')
     return DEFAULT_NUM_PROC
 
 def fixpath(path):
@@ -27,6 +27,15 @@ def fixpath(path):
             path=os.path.join(os.path.expanduser('~'), path[1:])
         path=os.path.abspath(path)
     return path
+
+def gethtml(safeurl,timeout=10):
+    import requests
+    try:
+        with requests.Session() as s:
+            return s.get(safeurl,timeout=timeout).text
+    except Exception as e:
+        if 'log' in globals() and log.verbose>0: log.error(e)
+    return ''
 
 def unrelfile(path):
     if type(path)==str and path and not os.path.isabs(path):
@@ -60,15 +69,15 @@ def is_cacheworthy(new,old,**kwargs):
     from lltk.imports import log
 
     if old is None:
-        if log.verbose>0: log(f'new cache')
+        if log>0: log(f'new cache')
         return True
     else:
         ddiff = diffdict(old,new,**kwargs)
         if ddiff:
-            if log.verbose>0: log(pf(f'cache updated',ddiff))
+            if log>0: log(pf(f'cache updated',ddiff))
             return True
         else:
-            if log.verbose>0: log(pf(f'cache unchanged'))
+            if log>0: log(pf(f'cache unchanged'))
             return False
 
 def force_int(x):
@@ -666,7 +675,7 @@ def save_df(df,ofn,move_prev=False,index=None,key='',log=print,verbose=False,**k
         # try again as csv?
         ofn=os.path.splitext(ofn)[0]+'.csv'
         df.to_csv(ofn)
-    if log.verbose>0: print('Saved:',ofn)
+    if log>0: print('Saved:',ofn)
 
 
 def read_df(ifn,key='',fmt='',on_bad_lines='skip',**attrs):
@@ -696,7 +705,7 @@ def read_df(ifn,key='',fmt='',on_bad_lines='skip',**attrs):
             raise Exception(f'[save_df()] What kind of df is this: {ifn}')
     except Exception as e:
         from lltk import log
-        if log.verbose>0: log(f'Error: {e}')
+        if log>0: log(f'Error: {e}')
         pass
     
     return pd.DataFrame()

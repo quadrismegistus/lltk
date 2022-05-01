@@ -476,7 +476,7 @@ def parse_booknlp(
     
     ## path to parse even exist?
     if not os.path.exists(path_txt):
-        if log.verbose>0: log(f'File does not exist: {path_txt}')
+        if log>0: log(f'File does not exist: {path_txt}')
         return
     
     # get path

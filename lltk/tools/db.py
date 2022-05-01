@@ -74,7 +74,7 @@ class LLDBBase():
 
     def delete(self,k,**kwargs):
         from lltk import log
-        if log.verbose>0: log(f'removing {k} from db')
+        if log>0: log(f'removing {k} from db')
         with self as db:
             if k in db:
                 del db[k]
@@ -84,7 +84,7 @@ class LLDBBase():
         from lltk.tools import rmfn
         if os.path.exists(self.path):
             from lltk import log
-            if log.verbose>0: log(f'removing: {self.path}')
+            if log>0: log(f'removing: {self.path}')
             rmfn(self.path)
 
     def copy_from(self,db):

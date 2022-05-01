@@ -36,13 +36,13 @@ class BaseText(BaseObject):
         self.corpus=corpus=Corpus(_corpus)
 
         params,meta = to_params_meta(kwargs)
-        if log.verbose>0:  log(f'<- {get_imsg(id,_corpus,_source,**meta)}')
+        if log>0:  log(f'<- {get_imsg(id,_corpus,_source,**meta)}')
         
         if id is None and _source is not None: id=_source.addr
         if id is None and len(_sources): id=list(_sources)[0].addr
         self.id=id=get_idx(**merge_dict( dict(id=id,i=len(self.corpus._textd)+1), meta ))
 
-        if log.verbose>0: log(f'{self.__class__.__name__}({get_imsg(id,_corpus,_source,**meta)})')
+        if log>0: log(f'{self.__class__.__name__}({get_imsg(id,_corpus,_source,**meta)})')
         
         self._section_corpus=_section_corpus
         self._sections={}
@@ -127,7 +127,7 @@ class BaseText(BaseObject):
             keys.sort(key=lambda k: get_rank(k))
             keyname=keys[0]
 
-            if log.verbose>0: log.warning(f'more than one metadata key begins with "{key}": {", ".join(keys)}. Using key: "{keyname}".')
+            if log>0: log.warning(f'more than one metadata key begins with "{key}": {", ".join(keys)}. Using key: "{keyname}".')
         
         res = meta.get(keyname)
 
@@ -153,7 +153,7 @@ class BaseText(BaseObject):
         newmeta=self.ensure_id(meta)
         ddiff=diffdict(self._meta, newmeta)
         if ddiff:
-            if log.verbose>0: log(pf('Metadata updated:',ddiff))
+            if log>0: log(pf('Metadata updated:',ddiff))
             self._meta = newmeta
             if cache: self.cache()
     
@@ -161,7 +161,7 @@ class BaseText(BaseObject):
     
     def cache(self, json=True,db=False,*x, **y):
         meta={k:v for k,v in self._meta.items() if k and not '__' in k and v}
-        if log.verbose>0: log(self)
+        if log>0: log(self)
         if db: self.cache_db(meta=meta)
         if json: self.cache_json(meta=meta)
 
@@ -180,7 +180,7 @@ class BaseText(BaseObject):
             old=db[tid]
             if is_cacheworthy(new,old):
                 db[tid]=new
-                if log.verbose>0: log(f'cached text meta in db under key "{self.id}"')
+                if log>0: log(f'cached text meta in db under key "{self.id}"')
     
     def cache_json(self,meta=None):
         # tid,new=self.id,(self._meta if not meta else meta)
@@ -191,7 +191,7 @@ class BaseText(BaseObject):
             self._meta if not meta else meta,
             self.path_meta_json
         )   
-        if log.verbose>0: log(f'cached text meta in json: {self.path_meta_json}')
+        if log>0: log(f'cached text meta in json: {self.path_meta_json}')
 
 
     def init_cache_db(self,*x,**y):
@@ -207,7 +207,7 @@ class BaseText(BaseObject):
     #         )
     #         ddiff = diffdict(self._meta,newmeta)
     #         if ddiff:
-    #             if log.verbose>0: log(pf(f'changes loaded from cache:',ddiff))
+    #             if log>0: log(pf(f'changes loaded from cache:',ddiff))
     #             self._meta = self.ensure_id(newmeta)
     #     return self._meta
 
@@ -314,6 +314,9 @@ class BaseText(BaseObject):
     @property
     def meta(self): return self.metadata()
 
+    @property
+    def _meta_(self): return {k:v for k,v in self._meta.items() if not '__' in k}
+
 
     def id_is_valid(self,*x,**y): return True
     def meta_is_valid(self,*x,**y): return True
@@ -343,9 +346,9 @@ class BaseText(BaseObject):
     
     def add_source(self,source,viceversa=True,yn='',**kwargs):
         match=self.match(source,yn=yn,**kwargs)
-        if log.verbose>0: log(f'found match: {match}')
+        if log>0: log(f'found match: {match}')
         if viceversa:
-            if log.verbose>0: log('adding source vice versa')
+            if log>0: log('adding source vice versa')
             source.add_source(self,viceversa=False,yn=yn,**kwargs)
         return match
     
@@ -383,14 +386,14 @@ class BaseText(BaseObject):
 
 
     def get_local_sources(self,sofar=None,recursive=False,verbose=1,**kwargs):
-        if log.verbose>1: self.log(f'get_sources(sofar = {sofar}, recursive = {recursive}, **kwargs')
+        if log>1: self.log(f'get_sources(sofar = {sofar}, recursive = {recursive}, **kwargs')
         sofar = set() if not sofar else set([x for x in sofar])
 
         matches = set(self.get_matches(**kwargs)) - {self}
         if matches and verbose>1: self.log('Matches:',matches)
 
         _sources = set(self._sources) - {self}
-        if log.verbose>1: self.log('My _sources:',_sources)
+        if log>1: self.log('My _sources:',_sources)
 
         # missing match?
         for src in (_sources - matches): self.match(src,cache=False)
@@ -400,7 +403,7 @@ class BaseText(BaseObject):
 
         for src in newsrcs:
             if src not in sofar:
-                if log.verbose>0: self.log(f'found source: {src}')
+                if log>0: self.log(f'found source: {src}')
                 sofar|={src}
         
         return sofar - {self}
@@ -434,7 +437,7 @@ class BaseText(BaseObject):
         ometa={}
         if from_cache: 
             self.init_cache()
-            if log.verbose>1: log(f'loaded from cache: {self._meta}')
+            if log>1: log(f'loaded from cache: {self._meta}')
         
         ometa=merge_dict(TEXT_META_DEFAULT, self.META, ometa, self._meta, meta)
         ometa={k:v for k,v in ometa.items() if k not in {'_source'}}
@@ -450,10 +453,13 @@ class BaseText(BaseObject):
         ometa = {k:v for k,v in ometa.items() if k.count(sep)<=1}
         if from_sources:
             sources_present = {x.split(sep)[-1] for x in ometa if sep in x}
-            if log.verbose>1: log(f'sources_present = {sources_present}')
+            if log>1: log(f'sources_present = {sources_present}')
             for src in self.get_sources(remote=remote,cache=False,**kwargs):
                 if src in sources_present: continue
-                if log.verbose>0: log(f'adding metadata from source: {src}')
+                if src.corpus.id == self.corpus.id: continue
+                if src.corpus.id == TMP_CORPUS_ID: continue
+                
+                if log>0: log(f'adding metadata from source: {src}')
                 # if not wikidata and src.corpus.id=='wikidata': continue
                 sd = src.metadata(
                     from_sources=False,
@@ -496,7 +502,7 @@ class BaseText(BaseObject):
 
     def init(self,force=False,**kwargs):
         if force or not self._init:
-            if log.verbose>1: log(f'Init metadata: {self}')
+            if log>1: log(f'Init metadata: {self}')
             self.metadata(**kwargs)
             # self.get_sources()
             self._init=True
@@ -661,6 +667,10 @@ class BaseText(BaseObject):
     @property
     def qstr(self):
         return clean_text(f'{self.shorttitle} {self.au}')
+    @property
+    def qstr_plus(self):
+        from urllib.parse import quote_plus
+        return quote_plus(self.qstr)
     
     @property
     def shortauthor(self):
@@ -912,7 +922,7 @@ def Text(
     global TEXT_CACHE
     if is_text_obj(text) and not _corpus: return text
     params,meta = to_params_meta(_params_or_meta)
-    if log.verbose>0: log(f'<- {get_imsg(text,_corpus,_source,**meta)}')
+    if log>0: log(f'<- {get_imsg(text,_corpus,_source,**meta)}')
     if _new: _force=True
     
     taddr = get_addr_str(
@@ -922,19 +932,19 @@ def Text(
         **_params_or_meta
     )
     if not taddr: raise CorpusTextException(f"cannot get address for {(text,_corpus)}")
-    if log.verbose>0: log(f'<- addr = {taddr}')
+    if log>0: log(f'<- addr = {taddr}')
 
     # set kwargs
     tcorp,tid = to_corpus_and_id(taddr)
     if 'id' in _params_or_meta: del _params_or_meta['id']
 
     if not _force and is_text_obj(TEXT_CACHE.get(taddr)) and TEXT_CACHE[taddr].is_valid():
-        if log.verbose>1: log('found in `TEXT_CACHE`')
+        if log>1: log('found in `TEXT_CACHE`')
         t = TEXT_CACHE[taddr]
         if t and meta: t.update(meta)
 
     elif tcorp and tid:
-        if log.verbose>1: log(f'Corpus( {tcorp} ).text( {tid} ) ->')
+        if log>1: log(f'Corpus( {tcorp} ).text( {tid} ) ->')
         from lltk.corpus.corpus import Corpus
         t = Corpus(tcorp).text(
             id=tid,
@@ -949,7 +959,7 @@ def Text(
     
     # caching
     if is_text_obj(t): TEXT_CACHE[t.addr] = t
-    if log.verbose>0: log(f'-> {t}' if is_text_obj(t) else "?")
+    if log>0: log(f'-> {t}' if is_text_obj(t) else "?")
     
     return t
 

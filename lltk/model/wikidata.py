@@ -30,7 +30,7 @@ class EntityWikidata(BaseText):
 
     def query(self,force=False,**kwargs):
         if self.id_is_valid() and not self.meta_is_valid():
-            if log.verbose>0: log(f'QUERYING: {self.id}')
+            if log>0: log(f'QUERYING: {self.id}')
             return query_get_wikidata(self.id,**kwargs)
         return {}
 
@@ -75,7 +75,7 @@ def get_wikidata_id_from_sources(text,null_qid=NULL_QID):
 def get_all_sources_recursive(text,sofar=set(),**kwargs):
     sources = text.get_sources(**kwargs)
     for src in text.sources:
-        if log.verbose>0: log(f'{text} --?--> {src}')
+        if log>0: log(f'{text} --?--> {src}')
         sofar|=get_all_sources_recursive(src,sofar=sofar|{text,src})
     sofar|={text} | set(sources)
     return sofar
@@ -90,11 +90,11 @@ def get_wiki_text_from_sources(sources,verbose=2,force=False,**kwargs):
     for t in sources:
         if is_wiki_text_obj(t):
             if t.id_is_valid():
-                if log.verbose>1: log('Returning valid wikidata textobj from sources')
+                if log>1: log('Returning valid wikidata textobj from sources')
                 return t
             
             if not force:
-                if log.verbose>1: log('Will not force a retry')
+                if log>1: log('Will not force a retry')
                 return t
 
 def is_wiki_text_obj(x): return is_text_obj(x) and x.corpus.id=='wikidata'
@@ -111,16 +111,16 @@ def query_get_wikidata_id(
         **kwargs):
     if not qstr: qstr=wikidata_query_str(text)
     if not qstr or qstr=='None, None': return
-    if log.verbose>0: log(f'Querying for ID: '+qstr)
+    if log>0: log(f'Querying for ID: '+qstr)
     
     for qi,qidx in enumerate(query_iter_wikidata_id(qstr)):
         if qi>=lim: return null
         qid_meta = {k:v for k,v in Corpus('wikidata').get_text_cache_json(qidx).items() if not '__' in k and k!='id'}
         if qid_meta: 
-            if log.verbose>0: log(f'qid_meta from db: {len(qid_meta)} keys')
+            if log>0: log(f'qid_meta from db: {len(qid_meta)} keys')
         else:
             qid_meta = query_get_wikidata(qidx)
-            if log.verbose>0: log(f'qid_meta from query: {len(qid_meta)} keys')
+            if log>0: log(f'qid_meta from query: {len(qid_meta)} keys')
         
         qid_meta[COL_ID] = qidx
         try:
@@ -152,7 +152,7 @@ def query_get_db(qstr):
 def query_set_db(qstr,res):
     # if write_json(res, get_query_db_fn()):
     if query_db().set(qstr,res):
-        if log.verbose>0: log(f'set result in db for "{qstr}": {pf(res)}')
+        if log>0: log(f'set result in db for "{qstr}": {pf(res)}')
         return True
 
 
@@ -163,15 +163,7 @@ def query_get_html(qstr,timeout=10,**kwargs):
     
     sstr=quote_plus(clean_text(qstr))
     safeurl=f'https://www.wikidata.org/w/index.php?search={sstr}&ns0=1&ns120=1'
-    html=''
-    try:
-        # log(f'Querying: {safeurl}')
-        with requests.Session() as s:
-            html = s.get(safeurl,timeout=timeout).text
-            # log(f'Length of content received: {len(html)}, {type(html)}')
-    except ConnectTimeout as e:
-        log.error(e)
-    
+    html=gethtml(safeurl,timeout=timeout)
     return html
 
 
@@ -197,7 +189,7 @@ def query_iter_wikidata_id(qstr,timeout=10,**kwargs):
 
 def query_get_wikidata(qid,verbose=False,**kwargs):
     try:
-        if log.verbose>0: log(f'Querying for data: {qid}')
+        if log>0: log(f'Querying for data: {qid}')
         import wptools
         page = wptools.page(wikibase=qid, silent=not verbose)
         wpage = page.get_wikidata()
@@ -375,7 +367,7 @@ def wikidata(self,sources=None,force=False,force_inner=None,**kwargs):
     #     self._wikidata=Text(self._wikidata)
 
     if force or not is_wiki_text_obj(self._wikidata):
-        if log.verbose>0: log('...')
+        if log>0: log('...')
         from lltk.corpus.wikidata import TextWikidata
         self._wikidata = TextWikidata(
             self,
@@ -388,7 +380,7 @@ def wikidata(self,sources=None,force=False,force_inner=None,**kwargs):
 
 
 def get_remote_sources(self,sources=None,wikidata=True,**kwargs):
-    if log.verbose>0: log('...')
+    if log>0: log('...')
     sofar=set()
     if wikidata:
         wiki=self.wikidata(sources,**kwargs)

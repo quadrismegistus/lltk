@@ -1,2 +1,2 @@
 from .imports import *
-if log.verbose>0: log('ready')
+if log>0: log('ready')

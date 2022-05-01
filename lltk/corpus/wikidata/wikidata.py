@@ -24,7 +24,7 @@ def TextWikidata(text,_sources=None,force=False,cache=True,verbose=2,remote=True
         #qmeta['id']=qid
         #twiki = TextWikidataClass(**qmeta) if is_valid_qid(qid) else NullTextWikidata()f
         qtext = Text(qid, 'wikidata', **qmeta)
-        if log.verbose>0: log(f'Generated wiki text: {qtext}')
+        if log>0: log(f'Generated wiki text: {qtext}')
     
     if is_wiki_text_obj(qtext):
         if qtext.id_is_valid(): text.add_source(qtext,cache=True,viceversa=True,**kwargs)

@@ -692,7 +692,7 @@ def get_all_sources_recursive(text,sofar=set(),**kwargs):
     sources = text._sources #get_sources(**kwargs)
     for src in sources:
         if src in sofar: continue
-        if log.verbose>0: log(f'{text} --?--> {src}')
+        if log>0: log(f'{text} --?--> {src}')
         sofar|=get_all_sources_recursive(src,sofar=sofar|{text,src})
     sofar|={text} | set(sources)
     return sofar
@@ -702,24 +702,24 @@ def load_corpus(id,manifestd={},load_meta=False,force=False,install_if_nec=True,
     from lltk.imports import log
     if not manifestd: manifestd=load_corpus_manifest(id,make_path_abs=True)
     # plog('>> loading:',name_or_id,manifestd)
-    if log.verbose>0: log(f'<- id = {id}')
+    if log>0: log(f'<- id = {id}')
     id,path_python,class_name=(
         manifestd.get('id'),
         manifestd.get('path_python'),
         manifestd.get('class_name')
     )
     if not path_python or not os.path.exists(path_python): 
-        if log.verbose>0: log(f'-> ?')
+        if log>0: log(f'-> ?')
         return
 
     inpd = merge_dict(manifestd, input_kwargs)
-    if log.verbose>0: log(f'Importing corpus class "{class_name}" from {path_python}')
+    if log>0: log(f'Importing corpus class "{class_name}" from {path_python}')
     
     try:
         module = imp.load_source(id,path_python)
         class_class = getattr(module,class_name)
         C = class_class(**inpd)
-        if log.verbose>0: log(f'-> {C}')
+        if log>0: log(f'-> {C}')
         return C
     # except Exception as e:
     except AssertionError:

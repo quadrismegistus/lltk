@@ -24,7 +24,7 @@ def preprocess_txt(
     ][:lim]
     if preview: return objs
     if not objs:
-        if log.verbose>0: log.error('No XML files to produce plain text files from')
+        if log>0: log.error('No XML files to produce plain text files from')
     else:
         pmap(
             do_preprocess_txt,
@@ -48,7 +48,7 @@ def do_preprocess_txt(obj):
     
     with open(ofnfn,'w',encoding='utf-8',errors='ignore') as f:
         f.write(otxt)
-        if log.verbose>1: log(f'>> saved: {ofnfn}')
+        if log>1: log(f'>> saved: {ofnfn}')
 
 
 
@@ -78,7 +78,7 @@ def preprocess_freqs(
     ][:lim]
     if preview: return objs
     if not objs:
-        if log.verbose>0: log('Word freqs already saved')
+        if log>0: log('Word freqs already saved')
     else:
         pmap(
             save_freqs_json,

@@ -161,7 +161,7 @@ class ZDB(object):
         with self.db.transaction() as conn:
             root=conn.root()
             root[key]=value
-            if log.verbose>0: log(f'DB["{key}"] = {value}')
+            if log>0: log(f'DB["{key}"] = {value}')
         # with ZConnection(self.db) as (conn,root):
             oldvalue = root.get(key)
             #if value != oldvalue:

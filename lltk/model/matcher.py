@@ -11,9 +11,9 @@ def Matcher(id=DEFAULT_MATCHER_ID,force=False,**kwargs):
     global MATCHERMODELD
     idx=id.id if is_corpus_obj(id) else id
     if force or type(MATCHERMODELD.get(idx)) != MatcherModel:
-        if log.verbose>0: log(f'<- {idx}')
+        if log>0: log(f'<- {idx}')
         MATCHERMODELD[idx] = m = MatcherModel(id,**kwargs)
-        if log.verbose>0: log(f'-> {m}')
+        if log>0: log(f'-> {m}')
     return MATCHERMODELD[idx]
 
 
@@ -88,7 +88,7 @@ class MatcherModel(BaseModel,MutableMapping):
 
     def init(self,force=False,g=True,db=False):
         if force or self._G is None:
-            if log.verbose>1: log(f'...')
+            if log>1: log(f'...')
             if g: self._G=self.init_g()
             elif db: self._G=self.init_db()
         if self._G is None: self._G=nx.MultiGraph()
@@ -96,7 +96,7 @@ class MatcherModel(BaseModel,MutableMapping):
     def cache_db(self,g=None):
         g=g if g else self.g
         if g is not None:
-            if log.verbose>0: log(f'caching match db')
+            if log>0: log(f'caching match db')
             self.db().set(self.id,g)
 
     def cache_g_edgelist(self,g=g,data=True,**kwargs):
@@ -109,7 +109,7 @@ class MatcherModel(BaseModel,MutableMapping):
                 delimiter='\t',
                 **kwargs
             )
-            if log.verbose>0: log(f'cached edgelist to {self.path_edgelist}')
+            if log>0: log(f'cached edgelist to {self.path_edgelist}')
     
     def cache_g_triples(self,g=None,pref='lltk:'):
         g=g if g else self.g
@@ -126,7 +126,7 @@ class MatcherModel(BaseModel,MutableMapping):
                     # o=f'{u}\t{rel}\t{v}\t{d if d else ""}'
                     o=f'{pref}{u}\t{rel}\t{pref}{v}\t{d if d else ""}'
                     of.write(o.strip() + '\n')
-                if log.verbose>0: log(f'cached graph to {self.path_triples}')
+                if log>0: log(f'cached graph to {self.path_triples}')
 
     
     
@@ -152,11 +152,11 @@ class MatcherModel(BaseModel,MutableMapping):
                             edge = (ux,vx,rel)
                             if self.add_edge_to_graph(edge, g=g):
                                 #g.add_edge(ux,vx,key=rel,rel=rel,**d)
-                                if log.verbose>1: log(f'{u} --{rel}--> {v}')
+                                if log>1: log(f'{u} --{rel}--> {v}')
                         except Exception as e:
                             log.error(e)
                 
-                if log.verbose>0: log(f'read graph from {self.path_triples}')
+                if log>0: log(f'read graph from {self.path_triples}')
                 return g
 
 
@@ -169,13 +169,13 @@ class MatcherModel(BaseModel,MutableMapping):
             )
             # log(pf(list(g.edges(data=True))[:5]))
             if g is not None:
-                if log.verbose>0: log(f'initializing match graph from {self.path_edgelist}')
+                if log>0: log(f'initializing match graph from {self.path_edgelist}')
                 return g
     
     def init_db(self):
         G=self.db().get(self.id)
         if G is not None:
-            if log.verbose>1: log(f'initializing match graph from db')
+            if log>1: log(f'initializing match graph from db')
             return G
     
 
@@ -183,7 +183,7 @@ class MatcherModel(BaseModel,MutableMapping):
 
     def clear(self):
         self.db().delete(self.id)
-        if log.verbose>0: log(f'removing: {self.path_g}')
+        if log>0: log(f'removing: {self.path_g}')
         rmfn(self.path_g)
         self._G=nx.MultiGraph()
 
@@ -192,12 +192,12 @@ class MatcherModel(BaseModel,MutableMapping):
 
     def match(self, text, source, rel=MATCHRELNAME, force=False, cache=True, **edged):
         u,v = Text(text), Text(source)
-        if log.verbose>1: log(f'Match? {u} --{rel}--> {v} [cache={cache}, force={force}]')
+        if log>1: log(f'Match? {u} --{rel}--> {v} [cache={cache}, force={force}]')
         if rel:# and u.id_is_valid() and v.id_is_valid():
             edge = (u.addr, v.addr, rel)
-            if log.verbose>2: log(f'In graph? {edge}')
+            if log>2: log(f'In graph? {edge}')
             if self.add_edge_to_graph(edge, force=force, **edged):
-                if log.verbose>1: log(f'Matching: {u} --> {v}')
+                if log>1: log(f'Matching: {u} --> {v}')
                 if cache: self.cache()
                 return True
 
@@ -210,7 +210,7 @@ class MatcherModel(BaseModel,MutableMapping):
             if not g.has_node(v): g.add_node(v,node_type='text',namespace='lltk')
             if not g.has_edge(u,v,key=rel):
                 g.add_edge(u,v,key=rel,rel=rel)#,**edged)
-                if log.verbose>1: log(f'{u} --{rel}--> {v}')
+                if log>1: log(f'{u} --{rel}--> {v}')
                 return True
             else:
                 return None
@@ -218,7 +218,7 @@ class MatcherModel(BaseModel,MutableMapping):
 
     def remove_node(self,node,cache=True):
         if self.G.has_node(node):
-            if log.verbose>0: log(f'removing {node} from matchdb')
+            if log>0: log(f'removing {node} from matchdb')
             self.G.remove_node(node)
             if cache: self.cache()
     

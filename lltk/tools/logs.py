@@ -35,7 +35,24 @@ class Logger():
         # start?
         if start: self.start()
 
+    @property
+    def v(self): return self.verbose
+
+    def __lt__(self, other_num): return self.verbose<other_num
+    def __le__(self, other_num): return self.verbose<=other_num
+    def __gt__(self, other_num): return self.verbose>other_num
+    def __ge__(self, other_num): return self.verbose>=other_num
+    def __eq__(self, other_num): return self.verbose==other_num
+    def __ne__(self, other_num): return self.verbose!=other_num
+    def __bool__(self): return bool(self.verbose)
+    __nonzero__=__bool__
+
     def set_verbose(self,verbose=1): self.verbose=1
+
+    def __enter__(self):
+        self.start_screen()
+    def __exit__(self,*x): 
+        if not self.to_screen: self.stop_screen()
     
     def start(self):
         if self.to_screen: self.start_screen()
@@ -48,6 +65,7 @@ class Logger():
 
     def start_screen(self):
         if self.id_screen is None:
+            if not self.verbose: self.verbose=1
             self.id_screen=logger.add(sys.stderr, colorize=True, format=self.format)
             #logger.debug(f'log added: {self.id_screen}')
     
@@ -84,11 +102,27 @@ class Logger():
         if res is None: res = getattribute(logger,name)
         return res
 
-    def hidden(self,verbose=0): return log_hidden(verbose=verbose,log=self)
-    def shown(self,verbose=1): return log_shown(verbose=verbose,log=self)
-    
-    def hide(self): self.stop_screen()
-    def show(self): self.start_screen()
+    def hidden(self,verbose=0):
+        return log_hidden(verbose=verbose,log=self)
+    def shown(self,verbose=1):
+        return log_shown(verbose=verbose,log=self)
+
+    @property
+    def showing(self): return self.shown()
+    @property
+    def hiding(self): return self.hidden()
+    q=hiding
+    quiet=hiding
+    shh=hiding
+
+    def hide(self):
+        self.to_screen=False
+        self.stop_screen()
+
+    def show(self):
+        self.to_screen=True
+        self.start_screen()
+        
 
     
     # def hide(self,verbose=0):

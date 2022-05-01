@@ -49,7 +49,7 @@ class MatcherModel(BaseModel,MutableMapping):
         import pickledb
         path=os.path.splitext(self.path_data)[0]+'.pkldb'
         ensure_dir_exists(path)
-        if log.verbose>0: log('Opening '+path)
+        if log>0: log('Opening '+path)
         return pickledb.load(path, True)
 
     # def get_db_json(self):
@@ -85,7 +85,7 @@ class MatcherModel(BaseModel,MutableMapping):
             for estr in db.keys():
                 edged = db.get(estr)
                 u,v,rel=edge=tuple(estr.split('||'))
-                if log.verbose>0: log(f'{u} -> {v}')
+                if log>0: log(f'{u} -> {v}')
                 self.add_edge_to_graph(edge,force=force,**edged)
 
 
@@ -114,7 +114,7 @@ class MatcherModel(BaseModel,MutableMapping):
         u,v,rel = (Text(text), Text(source), rel)
         if u and v and u.id_is_valid() and v.id_is_valid() and rel:
             edge = (u.addr, v.addr, rel)
-            if log.verbose>0: log(f'Edge: {edge}')
+            if log>0: log(f'Edge: {edge}')
             if self.add_edge_to_graph(edge, force=force, **edged):
                 self.add_edge_to_db(edge,**edged)
 
@@ -176,12 +176,12 @@ class MatcherModel(BaseModel,MutableMapping):
                 if not g.has_node(v): g.add_node(v,node_type='text',namespace='lltk')
                 if not g.has_edge(u,v):
                     g.add_edge(u,v,rel=rel,**edged)
-                    if log.verbose>0: log(f'[{self.id}] Adding to graph: {u} --> {v}')
+                    if log>0: log(f'[{self.id}] Adding to graph: {u} --> {v}')
                     self._done|={edge}
                     return True
                 else:
                     for k,v in edged.items():
-                        if log.verbose>0: log(f'Adding to edge: {u} --> {v} ({k} = {v})')
+                        if log>0: log(f'Adding to edge: {u} --> {v} ({k} = {v})')
 
                         try:
                             g.edges[u,v][k]=v
@@ -208,7 +208,7 @@ class MatcherModel(BaseModel,MutableMapping):
 
     def add_edge_to_db(self,edge,**edged):
         u,v,rel=edge
-        if log.verbose>0: log(f'[{self.id}] Adding to DB: {u} --> {v}')
+        if log>0: log(f'[{self.id}] Adding to DB: {u} --> {v}')
         odx={k:v for k,v in edged.items() if k and k[0]!='_'}
         estr='||'.join(edge)
         self.set_db_key(estr,odx)

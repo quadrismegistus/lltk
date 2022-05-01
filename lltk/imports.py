@@ -323,4 +323,4 @@ from lltk.corpus.corpus import BaseCorpus,Corpus
 # models
 from lltk.model.matcher import *
 from lltk.model.wikidata import *
-with log.hidden(): M = Matcher()
+with log.quiet: M = Matcher()

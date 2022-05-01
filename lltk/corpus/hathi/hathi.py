@@ -5,6 +5,9 @@ HATHI_FULL_META_PATH=os.path.join(PATH_CORPUS,'hathi','metadata.csv.gz')
 # HATHI_FULL_META_URL = 'https://www.hathitrust.org/filebrowser/download/297178'
 HATHI_FULL_META_URL = 'https://www.hathitrust.org/filebrowser/download/344452'
 
+# HATHI_TITLE_QUERY_URL='https://catalog.hathitrust.org/Search/Home?adv=1&lookfor%5B%5D=[[[QSTR_TITLE]]]&type%5B%5D=title&lookfor%5B%5D=[[[QSTR_AUTHOR]]]&type%5B%5D=author&bool%5B%5D=AND&yop=after&page=1&pagesize=100&sort=yearup'
+HATHI_TITLE_QUERY_URL='https://catalog.hathitrust.org/Search/Home?adv=1&lookfor%5B%5D=[[[QSTR_AUTHOR]]]&type%5B%5D=author&bool%5B%5D=AND&lookfor%5B%5D=[[[QSTR_TITLE]]]&type%5B%5D=title&bool%5B%5D=AND&yop=after&page=1&pagesize=100&sort=&sort=yearup'
+
 def htid2id(x):
     a,b=x.split('.',1)
     return a+'/'+b
@@ -21,8 +24,6 @@ class Hathi(BaseCorpus):
 
     @property
     def path_full_metadata(self): return HATHI_FULL_META_PATH
-    @property
-    def url_full_metadata(self): return HATHI_FULL_META_URL
 
     def stream_full_meta(self):
         self.download_full_metadata()
@@ -84,34 +85,127 @@ class Hathi(BaseCorpus):
         # compile!
         tools.pmap(compile_text, df.id, num_proc=1)
 
+    def text(self,id: Union[str,BaseText,None], **kwargs):
+        if is_text_obj(id) and id.corpus != self:
+            return self.text_from(id,**kwargs)
+        return super().text(id,**kwargs)
 
-    def download(self,**attrs):
-        """
-        This function is used to download the corpus. Leave as-is to use built-in LLTK download system.
-        Provide a
 
-        So far, downloadable data types (for certain corpora) are:
-            a) `txt` files
-            b) `xml` files
-            c) `metadata` files
-            d) `freqs` files
+    def query_db(self,fn='query_for_ids'):
+        return DB(os.path.join(self.path,'data',fn))
 
-        If you have another zip folder of txt files you'd like to download,
-        you can specify with `url_txt` (i.e. url_`type`, where type is in `quotes` in (a)-(d) above):
-            corpus.download(url_txt="https://www.etcetera.com/etc.zip")
-        """
-        return super().download(**attrs)
+    # Corpus, Hathi
+    def query_for_ids(self,text):
+        import bs4
+        from urllib.parse import quote_plus
 
-    def preprocess(self,parts=['metadata','txt','freqs','mfw','dtm'],force=False,**attrs):
-        """
-        This function is used to boot the corpus, taking it from its raw (just downloaded) to refined condition:
-            - metadata: Save metadata (if necessary)
-            - txt: Save plain text versions (if necessary)
-            - freqs: Save json frequency files per text
-            - mfw: Save a long list of all words sorted by frequency
-            - dtm: Save a document-term matrix
-        """
-        return super().install(parts=parts,force=force,**attrs)
+        url = HATHI_TITLE_QUERY_URL
+        url = url.replace('[[[QSTR_TITLE]]]', quote_plus(text.shorttitle))
+        url = url.replace('[[[QSTR_AUTHOR]]]', quote_plus(text.au))
+
+        res = self.query_db().get(url)
+        if res: 
+            if log: log(f'found result on db ({len(res)} records)')
+            return res
+
+        html = gethtml(url)
+        dom = bs4.BeautifulSoup(html,'lxml')
+
+        o = [
+            a.attrs['href'].split('/Record/')[-1].split('?')[0]
+            for a in dom('a')
+            if '/Record/' in a.attrs['href']
+        ]
+        if o:
+            if log: log(f'found result on website ({len(o)} records)')
+            self.query_db().set(url,o)
+        return o
+
+    def from_record_ids(self,record_ids):
+        from hathitrust_api import BibAPI
+        bib = BibAPI()
+        db=self.query_db('query_record_jsons')
+        for recnum in record_ids:
+            idres = db.get(recnum)
+            if idres is not None:
+                yield idres
+            else:
+                bibd=bib.get_single_record_json('recordnumber',id)
+                recd=bibd.get('records',{}).get(recnum,{})
+                volld=bibd.get('items',{})
+                volld=[d for d in volld if d.get('fromRecord')==id]
+                yield (recd,volld)
+
+
+
+    def process_rec_json(self,recnum,recnumd):
+        log(pf(recnumd))
+        rdd=recnumd.get('records',{}).get(recnum,{})
+        vld=[d for d in recnumd.get('items',[]) if d.get('fromRecord')==recnum]
+
+
+        if rdd:
+            singd = {
+                k[:-1]:v[0]
+                for k,v in rdd.items()
+                if type(v)==list and v and k.endswith('s')
+            }
+            plurd = {
+                k:v
+                for k,v in rdd.items()
+                if k[:-1] not in singd or len(v)!=1
+            }
+            odx={
+                'id':f'htrn/{recnum}',
+                **{
+                    k:v
+                    for k,v in sorted(merge_dict(singd, plurd).items())
+                    if k!='id'
+                }
+            }
+            odx['vols'] = vld
+            return odx
+        return {}
+
+        
+    def text_from(self,text,**kwargs):
+        x=None
+        for x in self.texts_from(text,**kwargs): break
+        return x
+
+    def texts_from(self,text,add_source=True,**kwargs):
+        if not is_text_obj(text) or text.corpus == self: return text
+        ids = self.query_for_ids(text)
+        for htrn,htrn_d in self.query_record_jsons(ids):
+            for recd in self.process_rec_json(htrn,htrn_d):
+                if add_source: recd['_source'] = text.addr
+                t=self.text(**recd)
+
+                # vol ld
+                for vold in volld in recd.get('vols',[]):
+                    htid = vold.get('htid')
+                    if htid:
+                        vold['id']=f'htid/{htid}'
+                        log(vold)
+                        yield t
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 def get_date(imprint):
     for x in tools.ngram(str(imprint),4):
@@ -220,5 +314,18 @@ def compile_text(idx,by_page=False):
     except Exception as e:
         # print('!!',e)
         pass
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 

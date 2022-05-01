@@ -161,7 +161,7 @@ class MultiCorpus(BaseCorpus):
                                 noded['node_type']='text_root'
                         if not g.has_node(node): g.add_node(node, **noded)
 
-                    if log.verbose>0: log(f'Adding edge: {u} --({rel})--> {v}')
+                    if log>0: log(f'Adding edge: {u} --({rel})--> {v}')
                     g.add_edge(u, v, rel = rel)
 
         g = filter_graph(g=g,min_degree=min_degree,min_weight=min_weight,remove_isolates=remove_isolates,**kwargs)
