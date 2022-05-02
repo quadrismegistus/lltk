@@ -51,6 +51,11 @@ def to_params_meta(_params_or_meta,prefix_params='_'):
     meta={k:v for k,v in _params_or_meta.items() if k and k[0]!=prefix_params}
     return (params,meta)
 
+def just_metadata(d,prefix_params='_'):
+    return to_params_meta(d,prefix_params=prefix_params)[1]
+
+def just_meta_no_id(d,**y):
+    return {k:v for k,v in just_metadata(d).items() if k!='id'}
 
 def pf(*x,sep='\n',pad_start=False,pad_end=False,**y):
     from pprint import pformat
@@ -251,7 +256,7 @@ def ensure_snake(xstr,lower=True,allow={'_'}):
         zeropunc(x,allow=allow)
         for x in xstr.split('_')
     )
-    while '__' in o: o=o.replace('__','_')
+    while META_KEY_SEP in o: o=o.replace(META_KEY_SEP,'_')
     return o
 
 

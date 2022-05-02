@@ -80,7 +80,7 @@ META_KEYS_USED_IN_AUTO_IDX = {
 def get_idx_from_meta(
         meta,
         keys=META_KEYS_USED_IN_AUTO_IDX,
-        sep_kv=':',
+        sep_kv='=',
         sep='/',
         hidden='_'):
     o=[]
@@ -120,7 +120,7 @@ def get_idx(
                 lower=False
             )
             if log>2:
-                if log>0: log(f'id set via `id` str: {id1} -> {id}')
+                log(f'id set via `id` str: {id1} -> {id}')
         
         elif type(id) in {int,float}:
             id = get_idx_from_int(int(id))
@@ -142,7 +142,7 @@ def get_idx(
         id = get_idx_from_int(numzero=numzero,prefstr=prefstr) # last resort
         if log>1: log(f'id set via random int: {id1} -> {id}')
     
-    return id
+    return id if id else get_idx()
     
 def get_addr(*x,**y): return get_addr_str(*x,**y)
 # def get_id(*x,**y): return get_id_str(*x,**y)
@@ -184,8 +184,8 @@ def get_imsg(_id=None,_corpus=None,_source=None,**kwargs):
     if _id: o.append(f'id = {_id}')
     if _corpus: o.append(f'corpus = {_corpus}')
     if _source: o.append(f'source = {_source}')
-    # if kwargs: o.append(f'kwargs = {pf(kwargs)})')
-    if kwargs: o.append(f'kwargs = {list(kwargs.keys())}')
+    if kwargs: o.append(f'kwargs = {str(kwargs)[:100]})')
+    # if kwargs: o.append(f'kwargs = {list(kwargs.keys())}')
     return ', '.join(o) if o else ''
 
 def get_id_str(text=None,corpus=None,source=None,**kwargs):
@@ -198,6 +198,7 @@ def get_id_str(text=None,corpus=None,source=None,**kwargs):
 
 def id_is_addr(idx):
     return type(idx)==str and idx and idx.startswith(IDSEP_START) and IDSEP in idx
+is_addr_str=id_is_addr
 
 def to_corpus_and_id(idx):
     if id_is_addr(idx):
@@ -558,10 +559,26 @@ def is_hashable(v):
 
 def safebool(x,bad_vals={np.nan}):
     import pandas as pd
-    if is_hashable(x) and x in bad_vals: return False
-    if is_iterable(x): return bool(len(x))
-    if pd.isnull(x) is True: return False
-    return bool(x)
+    try:
+        if is_hashable(x) and x in bad_vals: return False
+    except Exception as e:
+        log.error(e)
+    
+    try:
+        if is_iterable(x): return bool(len(x))
+    except Exception as e:
+        log.error(e)
+    
+    try:
+        if pd.isnull(x) is True: return False
+    except Exception as e:
+        log.error(e)
+
+    try:
+        return bool(x)
+    except Exception as e:
+        log.error(e)
+        return None
 
 def merge_dict(*l,bad_keys_final=set()):
     od={}
@@ -621,7 +638,8 @@ def MaybeListDict(key_val_iter):
         od[key]|=lval
     return od
 
-
+def is_textish(obj):
+    return is_text_obj(obj) or is_addr_str(obj)
 
 def is_text_obj(obj):
     from lltk.text.text import BaseText
@@ -876,7 +894,7 @@ def unstamp_d(src,sd):
     return {
         sdk:sdv
         for sdk,sdv in sd.items()
-        if '__' not in sdk
+        if META_KEY_SEP not in sdk
         # if not sdk.startswith(stamppref)
         # if not sdk.endswith(stampsuf)
     }

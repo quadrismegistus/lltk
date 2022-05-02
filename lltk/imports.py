@@ -18,6 +18,11 @@ LLTK_ROOT = PATH_HERE = ROOT = os.path.dirname(os.path.realpath(__file__))
 PATH_BASE_CONF=os.path.join(HOME,'.lltk_config')
 PATH_DEFAULT_LLTK_HOME = os.path.join(HOME,'lltk_data')
 PATH_DEFAULT_CONF=os.path.abspath(os.path.join(PATH_DEFAULT_LLTK_HOME,'config_default.txt'))
+META_KEY_SEP='__'
+CACHE_DB=True
+CACHE_JSON=False
+MATCHRELNAME='rdf:type'
+
 
 # Get tools
 LOG_TO_SCREEN = False
@@ -285,6 +290,7 @@ from argparse import Namespace
 from urllib.error import HTTPError
 from zipfile import ZipFile
 from typing import Union,Literal,Optional
+from pathlib import Path
 
 
 

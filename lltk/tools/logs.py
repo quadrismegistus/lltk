@@ -35,8 +35,7 @@ class Logger():
         # start?
         if start: self.start()
 
-    @property
-    def v(self): return self.verbose
+    
 
     def __lt__(self, other_num): return self.verbose<other_num
     def __le__(self, other_num): return self.verbose<=other_num
@@ -111,9 +110,18 @@ class Logger():
     def showing(self): return self.shown()
     @property
     def hiding(self): return self.hidden()
+    @property
+    def showing_v(self): return self.shown(verbose=2)
+    @property
+    def showing_vv(self): return self.shown_v(verbose=3)
+
     q=hiding
     quiet=hiding
     shh=hiding
+    loud=showing_v
+    v=showing_v
+    vv=showing_vv
+
 
     def hide(self):
         self.to_screen=False
@@ -159,14 +167,14 @@ class log_hidden():
 class log_shown():
     def __init__(self,verbose=1,log=None):
         self.log=log if log is not None else Log()
-        # self.verbose=verbose
+        self.verbose=verbose
     def __enter__(self): 
-        # self.log.verbose_was=self.log.verbose
-        # self.log.verbose=self.verbose
+        self.log.verbose_was=self.log.verbose
+        self.log.verbose=self.verbose
         self.log.start_screen()
     def __exit__(self,*x):
-        # self.log.verbose=self.log.verbose_was
-        # self.log.verbose_was=self.verbose
+        self.log.verbose=self.log.verbose_was
+        self.log.verbose_was=self.verbose
         if not self.log.to_screen: self.log.stop_screen()
 
 def hide_log(): return log_hidden()

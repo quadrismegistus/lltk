@@ -2,19 +2,18 @@ from lltk.imports import *
 import networkx as nx
 from collections.abc import MutableMapping
 MATCH_FN='matches.sqlite'
-MATCHRELNAME='rdf:type'
 DEFAULT_COMPAREBY=dict(author=0.9, title=0.9)
 DEFAULT_MATCHER_ID='semantic_web'
 
 MATCHERMODELD={}
-def Matcher(id=DEFAULT_MATCHER_ID,force=False,**kwargs):
-    global MATCHERMODELD
-    idx=id.id if is_corpus_obj(id) else id
-    if force or type(MATCHERMODELD.get(idx)) != MatcherModel:
-        if log>0: log(f'<- {idx}')
-        MATCHERMODELD[idx] = m = MatcherModel(id,**kwargs)
-        if log>0: log(f'-> {m}')
-    return MATCHERMODELD[idx]
+def Matcher(id=DEFAULT_MATCHER_ID,force=False,**kwargs): return None
+    # global MATCHERMODELD
+    # idx=id.id if is_corpus_obj(id) else id
+    # if force or type(MATCHERMODELD.get(idx)) != MatcherModel:
+    #     if log>0: log(f'<- {idx}')
+    #     MATCHERMODELD[idx] = m = MatcherModel(id,**kwargs)
+    #     if log>0: log(f'-> {m}')
+    # return MATCHERMODELD[idx]
 
 
 class MatcherModel(BaseModel,MutableMapping):

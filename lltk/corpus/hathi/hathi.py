@@ -6,13 +6,94 @@ HATHI_FULL_META_PATH=os.path.join(PATH_CORPUS,'hathi','metadata.csv.gz')
 HATHI_FULL_META_URL = 'https://www.hathitrust.org/filebrowser/download/344452'
 
 # HATHI_TITLE_QUERY_URL='https://catalog.hathitrust.org/Search/Home?adv=1&lookfor%5B%5D=[[[QSTR_TITLE]]]&type%5B%5D=title&lookfor%5B%5D=[[[QSTR_AUTHOR]]]&type%5B%5D=author&bool%5B%5D=AND&yop=after&page=1&pagesize=100&sort=yearup'
-HATHI_TITLE_QUERY_URL='https://catalog.hathitrust.org/Search/Home?adv=1&lookfor%5B%5D=[[[QSTR_AUTHOR]]]&type%5B%5D=author&bool%5B%5D=AND&lookfor%5B%5D=[[[QSTR_TITLE]]]&type%5B%5D=title&bool%5B%5D=AND&yop=after&page=1&pagesize=100&sort=&sort=yearup'
+HATHI_TITLE_QUERY_URL='https://catalog.hathitrust.org/Search/Home?adv=1&lookfor%5B%5D=[[[QSTR_AUTHOR]]]&type%5B%5D=author&bool%5B%5D=AND&lookfor%5B%5D=[[[QSTR_TITLE]]]&type%5B%5D=title&bool%5B%5D=AND&yop=after&page=1&pagesize=100'#&sort=&sort=yearup'
 
 def htid2id(x):
     a,b=x.split('.',1)
     return a+'/'+b
 
-class TextHathi(BaseText): pass
+class TextHathi(BaseText):
+
+    def metadata(self,**kwargs):
+        d=super().metadata(self,**kwargs)
+        au=d.get('contributor')
+        if au:
+            if type(au)==list: au=au[0]
+            d['author']=au
+        
+        yr=d.get('publishDate')
+        if yr:
+            d['year']=pd.to_numeric(self['publishDate'],errors='coerce')
+        return d
+
+
+
+class TextHathiRecord(TextHathi):
+    @property
+    def htrn(self): return self.id.split('/')[-1]
+
+    def id_is_valid(self):
+        return self.id and self.htrn and self.htrn.isdigit()
+    
+    def meta_is_valid(self,meta={}):
+        return bool((meta if meta else self._meta).get('recordURL'))
+
+    
+    def query(self,force=False,**kwargs):
+        from hathitrust_api import BibAPI
+        bib = BibAPI()
+        log(('recordnumber',self.htrn))
+        bibd=bib.get_single_record_json('recordnumber',self.htrn)
+        recdd=bibd.get('records',{})
+        if not recdd: return {}
+
+        recd=recdd.get(self.htrn,{})
+        recd['htids']=[
+            d.get('htid')
+            for d in bibd.get('items',[])
+            if d.get('fromRecord')==self.htrn
+        ]
+        recd['_sources']=['_hathi/htid/'+x for x in recd['htids']]
+        recd['num_vols']=len(recd['_sources'])
+        recd = hathi_clean_query_meta(recd)
+        return recd
+
+
+
+
+
+
+class TextHathiVolume(TextHathi):
+    @property
+    def htid(self): return self.id.split('/',1)[-1]
+
+    def id_is_valid(self):
+        return self.id and self.htid and '.' in self.htid
+    
+    def meta_is_valid(self,meta={}):
+        return bool((meta if meta else self._meta).get('recordURL'))
+
+    def query(self,force=False,**kwargs):
+        try:
+            from htrc_features import Volume
+            vol = Volume(self.htid)
+            odx={
+                k:v
+                for k,v in vol.__dict__.items()
+                if k and k[0]!='_' and type(v) in {int,float,str,list,dict,set,tuple} and v
+            }
+            odx['htid']=odx.get('id','')
+            if odx['htid']: return self.ensure_id_addr(odx)
+        except Exception as e:
+            log.error(e)
+        
+        return {}
+
+
+
+
+
+
 
 class Hathi(BaseCorpus):
     TEXT_CLASS=TextHathi
@@ -85,11 +166,27 @@ class Hathi(BaseCorpus):
         # compile!
         tools.pmap(compile_text, df.id, num_proc=1)
 
-    def text(self,id: Union[str,BaseText,None], **kwargs):
-        if is_text_obj(id) and id.corpus != self:
-            return self.text_from(id,**kwargs)
-        return super().text(id,**kwargs)
 
+
+
+
+
+    def init_text(self,*args,**kwargs):
+        t=super().init_text(*args,**kwargs)
+        if t.id.startswith('htrn/'):
+            t.__class__ = TextHathiRecord
+        elif t.id.startswith('htid/'):
+            t.__class__ = TextHathiVolume
+        return t
+
+    def get_text_id(self,text,**kwargs):
+        if log>0: log(f'<- {get_imsg(text,**kwargs)}')
+        if type(text)==str and text.split('/')[0] in {'htrn','htid'}: return text
+
+        ids = self.query_for_ids(text)
+        o=f'htrn/{ids[0]}' if ids else STOPXXXXX
+        if log>0: log(f'-> {o}')
+        return o
 
     def query_db(self,fn='query_for_ids'):
         return DB(os.path.join(self.path,'data',fn))
@@ -98,10 +195,13 @@ class Hathi(BaseCorpus):
     def query_for_ids(self,text):
         import bs4
         from urllib.parse import quote_plus
+        log(f'<- {text}')
+        if not text.shorttitle or not text.au: return []
 
         url = HATHI_TITLE_QUERY_URL
         url = url.replace('[[[QSTR_TITLE]]]', quote_plus(text.shorttitle))
         url = url.replace('[[[QSTR_AUTHOR]]]', quote_plus(text.au))
+        log(f'<- {url}')
 
         res = self.query_db().get(url)
         if res: 
@@ -119,75 +219,51 @@ class Hathi(BaseCorpus):
         if o:
             if log: log(f'found result on website ({len(o)} records)')
             self.query_db().set(url,o)
+        log(f'-> {o}')
         return o
 
-    def from_record_ids(self,record_ids):
-        from hathitrust_api import BibAPI
-        bib = BibAPI()
-        db=self.query_db('query_record_jsons')
-        for recnum in record_ids:
-            idres = db.get(recnum)
-            if idres is not None:
-                yield idres
-            else:
-                bibd=bib.get_single_record_json('recordnumber',id)
-                recd=bibd.get('records',{}).get(recnum,{})
-                volld=bibd.get('items',{})
-                volld=[d for d in volld if d.get('fromRecord')==id]
-                yield (recd,volld)
+    # def from_record_ids(self,record_ids):
+    #     from hathitrust_api import BibAPI
+    #     bib = BibAPI()
+    #     db=self.query_db('query_record_jsons')
+    #     for recnum in record_ids:
+    #         idres = db.get(recnum)
+    #         if idres is not None:
+    #             yield idres
+    #         else:
+    #             bibd=bib.get_single_record_json('recordnumber',id)
+    #             recd=bibd.get('records',{}).get(recnum,{})
+    #             volld=bibd.get('items',{})
+    #             volld=[d for d in volld if d.get('fromRecord')==id]
+    #             yield (recd,volld)
 
 
 
-    def process_rec_json(self,recnum,recnumd):
-        log(pf(recnumd))
-        rdd=recnumd.get('records',{}).get(recnum,{})
-        vld=[d for d in recnumd.get('items',[]) if d.get('fromRecord')==recnum]
+    # def text_from(self,text,**kwargs):
+    #     x=None
+    #     for x in self.texts_from(text,**kwargs): break
+    #     return x
+
+    # def texts_from(self,text,add_source=True,**kwargs):
+    #     if not is_text_obj(text) or text.corpus == self: return text
+    #     for htrn in self.query_for_ids(text):
+    #         htrnid = f'htrn/{htrn}'
+    #         t=self.text(htrnid, _source=self if add_source else None)
+    #         yield t
 
 
-        if rdd:
-            singd = {
-                k[:-1]:v[0]
-                for k,v in rdd.items()
-                if type(v)==list and v and k.endswith('s')
-            }
-            plurd = {
-                k:v
-                for k,v in rdd.items()
-                if k[:-1] not in singd or len(v)!=1
-            }
-            odx={
-                'id':f'htrn/{recnum}',
-                **{
-                    k:v
-                    for k,v in sorted(merge_dict(singd, plurd).items())
-                    if k!='id'
-                }
-            }
-            odx['vols'] = vld
-            return odx
-        return {}
+    #     # for htrn,htrn_d in self.query_record_jsons(ids):
+    #     #     for recd in self.process_rec_json(htrn,htrn_d):
+    #     #         if add_source: recd['_source'] = text.addr
+    #     #         t=self.text(**recd)
 
-        
-    def text_from(self,text,**kwargs):
-        x=None
-        for x in self.texts_from(text,**kwargs): break
-        return x
-
-    def texts_from(self,text,add_source=True,**kwargs):
-        if not is_text_obj(text) or text.corpus == self: return text
-        ids = self.query_for_ids(text)
-        for htrn,htrn_d in self.query_record_jsons(ids):
-            for recd in self.process_rec_json(htrn,htrn_d):
-                if add_source: recd['_source'] = text.addr
-                t=self.text(**recd)
-
-                # vol ld
-                for vold in volld in recd.get('vols',[]):
-                    htid = vold.get('htid')
-                    if htid:
-                        vold['id']=f'htid/{htid}'
-                        log(vold)
-                        yield t
+    #     #         # vol ld
+    #     #         for vold in volld in recd.get('vols',[]):
+    #     #             htid = vold.get('htid')
+    #     #             if htid:
+    #     #                 vold['id']=f'htid/{htid}'
+    #     #                 log(vold)
+    #     #                 yield t
 
 
 
@@ -323,7 +399,21 @@ def compile_text(idx,by_page=False):
 
 
 
-
+def hathi_clean_query_meta(rdd):
+    singd = {
+        k[:-1]:v[0]
+        for k,v in rdd.items()
+        if type(v)==list and v and k.endswith('s') and k[0]!='_'
+    }
+    plurd = {
+        k:v
+        for k,v in rdd.items()
+        if k[:-1] not in singd or len(v)!=1
+    }
+    return {
+        k:v
+        for k,v in sorted(merge_dict(singd, plurd).items())
+    }
 
 
 

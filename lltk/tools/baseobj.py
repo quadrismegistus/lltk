@@ -35,4 +35,10 @@ class BaseObject(object):
     #     # o=f'{o if o not in {None,""} else ""}'
     #     if log>0: log(o)
 
-    log = Log()
+    @property
+    def gdb(self):
+        if self._gdb is None: 
+            from lltk.tools.db import DB
+            self._gdb=DB(engine='graph')
+        return self._gdb
+

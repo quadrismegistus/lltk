@@ -1,6 +1,7 @@
-
 from lltk.imports import *
 from lltk.tools.tools import safeget,ensure_dir_exists
+import json
+
 DBSD={}
 DEFAULT_DB='texts'
 DEFAULT_FN='db.shelf'
@@ -150,7 +151,112 @@ class LLDBRdict(LLDBBase):
             self._db=Rdict(self.path)
         return self._db
 
+class LLDBZodb(LLDBBase):
+    ext='.zodb'
+    
+    def open(self):
+        if self._db is None:
+            import ZODB
+            self._zdb=ZODB.DB(self.path)
+            self._conn=self._zdb.open()
+            self._db=self._conn.root()
+        return self._db
 
+    def add(self,obj):
+        self._conn.add(obj)
+        import transaction
+        from ZODB.utils import z64
+        transaction.commit()
+        return (obj._p_changed, bool(obj._p_oid), obj._p_serial == z64)
+
+    def set(self,*x,**y):
+        res=super().set(*x,**y)
+        import transaction
+        transaction.commit()
+        return res
+
+
+class LLDBGraph(LLDBBase):
+    ext='.graphdb'
+    
+    def __init__(self,*x,**y):
+        super().__init__(*x,**y)
+        self.open()
+
+    def open(self):
+        if self._db is None:
+            from simple_graph_sqlite import database as gdb
+            gdb.initialize(self.path)
+            self._db=gdb
+        return self._db
+
+    def close(self,*x,**y): return
+
+    def set(self,id,meta,**kwargs):
+        ikwargs={**meta, **kwargs, **{'id':id}}
+        return self.add_node(**ikwargs)
+
+    def get(self,id,default={},**kwargs):
+        res=self.get_node(id,**kwargs)
+        return res if res is not None else default
+
+    def add_node(self,id,**meta):
+        return self.db.atomic(
+            self.path,
+            self.db.upsert_node(id, meta)
+        )
+    
+    def add_edge(self,source,target,**meta):
+        return self.db.atomic(
+            self.path,
+            self.db.connect_nodes(source, target, meta)
+        )
+    
+    def get_node(self,id,**meta):
+        return self.db.atomic(
+            self.path,
+            self.db.find_node(id if id else meta)
+        )
+    
+    def get_nodes(self,id,**meta):
+        return self.db.atomic(
+            self.path,
+            self.db.find_nodes(id if id else meta)
+        )
+    
+    def get_neighbs(self,id,data=False,rel=None,**kwargs):
+        if not data:
+            return self.db.traverse(self.path, id, **kwargs)
+        else:
+            return self.get_rels(id,rel=rel,**kwargs)
+
+    def get_rels(self,id,rel=None,**kwargs):
+        res=self.db.traverse_with_bodies(self.path, id, **kwargs)
+        o=[]
+        if type(res)==list and res:
+            u = id
+            for v,datatype,dstr in res:
+                if u != v and datatype!='()':
+                    d=json.loads(dstr)
+                    relx=d.get('rel')
+                    if not rel or rel==relx:
+                        o.append((v,relx))
+        return o
+
+    def iter_edges(self,id,**kwargs):
+        
+        res=self.db.atomic(
+            self.path,
+            self.db.get_connections(id)
+        )
+        for resx in res:
+            if resx and len(resx)==3:
+                u,v,dstr=resx
+                d=json.loads(dstr)
+                yield u,v,d
+    
+    def get_edges(self,id,**kwargs):
+        return list(self.iter_edges(id,**kwargs))
 
 
 
@@ -199,3 +305,8 @@ def close_dbs():
     for key,dbobj in list(DBSD.items()):
         dbobj.close()
         del DBSD[key]
+
+
+
+
+def GDB(): return DB(engine='graph')

@@ -81,7 +81,6 @@ class BaseCorpus(BaseObject):
         self._path=os.path.join(PATH_CORPUS,self.id) if _path is None else _path
         for k,v in attrs.items():
             if k.startswith('path_'): k='_'+k
-            log([self,k,v])
             setattr(self,k,v)
         
         # init?
@@ -347,7 +346,7 @@ class BaseCorpus(BaseObject):
             _new: bool = False,
             _init: bool = False,
             _verbose: int = 1,
-            **_params_or_meta) -> BaseText:
+            **kwargs) -> BaseText:
         """
         The one function users need to interact with a corpus's texts. Use this function both to get an existing text or to create a new one. Returns a text of type `corpus.TEXT_CLASS`. If an `id` is not specified, one will be auto-generated.
 
@@ -390,7 +389,7 @@ class BaseCorpus(BaseObject):
         """        
 
         # log incoming
-        params,meta = to_params_meta(_params_or_meta)
+        meta = just_metadata(kwargs)
         if log>0:  log(f'<- {get_imsg(id,self,_source,**meta)}')
 
         # Init corpus?
@@ -400,54 +399,17 @@ class BaseCorpus(BaseObject):
         tocache=False
         t = None
 
-        # Get ID immediately
-        id1 = id
-        # log(f'id <- {id}')
-        kwargs=merge_dict(meta,dict(corpus=self,source=_source))
-        #id = get_id_str(id,**kwargs)
-        ikwargs=merge_dict(
-            dict(
-                id=id1,
-                i=len(self._textd),
-                allow='_/.-:,=',
-                prefstr='T',
-                numzero=5,
-                use_meta=True,
-                force_meta=True,
-            ),
-            meta
-        )
-
-        id=get_idx(**ikwargs)
-        if log>1: log(f'id = {id}')
-        
-        newsep='_'
-        while _new and id in self._textd:
-            if log>0: log(f'{id} already in {self.id}._textd and {_new} set')
-            idsuf=id.split(newsep)[-1]
-            if idsuf.isdigit():
-                isuf=int(idsuf)+1
-                id=f'{newsep.join(id.split(newsep)[:-1])}{newsep}{isuf}'
-            else:
-                isuf=2
-                id=f'{id}{newsep}{isuf}'
-            
-            if log>0: log(f'new id set: {id}')
-
+        if is_textish(id) and not _source: 
+            log(f'is_textish id = {id}')
+            _source=id
+        id = self.get_text_id(id, _source=_source, _new=_new, **meta)
 
         # get?
-        if not _force and id is not None:
-            t = self.get_text(id)
+        if not _force and id is not None: t = self.get_text(id)
         
         # Create?
-        if _force or t is None:
-            t = self.init_text(id,_source=_source,**meta)
-            tocache = True
-        
-        elif meta and is_text_obj(t):
-            if log>0: log(pf(f'Updating text metadata:',meta))
-            t.update(meta,_cache=False)
-            tocache = True
+        if _force or t is None: t = self.init_text(id,_source=_source,_cache=False,**meta)
+        elif meta and is_text_obj(t): t.update(meta,_cache=False)
         
         # Fail?
         if t is None: raise CorpusTextException('Could not get or create text')
@@ -456,7 +418,7 @@ class BaseCorpus(BaseObject):
         if _add: self.add_text(t)
         
         # Cache?
-        if _cache and tocache: t.cache()
+        if _cache: t.cache()
         
         # Return text
         if log>0: log(f'-> {t}' if is_text_obj(t) else "-> ?")
@@ -491,45 +453,67 @@ class BaseCorpus(BaseObject):
         if db: self.db().delete(id)
         if matches: self.matcher.remove_node(self.get_addr(id))
 
-    
+    def get_text_id(self,
+            id: Union[str,BaseText,None] = None,
+            _source: Union[str,BaseText,None] = None,
+            _new: bool = False,
+            **kwargs):
+
+        meta=just_metadata(kwargs)
+        if log: log(f'<- {get_imsg(id,self,_source,**meta)}')
+        
+        if type(id)!=str or not id:
+            if is_addr_str(id): id=id
+            if is_text_obj(id): id=id.addr
+            if is_addr_str(_source): id=_source
+            if is_text_obj(_source): id=_source.addr        
+        else:
+            # otherwise?
+            id = get_idx(
+                id=id,
+                i=self.num_texts+1,
+                **meta
+            )
+        if _new: id = self.iter_text_id(id)
+        log(f'-> {id}')
+        return id
+
+
+
+    def iter_text_id(self,id,_new=True,newsep='/v'):        
+        def getcfn(id): return os.path.join(self.path_texts,id,'meta.json')
+        while _new and (id in self._textd or os.path.exists(getcfn(id))):
+            if log>0: log(f'<- {id}')
+            idsuf=id.split(newsep)[-1]
+            if idsuf.isdigit():
+                isuf=int(idsuf)+1
+                id=f'{newsep.join(id.split(newsep)[:-1])}{newsep}{isuf}'
+            else:
+                isuf=2
+                id=f'{id}{newsep}{isuf}'
+        if log: log(f'-> {id}')
+        return id
+
+
     def init_text(self,id=None,_source=None,_cache=False,_use_db=True,**kwargs):
         # log('...')
-        params,meta = to_params_meta(kwargs)
-        if log>0:  log(f'<- {get_imsg(id,self,_source,**meta)}')
-
-        if is_text_obj(_source): 
-            if log>1: log(f'Source is text: {_source}')
-            if id is None:
-                id=_source.addr
-                if log>1: log(f'Source is set, but I have no ID. Setting ID to source addr: {id}')
-
-        elif is_text_obj(id):
-            if log>1: log(f'"{id}" is already a text')
-            _source = id
-            id = _source.addr
-
-        elif type(id)==str:
-            ## get source?
-            id_corpus,id_text = to_corpus_and_id(id)
-            if id_corpus and id_corpus!=self.id:
-                if log>0: log(f'hidden source -> {id}')
-                if log>1: log(f'source = Corpus( {id_corpus} ).text( {id_text} ) ...')
-                _source = Corpus(id_corpus).text(id_text)
-                if log>0: log(f'hidden source <- {_source}')
-        else:
-            id = get_idx(i=len(self._textd), **kwargs)
-            if log>1: log(f'id auto set to {id}')
+        meta=just_meta_no_id(kwargs)
+        if log: log(f'<- {get_imsg(id,self,_source,**meta)}')
+        if id is None: id = self.get_text_id(id, _source=_source, **meta)
+        
+        #if is_textish(_source): return self.init_from_text(id=id, _source=_source, **meta)
+        #if is_textish(id): return self.init_from_text(id, _source=id, **meta)
 
         # gen text in my image        
-        # log(kwargs)
-        t = self.TEXT_CLASS(
-            id=id,
-            _corpus=self,
-            _source=_source,
-            **kwargs
-        )
+        t = self.TEXT_CLASS(id=id, _corpus=self, _source=_source, **meta)
+        t._cacheworthy=True
+
+        if _cache: self.cache()
+        
         if log>0: log(f'-> {t}' if is_text_obj(t) else "-> ?")
+        
         return t
+
 
     def add_text(self,t,force=True,**kwargs):
         # assign by id
@@ -585,9 +569,9 @@ class BaseCorpus(BaseObject):
     
     # Convenience
     @property
-    def num_texts(self): return len(self._textd)
+    def num_texts(self): return len(self.textd)
     @property
-    def text_ids(self): return list(self._textd.keys())
+    def text_ids(self): return list(self.textd.keys())
 
 
 
@@ -677,7 +661,7 @@ class BaseCorpus(BaseObject):
         for id,d in iterr:
             # init text object from meta
             od={k:v for k,v in d.items() if k not in {'id','add','cache'}}
-            t = self.text(id=id,_add=add,_cache=False,_force=force,_init=False,**od)
+            t = self.text(id=id,_add=add,_cache=cache,_force=force,_init=False,**od)
             yield t
         
     def init(self,force=False,quiet=None,**kwargs):
@@ -712,7 +696,7 @@ class BaseCorpus(BaseObject):
             from_sources=True,
             cache=False,
             remote=False,
-            sep='__',
+            sep=META_KEY_SEP,
             meta={},
             **kwargs):
         
@@ -1678,92 +1662,92 @@ def meta_load_metadata(C):
 
 
 
-class MetaCorpus0(BaseCorpus):
-    def __init__(self,corpora,**attrs):
-        super().__init__(**attrs)
-        self.corpora=[]
-        actual_cnames = set(corpus_names()) | set(corpus_ids())
-        for cname in corpora:
-            if not cname in actual_cnames: continue
-            self.corpora+=[load_corpus(cname)]
+# class MetaCorpus0(BaseCorpus):
+#     def __init__(self,corpora,**attrs):
+#         super().__init__(**attrs)
+#         self.corpora=[]
+#         actual_cnames = set(corpus_names()) | set(corpus_ids())
+#         for cname in corpora:
+#             if not cname in actual_cnames: continue
+#             self.corpora+=[load_corpus(cname)]
             
-    def to_texts(self,texts):
-        if issubclass(texts.__class__, pd.DataFrame):
-            textdf=texts.reset_index()
-            tcols=set(textdf.columns)
-            if self.col_id in tcols and self.col_corpus in tcols:
-                return [
-                    self.textd.get((c,i))
-                    for c,i in zip(textdf[self.col_corpus], textdf[self.col_id])
-                ]
-        else:
-            return [
-                x if (Text in x.__class__.mro()) else self.textd[x]
-                for x in texts
-            ]
+#     def to_texts(self,texts):
+#         if issubclass(texts.__class__, pd.DataFrame):
+#             textdf=texts.reset_index()
+#             tcols=set(textdf.columns)
+#             if self.col_id in tcols and self.col_corpus in tcols:
+#                 return [
+#                     self.textd.get((c,i))
+#                     for c,i in zip(textdf[self.col_corpus], textdf[self.col_id])
+#                 ]
+#         else:
+#             return [
+#                 x if (Text in x.__class__.mro()) else self.textd[x]
+#                 for x in texts
+#             ]
 
     
 
-    def load_metadata(self,*args,**attrs):
-        """
-        Magic attribute loading metadata, and doing any last minute customizing
-        """
-        if self._metadf is None:
-            self._metadf=pd.concat(
-                pmap(
-                    meta_load_metadata,
-                    self.corpora,
-                    num_proc=DEFAULT_NUM_PROC,
-                    desc='Loading all subcorpora metadata'
-                )
-            ).reset_index().set_index(['corpus','id'])
-        return self._metadf
+#     def load_metadata(self,*args,**attrs):
+#         """
+#         Magic attribute loading metadata, and doing any last minute customizing
+#         """
+#         if self._metadf is None:
+#             self._metadf=pd.concat(
+#                 pmap(
+#                     meta_load_metadata,
+#                     self.corpora,
+#                     num_proc=DEFAULT_NUM_PROC,
+#                     desc='Loading all subcorpora metadata'
+#                 )
+#             ).reset_index().set_index(['corpus','id'])
+#         return self._metadf
 
 
-    @property
-    def textd(self):
-        if self._textd is None or not len(self._textd):
-            self._textd={}
-            for C in self.get_tqdm(self.corpora,desc='Assembling dictionary of text objects'):
-                for t in C.texts():
-                    self._textd[(C.name, t.id)]=t
-        return self._textd
+#     @property
+#     def textd(self):
+#         if self._textd is None or not len(self._textd):
+#             self._textd={}
+#             for C in self.get_tqdm(self.corpora,desc='Assembling dictionary of text objects'):
+#                 for t in C.texts():
+#                     self._textd[(C.name, t.id)]=t
+#         return self._textd
             
-    def meta_iter(self,progress=False):
-        iterr=get_tqdm(self.corpora) if progress else self.corpora
-        for C in iterr:
-            iterr.set_description(f'[{C.name}] Iterating through metadata')
-            for dx in C.meta_iter(progress=False):
-                dx['corpus']=C.name
-                yield dx
+#     def meta_iter(self,progress=False):
+#         iterr=get_tqdm(self.corpora) if progress else self.corpora
+#         for C in iterr:
+#             iterr.set_description(f'[{C.name}] Iterating through metadata')
+#             for dx in C.meta_iter(progress=False):
+#                 dx['corpus']=C.name
+#                 yield dx
                 
-    def mfw_df(self,texts=None,keep_corpora=False,**attrs):
-        o=[]
-        for C in self.corpora:
-            if type(texts)==pd.DataFrame and self.col_corpus in set(texts.columns):
-                Ctexts=texts[texts.corpus.isin({C.id,C.name})]
-            else:
-                Ctexts=texts
-            Cmfwdf=C.mfw_df(texts=Ctexts,**attrs)
-            Cmfwdf['corpus']=C.name
-            o+=[Cmfwdf]
-        mfw_df=pd.concat(o)
+#     def mfw_df(self,texts=None,keep_corpora=False,**attrs):
+#         o=[]
+#         for C in self.corpora:
+#             if type(texts)==pd.DataFrame and self.col_corpus in set(texts.columns):
+#                 Ctexts=texts[texts.corpus.isin({C.id,C.name})]
+#             else:
+#                 Ctexts=texts
+#             Cmfwdf=C.mfw_df(texts=Ctexts,**attrs)
+#             Cmfwdf['corpus']=C.name
+#             o+=[Cmfwdf]
+#         mfw_df=pd.concat(o)
         
-        # filter
-        if not keep_corpora:
-            aggqualcols=['word','pos','pos0']
-            if 'period' in set(mfw_df.columns): aggqualcols.insert(0,'period')
-            mfw_df=mfw_df.groupby(aggqualcols).agg(dict(
-                count=sum,
-                fpm=np.mean,
-                rank=np.median,
-            )).reset_index()
-        return mfw_df
+#         # filter
+#         if not keep_corpora:
+#             aggqualcols=['word','pos','pos0']
+#             if 'period' in set(mfw_df.columns): aggqualcols.insert(0,'period')
+#             mfw_df=mfw_df.groupby(aggqualcols).agg(dict(
+#                 count=sum,
+#                 fpm=np.mean,
+#                 rank=np.median,
+#             )).reset_index()
+#         return mfw_df
             
 
 
-    def texts(self):
-        return [t for C in self.corpora for t in C.texts()]
+#     def texts(self):
+#         return [t for C in self.corpora for t in C.texts()]
 
 
 

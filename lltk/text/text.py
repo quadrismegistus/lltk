@@ -33,9 +33,8 @@ class BaseText(BaseObject):
             **kwargs):
         
         from lltk import Corpus
-        self.corpus=corpus=Corpus(_corpus)
-
-        params,meta = to_params_meta(kwargs)
+        self.corpus=Corpus(_corpus)
+        meta = just_meta_no_id(kwargs)
         if log>0:  log(f'<- {get_imsg(id,_corpus,_source,**meta)}')
         
         if id is None and _source is not None: id=_source.addr
@@ -47,22 +46,24 @@ class BaseText(BaseObject):
         self._section_corpus=_section_corpus
         self._sections={}
         self._meta=self.ensure_id(meta)
+        self.__meta={}
+        self._cacheworthy=False
         if _txt: self._txt=_txt
         if _xml: self._xml=_xml
 
         # matches?
         srcs = []
         for src in [_source] + list(_sources):
-            if src is None: continue
-            if src is self: continue
-            if src == self.addr: continue
-            src=Text(src)
-            if src not in set(srcs):
-                srcs.append(src)
-                if _add_sources:
-                    self.add_source(src,yn='y',cache=_cache_g)
+            if is_textish(src):
+                src=Text(src)
+                log(f'! {src}')
+                if log: log(f'Loaded source! {src}')
+                if src not in set(srcs):
+                    srcs.append(src)
+                    if _add_sources:
+                        self.add_source(src,yn='y',cache=_cache_g)
         if srcs:
-            if srcs and log.verbose>1: log(f'{self} has sources: {srcs}')
+            if srcs and log: log(f'{self} has sources: {srcs}')
             self._sources = srcs
             self._source = srcs[0]
         else:
@@ -118,7 +119,7 @@ class BaseText(BaseObject):
             keyname = keys[0]
         else:
 
-            def get_rank(k,sep='__'):
+            def get_rank(k,sep=META_KEY_SEP):
                 if not sep in k: return np.inf
                 corp=k.split(sep)[-1]
                 crnk=CORPUS_SOURCE_RANKS.get(corp,np.inf)
@@ -145,76 +146,110 @@ class BaseText(BaseObject):
     def __len__(self): return self.num_words
 
     def update(self,*metal,_cache=True,**metad):
-        imeta = [self._meta] + list(metal) + [metad]
-        meta = merge_dict(*imeta)
-        self.set_meta(meta,cache=_cache)
+        if metal or metad:
+            if log>0: log(f'<- {get_imsg(**metad)}')
+            imeta = [self._meta] + list(metal) + [metad]
+            newmeta = self.ensure_id(merge_dict(*imeta))
+            ddiff=diffdict(self._meta, newmeta)
+            if ddiff:
+                if log>0: log(pf('Metadata updated:',ddiff))
+                self._meta = newmeta
+                self._cacheworthy=True
+                if _cache: self.cache()
+                if log: log(f'-> True')
+                return True
     
-    def set_meta(self,meta,cache=True):
-        newmeta=self.ensure_id(meta)
-        ddiff=diffdict(self._meta, newmeta)
-        if ddiff:
-            if log>0: log(pf('Metadata updated:',ddiff))
-            self._meta = newmeta
-            if cache: self.cache()
+    # def set_meta(self,meta,cache=True):
+    #     newmeta=self.ensure_id(meta)
+    #     ddiff=diffdict(self._meta, newmeta)
+    #     if ddiff:
+    #         if log>0: log(pf('Metadata updated:',ddiff))
+    #         self._meta = newmeta
+    #         if cache: self.cache()
+    #         self._cacheworthy=True
     
     def db(self): return self.corpus.db()
     
-    def cache(self, json=True,db=False,*x, **y):
-        meta={k:v for k,v in self._meta.items() if k and not '__' in k and v}
-        if log>0: log(self)
-        if db: self.cache_db(meta=meta)
-        if json: self.cache_json(meta=meta)
+    def cache(self, json=CACHE_JSON, db=CACHE_DB, force=False,*x, **y):
+        if force or self._cacheworthy:
+            meta={
+                k:v
+                for k,v in self._meta.items()
+                if k and not META_KEY_SEP in k and v
+            }
+            if log>0: log(self)
+            if db: self.cache_db(meta=meta)
+            if json: self.cache_json(meta=meta)
+            self._cacheworthy=False
 
-    def init_cache(self,json=True,db=False,*x,**y):
-        if json: self._meta=merge_dict(self._meta,self.init_cache_json())
-        if db: self._meta=merge_dict(self._meta,self.init_cache_db())
+
+    def init_cache(self,json=CACHE_JSON,db=CACHE_DB,from_sources=True,*x,**y):
+        if json:
+            self._meta=merge_dict(
+                self._meta,
+                self.init_cache_json(
+                    from_sources=from_sources
+                )
+            )
+        if db:
+            self._meta=merge_dict(
+                self._meta,
+                self.init_cache_db(
+                    from_sources=from_sources
+                )
+            )
         return self._meta
 
+    
 
-
-
-        
     def cache_db(self,meta=None):
-        tid,new=self.id,(self._meta if not meta else meta)
-        with self.db() as db:
-            old=db[tid]
-            if is_cacheworthy(new,old):
-                db[tid]=new
-                if log>0: log(f'cached text meta in db under key "{self.id}"')
+        new={
+            'id':self.addr,
+            **{
+                k:v
+                for k,v in (meta if meta is not None else self._meta).items()
+                if k!='id'
+            }
+        }
+        old = self.gdb.get(self.addr)
+        if is_cacheworthy(new,old):
+            self.gdb.set(self.addr, new)
+            if log>0: log(f'cached text meta to graph db: {self.gdb.path}')
+            return True
+        
     
     def cache_json(self,meta=None):
-        # tid,new=self.id,(self._meta if not meta else meta)
-        #old=self.init_cache_json()
-        #if is_cacheworthy(new,old):
-        #    write_json(new,self.path_meta_json)
-        write_json(
-            self._meta if not meta else meta,
-            self.path_meta_json
-        )   
-        if log>0: log(f'cached text meta in json: {self.path_meta_json}')
+        new=self._meta if not meta else meta
+        ofn=self.path_meta_json
+        old=read_json(ofn)
+        if is_cacheworthy(new,old):
+            write_json(new,ofn)
+            if log>0: log(f'cached text meta in json: {self.path_meta_json}')
+            return True
 
 
     def init_cache_db(self,*x,**y):
-        return self.db().get(self.id,{})
+        return self.ensure_id(self.gdb.get(self.addr,{}))
     
-    # def init_cache(self,*x,**y):
-    #     cached = self.load_cache(*x,**y)
-    #     # self.log(cached)
-    #     if cached:
-    #         newmeta = merge_dict(
-    #             cached,
-    #             self._meta,
-    #         )
-    #         ddiff = diffdict(self._meta,newmeta)
-    #         if ddiff:
-    #             if log>0: log(pf(f'changes loaded from cache:',ddiff))
-    #             self._meta = self.ensure_id(newmeta)
-    #     return self._meta
+    
+
+    def init_cache_json(self,*x,from_sources=True,**y):
+        ometa=read_json(self.path_meta_json)
+        if from_sources:
+            ometa=merge_dict(*list(self.init_cache_json_sources_iter()))
+        return ometa
+    
+    def init_cache_json_sources_iter(self,sep=META_KEY_SEP,metafn='meta.json',*x,**y):
+        if os.path.exists(self.path_sources):
+            for fn in os.listdir(self.path_sources):
+                mfnfn=os.path.join(self.path_sources,fn,'meta.json')
+                if os.path.exists(mfnfn):
+                    corpus = to_corpus_and_id(fn.replace(sep,os.path.sep))[0]
+                    meta = read_json(mfnfn)
+                    if meta and self.corpus.col_id in meta:
+                        yield {k+sep+corpus:v for k,v in meta.items()}
 
 
-    def init_cache_json(self,*x,**y):
-        return read_json(self.path_meta_json)
-    
     
 
     def get_path_old(t,part='texts',**kwargs):
@@ -231,16 +266,24 @@ class BaseText(BaseObject):
 
     def get_path(self,part,**kwargs):
         if part.startswith('path_'): part=part[5:]
-        path = self.get_path_new(part,**kwargs)
-        if path and os.path.exists(path): return path
-        path = self.get_path_old(part,**kwargs)
-        if path and os.path.exists(path): return path
+        path_new = self.get_path_new(part,**kwargs)
+        path_old = self.get_path_old(part,**kwargs)
+        if path_new:
+            if path_old and os.path.exists(path_old):
+                return path_old
+            return path_new
+        elif path_old:
+            return path_old
         return ''
+            
+
 
     def get_path_new(self,part,**kwargs):
         if part == 'txt': return os.path.join(self.path,'text.txt')
         if part == 'xml': return os.path.join(self.path,'text.xml')
-        if part in {'json','meta','meta_json'}: return os.path.join(self.path,'meta.json')
+        if part in {'json','meta','meta_json'}:
+            return os.path.join(self.path,'meta.json')
+        if part == 'sources': return os.path.join(self.path,'_sources')
         if part == 'freqs': return os.path.join(self.path,'freqs.json')
         return None
 
@@ -253,6 +296,17 @@ class BaseText(BaseObject):
     
     @property
     def path(self): return os.path.join(self.corpus.path_texts,self.id)
+    @property
+    def path_rel(self): return self.relpath()
+    @property
+    def rel_path(self): return self.relpath(reverse=True)
+
+    def relpath(self,path=None,text=None,reverse=False):
+        a = path if path else self.path
+        b = text.path if text else PATH_CORPUS
+        if reverse: a,b=b,a
+        return os.path.relpath(a,b)
+        
     
     @property
     def path_meta_json(self): return os.path.join(self.path,'meta.json')
@@ -315,7 +369,7 @@ class BaseText(BaseObject):
     def meta(self): return self.metadata()
 
     @property
-    def _meta_(self): return {k:v for k,v in self._meta.items() if not '__' in k}
+    def _meta_(self): return {k:v for k,v in self._meta.items() if not META_KEY_SEP in k}
 
 
     def id_is_valid(self,*x,**y): return True
@@ -334,43 +388,87 @@ class BaseText(BaseObject):
 
     @property
     def matches(self): return self.get_matches()
-    def get_matches(self,as_text=True,**kwargs):
-        matches = (set(self.matcher[self.addr]) | set(self.matcher_global[self.addr])) - {self.addr}
-        o=[
-            Text(x) if as_text else x
-            for x in matches
-        ]
-        return [x for x in o if (not as_text or x.id_is_valid())]
+    
+    
     
     # Text
-    
-    def add_source(self,source,viceversa=True,yn='',**kwargs):
-        match=self.match(source,yn=yn,**kwargs)
-        if log>0: log(f'found match: {match}')
-        if viceversa:
-            if log>0: log('adding source vice versa')
-            source.add_source(self,viceversa=False,yn=yn,**kwargs)
-        return match
-    
-    def match(self,other,yn='',**kwargs):
-        return (
-            self.matcher.match(self,other,yn=yn,**kwargs),
-            self.matcher_global.match(self,other,yn=yn,**kwargs)
+
+    def symlink(self,text,force=False,sep=META_KEY_SEP):
+        path_src_fn=os.path.join(
+            self.path_sources,
+            text.addr.replace(os.path.sep,sep)[:100]
         )
+        if force or not os.path.exists(path_src_fn):
+            rmfn(path_src_fn)
+            path_rel = os.path.relpath(text.path, self.path_sources)
+            path_rel_f = os.path.join(self.path_sources,path_rel)
+            if not os.path.exists(path_rel_f):
+                log.error(f'not exist 1: {path_rel_f}')
+                return
+                # path_rel = os.path.relpath(text.path, path_src_fn)
+                # path_rel_f = os.path.join(self.path_sources,path_rel)
+                # if not os.path.exists(path_rel_f):
+                #     log.error(f'not exist 2: {path_rel_f}')
+            
+            log(f'{path_src_fn} --> {path_rel}')
+            ensure_dir_exists(path_src_fn,fn=True)
+            os.symlink(path_rel, path_src_fn)
+            return path_rel
+        
+    
+
+
+
+
+
+    
+    def add_source(self,source,viceversa=True,yn='',symlink=True,**kwargs):
+        if is_textish(source): return self.match(source,yn=yn,**kwargs)
+    
+            # source = Text(source)
+            # match=self.match(source,yn=yn,**kwargs)
+            # if symlink: self.symlink(source)
+            # if any(match) and log>0: log(f'found match: {match}')
+            # if viceversa:
+            #     if log>0: log('adding source vice versa')
+            #     source.add_source(self,viceversa=False,yn=yn,symlink=symlink,**kwargs)
+            # return bool(any(match))
+    
+    
+    def match(self,other,yn='',rel=MATCHRELNAME,cache=True,**kwargs):
+        if log: log(f'{self.addr} --> {other.addr} ?')
+        self.cache_db(), other.cache_db()
+        meta=dict(yn=yn, rel=rel, **just_meta_no_id(kwargs))
+        self.gdb.add_edge(self.addr, other.addr, **meta)
+        # return (
+        #     self.matcher.match(self,other,yn=yn,**kwargs),
+        #     self.matcher_global.match(self,other,yn=yn,**kwargs)
+        # )
+    
+    def get_matches(self,as_text=True,rel=MATCHRELNAME,**kwargs):
+        return {Text(v) for v,rel in self.gdb.get_rels(self.addr,rel=rel)}
+        # return {
+        #     Text(x)
+        #     for x in self.gdb.get_edges(self.addr)
+            
+        # }
 
     @property
     def idx(self): return self.id.split('/')[-1]
     
     def get_sources(self,remote=False,cache=True,**kwargs):
         if not self.id_is_valid(): return []
-        sources=self.get_local_sources(**kwargs)
-        if remote:
-            self.get_remote_sources(sources,**kwargs)
-            sources=self.get_local_sources(**kwargs)
-        if cache: self.matcher.cache()
-        return [x for x in sources if x.id_is_valid()]
-        # return set(sources)
-        # return sorted(list(sources),key=lambda t: t.addr)
+        return self.get_matches()
+        
+        # sources=self.get_local_sources(**kwargs)
+        
+        # if remote:
+        #     self.get_remote_sources(sources,**kwargs)
+        #     sources=self.get_local_sources(**kwargs)
+        # if cache: self.matcher.cache()
+        # return [x for x in sources if x.id_is_valid()]
+        # # return set(sources)
+        # # return sorted(list(sources),key=lambda t: t.addr)
 
     def get_remote_sources(self,*args,**kwargs):
         # OVERWRITE?
@@ -385,28 +483,64 @@ class BaseText(BaseObject):
     #     return sofar - {self}
 
 
-    def get_local_sources(self,sofar=None,recursive=False,verbose=1,**kwargs):
+    def get_local_sources(self,sofar=None,recursive=False,**kwargs):
         if log>1: self.log(f'get_sources(sofar = {sofar}, recursive = {recursive}, **kwargs')
+        
         sofar = set() if not sofar else set([x for x in sofar])
 
         matches = set(self.get_matches(**kwargs)) - {self}
-        if matches and verbose>1: self.log('Matches:',matches)
+        if matches and log>1: log(f'matches = {matches}')
 
-        _sources = set(self._sources) - {self}
-        if log>1: self.log('My _sources:',_sources)
+        srcs_symlinked = self.get_sources_symlinked()
+        if srcs_symlinked and log>1: log(f'Sources symlinked: {srcs_symlinked}')
+
+        _sources = (set(self._sources) | set(srcs_symlinked)) - {self}
+        if _sources and log>1: log(f'_sources = {_sources}')
 
         # missing match?
-        for src in (_sources - matches): self.match(src,cache=False)
-        
-        newsrcs = {Text(x) for x in (((_sources | matches) - set(sofar)) - {self})}
-        if newsrcs and verbose>1: self.log('New sources:',newsrcs)
+        o=set(_sources)|set(matches)
+        o_missing_match = o - matches
+        for src in o_missing_match:
+            if log>1: log(f'missing match: {src}')
+            self.match(src,cache=False)
 
-        for src in newsrcs:
-            if src not in sofar:
-                if log>0: self.log(f'found source: {src}')
-                sofar|={src}
+        # missing symlink?
+        o_missing_symlink = o - srcs_symlinked
+        for src in o_missing_symlink:
+            if log>1: log(f'missing symlink: {src}')
+            self.symlink(src)
+
+        if log: log(f'-> {o}')
+        return o
+
+        # newsrcs = {Text(x) for x in (((_sources | matches) - set(sofar)) - {self})}
+        # if newsrcs and log>1: log(f'newsrcs = {_sources}')
+
+        # for src in newsrcs:
+        #     if src not in sofar:
+        #         if log>0: self.log(f'found source: {src}')
+        #         sofar|={src}
         
+        # return sofar - {self}
+
+    def get_sources_symlinked(self,sofar=None,**kwargs):
+        sofar = set() if not sofar else set([x for x in sofar])
+        if os.path.exists(self.path_sources):
+            for fn in os.listdir(self.path_sources):
+                path=Path(os.path.join(self.path_sources,fn))
+                if path.is_symlink():
+                    ofnfn=str(path.readlink())
+                    pdat = [x for x in ofnfn.split(os.path.sep) if x!='..']
+                    if len(pdat)<3: continue
+                    corpus = pdat[0]
+                    id = os.path.sep.join(pdat[2:])
+                    addr = get_addr_str(id,corpus)
+                    src = Text(addr)
+                    if src not in sofar:
+                        sofar|={src}
         return sofar - {self}
+
+                    
 
     
     @property
@@ -421,63 +555,101 @@ class BaseText(BaseObject):
 
     def query(self,*x,**y): return {}
 
+    def metadata_remote(self,meta={},sep=META_KEY_SEP,**kwargs):
+        ometa=meta
+        if self.id_is_valid() and not self.meta_is_valid(meta):
+            query_meta = self.query(**kwargs)
+            if query_meta:
+                srcs=query_meta.get('_sources')
+                if srcs:
+                    for src in srcs: self.add_source(src)
+                    del query_meta['_sources']
+
+                ometa=merge_dict(ometa, query_meta)
+                self._cacheworthy=True
+        return {k:v for k,v in ometa.items() if k.count(sep)<=1}
+
+    def metadata_from_cache(self,meta={},**kwargs):
+        return merge_dict(meta, self.init_cache(**kwargs))
+        
+
+    def metadata_from_sources(
+            self,
+            meta=None,
+            sep=META_KEY_SEP,
+            remote=False,
+            from_cache=True,
+            cache=False,
+            **kwargs):
+        ometa=self._meta if not meta else meta
+        sources_present = {x.split(sep)[-1] for x in ometa if sep in x}
+        if log>1: log(f'sources_present = {sources_present}')
+        for src in self.get_sources(remote=remote,cache=False,**kwargs):
+            if src in sources_present: continue
+            # if src.corpus.id == self.corpus.id: continue
+            if src.corpus.id == TMP_CORPUS_ID: continue
+            
+            if log>0: log(f'adding metadata from source: {src}')
+            # if not wikidata and src.corpus.id=='wikidata': continue
+            sd = src.metadata(
+                from_sources=False,
+                from_cache=from_cache,
+                remote=remote,
+                cache=False,
+                **kwargs
+            )
+            sd2={
+                (k+((sep+src.corpus.id) if src.corpus.id!=self.corpus.id else '')):v
+                for k,v in sd.items()
+                if k!=self.corpus.col_id and not sep in k
+            }
+            if sd2: sd2[src.corpus.col_id+sep+src.corpus.id] = src.id
+            ometa = merge_dict(ometa, sd2)
+        return {k:v for k,v in ometa.items() if k.count(sep)<=1}
+
+    def metadata_initial(
+            self,meta={},
+            bad_keys={'_source','_sources'},
+            sep=META_KEY_SEP,
+            **kwargs):
+        imeta=merge_dict(TEXT_META_DEFAULT, self.META, self.__meta, self._meta, meta)
+        return {k:v for k,v in imeta.items() if k not in bad_keys and k.count(sep)<=1}
+
     def metadata(
             self,
             meta={},
+            from_initial=True,
             from_cache=True,
             from_sources=True,
             cache=False,
             remote=False,
-            sep='__',
+            sep=META_KEY_SEP,
             **kwargs):
-        # get meta
-        # return self._meta
-        # self.corpus.init()					
-        # query?
+        # begin dict
         ometa={}
-        if from_cache: 
-            self.init_cache()
-            if log>1: log(f'loaded from cache: {self._meta}')
-        
-        ometa=merge_dict(TEXT_META_DEFAULT, self.META, ometa, self._meta, meta)
-        ometa={k:v for k,v in ometa.items() if k not in {'_source'}}
-        # self.log('1',ometa)
-
+        # initial (self.__meta, self._meta, ...)
+        if from_initial:
+            ometa = self.metadata_initial(ometa)
+        # json caches (incl source jsons?)
+        if from_cache:
+            ometa = self.metadata_from_cache(ometa,from_sources=from_sources,**kwargs)
+        # query for myself?
         if remote:
-            if self.id_is_valid() and not self.meta_is_valid(ometa):
-                query_meta = self.query(**kwargs)
-                if query_meta:
-                    ometa=merge_dict(ometa, query_meta)
-        # self.log('2',ometa)
-        # sources?
-        ometa = {k:v for k,v in ometa.items() if k.count(sep)<=1}
+            ometa = self.metadata_remote(ometa)
+        # source metadata (incl remote sources?)
         if from_sources:
-            sources_present = {x.split(sep)[-1] for x in ometa if sep in x}
-            if log>1: log(f'sources_present = {sources_present}')
-            for src in self.get_sources(remote=remote,cache=False,**kwargs):
-                if src in sources_present: continue
-                if src.corpus.id == self.corpus.id: continue
-                if src.corpus.id == TMP_CORPUS_ID: continue
-                
-                if log>0: log(f'adding metadata from source: {src}')
-                # if not wikidata and src.corpus.id=='wikidata': continue
-                sd = src.metadata(
-                    from_sources=False,
-                    # from_cache=False,
-                    from_cache=from_cache,
-                    remote=remote,
-                    cache=cache,
-                    **kwargs
-                )
-                sd2={k+sep+src.corpus.id:v for k,v in sd.items() if k!=self.corpus.col_id and not sep in k}
-                ometa = merge_dict(ometa, sd2)
-        # self.log('3',ometa)
-        ometa = {k:v for k,v in ometa.items() if k.count(sep)<=1}
-        # ometa = to_numeric_dict(ometa)
-        ometa = self.ensure_id_addr(ometa)
-        self._meta = ometa
-        if cache:
-            self.cache()
+            ometa = self.metadata_from_sources(
+                ometa,
+                from_cache=from_cache,
+                remote=remote,
+                cache=cache,
+                **kwargs
+            )
+        # set temp cache meta
+        self.__meta = ometa = self.ensure_id_addr(ometa)
+        # cache?
+        if cache: self.cache()
+        # return final meta dict
         return ometa
     
     @property
@@ -489,15 +661,12 @@ class BaseText(BaseObject):
 
     def ensure_id(self,meta=None,col_id=COL_ID,col_corpus='_corpus'):
         if meta is None: meta=self._meta
+        meta[col_id]=self.id
         return {
-            **{col_id:self.id},
-            **dict(
-                sorted({
-                    k:v
-                    for k,v in meta.items()
-                    if k!=col_id
-                }.items())
-            )
+            col_id:self.id,
+            
+            **{k:v for k,v in sorted(meta.items()) if k.startswith(col_id+META_KEY_SEP)},
+            **{k:v for k,v in sorted(meta.items()) if not k.startswith(col_id+META_KEY_SEP)},
         }
 
     def init(self,force=False,**kwargs):
