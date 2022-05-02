@@ -336,6 +336,14 @@ class BaseCorpus(BaseObject):
     # TEXTS
     ####################################################################
 
+    def text_from(self, text: Union[str,BaseText], **kwargs):
+        # Sublcass this in query-like corpus classes (Wikidata, Hathi)
+        # so that the resulting text can be of a very different kind
+        # (i.e. query on incoming text's title, sort through results, etc)
+        # by default this will just use .text() and an incoming text's
+        # address will be used as the ID
+        return self.text(id=text, **kwargs)
+
 
     def text(self,
             id: Union[str,BaseText,None] = None,
@@ -694,7 +702,7 @@ class BaseCorpus(BaseObject):
             fillna='',
             from_cache=True,
             from_sources=True,
-            cache=False,
+            cache=True,
             remote=False,
             sep=META_KEY_SEP,
             meta={},

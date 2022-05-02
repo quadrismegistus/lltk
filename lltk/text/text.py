@@ -621,7 +621,7 @@ class BaseText(BaseObject):
             from_initial=True,
             from_cache=True,
             from_sources=True,
-            cache=False,
+            cache=True,
             remote=False,
             sep=META_KEY_SEP,
             **kwargs):

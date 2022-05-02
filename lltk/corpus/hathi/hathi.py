@@ -184,7 +184,7 @@ class Hathi(BaseCorpus):
         if type(text)==str and text.split('/')[0] in {'htrn','htid'}: return text
 
         ids = self.query_for_ids(text)
-        o=f'htrn/{ids[0]}' if ids else STOPXXXXX
+        o=f'htrn/{ids[0]}' if ids else ERROR
         if log>0: log(f'-> {o}')
         return o
 
@@ -239,31 +239,31 @@ class Hathi(BaseCorpus):
 
 
 
-    # def text_from(self,text,**kwargs):
-    #     x=None
-    #     for x in self.texts_from(text,**kwargs): break
-    #     return x
+    def text_from(self,text,**kwargs):
+        x=None
+        for x in self.texts_from(text,**kwargs): break
+        return x
 
-    # def texts_from(self,text,add_source=True,**kwargs):
-    #     if not is_text_obj(text) or text.corpus == self: return text
-    #     for htrn in self.query_for_ids(text):
-    #         htrnid = f'htrn/{htrn}'
-    #         t=self.text(htrnid, _source=self if add_source else None)
-    #         yield t
+    def texts_from(self,text,add_source=True,**kwargs):
+        if not is_text_obj(text) or text.corpus == self: return text
+        for htrn in self.query_for_ids(text):
+            htrnid = f'htrn/{htrn}'
+            t=self.text(htrnid, _source=self if add_source else None)
+            yield t
 
 
-    #     # for htrn,htrn_d in self.query_record_jsons(ids):
-    #     #     for recd in self.process_rec_json(htrn,htrn_d):
-    #     #         if add_source: recd['_source'] = text.addr
-    #     #         t=self.text(**recd)
+        # for htrn,htrn_d in self.query_record_jsons(ids):
+        #     for recd in self.process_rec_json(htrn,htrn_d):
+        #         if add_source: recd['_source'] = text.addr
+        #         t=self.text(**recd)
 
-    #     #         # vol ld
-    #     #         for vold in volld in recd.get('vols',[]):
-    #     #             htid = vold.get('htid')
-    #     #             if htid:
-    #     #                 vold['id']=f'htid/{htid}'
-    #     #                 log(vold)
-    #     #                 yield t
+        #         # vol ld
+        #         for vold in volld in recd.get('vols',[]):
+        #             htid = vold.get('htid')
+        #             if htid:
+        #                 vold['id']=f'htid/{htid}'
+        #                 log(vold)
+        #                 yield t
 
 
 
