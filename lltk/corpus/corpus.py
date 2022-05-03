@@ -168,22 +168,6 @@ class BaseCorpus(BaseObject):
 
 
 
-    ####################################################################
-    # DB
-    ####################################################################
-
-    def db(self):
-        return DB(
-            os.path.splitext(self.path_metadata)[0],
-            force=False,
-            engine=PATH_LLTK_DB_ENGINE
-        )
-
-
-
-
-
-
 
 
 
@@ -237,6 +221,23 @@ class BaseCorpus(BaseObject):
         return o
 
 
+    @property
+    def ids_db(self): return set(self.dbmeta.get('ids',[]))
+    @property
+    def ids_textd(self): return set(self._textd.keys())
+    @property
+    def ids(self): return self.get_ids()
+    @property
+    def ids_(self): return self.get_ids(force=True)
+
+    def get_ids(self,db=True,textd=True,force=False):
+        if force or self._ids is None:
+            self._ids = set()
+            if textd: self._ids |= self.ids_textd
+            if db: self._ids |= self.ids_db
+            self._ids = list(self._ids)
+            self._ids.sort()
+        return self._ids
 
 
 
@@ -347,6 +348,9 @@ class BaseCorpus(BaseObject):
         return newtext
 
 
+
+
+
     def text(self,
             id: Union[str,BaseText,None] = None,
             _source: Union[str,BaseText,None] = None,
@@ -355,7 +359,6 @@ class BaseCorpus(BaseObject):
             _force: bool = False,
             _new: bool = False,
             _init: bool = False,
-            _verbose: int = 1,
             **kwargs) -> BaseText:
         """
         The one function users need to interact with a corpus's texts. Use this function both to get an existing text or to create a new one. Returns a text of type `corpus.TEXT_CLASS`. If an `id` is not specified, one will be auto-generated.
@@ -381,10 +384,8 @@ class BaseCorpus(BaseObject):
             Whether to force the creation of a new text (iterating id if necesssary). Default: False.
 
         _init : bool, optional
-            Whether to initialize corpus if not done so yet. Default: True.
+            Whether to initialize corpus if not done so yet. Default: False.
 
-        _verbose : int, optional
-            Verbosity level, by default 1
 
 
         Returns
@@ -435,6 +436,8 @@ class BaseCorpus(BaseObject):
         return t
 
     
+
+
     def get_text(self,id:str,_use_db:bool=True) -> Union[BaseText,None]:
         """Attempt to get a pre-existing text.
 
@@ -665,16 +668,60 @@ class BaseCorpus(BaseObject):
             if not allow_hidden: odx={k:v for k,v in odx.items() if k and k[0]!='_'}
             yield id, odx
             
+    
+    def sync(self,sources=['csv'],progress=True,lim=None,**kwargs):
+        ids=[]
+        iterr=self.init_meta(sources=sources)
+        if progress: iterr=get_tqdm(list(iterr)[:lim])
+        for id,meta in iterr:
+            addr=get_addr_str(id,self.id)
+            meta['_corpus']=self.id
+            self.gdb[addr]=meta
+            ids.append(id)
+        self.gdb[self.addr]={'type':'Corpus', 'ids':ids}
+        return True
 
-    def iter_init(self,progress=True,add=True,cache=False,force=False,**kwargs):
-        if log>0: log(self)
-        iterr=self.init_meta(**kwargs)
-        if progress: iterr=get_tqdm(list(iterr), desc=f'[{self.name}] Iterating texts')
-        for id,d in iterr:
-            # init text object from meta
-            od={k:v for k,v in d.items() if k not in {'id','add','cache'}}
-            t = self.text(id=id,_add=add,_cache=cache,_force=force,_init=False,**od)
+
+    def iter_init_db(self,progress=True,**kwargs):
+        if log: log('...')
+
+        iterr=self.gdb.get_nodes(_corpus=self.id)
+        if progress: iterr=get_tqdm(iterr)
+
+        for dx in iterr:
+            id=to_corpus_and_id(dx['id'])[1]
+            meta=just_meta_no_id(dx)
+            t = self.text(
+                id, 
+                _source=None,
+                _add = True,
+                _cache = False,
+                _force = True,
+                _new = False,
+                _init = False,
+                **meta)
+            
+            self._textd[t.id]=t
+
             yield t
+        
+    def init_db(self,**kwargs):
+        if log: log('...')
+        o=list(self.iter_init_db())
+        o.sort(key=lambda t: t.id)
+        return o
+
+    iter_init = iter_init_db
+
+    # def iter_init(self,progress=True,add=True,cache=False,force=False,**kwargs):
+    #     if log>0: log(self)
+    #     iterr=self.init_meta(**kwargs)
+    #     if progress: iterr=get_tqdm(list(iterr), desc=f'[{self.name}] Iterating texts')
+    #     for id,d in iterr:
+    #         # init text object from meta
+    #         od={k:v for k,v in d.items() if k not in {'id','add','cache'}}
+    #         t = self.text(id=id,_add=add,_cache=cache,_force=force,_init=False,**od)
+    #         yield t
         
     def init(self,force=False,quiet=None,**kwargs):
         if not force and self._init: return
@@ -697,12 +744,12 @@ class BaseCorpus(BaseObject):
         if numdone and log.verbose>0: log(f'initialized {numdone} texts')
         return self
 
-    def cache_db(self):
-        new = {'id':self.id}
-        old = self.gdb.get(self.addr)
-        if is_cacheworthy(new,old):
-            self.gdb.set(self.addr, new)
-            return True
+    # def cache_db(self):
+    #     new = {'id':self.id}
+    #     old = self.gdb.get(self.addr)
+    #     if is_cacheworthy(new,old):
+    #         self.gdb.set(self.addr, new)
+    #         return True
 
 
     def metadata(

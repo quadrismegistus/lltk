@@ -212,13 +212,13 @@ class LLDBGraph(LLDBBase):
             self.db.connect_nodes(source, target, safejson(meta))
         )
     
-    def get_node(self,id,**meta):
+    def get_node(self,id=None,**meta):
         return self.db.atomic(
             self.path,
             self.db.find_node(id if id else safejson(meta))
         )
     
-    def get_nodes(self,id,**meta):
+    def get_nodes(self,id=None,**meta):
         return self.db.atomic(
             self.path,
             self.db.find_nodes(id if id else safejson(meta))

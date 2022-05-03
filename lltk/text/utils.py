@@ -209,6 +209,12 @@ def to_corpus_and_id(idx):
         return tuple(idx[len(IDSEP_START):].split(IDSEP,1))
     return ('',idx)
 
+def to_corpus_and_id(idx):
+    if id_is_addr(idx):
+        return tuple(idx[len(IDSEP_START):].split(IDSEP,1))
+    return ('',idx)
+
+
 def unhtml(raw_html):
     import re
     # as per recommendation from @freylis, compile once only
