@@ -342,7 +342,9 @@ class BaseCorpus(BaseObject):
         # (i.e. query on incoming text's title, sort through results, etc)
         # by default this will just use .text() and an incoming text's
         # address will be used as the ID
-        return self.text(id=text, **kwargs)
+        newtext=self.text(id=text, **kwargs)
+        newtext.add_source(text)
+        return newtext
 
 
     def text(self,
@@ -479,7 +481,7 @@ class BaseCorpus(BaseObject):
             # otherwise?
             id = get_idx(
                 id=id,
-                i=self.num_texts+1,
+                i=len(self._textd)+1,
                 **meta
             )
         if _new: id = self.iter_text_id(id)
@@ -551,6 +553,7 @@ class BaseCorpus(BaseObject):
     # Get texts
     @property
     def textd(self):
+        if log: log('...')
         self.init()
         return self._textd
         
@@ -657,12 +660,13 @@ class BaseCorpus(BaseObject):
         
         # yield merged
         for id,ld in sorted(id2ld.items()):
-            odx=merger(*ld)
+            if type(ld)!=list or not ld: continue
+            odx=merger(*ld) if len(ld)>1 else ld[0]    
             if not allow_hidden: odx={k:v for k,v in odx.items() if k and k[0]!='_'}
             yield id, odx
             
 
-    def iter_init(self,progress=False,add=True,cache=True,force=False,**kwargs):
+    def iter_init(self,progress=True,add=True,cache=False,force=False,**kwargs):
         if log>0: log(self)
         iterr=self.init_meta(**kwargs)
         if progress: iterr=get_tqdm(list(iterr), desc=f'[{self.name}] Iterating texts')
@@ -674,6 +678,7 @@ class BaseCorpus(BaseObject):
         
     def init(self,force=False,quiet=None,**kwargs):
         if not force and self._init: return
+        if log: log('...')
         self._init=True
         if log>0: log(self)
         # stop
@@ -690,7 +695,14 @@ class BaseCorpus(BaseObject):
             numdone = do_it()
 
         if numdone and log.verbose>0: log(f'initialized {numdone} texts')
+        return self
 
+    def cache_db(self):
+        new = {'id':self.id}
+        old = self.gdb.get(self.addr)
+        if is_cacheworthy(new,old):
+            self.gdb.set(self.addr, new)
+            return True
 
 
     def metadata(

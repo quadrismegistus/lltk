@@ -13,17 +13,14 @@ def htid2id(x):
     return a+'/'+b
 
 class TextHathi(BaseText):
-
     def metadata(self,**kwargs):
         d=super().metadata(self,**kwargs)
         au=d.get('contributor')
         if au:
             if type(au)==list: au=au[0]
             d['author']=au
-        
         yr=d.get('publishDate')
-        if yr:
-            d['year']=pd.to_numeric(self['publishDate'],errors='coerce')
+        if yr: d['year']=pd.to_numeric(yr,errors='coerce')
         return d
 
 
@@ -40,14 +37,17 @@ class TextHathiRecord(TextHathi):
 
     
     def query(self,force=False,**kwargs):
+        if log: log(f'? {self.id}')
+
         from hathitrust_api import BibAPI
         bib = BibAPI()
-        log(('recordnumber',self.htrn))
+ 
         bibd=bib.get_single_record_json('recordnumber',self.htrn)
         recdd=bibd.get('records',{})
         if not recdd: return {}
 
         recd=recdd.get(self.htrn,{})
+        log(f'? {pf(recd)}')
         recd['htids']=[
             d.get('htid')
             for d in bibd.get('items',[])
@@ -56,6 +56,7 @@ class TextHathiRecord(TextHathi):
         recd['_sources']=['_hathi/htid/'+x for x in recd['htids']]
         recd['num_vols']=len(recd['_sources'])
         recd = hathi_clean_query_meta(recd)
+        if log: log(f'-> {pf(recd)}')
         return recd
 
 
@@ -74,6 +75,8 @@ class TextHathiVolume(TextHathi):
         return bool((meta if meta else self._meta).get('recordURL'))
 
     def query(self,force=False,**kwargs):
+        log(f'? {self.id}')
+        odx={}
         try:
             from htrc_features import Volume
             vol = Volume(self.htid)
@@ -83,11 +86,13 @@ class TextHathiVolume(TextHathi):
                 if k and k[0]!='_' and type(v) in {int,float,str,list,dict,set,tuple} and v
             }
             odx['htid']=odx.get('id','')
-            if odx['htid']: return self.ensure_id_addr(odx)
+            if odx['htid']: 
+                odx=self.ensure_id_addr(odx)
         except Exception as e:
             log.error(e)
+        if log: log(f'-> {pf(odx)}')
+        return odx
         
-        return {}
 
 
 
@@ -222,55 +227,17 @@ class Hathi(BaseCorpus):
         log(f'-> {o}')
         return o
 
-    # def from_record_ids(self,record_ids):
-    #     from hathitrust_api import BibAPI
-    #     bib = BibAPI()
-    #     db=self.query_db('query_record_jsons')
-    #     for recnum in record_ids:
-    #         idres = db.get(recnum)
-    #         if idres is not None:
-    #             yield idres
-    #         else:
-    #             bibd=bib.get_single_record_json('recordnumber',id)
-    #             recd=bibd.get('records',{}).get(recnum,{})
-    #             volld=bibd.get('items',{})
-    #             volld=[d for d in volld if d.get('fromRecord')==id]
-    #             yield (recd,volld)
-
-
-
     def text_from(self,text,**kwargs):
-        x=None
-        for x in self.texts_from(text,**kwargs): break
-        return x
+        for newtext in self.texts_from(text,**kwargs):
+            newtext.add_source(text)
+            return newtext
 
-    def texts_from(self,text,add_source=True,**kwargs):
+    def texts_from(self,text,remote=True,**kwargs):
         if not is_text_obj(text) or text.corpus == self: return text
         for htrn in self.query_for_ids(text):
             htrnid = f'htrn/{htrn}'
-            t=self.text(htrnid, _source=self if add_source else None)
+            t=self.text(htrnid).init(remote=remote,**kwargs)
             yield t
-
-
-        # for htrn,htrn_d in self.query_record_jsons(ids):
-        #     for recd in self.process_rec_json(htrn,htrn_d):
-        #         if add_source: recd['_source'] = text.addr
-        #         t=self.text(**recd)
-
-        #         # vol ld
-        #         for vold in volld in recd.get('vols',[]):
-        #             htid = vold.get('htid')
-        #             if htid:
-        #                 vold['id']=f'htid/{htid}'
-        #                 log(vold)
-        #                 yield t
-
-
-
-
-
-
-
 
 
 

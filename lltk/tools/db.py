@@ -1,6 +1,6 @@
 from lltk.imports import *
-from lltk.tools.tools import safeget,ensure_dir_exists
-import json
+from lltk.tools.tools import safeget,ensure_dir_exists,safejson
+import orjson
 
 DBSD={}
 DEFAULT_DB='texts'
@@ -203,44 +203,43 @@ class LLDBGraph(LLDBBase):
     def add_node(self,id,**meta):
         return self.db.atomic(
             self.path,
-            self.db.upsert_node(id, meta)
+            self.db.upsert_node(id, safejson(meta))
         )
     
     def add_edge(self,source,target,**meta):
         return self.db.atomic(
             self.path,
-            self.db.connect_nodes(source, target, meta)
+            self.db.connect_nodes(source, target, safejson(meta))
         )
     
     def get_node(self,id,**meta):
         return self.db.atomic(
             self.path,
-            self.db.find_node(id if id else meta)
+            self.db.find_node(id if id else safejson(meta))
         )
     
     def get_nodes(self,id,**meta):
         return self.db.atomic(
             self.path,
-            self.db.find_nodes(id if id else meta)
+            self.db.find_nodes(id if id else safejson(meta))
         )
     
     def get_neighbs(self,id,data=False,rel=None,**kwargs):
         if not data:
-            return self.db.traverse(self.path, id, **kwargs)
+            return self.db.traverse(self.path, id, **safejson(kwargs))
         else:
             return self.get_rels(id,rel=rel,**kwargs)
 
     def get_rels(self,id,rel=None,**kwargs):
-        res=self.db.traverse_with_bodies(self.path, id, **kwargs)
+        res=self.db.traverse_with_bodies(self.path, id, **safejson(kwargs))
         o=[]
         if type(res)==list and res:
             u = id
             for v,datatype,dstr in res:
                 if u != v and datatype!='()':
-                    d=json.loads(dstr)
+                    d=orjson.loads(dstr)
                     relx=d.get('rel')
-                    if not rel or rel==relx:
-                        o.append((v,relx))
+                    if not rel or rel==relx: o.append((v,relx))
         return o
 
     def iter_edges(self,id,**kwargs):
@@ -252,7 +251,7 @@ class LLDBGraph(LLDBBase):
         for resx in res:
             if resx and len(resx)==3:
                 u,v,dstr=resx
-                d=json.loads(dstr)
+                d=orjson.loads(dstr)
                 yield u,v,d
     
     def get_edges(self,id,**kwargs):

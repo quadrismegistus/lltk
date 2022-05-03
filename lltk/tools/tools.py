@@ -10,6 +10,12 @@ def safeget(x,k):
             pass
     
 
+def safejson(obj):
+    import orjson
+    return orjson.loads(orjson.dumps(obj, option=orjson.OPT_SERIALIZE_NUMPY))
+
+
+
 def get_ideal_cpu_count():
     mp_cpu_count=mp.cpu_count()
     DEFAULT_NUM_PROC = mp_cpu_count - 2

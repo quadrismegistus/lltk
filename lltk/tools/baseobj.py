@@ -42,3 +42,11 @@ class BaseObject(object):
             self._gdb=DB(engine='graph')
         return self._gdb
 
+    def same_as(self): return self.rels('rdf:type')
+    
+    def get_rels(self,rel=None): return self.gdb.get_rels(self.addr,rel=rel)
+    @property
+    def rels(self): return self.get_rels()
+
+    @property
+    def dbmeta(self): return self.gdb.get(self.addr,{})

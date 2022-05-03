@@ -22,7 +22,7 @@ META_KEY_SEP='__'
 CACHE_DB=True
 CACHE_JSON=False
 MATCHRELNAME='rdf:type'
-
+REMOTE_SOURCES=['hathi','wikidata']
 
 # Get tools
 LOG_TO_SCREEN = False
@@ -44,7 +44,7 @@ PATH_LLTK_CODE_HOME = os.path.abspath(os.path.join(PATH_TO_CORPUS_CODE,'..','..'
 # PATH_LLTK_REPO = os.path.abspath(os.path.join(PATH_TO_CORPUS_CODE,'..','..','..'))
 PATH_LLTK_HOME_DATA = PATH_LLTK_DATA = os.path.join(PATH_LLTK_HOME,'data')
 PATH_LLTK_DB = os.path.join(PATH_LLTK_DATA,'db')
-PATH_LLTK_DB_FN = os.path.join(PATH_LLTK_DB,'database')
+PATH_LLTK_DB_FN = os.path.join(PATH_LLTK_DB,'lltk')
 PATH_LLTK_MATCHES = os.path.join(PATH_LLTK_DATA,'rels')
 PATH_LLTK_DB_MATCHES = os.path.join(PATH_LLTK_MATCHES, 'db')
 PATH_LLTK_DB_ENGINE = 'rdict'

@@ -41,7 +41,8 @@ class BaseText(BaseObject):
         if id is None and len(_sources): id=list(_sources)[0].addr
         self.id=id=get_idx(**merge_dict( dict(id=id,i=len(self.corpus._textd)+1), meta ))
 
-        if log>0: log(f'{self.__class__.__name__}({get_imsg(id,_corpus,_source,**meta)})')
+        if log>0:
+            log(f'{self.__class__.__name__}({get_imsg(id,_corpus,_source,**meta)})')
         
         self._section_corpus=_section_corpus
         self._sections={}
@@ -69,6 +70,8 @@ class BaseText(BaseObject):
         else:
             self._sources = []
             self._source = None
+
+
         
     #def __repr__(self): return f'Text({self.addr})'
     def __repr__(self): 
@@ -172,6 +175,7 @@ class BaseText(BaseObject):
     
     def cache(self, json=CACHE_JSON, db=CACHE_DB, force=False,*x, **y):
         if force or self._cacheworthy:
+            if log: log('...')
             meta={
                 k:v
                 for k,v in self._meta.items()
@@ -422,57 +426,50 @@ class BaseText(BaseObject):
 
 
     
-    def add_source(self,source,viceversa=True,yn='',symlink=True,**kwargs):
-        if is_textish(source): return self.match(source,yn=yn,**kwargs)
-    
-            # source = Text(source)
-            # match=self.match(source,yn=yn,**kwargs)
-            # if symlink: self.symlink(source)
-            # if any(match) and log>0: log(f'found match: {match}')
-            # if viceversa:
-            #     if log>0: log('adding source vice versa')
-            #     source.add_source(self,viceversa=False,yn=yn,symlink=symlink,**kwargs)
-            # return bool(any(match))
-    
-    
+    def add_source(self,source,viceversa=True,yn='',**kwargs):
+        if log: log(f'{self} -> {source}')
+        if is_textish(source): 
+            self.match(source,yn=yn,**kwargs)
+            if viceversa:
+                Text(source).add_source(self,viceversa=False,yn=yn,**kwargs)
+
+
     def match(self,other,yn='',rel=MATCHRELNAME,cache=True,**kwargs):
+        if log: log('...')
+        other = Text(other)
         if log: log(f'{self.addr} --> {other.addr} ?')
         self.cache_db(), other.cache_db()
         meta=dict(yn=yn, rel=rel, **just_meta_no_id(kwargs))
         self.gdb.add_edge(self.addr, other.addr, **meta)
-        # return (
-        #     self.matcher.match(self,other,yn=yn,**kwargs),
-        #     self.matcher_global.match(self,other,yn=yn,**kwargs)
-        # )
     
     def get_matches(self,as_text=True,rel=MATCHRELNAME,**kwargs):
-        return {Text(v) for v,rel in self.gdb.get_rels(self.addr,rel=rel)}
-        # return {
-        #     Text(x)
-        #     for x in self.gdb.get_edges(self.addr)
-            
-        # }
+        if log: log('...')
+        return {Text(v) for v,rel in self.gdb.get_rels(self.addr,rel=rel)} - {self}
 
     @property
     def idx(self): return self.id.split('/')[-1]
     
     def get_sources(self,remote=False,cache=True,**kwargs):
+        if log: log('...')
         if not self.id_is_valid(): return []
-        return self.get_matches()
-        
-        # sources=self.get_local_sources(**kwargs)
-        
-        # if remote:
-        #     self.get_remote_sources(sources,**kwargs)
-        #     sources=self.get_local_sources(**kwargs)
-        # if cache: self.matcher.cache()
-        # return [x for x in sources if x.id_is_valid()]
-        # # return set(sources)
-        # # return sorted(list(sources),key=lambda t: t.addr)
+        srcs=set(self.get_matches())
+        if remote: srcs|=set(self.get_remote_sources())
+        return list(srcs)
 
-    def get_remote_sources(self,*args,**kwargs):
-        # OVERWRITE?
-        return set()
+    def get_remote_sources(self,corpora=REMOTE_SOURCES,*args,**kwargs):
+        o=[]
+        if corpora:
+            if log: log('...')
+            from lltk.corpus.corpus import Corpus
+            for c in set(corpora):
+                log(f'? {c}')
+                tsrc = Corpus(c).text_from(self)
+                if tsrc is not None:
+                    log(f'found remote source: {tsrc}')
+                    o.append(tsrc)
+        return o
+            
+        
 
     # def get_remote_sources(self,sources=None,wikidata=True,**kwargs):
     #     sofar=set()
@@ -484,6 +481,7 @@ class BaseText(BaseObject):
 
 
     def get_local_sources(self,sofar=None,recursive=False,**kwargs):
+        if log: log('...')
         if log>1: self.log(f'get_sources(sofar = {sofar}, recursive = {recursive}, **kwargs')
         
         sofar = set() if not sofar else set([x for x in sofar])
@@ -553,67 +551,57 @@ class BaseText(BaseObject):
         srcs=self.sources
         if srcs: return list(srcs)[0]
 
-    def query(self,*x,**y): return {}
+    def query(self,*x,**y):
+        if log: log('...')
+        return {}
 
     def metadata_remote(self,meta={},sep=META_KEY_SEP,**kwargs):
+        if log: log('...')
         ometa=meta
         if self.id_is_valid() and not self.meta_is_valid(meta):
             query_meta = self.query(**kwargs)
             if query_meta:
                 srcs=query_meta.get('_sources')
+                if log: log(f'srcs = {srcs}')
                 if srcs:
-                    for src in srcs: self.add_source(src)
+                    for src in srcs:
+                        self.add_source(src)
                     del query_meta['_sources']
 
                 ometa=merge_dict(ometa, query_meta)
                 self._cacheworthy=True
-        return {k:v for k,v in ometa.items() if k.count(sep)<=1}
+        return self.ensure_id(ometa)
 
     def metadata_from_cache(self,meta={},**kwargs):
-        return merge_dict(meta, self.init_cache(**kwargs))
-        
+        if log: log('...')
+        return self.ensure_id(merge_dict(meta, self.init_cache(**kwargs)))
 
-    def metadata_from_sources(
-            self,
-            meta=None,
-            sep=META_KEY_SEP,
-            remote=False,
-            from_cache=True,
-            cache=False,
-            **kwargs):
-        ometa=self._meta if not meta else meta
-        sources_present = {x.split(sep)[-1] for x in ometa if sep in x}
-        if log>1: log(f'sources_present = {sources_present}')
-        for src in self.get_sources(remote=remote,cache=False,**kwargs):
-            if src in sources_present: continue
-            # if src.corpus.id == self.corpus.id: continue
-            if src.corpus.id == TMP_CORPUS_ID: continue
-            
-            if log>0: log(f'adding metadata from source: {src}')
-            # if not wikidata and src.corpus.id=='wikidata': continue
-            sd = src.metadata(
-                from_sources=False,
-                from_cache=from_cache,
-                remote=remote,
-                cache=False,
-                **kwargs
+    def metadata_from_sources(self,meta={},sep=META_KEY_SEP,remote=False,**kwargs):
+        if log: log('...')
+        kwargs['from_sources']=False
+        return self.ensure_id(
+            merge_dict(
+                meta,
+                {
+                    (k+sep+src.corpus.id):v
+                    for src in self.get_sources(remote=remote)
+                    for k,v in src.metadata(**kwargs).items()
+                    if sep not in k
+                }
             )
-            sd2={
-                (k+((sep+src.corpus.id) if src.corpus.id!=self.corpus.id else '')):v
-                for k,v in sd.items()
-                if k!=self.corpus.col_id and not sep in k
-            }
-            if sd2: sd2[src.corpus.col_id+sep+src.corpus.id] = src.id
-            ometa = merge_dict(ometa, sd2)
-        return {k:v for k,v in ometa.items() if k.count(sep)<=1}
+        )
+
 
     def metadata_initial(
             self,meta={},
             bad_keys={'_source','_sources'},
             sep=META_KEY_SEP,
             **kwargs):
+        if log: log('...')
         imeta=merge_dict(TEXT_META_DEFAULT, self.META, self.__meta, self._meta, meta)
-        return {k:v for k,v in imeta.items() if k not in bad_keys and k.count(sep)<=1}
+        ometa=self.ensure_id({k:v for k,v in imeta.items() if k not in bad_keys})
+        self._meta={k:v for k,v in ometa.items() if not sep in k}
+        return ometa
 
     def metadata(
             self,
@@ -625,6 +613,7 @@ class BaseText(BaseObject):
             remote=False,
             sep=META_KEY_SEP,
             **kwargs):
+        if log: log('...')
         # begin dict
         ometa={}
         # initial (self.__meta, self._meta, ...)
@@ -632,7 +621,7 @@ class BaseText(BaseObject):
             ometa = self.metadata_initial(ometa)
         # json caches (incl source jsons?)
         if from_cache:
-            ometa = self.metadata_from_cache(ometa,from_sources=from_sources,**kwargs)
+            ometa = self.metadata_from_cache(ometa,**kwargs)
         # query for myself?
         if remote:
             ometa = self.metadata_remote(ometa)
@@ -646,7 +635,7 @@ class BaseText(BaseObject):
                 **kwargs
             )
         # set temp cache meta
-        self.__meta = ometa = self.ensure_id_addr(ometa)
+        self.__meta = ometa = self.ensure_id(ometa)
         # cache?
         if cache: self.cache()
         # return final meta dict
@@ -659,15 +648,16 @@ class BaseText(BaseObject):
 
     def ensure_id_addr(self,*x,**y): return self.ensure_id(*x,**y)
 
-    def ensure_id(self,meta=None,col_id=COL_ID,col_corpus='_corpus'):
+    def ensure_id(self,meta=None,col_id=COL_ID,col_corpus='_corpus',sep=META_KEY_SEP):
         if meta is None: meta=self._meta
         meta[col_id]=self.id
+        items = [(k,v) for k,v in sorted(meta.items()) if k and v and k.count(sep)<=1]
         return {
             col_id:self.id,
-            
-            **{k:v for k,v in sorted(meta.items()) if k.startswith(col_id+META_KEY_SEP)},
-            **{k:v for k,v in sorted(meta.items()) if not k.startswith(col_id+META_KEY_SEP)},
+            **{k:v for k,v in items if k.startswith(col_id+META_KEY_SEP)},
+            **{k:v for k,v in items if not k.startswith(col_id+META_KEY_SEP)},
         }
+        
 
     def init(self,force=False,**kwargs):
         if force or not self._init:
@@ -1090,6 +1080,7 @@ def Text(
     
     global TEXT_CACHE
     if is_text_obj(text) and not _corpus: return text
+    if is_corpus_obj(text): return text
     params,meta = to_params_meta(_params_or_meta)
     if log>0: log(f'<- {get_imsg(text,_corpus,_source,**meta)}')
     if _new: _force=True
@@ -1101,7 +1092,7 @@ def Text(
         **_params_or_meta
     )
     if not taddr: raise CorpusTextException(f"cannot get address for {(text,_corpus)}")
-    if log>0: log(f'<- addr = {taddr}')
+    # if log>0: log(f'<- addr = {taddr}')
 
     # set kwargs
     tcorp,tid = to_corpus_and_id(taddr)

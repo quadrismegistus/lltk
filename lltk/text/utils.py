@@ -111,6 +111,7 @@ def get_idx(
     
     if is_text_obj(id): return id.id
     id1=id
+    if log>1: log(f'<- id = {id}, i = {i}')
     # already given?
     if safebool(id):
         if type(id)==str:
@@ -142,7 +143,10 @@ def get_idx(
         id = get_idx_from_int(numzero=numzero,prefstr=prefstr) # last resort
         if log>1: log(f'id set via random int: {id1} -> {id}')
     
-    return id if id else get_idx()
+    if not id: id=get_idx()
+    if log>1: log(f'-> {id}')
+    return id
+
     
 def get_addr(*x,**y): return get_addr_str(*x,**y)
 # def get_id(*x,**y): return get_id_str(*x,**y)
