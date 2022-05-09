@@ -162,8 +162,12 @@ class Cassandra(LLDBBase):
             return {}
         bdata_enc = d.get('data')
         C=Corpus(d.get('corpus'))
-        bdata = C.decrypt(bdata_enc)
-        return deserialize(bdata)
+        try:
+            bdata = C.decrypt(bdata_enc)
+            return deserialize(bdata)
+        except Exception as e:
+            log.error(f'!! {e} !!')
+            return {}
             
     def get(self,id=None,**meta):
         if id:
@@ -241,10 +245,15 @@ class Cassandra(LLDBBase):
 
         # encrypt!
         C = Corpus(dbd['corpus'])
-        bdata_enc = C.encrypt(bdata)
-        dbd['data']=bdata_enc
-        otype=self.doctype
-        return otype.create(**dbd)
+        try:
+            bdata_enc = C.encrypt(bdata)
+            dbd['data']=bdata_enc
+            otype=self.doctype
+            return otype.create(**dbd)
+        except Exception as e:
+            log.error(f'!! {e} !!')
+            return None
+        
 
     def insert(self,*lt,col_id=COL_ID,batch_size=10):
         for id,d in get_tqdm(lt,desc='.... Syncing database'): self.set(id,d)
