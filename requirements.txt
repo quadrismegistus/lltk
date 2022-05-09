@@ -29,3 +29,7 @@ mgzip
 openpyxl
 ftfy
 dateparser
+python-dotenv
+blosc
+cryptography
+ordered_set

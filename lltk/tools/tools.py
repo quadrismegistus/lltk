@@ -649,7 +649,7 @@ def config_obj2dict(config_obj,keys=['Default','User'],pathhack_root=ROOT,pathha
     return config_dict
 
 
-def load_config(pathhack=True,prompt_for_base_conf=True):
+def load_config(pathhack=True,prompt_for_base_conf=False):
     if prompt_for_base_conf and not os.path.exists(PATH_BASE_CONF):
         configure_prompt()
 
@@ -665,7 +665,7 @@ def load_config(pathhack=True,prompt_for_base_conf=True):
 
 
 
-def load_global_config(pathhack=True,prompt_for_base_conf=True):
+def load_global_config(pathhack=True,prompt_for_base_conf=False):
     # from lltk import PATH_LLTK_REPO
     #CONFIG_PATHS = [PATH_DEFAULT_CONF]
     CONFIG_PATHS=[]
