@@ -33,3 +33,4 @@ python-dotenv
 blosc
 cryptography
 ordered_set
+orjson
