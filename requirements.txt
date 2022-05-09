@@ -36,3 +36,6 @@ ordered_set
 orjson
 tinydb
 cassandra-driver
+recordlinkage
+datasketch
+sqlitedict
