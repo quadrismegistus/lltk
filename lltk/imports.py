@@ -296,7 +296,7 @@ INIT_DB_WITH_CORPORA = {
 	'ecco',
 	'evans_tcp',
 	'litlab',
-	'ravengarside',
+	# 'ravengarside',
 	'semantic_cohort',
 	'spectator'
 }

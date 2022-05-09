@@ -51,7 +51,7 @@ class TextList(BaseObject, UserList):
     def init(self,progress=True,**kwargs):
         for t in self.iter(progress=progress,desc='initializing texts'):
             t.init(**kwargs)
-        self.find_matches()
+        # self.find_matches()
         return self
 
     def iter_texts_uniq(
@@ -245,7 +245,7 @@ class TextList(BaseObject, UserList):
         o=[]
         if texts:
             iterr = texts
-            if progress and len(texts)>=100: iterr=get_tqdm(texts,desc='[LLTK] Matching texts')
+            if progress and len(texts)>=0: iterr=get_tqdm(texts,desc='[LLTK] Matching texts')
             for t in iterr:
                 for t2addr in lsh.query(t.minhash()):
                     if t2addr!=t.addr:

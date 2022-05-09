@@ -363,12 +363,12 @@ class BaseText(BaseObject):
         return self.ensure_id(self.mdb.get(self.addr))
     
     def get_cache(self,force=False,*x,**y):
-        return self.mdb.get(self.addr)
-        # if force or self._meta_old is None:
-        #     old = self._meta_old = self.mdb.get(self.addr)
-        # else:
-        #     old = self._meta_old
-        # return old
+        # return self.mdb.get(self.addr)
+        if force or self._meta_old is None:
+            old = self._meta_old = self.mdb.get(self.addr)
+        else:
+            old = self._meta_old
+        return old
 
     def cache(self,ometa={},force=False,**y):
         # if log: log(f'? {self.addr}')
@@ -383,7 +383,7 @@ class BaseText(BaseObject):
         if is_cacheworthy(new,old):
             if log: log(f'<< {self.addr}')
             self.mdb.set(self.addr,new)
-            # self._meta_old = new
+            self._meta_old = new
         return new
 
     def update(self,meta={},force=False,**metad):
@@ -1076,16 +1076,14 @@ class BaseText(BaseObject):
             num_proc=num_proc
         )
     
-    
     def minhash(self,cache=True,force=False):
         from datasketch import MinHash,LeanMinHash
+        m = MinHash(num_perm=128*2)
         from base64 import b64decode,b64encode
 
-        qkey=self.addr
-        db = self.db('minhash',engine='sqlite')
-        buf64 = db.get(qkey) if not force and cache else None
-        if buf64 is not None:
-            self._minhash = LeanMinHash.deserialize(b64decode(buf64))
+        if self._minhash:
+            if isinstance(self._minhash,bytes):
+                self._minhash = LeanMinHash.deserialize(b64decode(self._minhash))
         else:
             if not os.path.exists(self.path_txt): return
             words = self.words
@@ -1098,8 +1096,33 @@ class BaseText(BaseObject):
                     buf = bytearray(lm.bytesize())
                     lm.serialize(buf)
                     buf64=b64encode(buf)
-                    db.set(qkey,buf64)
+                    self.update(_minhash = buf64)
+                    self.cache()
         return self._minhash
+    
+    # def minhash1(self,cache=True,force=False):
+    #     from datasketch import MinHash,LeanMinHash
+    #     from base64 import b64decode,b64encode
+
+    #     qkey=self.addr
+    #     db = self.db('minhash',engine='sqlite')
+    #     buf64 = db.get(qkey) if not force and cache else None
+    #     if buf64 is not None:
+    #         self._minhash = LeanMinHash.deserialize(b64decode(buf64))
+    #     else:
+    #         if not os.path.exists(self.path_txt): return
+    #         words = self.words
+    #         if words:
+    #             m = MinHash(num_perm=128*2)
+    #             for word in words: m.update(word.encode('utf-8'))
+    #             self._minhash = lm = LeanMinHash(m)
+
+    #             if cache:
+    #                 buf = bytearray(lm.bytesize())
+    #                 lm.serialize(buf)
+    #                 buf64=b64encode(buf)
+    #                 db.set(qkey,buf64)
+    #     return self._minhash
 
     def hashdist(self,text,cache=True):
         m1=self.minhash(cache=cache)

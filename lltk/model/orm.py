@@ -12,10 +12,10 @@ from cassandra.cqlengine.connection import register_connection, set_default_conn
 
 DEFAULT_KEYSPACE='dataspace' #os.environ.get('ASTRA_DB_KEYSPACE','dataspace_2020_05_09')
 SERVERS = [
-    '10.42.0.1',
-    # '128.232.229.63',
     '185.143.45.10',
-    '127.0.0.1',
+    # '10.42.0.1',
+    '128.232.229.63',
+    # '127.0.0.1',
 ]
 
 
@@ -43,6 +43,11 @@ def CDB(force=False):
     return _CDB_
 
 
+
+
+
+
+
 TEXTDOCKEYS = {'id','corpus','author','title','year'}
 #first, define a model
 class TextDoc(Model):
@@ -55,6 +60,7 @@ class TextDoc(Model):
     title = columns.Text(custom_index=True, max_length=255)
     year = columns.Integer(index=True)
     rels = columns.Map(columns.Text, columns.Text)
+    minhash = columns.Bytes()
     data = columns.Bytes()
 
     @property
@@ -70,6 +76,18 @@ class TextDoc(Model):
     
     def from_text(text):
         return CDB().set(text.addr, text._meta)
+
+
+
+
+
+
+
+
+
+
+
+
 
     
 
@@ -136,7 +154,8 @@ class Cassandra(LLDBBase):
                 'case_sensitive': 'false'
             };
         ''')
-        self.session.execute('''CREATE CUSTOM INDEX IF NOT EXISTS title_like ON texts(title) USING 'org.apache.cassandra.index.sasi.SASIIndex';''')
+        # self.session.execute('''CREATE CUSTOM INDEX IF NOT EXISTS title_like ON texts(title) USING 'org.apache.cassandra.index.sasi.SASIIndex';''')
+        self.session.execute('''CREATE INDEX IF NOT EXISTS relmap ON texts(KEYS(rels));''')
         return self.session
 
 
@@ -164,7 +183,13 @@ class Cassandra(LLDBBase):
         C=Corpus(d.get('corpus'))
         try:
             bdata = C.decrypt(bdata_enc)
-            return deserialize(bdata)
+            odx=deserialize(bdata)
+            rels=d.get('rels')
+            if rels: odx['_rels']=rels
+            
+            mh=d.get('minhash')
+            if mh: odx['_minhash']=mh
+            return odx
         except Exception as e:
             log.error(f'!! {e} !!')
             return {}
@@ -229,19 +254,22 @@ class Cassandra(LLDBBase):
     def set(self,id,_d={},**meta):
         # serialize whole lltk input
         ometa=safebool({**_d, **meta})
-        bdata=serialize(ometa)
 
         # decide db input from lltk input
         dbd={}
         au=str(get_prop_ish(ometa,'author',default=''))
         ti=str(get_prop_ish(ometa,'title',default=''))
         rels=ometa.get('_rels',{})
+        minhash=ometa.get('_minhash')
         dbd['id']=id
         dbd['corpus']=to_corpus_and_id(id)[0]
         dbd['author']=au[:100] if au else ''
         dbd['title']=ti[:100] if ti else ''
         dbd['year']=int(get_year(ometa))
-        if rels: dbd['rels']=rels
+        if rels and isinstance(rels,dict): dbd['rels']=ometa.pop('_rels')
+        if minhash and isinstance(minhash,bytes): dbd['minhash']=ometa.pop('_minhash')
+
+        bdata=serialize(ometa)
 
         # encrypt!
         C = Corpus(dbd['corpus'])
