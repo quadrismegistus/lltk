@@ -38,7 +38,7 @@ class MultiText(BaseText):
     #                 if vs and vs[0].isdigit():
     #                     try:
     #                         vs=int(float(vs))
-    #                     except Exception as e:
+    #                     except AssertionError as e:
     #                         log.error(e)
     #                         pass
     #                 if vs not in BAD_PROPVALS:

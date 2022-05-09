@@ -109,7 +109,7 @@ class Classifier(Model):
             X_train,X_test = Xdf_train.values.astype('float'), Xdf_test.values.astype('float')
             try:
                 clf.fit(X_train,y_train)
-            except Exception as e:
+            except AssertionError as e:
                 print('!!',e)
                 continue
             probs=clf.predict_proba(X_test)

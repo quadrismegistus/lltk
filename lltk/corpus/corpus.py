@@ -1,8 +1,8 @@
 from lltk.imports import *
+from lltk.text import *
+from .utils import *
 
-
-
-class BaseCorpus(BaseObject):
+class BaseCorpus(TextList):
     ID=None
     NAME=None
     EXT_TXT='.txt'
@@ -14,7 +14,7 @@ class BaseCorpus(BaseObject):
     EXT_CADENCE_PARSE='.pkl'
     COL_ID='id'
     # COL_ID='_addr'
-    COL_ADDR='_addr'
+    COL_ADDR='_id'
     col_corpus=COL_CORPUS='corpus'
     COL_FN='fn'
     EXT_HDR='.hdr'
@@ -26,6 +26,7 @@ class BaseCorpus(BaseObject):
     MODERNIZE=MODERNIZE_SPELLING
     LANG='en'
     xml2txt = xml2txt_default
+    REMOTE_SOURCES = REMOTE_SOURCES
 
 
 
@@ -44,18 +45,19 @@ class BaseCorpus(BaseObject):
             _path=None,
             _id_allows='_',
             _init=False,
-            _quiet=True,
+            _quiet=False,
             **attrs):
 
 
         self.id=id
         self._metadf=None
         self._metadfd={}
+        self._addrs=set()
         self._texts=None
         self._textd=defaultdict(lambda: None)
         self._dtmd={}
         self._mfwd={}
-        self._init=False
+        self._init=set()
         self._source=None
         self.name=_name
 
@@ -99,21 +101,6 @@ class BaseCorpus(BaseObject):
             return self.text(id, _source=text, _force=True)
     def __delitem__(self, key): self.remove_text(id)
     def __iter__(self): return iter(self.iter_texts(progress=True))
-    # def __repr__(self): return f'[{self.__class__.__name__}]({self.id})'
-    # def __repr__(self): 
-        # return f'Corpus({self.id})'
-    
-    # def __repr__(self):
-    #     if type(self)!=BaseCorpus:
-    #         return f'[{self.__class__.__name__}]'
-    #     else:
-    #         return f'[{self.id}]'
-
-    # def __repr__(self):
-    #     if type(self)!=BaseCorpus:
-    #         return f'{self.__class__.__name__}Corpus({self.id})'
-    #     else:
-    #         return f'Corpus({self.id})'
 
     def __repr__(self): 
         cname=self.__class__.__name__
@@ -156,98 +143,54 @@ class BaseCorpus(BaseObject):
 
 
 
+    ####################################################################
+    # ETC?
+    ####################################################################
 
 
     @property
     def xml2txt_func(self): self.XML2TXT.__func__
     def xml2txt(self,*x,**y): return self.XML2TXT.__func__(*x,**y)
 
+    @property
+    def path_key(self): return os.path.join(self.path,'.key')
+    def generate_key(self,force=False):
+        if force or not os.path.exists(self.path_key):
+            from cryptography.fernet import Fernet
+            key = Fernet.generate_key()
+            with open(self.path_key,'wb') as of: of.write(key)
 
+    @property
+    def key(self):
+        if not self._key:
+            if not os.path.exists(self.path_key): self.generate_key()
+            with open(self.path_key,'rb') as f: self._key = f.read()
+        return self._key
 
+    def encrypt(self,obj):
+        from cryptography.fernet import Fernet
+        f=Fernet(self.key)
+        return f.encrypt(obj)
 
-
-
-
-
-
-
-
-
-
-
+    def decrypt(self,obj):
+        from cryptography.fernet import Fernet
+        f=Fernet(self.key)
+        return f.decrypt(obj)
 
 
     ####################################################################
     # ADDRS
     ####################################################################
-
     # Corpus addr
     @property
     def addr(self): return IDSEP_START+self.id
-    
-
-    # Text addrs
-    def get_addr(self,id):
-        return IDSEP_START + self.id + IDSEP + id
-    
+    # get address of my text
+    def get_addr(self,id): return IDSEP_START + self.id + IDSEP + id
+    # magic lists
     @property
-    def addrs(self): return self.addrs_all()
-
-    def addrs_db(self,force=True):
-        with self.db() as db:
-            o={self.get_addr(id) for id in db.keys()}
-        if log>1: log(f'-> {o}')
-        return o
-
-    def addrs_matchdb(self,force=True):
-        o={
-            addr
-            for addr in list(self.matcher) + list(self.matcher_global)
-            if addr.startswith(IDSEP_START+self.id+IDSEP)
-        }
-        if log>1: log(f'-> {o}')
-        return o
-
-    def addrs_textd(self,force=True):
-        o={self.get_addr(id) for id in self.textd.keys()}
-        if log>1: log(f'-> {o}')
-        return o
-
-    def addrs_all(self, db=True, matchdb=True, textd=True, force=True):
-        o=set()
-        if db: o|=set(self.addrs_db(force=force))
-        if matchdb: o|=set(self.addrs_matchdb(force=force))
-        if textd: o|=set(self.addrs_textd(force=force))
-        return o
-
-
+    def addrs(self): return [self.get_addr(id) for id in self.ids]
     @property
-    def ids_db(self): return set(self.dbmeta.get('ids',[]))
-    @property
-    def ids_textd(self): return set(self._textd.keys())
-    @property
-    def ids(self): return self.get_ids()
-    @property
-    def ids_(self): return self.get_ids(force=True)
-
-    def get_ids(self,db=True,textd=True,force=False):
-        if force or self._ids is None:
-            self._ids = set()
-            if textd: self._ids |= self.ids_textd
-            if db: self._ids |= self.ids_db
-            self._ids = list(self._ids)
-            self._ids.sort()
-        return self._ids
-
-
-
-
-
-
-
-
-
-
+    def ids(self): return sorted(list(self._textd.keys()))
 
 
 
@@ -255,77 +198,84 @@ class BaseCorpus(BaseObject):
 
 
     ####################################################################
-    # Clearing DB
-    ####################################################################
-    
-    def clear_db(self,keys=None):
-        self.db().drop()
-    
-        # if keys is None: keys=self.addrs_db(force=True)
-        # if len(keys):
-        #     if log>0: log(f'[{self.id}] Deleting {len(keys)} db entries')
-        #     with self.db() as db:
-        #         for key in keys:
-        #             del db[key]
-    
-    def clear_matches(self,keys=None):
-        if keys is None: keys=self.addrs_matchdb()
-        if len(keys):
-            if log>0: log(f'[{self.id}] Deleting {len(keys)} matchdb entries')
-            self.matcher.remove_nodes(keys)
-            self.matcher_global.remove_nodes(keys)
-
-    def clear(self,db=True,files=False,matches=True,**kwargs):
-        if db: self.clear_db()
-        if matches: self.clear_matches()
-        if files: pass # @TODO
-        self._metadf=None
-        self._texts=None
-        self._textd=defaultdict(lambda: None)
-        self._dtmd={}
-        self._mfwd={}
-        self._init=False
-        self._source=None
-
-    def clear_files(self): 
-        # @TODO
-        pass
-
-
-
-
-
-
-
-
-
-    ####################################################################
-    # Matcher
+    # SYNCING to db
     ####################################################################
 
-    @property
-    def matcher(self):
-        if self._matcher is None:
-            from lltk.model.matcher import Matcher
-            self._matcher=Matcher(self)
-        return self._matcher
     
-    @property
-    def matcher_global(self):
-        if self._matcher_global is None:
-            from lltk.model.matcher import Matcher
-            self._matcher_global=Matcher()
-        return self._matcher_global
+
+    def sync(self,progress=True,**kwargs):
+        l = list(self.init_meta_csv())
+        if progress: iterr = get_tqdm(l, desc=f'[{self.name}] Syncing texts to db')
+        else: iterr=l
+        o=[]
+        for i,(id,d) in enumerate(iterr):
+            addr = self.get_addr(id)
+            corpus_id,text_id = to_corpus_and_id(addr)
+            self._addrs|={addr}
+            mdx={
+                COL_ADDR:addr,
+                COL_CORPUS:corpus_id,
+                COL_ID:text_id,
+                **{k:v for k,v in safebool(d).items() if META_KEY_SEP not in k}
+            }
+            o.append((addr,mdx))
+
+        if log: log('adding texts to mdb...')
+        return self.mdb.insert(*o)
+        
+        
+
+    def init_meta(self,sources=['csv'],merger=None,allow_hidden=False,*x,**y):
+        
+        def _filter(odx): 
+            if allow_hidden: return odx
+            return {k:v for k,v in odx.items() if k and k[0]!='_'}
+
+        if sources == 'csv' or sources == ['csv']:
+            for id,d in self.init_meta_csv(*x,**y):
+                yield (id,_filter(d))
+        else:
+            if merger is None: merger = merge_dict
+            if log>0: log(self)
+            id2ld=defaultdict(list)
+            for source in sources:
+                if source=='csv':
+                    # log('Init from csv')
+                    for id,dx in self.init_meta_csv(*x,**y):
+                        id2ld[id].append(dx)
+                elif source=='json':
+                    # log('Init from json')
+                    for id,dx in self.init_meta_json(*x,**y):
+                        id2ld[id].append(dx)
+            
+            # yield merged
+            for id,ld in sorted(id2ld.items()):
+                if type(ld)!=list or not ld: continue
+                odx=merger(*ld) if len(ld)>1 else ld[0]    
+                yield (id, _filter(odx))
 
 
-    def match(self,corpus,**kwargs):
-        return self.matcher.find_matches(self,corpus,**kwargs)
+    def init_meta_json(self,force=False,bad_cols=BAD_COLS,meta_fn='meta.json',**kwargs):
+        # log(f'Initializing from json files: {self.addr}')
+        if log>0: log(self)
+        for root,dirs,fns in os.walk(self.path_texts):
+            if meta_fn in set(fns):
+                meta_root=os.path.abspath(root)
+                meta_fnfn=os.path.join(root,meta_fn)
+                idx = meta_root.replace(self.path_texts,'')
+                idx = idx[1:] if idx.startswith('/') else idx
+                yield idx, read_json(meta_fnfn)
 
-
-
-
-
-
+    def init_meta_csv(self,*x,**y):
+        if log>0: log(self)
+        if not os.path.exists(self.path_metadata): self.install_metadata()
+        if os.path.exists(self.path_metadata):
+            df=read_df_anno(self.path_metadata,dtype=str)
+            if type(df)==pd.DataFrame and len(df) and self.col_id in set(df.columns):
+                df=df.set_index(self.col_id)
+                o1=df.index
+                o2=df.to_dict('records')
+                yield from zip(o1,o2)
 
 
 
@@ -337,19 +287,6 @@ class BaseCorpus(BaseObject):
     # TEXTS
     ####################################################################
 
-    def text_from(self, text: Union[str,BaseText], **kwargs):
-        # Sublcass this in query-like corpus classes (Wikidata, Hathi)
-        # so that the resulting text can be of a very different kind
-        # (i.e. query on incoming text's title, sort through results, etc)
-        # by default this will just use .text() and an incoming text's
-        # address will be used as the ID
-        newtext=self.text(id=text, **kwargs)
-        newtext.add_source(text)
-        return newtext
-
-
-
-
 
     def text(self,
             id: Union[str,BaseText,None] = None,
@@ -359,6 +296,7 @@ class BaseCorpus(BaseObject):
             _force: bool = False,
             _new: bool = False,
             _init: bool = False,
+            _remote: Union[bool,None] = None,
             **kwargs) -> BaseText:
         """
         The one function users need to interact with a corpus's texts. Use this function both to get an existing text or to create a new one. Returns a text of type `corpus.TEXT_CLASS`. If an `id` is not specified, one will be auto-generated.
@@ -400,6 +338,7 @@ class BaseCorpus(BaseObject):
         """        
 
         # log incoming
+        # if log: log(f'<- {kwargs}')
         meta = just_metadata(kwargs)
         if log>0:  log(f'<- {get_imsg(id,self,_source,**meta)}')
 
@@ -407,35 +346,46 @@ class BaseCorpus(BaseObject):
         if _init: self.init()
 
         # Defaults
-        tocache=False
         t = None
 
-        if is_textish(id) and not _source: 
-            log(f'is_textish id = {id}')
-            _source=id
+        if is_textish(id) and not _source: _source=id
         id = self.get_text_id(id, _source=_source, _new=_new, **meta)
 
         # get?
         if not _force and id is not None: t = self.get_text(id)
         
         # Create?
-        if _force or t is None: t = self.init_text(id,_source=_source,_cache=False,**meta)
-        elif meta and is_text_obj(t): t.update(meta,_cache=False)
+        if _force or t is None: t = self.init_text(id,_source=_source,_cache=_cache,_remote=_remote,**meta)
+        elif meta and is_text_obj(t): t.update(meta,_cache=_cache)
         
         # Fail?
         if t is None: raise CorpusTextException('Could not get or create text')
         
         # Add to my own dictionary?
-        if _add: self.add_text(t)
+        # if _add: self.add_text(t)
         
-        # Cache?
-        if _cache: t.cache()
-        
+        # add source?
+        if _source: t.add_source(_source)
+
         # Return text
         if log>0: log(f'-> {t}' if is_text_obj(t) else "-> ?")
         return t
 
-    
+    def text_from(self,text,**kwargs):
+        for newtext in self.texts_from(text,**kwargs):
+            return newtext
+
+    def texts_from(self, id: Union[str,BaseText], add_source=True, remote=REMOTE_REMOTE_DEFAULT, cache=True,**kwargs):
+        # Sublcass this in query-like corpus classes (Wikidata, Hathi)
+        # so that the resulting text can be of a very different kind
+        # (i.e. query on incoming text's title, sort through results, etc)
+        # by default this will just use .text() and an incoming text's
+        # address will be used as the ID
+        #if log: log(f'<- remote = {remote} ?')
+        oldtext=Text(id)
+        newtext=self.text(oldtext,**kwargs).init_(remote=remote,cache=cache,**kwargs)
+        if add_source: newtext.add_source(oldtext)
+        yield newtext
 
 
     def get_text(self,id:str,_use_db:bool=True) -> Union[BaseText,None]:
@@ -455,16 +405,20 @@ class BaseCorpus(BaseObject):
         """
 
         if log>1: log(f'<- id = {id}')
+        
         t=self._textd.get(id)
         if log>1: log(f'-> {t}' if is_text_obj(t) else "-> ?")
         return t
         
+
+
     def remove_text(self,id,db=True,matches=True):
         if id in self._textd:
             if log>0: log(f'removing {id} from {self.id}._textd')
             del self._textd[id]
         if db: self.db().delete(id)
         if matches: self.matcher.remove_node(self.get_addr(id))
+
 
     def get_text_id(self,
             id: Union[str,BaseText,None] = None,
@@ -473,7 +427,7 @@ class BaseCorpus(BaseObject):
             **kwargs):
 
         meta=just_metadata(kwargs)
-        if log: log(f'<- {get_imsg(id,self,_source,**meta)}')
+        if log>1: log(f'<- {get_imsg(id,self,_source,**meta)}')
         
         if type(id)!=str or not id:
             if is_addr_str(id): id=id
@@ -488,14 +442,12 @@ class BaseCorpus(BaseObject):
                 **meta
             )
         if _new: id = self.iter_text_id(id)
-        log(f'-> {id}')
+        if log>1: log(f'-> {id}')
         return id
 
 
-
     def iter_text_id(self,id,_new=True,newsep='/v'):        
-        def getcfn(id): return os.path.join(self.path_texts,id,'meta.json')
-        while _new and (id in self._textd or os.path.exists(getcfn(id))):
+        while _new and id in self._textd:
             if log>0: log(f'<- {id}')
             idsuf=id.split(newsep)[-1]
             if idsuf.isdigit():
@@ -508,23 +460,16 @@ class BaseCorpus(BaseObject):
         return id
 
 
-    def init_text(self,id=None,_source=None,_cache=False,_use_db=True,**kwargs):
-        # log('...')
+    def init_text(self,id=None,_source=None,_cache=True,_remote=None,**kwargs):
+        # if log: log('...')
         meta=just_meta_no_id(kwargs)
         if log: log(f'<- {get_imsg(id,self,_source,**meta)}')
         if id is None: id = self.get_text_id(id, _source=_source, **meta)
-        
-        #if is_textish(_source): return self.init_from_text(id=id, _source=_source, **meta)
-        #if is_textish(id): return self.init_from_text(id, _source=id, **meta)
-
         # gen text in my image        
-        t = self.TEXT_CLASS(id=id, _corpus=self, _source=_source, **meta)
+        t = self.TEXT_CLASS(id=id, _corpus=self, _source=_source, _remote=_remote, **meta)
         t._cacheworthy=True
-
-        if _cache: self.cache()
-        
+        if _cache: t.cache()
         if log>0: log(f'-> {t}' if is_text_obj(t) else "-> ?")
-        
         return t
 
 
@@ -539,6 +484,21 @@ class BaseCorpus(BaseObject):
         c_t = corpus_or_texts
         texts = Corpus(c_t).texts(**kwargs) if type(c_t)!=list else c_t
         for t in texts: self.text(t,**kwargs)
+
+
+
+    def query_db(self,fn='query_cache'):
+        return DB(os.path.join(self.path,'data',fn), engine='sqlite')
+    @property
+    def qdb(self): return self.query_db()
+
+
+    # def db(self,name,*x,**y): return self.query_db(fn=name)
+
+
+
+
+
 
     @property
     def paths(self):
@@ -556,7 +516,7 @@ class BaseCorpus(BaseObject):
     # Get texts
     @property
     def textd(self):
-        if log: log('...')
+        # if log: log('...')
         self.init()
         return self._textd
         
@@ -571,12 +531,11 @@ class BaseCorpus(BaseObject):
         if shuffle: random.shuffle(o)
         if lim: o=o[:lim]
         if progress:
-            iterr=get_tqdm(o,desc=f'[{self.name}] Iterating texts')
+            iterr=get_tqdm(o,desc=f'[{self.name}] iterating texts')
         else:
             iterr=o
         for t in iterr:
-            # if progress: iterr.set_description(f'[{self.name}] Iterating texts: {t.id}')
-            if progress: iterr.set_description(f'{t}')
+            if type(progress)==int and progress>1: iterr.set_description(f'[{self.name}] yielding: {t.id}')
             yield t
     
     def corpus_texts(self,*args,**kwargs): yield from self.texts(*args,**kwargs)
@@ -586,14 +545,6 @@ class BaseCorpus(BaseObject):
     def num_texts(self): return len(self.textd)
     @property
     def text_ids(self): return list(self.textd.keys())
-
-
-
-
-
-
-
-
 
 
 
@@ -625,149 +576,106 @@ class BaseCorpus(BaseObject):
         return self._authors
 
         
-    def init_meta_json(self,force=False,bad_cols=BAD_COLS,meta_fn='meta.json',**kwargs):
-        # log(f'Initializing from json files: {self}')
-        if log>0: log(self)
-        for root,dirs,fns in os.walk(self.path_texts):
-            if meta_fn in set(fns):
-                meta_root=os.path.abspath(root)
-                meta_fnfn=os.path.join(root,meta_fn)
-                idx = meta_root.replace(self.path_texts,'')
-                idx = idx[1:] if idx.startswith('/') else idx
-                yield idx, read_json(meta_fnfn)
-
-    def init_meta_csv(self,*x,**y):
-        if log>0: log(self)
-        if not os.path.exists(self.path_metadata): self.install_metadata()
-        if os.path.exists(self.path_metadata):
-            df=read_df_anno(self.path_metadata,dtype=str)
-            if type(df)==pd.DataFrame and len(df) and self.col_id in set(df.columns):
-                df=df.set_index(self.col_id)
-                o1=df.index
-                o2=df.to_dict('records')
-                yield from zip(o1,o2)
-
-
-    def init_meta(self,sources=['csv'],merger=merge_dict,allow_hidden=False,*x,**y):
-        if log>0: log(self)
-        id2ld=defaultdict(list)
-        for source in sources:
-            if source=='csv':
-                # log('Init from csv')
-                for id,dx in self.init_meta_csv(*x,**y):
-                    id2ld[id].append(dx)
-            elif source=='json':
-                # log('Init from json')
-                for id,dx in self.init_meta_json(*x,**y):
-                    id2ld[id].append(dx)
-        
-        # yield merged
-        for id,ld in sorted(id2ld.items()):
-            if type(ld)!=list or not ld: continue
-            odx=merger(*ld) if len(ld)>1 else ld[0]    
-            if not allow_hidden: odx={k:v for k,v in odx.items() if k and k[0]!='_'}
-            yield id, odx
-            
     
-    def sync(self,sources=['csv'],progress=True,lim=None,**kwargs):
-        ids=[]
-        iterr=self.init_meta(sources=sources)
-        if progress: iterr=get_tqdm(list(iterr)[:lim])
-        for id,meta in iterr:
-            addr=get_addr_str(id,self.id)
-            meta['_corpus']=self.id
-            self.gdb[addr]=meta
-            ids.append(id)
-        self.gdb[self.addr]={'type':'Corpus', 'ids':ids}
-        return True
 
+    def iter_init(self,progress=True,_init=True,_cache=False,remote=False,lim=None,shuffle=False,**kwargs):
+        #if log: log(f'<- remote = {remote}')
+        remote=is_logged_on()
 
-    def iter_init_db(self,progress=True,**kwargs):
-        if log: log('...')
+        iterr=list(self.gdb.get_nodes(_corpus=self.id))
+        if shuffle: random.shuffle(iterr)
+        iterr=iterr[:lim]
 
-        iterr=self.gdb.get_nodes(_corpus=self.id)
-        if progress: iterr=get_tqdm(iterr)
+        if iterr:
+            if progress:
+                iterr=get_tqdm(
+                    iterr,
+                    desc=f'[{self.name}] Loading corpus'
+                )
 
-        for dx in iterr:
-            id=to_corpus_and_id(dx['id'])[1]
-            meta=just_meta_no_id(dx)
-            t = self.text(
-                id, 
-                _source=None,
-                _add = True,
-                _cache = False,
-                _force = True,
-                _new = False,
-                _init = False,
-                **meta)
-            
-            self._textd[t.id]=t
+            for dx in iterr:
+                id=to_corpus_and_id(dx['id'])[1]
+                meta=just_meta_no_id(dx)
+                t = self.text(
+                    id, 
+                    _source=None,
+                    _add = True,
+                    _cache=False,
+                    _force = True,
+                    _new = False,
+                    _init = False,
+                    _remote = remote,
+                    **meta)
+                # if _init: t.init(cache=_cache,remote=remote,**kwargs)
+                yield t
 
-            yield t
+    def init_(self,remote=REMOTE_REMOTE_DEFAULT,cache=True,progress=2,**kwargs):
+        with log.silent:
+            for t in self.texts(progress=progress,**kwargs):
+                t.init(remote=remote,cache=cache,**kwargs)
         
-    def init_db(self,**kwargs):
-        if log: log('...')
-        o=list(self.iter_init_db())
-        o.sort(key=lambda t: t.id)
-        return o
+    def init(self,force=False,progress=False,remote=None,**kwargs):
+        remote=is_logged_on()
+        if not self._texts or not remote in self._init:
+            o = []
+            corp_ld = self.mdb.get(corpus=self.id)
+            iterr = (Text(d) for d in corp_ld)
+            if progress:
+                iterr=get_tqdm(iterr,total=len(corp_ld),desc=f'[{self.id}] init')
+            with log.silent:
+                for t in iterr:
+                    o.append(t.init())
+            self._texts = o
+            self._init |= {remote}
+        return self._texts
 
-    iter_init = iter_init_db
-
-    # def iter_init(self,progress=True,add=True,cache=False,force=False,**kwargs):
+    # def init(self,force=False,quiet=False,sync=True,progress=True,remote=False,cache=False,_init=True,lim=None,**kwargs):
+    #     if not force and self._init: return self
+    #     # if log: log('...')
     #     if log>0: log(self)
-    #     iterr=self.init_meta(**kwargs)
-    #     if progress: iterr=get_tqdm(list(iterr), desc=f'[{self.name}] Iterating texts')
-    #     for id,d in iterr:
-    #         # init text object from meta
-    #         od={k:v for k,v in d.items() if k not in {'id','add','cache'}}
-    #         t = self.text(id=id,_add=add,_cache=cache,_force=force,_init=False,**od)
-    #         yield t
-        
-    def init(self,force=False,quiet=None,**kwargs):
-        if not force and self._init: return
-        if log: log('...')
-        self._init=True
-        if log>0: log(self)
-        # stop
-        # log(self)
-        def do_it():
-            i=0
-            for x in self.iter_init(**kwargs): i+=1
-            return i
-        
-        if quiet is True or self._quiet is True:
-            with log.quiet:
-                numdone = do_it()
-        else:
-            numdone = do_it()
+    #     remote=is_logged_on()
+    #     #if log: log(f'<- remote = {remote}')
 
-        if numdone and log.verbose>0: log(f'initialized {numdone} texts')
-        return self
+    #     texts=[]
+    #     def go():
+    #         numdone=0
+    #         for t in self.iter_init(_init=_init,progress=progress,remote=remote,lim=lim,_cache=cache,**kwargs): numdone+=1
+    #         return numdone
+    #     def run():
+    #         if not quiet: return go()
+    #         with log.silent: return go()
 
-    # def cache_db(self):
-    #     new = {'id':self.id}
-    #     old = self.gdb.get(self.addr)
-    #     if is_cacheworthy(new,old):
-    #         self.gdb.set(self.addr, new)
-    #         return True
+    #     numdone=run()
 
-
+    #     if numdone:
+    #         if log: log(f'initialized {numdone} texts')
+    #         self._init=True
+    #     elif sync:
+    #         if log: log(f'no texts initialized. corpus in db? trying to sync...')
+    #         res = self.sync()
+    #         if type(res)==list:
+    #             texts = [Text(addr) for addr in res]
+    #             if log and texts: log(f'{len(ids)} texts synced')
+            
+    #     return texts
+    
     def metadata(
             self,
             force=False,
-            # force_save=True,
             progress=True,
             lim=None,
             fillna='',
             from_cache=True,
             from_sources=True,
-            cache=True,
+            cache=False,
             remote=False,
             sep=META_KEY_SEP,
             meta={},
             **kwargs):
         
         # self.init()
+        remote=is_logged_on()
+        #if log: log(f'<- remote = {remote}')
         key=(lim,fillna,from_cache,from_sources,remote)
         old_metadf=self._metadfd.get(key)
         if force or old_metadf is None:
@@ -798,18 +706,6 @@ class BaseCorpus(BaseObject):
 
         return self._metadfd.get(key,pd.DataFrame())
 
-    def save_metadata(self,ometa=None,*x,force=True,force_inner=False,ok_cols=set(),backup=True,**kwargs):
-        if ometa is None: ometa=self.metadata(force=force_inner,**kwargs)
-        if ometa is not None and len(ometa):
-            if not ok_cols: 
-                for t in self.texts(progress=False): ok_cols|=set(t._meta.keys())
-                ometa = ometa[[col for col in ometa.columns if col in ok_cols]]
-            if force or not os.path.exists(self.path_metadata):
-                ofn = self.path_metadata
-                if backup:
-                    backup_save_df(ometa,ofn,**kwargs)
-                save_df(ometa,ofn,**kwargs)
-
     @property
     def meta(self): return self.metadata(force=False)
     @property
@@ -836,18 +732,6 @@ class BaseCorpus(BaseObject):
 
 
 
-    def get_text_cache(self,id,**kwargs):
-        return self.get_text_cache_json(id,**kwargs)
-    def get_text_cache_json(self,id,meta_fn='meta.json'):
-        fn=os.path.join(self.path_texts,id,meta_fn)
-        return read_json(fn)
-        
-
-
-
-
-
-
 
     ####################################################################
     # SOURCES
@@ -864,63 +748,9 @@ class BaseCorpus(BaseObject):
 
 
 
-
-
-
-
-
-
-
-
-
     # #################
     # #### PROCESSING
     # #################
-
-    # def preprocess_txt(self,force=False,num_proc=DEFAULT_NUM_PROC,verbose=True,**attrs): #force=False,slingshot=False,slingshot_n=1,slingshot_opts=''):
-    #     if not self._texts: return
-    #     paths = [(t.path_xml,t.path_txt) for t in self.texts() if t.path_xml and os.path.exists(t.path_xml)]
-    #     if not paths:
-    #         if log>0: self.log('No XML files to produce plain text files from')
-    #         return
-    #     objs = [
-    #         (pxml,ptxt,self.XML2TXT.__func__)
-    #         for pxml,ptxt in paths
-    #         if force or not os.path.exists(ptxt)
-    #     ]
-    #     if not objs:
-    #         if log>0: self.log('Plain text files already saved')
-    #         return
-    #     tools.pmap(
-    #         do_preprocess_txt,
-    #         objs,
-    #         num_proc=num_proc,
-    #         desc=f'[{self.name}] Saving plain text versions of XML files',
-    #         **attrs
-    #     )
-
-    # def preprocess_freqs(self,force=False,kwargs={},verbose=True,**attrs): #force=False,slingshot=False,slingshot_n=1,slingshot_opts=''):
-    #     objs = [
-    #         (t.path_txt,t.path_freqs,self.TOKENIZER.__func__)
-    #         for t in self.texts()
-    #         if os.path.exists(t.path_txt) and (force or not os.path.exists(t.path_freqs))
-    #     ]
-    #     if not objs:
-    #         if log>0:
-    #             self.log('Word freqs already saved')
-    #         return
-    #     # print('parallel',parallel)
-    #     tools.pmap(
-    #         save_freqs_json,
-    #         objs,
-    #         kwargs=kwargs,
-    #         desc=f'[{self.name}] Saving word freqs as jsons',
-    #         **attrs
-    #     )
-
-
-
-
 
 
     def zip(self,savedir=PATH_CORPUS_ZIP,ask=False,parts=ZIP_PART_DEFAULTS):
@@ -952,10 +782,10 @@ class BaseCorpus(BaseObject):
                 pppath0 = os.path.dirname(pppath)
                 acceptable_paths = {getattr(t,f'path_{pathpart}') for t in self.texts()}
                 acceptable_paths = {p.replace(pppath0+os.path.sep,'') for p in acceptable_paths}
-                # print('orig paths',len(paths),list(paths)[:5])
-                # print('ok paths',len(acceptable_paths), list(acceptable_paths)[:5])
+                # if log: log('orig paths',len(paths),list(paths)[:5])
+                # if log: log('ok paths',len(acceptable_paths), list(acceptable_paths)[:5])
                 paths = list(set(paths) & acceptable_paths)
-            except Exception:
+            except AssertionError:
                 pass
             return paths
 
@@ -980,7 +810,7 @@ class BaseCorpus(BaseObject):
             with zipfile.ZipFile(opath,'w',zipfile.ZIP_DEFLATED) as zipf:
                 os.chdir(path1)
                 paths=list(_paths(path2,pathpart)) if os.path.isdir(path2) else [path2]
-                #print(type(paths),paths[:3])
+                #if log: log(type(paths),paths[:3])
                 zipper = zipdir(path2, zipf, pathpart=pathpart, paths=paths)
                 for ofnfn in self.get_tqdm(zipper, total=len(paths), desc=f'[{self.name}] Compressing {fname}'):
                     pass
@@ -1006,7 +836,7 @@ class BaseCorpus(BaseObject):
         if not zipdir: zipdir=os.path.join(PATH_CORPUS,'lltk_corpora')
         here=os.getcwd()
         os.chdir(zipdir)
-        #print('?',zipdir,os.listdir('.'))
+        #if log: log('?',zipdir,os.listdir('.'))
 
 
         cmds=[]
@@ -1023,7 +853,7 @@ class BaseCorpus(BaseObject):
             cmd='{upload} {file} {dest}'.format(upload=uploader,file=fn,dest=dest)
             cmds.append(cmd)
         # cmdstr="\n".join(cmds)
-        # print(f'Executing:\n{cmdstr}')
+        # if log: log(f'Executing:\n{cmdstr}')
 
         for cmd in self.get_tqdm(cmds,desc=f'[{self.name}] Uploading zip files'):
             os.system(cmd)
@@ -1034,7 +864,7 @@ class BaseCorpus(BaseObject):
         ol=[]
         import subprocess
         ln='['+self.name+']'
-        print(ln)
+        if log: log(ln)
         ol+=[ln]
         for part in ZIP_PART_DEFAULTS:
             fnzip = self.id+'_'+part+'.zip'
@@ -1042,19 +872,19 @@ class BaseCorpus(BaseObject):
             try:
                 out=str(subprocess.check_output(cmd.split()))
             except (subprocess.CalledProcessError,ValueError,TypeError) as e:
-                #print('!!',e)
+                #if log: log('!!',e)
                 continue
             link=out.strip().replace('\n','').split('http')[-1].split('?')[0]
             if link: link='http'+link+'?dl=1'
 
             url='url_'+part+' = '+link
-            print(url)
+            if log: log(url)
             ol+=[url]
-        print()
+        if log: log()
         #return '\n'.join(ol)
 
     def get_tqdm(self,*x,desc='',**y):
-        if desc: desc=f'[{self.id}] {desc}'
+        if desc: desc=f'[{self.name}] {desc}'
         return get_tqdm(*x,desc=desc,**y)
 
 
@@ -1087,7 +917,7 @@ class BaseCorpus(BaseObject):
             xstr=x
             v=getattr(self,x)
             if v: ol+=[f'{xstr}: {v}']
-        print('\n'.join(ol))
+        if log: log('\n'.join(ol))
 
     def install_metadata(
             self,
@@ -1102,7 +932,7 @@ class BaseCorpus(BaseObject):
             **kwargs
         )
 
-    def install(self, ask=True, urls={}, force=False, part=None, flatten=False, parts=None, unzip=True, **attrs):
+    def install(self, part=None, ask=True, urls={}, force=False, flatten=False, parts=None, unzip=True, **attrs):
         if not parts: parts=DOWNLOAD_PART_DEFAULTS
         if type(parts)==str: parts=[p.strip().lower() for p in parts.split(',')]
         if not part and parts:
@@ -1143,7 +973,7 @@ class BaseCorpus(BaseObject):
     #     if part in {'json','meta','meta_json'}: return os.path.join(text.path,'meta.json')
     #     if part == 'freqs': return os.path.join(text.path,'freqs.json')
     #     return None
-    
+
     def get_path_text(self,text,*x,**y): return text.get_path(*x,**y)
 
 
@@ -1173,7 +1003,7 @@ class BaseCorpus(BaseObject):
         path=getattr(self,ppart)
         if not os.path.exists(path): return False
         if os.path.isdir(path) and not os.listdir(path): return False
-        # print(part,ppart,path,os.path.exists(path))
+        # if log: log(part,ppart,path,os.path.exists(path))
 
         return path
 
@@ -1186,9 +1016,9 @@ class BaseCorpus(BaseObject):
         return getattr(self,ppart)
 
 
-    
 
-    
+
+
 
 
     def export(self,folder,meta_fn=None,txt_folder=None,compress=False):
@@ -1216,63 +1046,6 @@ class BaseCorpus(BaseObject):
             shutil.copyfile(ifnfn,ofnfn)
             #break
 
-
-
-
-
-
-    ### FREQS
-
-
-    def dtm(self,words=[],texts=None,n=DEFAULT_MFW_N,tf=False,tfidf=False,meta=False,na=0.0,sort_cols_by='sum',**mfw_attrs):
-        dtm=self.preprocess_dtm(texts=texts, words=words,n=n,**mfw_attrs)
-        dtm=dtm.set_index(self.col_id) if self.col_id in set(dtm.columns) else dtm
-        if texts is not None:
-            dtm=dtm.loc[[w for w in to_textids(texts) if w in set(dtm.index)]]
-        dtm = dtm.reindex(dtm.agg(sort_cols_by).sort_values(ascending=False).index, axis=1)
-
-        if tf: dtm=to_tf(dtm)
-        if tfidf: dtm=to_tfidf(dtm)
-        if meta:
-            if type(meta) in {list,set}:
-                if not self.col_id in meta: meta=list(meta)+[self.col_id]
-            mdf=self.metadf[meta] if type(meta) in {list,set} else self.metadf
-            mdtm=mdf.merge(dtm,on=self.col_id,suffixes=('','_w'),how='right')
-            micols = mdf.columns
-            dtm=mdtm.set_index(list(micols))
-        # odtm=dtm.fillna(na) 
-        # odtm=odtm.reset_index().drop_duplicates()
-        # indexby='id' if not meta else meta+['id']
-        return dtm.sort_index()
-
-    def mdw(self,groupby,words=[],dtm=None,texts=None,tfidf=True,keep_null_cols=False,remove_zeros=True,agg='median',num_proc=DEFAULT_NUM_PROC, **mfw_attrs):
-        texts=self.metadf[self.metadf.id.isin(to_textids(texts))] if texts is not None else self.metadf
-        if not keep_null_cols: 
-            texts=texts.loc[[bool(x) for x in texts[groupby]]]
-
-        if dtm is None:
-            dtm=self.dtm(
-                words=words,
-                texts=texts,
-                tfidf=tfidf,
-                meta=[groupby] if type(groupby)==str else groupby,
-                num_proc=num_proc,
-                **mfw_attrs
-            )
-
-        mdw=to_mdw_mannwhitney(dtm, groupby, num_proc=num_proc)
-        mdw['method']='mannwhitney'
-        return mdw
-
-
-    # @property
-    # def path_mfw(self):
-    # 	if not os.path.exists(self.path_data): os.makedirs(self.path_data)
-    # 	return os.path.join(self.path_data, 'mfw.h5')
-    # @property
-    # def path_dtm(self):
-    # 	if not os.path.exists(self.path_data): os.makedirs(self.path_data)
-    # 	return os.path.join(self.path_data, 'dtm.h5')
     @property
     def path_mfw(self):
         path_mfw=os.path.join(self.path_data,'mfw')
@@ -1289,538 +1062,19 @@ class BaseCorpus(BaseObject):
     @property
     def path_texts(self):
         return os.path.join(self.path,DIR_TEXTS_NAME)
-    # @property
-    # def path(self): return self.path_root
 
 
-    #########
-    # MFW
-    #########
 
-    # pos?
 
 
-
-    def mfw_df(self,
-            n=None,
-            words=None,
-            texts=None,
-            yearbin=None,
-            by_ntext=False,
-            n_by_period=None,
-            keep_periods=True,
-            n_agg='median',
-            min_count=None,
-            col_group='period',
-            excl_stopwords=False,
-            excl_top=0,
-            valtype='fpm',
-            min_periods=None,
-            by_fpm=False,
-            only_pos=set(),
-            force=False,
-            keep_pos=None,
-            **attrs):
-
-        # gen if not there?
-        if yearbin is None: yearbin=self.mfw_yearbin
-        if n is None: n=self.mfw_n
-        if type(yearbin)==str: yearbin=int(yearbin)
-        df = self.preprocess_mfw(
-            n=n,
-            words=words,
-            texts=texts,
-            yearbin=yearbin,
-            by_ntext=by_ntext,
-            by_fpm=by_fpm,
-            col_group=col_group,
-            force=False,
-            try_create_freqs=True,
-            **attrs
-        )
-        if df is None:
-            self.log('Could not load or generate MFW')
-            return
-        df=df.fillna(0)
-
-        if words is not None: df=df[df.word.isin(words)]
-
-        if excl_top:
-            df=df[df['rank']>=excl_top]
-
-        if excl_stopwords:
-            stopwords=get_stopwords()
-            df=df[~df.word.isin(stopwords)]
-
-        if min_count: df = df[df['count']>=min_count]
-
-        if min_periods and min_periods>1:
-            num_periods_per_word = df[df['count']>0].groupby('word').size()
-            if num_periods_per_word.max()>1:
-                ok_words=set(num_periods_per_word[num_periods_per_word>=min_periods].index)
-                df=df[df.word.isin(ok_words)]
-        if only_pos:
-            w2p=get_word2pos(lang=self.lang)
-            def word_ok(w):
-                wpos=w2p.get(w.lower())
-                if not wpos: return False
-                for posx in only_pos:
-                    # print(posx,wpos,only_pos)
-                    if posx==wpos: return True
-                    if posx.endswith('*') and wpos.startswith(posx[:-1]): return True
-                return False
-            df=df[df.word.apply(word_ok)]
-            # df['pos']=df.word.replace(w2p)
-            # df['pos0']=df.pos.apply(lambda x: x[0] if x else '')
-
-        ## now pivot
-        dfi=df.reset_index()
-        has_period = col_group in dfi.columns
-        if n: # limit to overall
-            if not n_by_period:
-                if has_period:
-                    dfpiv = dfi.pivot(col_group,'word',valtype).fillna(0)
-                    # print(dfpiv.median().sort_values(ascending=False))
-                    topNwords=list(dfpiv.median().sort_values(ascending=False).iloc[:int(n)].index) #iloc[excl_top:excl_top+n]
-                else:
-                    topNwords=dfi.sort_values(valtype,ascending=False).iloc[:int(n)].word
-                df=df[df.word.isin(set(topNwords))]
-            elif has_period:
-                df = df.dropna().sort_values('rank').groupby(col_group).head(n)
-
-        if not keep_periods or not has_period:
-            # agg by word
-            df=df.groupby('word').agg(n_agg)
-            df['ranks_avg']=df['rank']
-            df=df.sort_values(valtype,ascending=False)
-            df['rank']=[i+1 for i in range(len(df))]
-
-        # dfr=df.reset_index()
-        # odf = odf[odf.columns[1:] if set(odf.columns) and odf.columns[0]=='index' else odf.columns]
-        dfr=df#.reset_index() if not 'id' in df
-
-        ## add back pos?
-        if keep_pos is not False:
-            w2pdf=get_word2pos_df(lang=self.lang)
-            w2pdf['pos0']=w2pdf['pos'].apply(lambda x: x[0] if type(x)==str and x else '')
-            # w2pdf['pos'],w2pdf['pos0']=w2pdf['pos0'],w2pdf['pos']
-            dfr=dfr.merge(w2pdf,on='word')
-
-
-        if col_group in dfr and set(dfr[col_group])=={EMPTY_GROUP}:
-            dfr=dfr.drop(col_group,1)
-
-        return dfr
-
-
-
-    def mfw(self,*x,**y):
-        y['keep_periods']=False
-        df=self.mfw_df(*x,**y)
-        try:
-            return list(df.reset_index().word)
-        except Exception:
-            return []
-
-
-
-    def to_texts(self,texts):
-        if issubclass(texts.__class__, pd.DataFrame) and self.col_id in set(texts.reset_index().columns):
-            return [self.textd[idx] for idx in texts.reset_index()[self.col_id]]
-        # print(type(texts), texts)
-        return [
-            x if (Text in x.__class__.mro()) else self.textd[x]
-            for x in texts
-        ]
-    
-    def to_textdf(self,texts):
-        if issubclass(texts.__class__, pd.DataFrame): return texts.reset_index()
-        
-        # is objects?
-        meta=self.meta.reset_index()
-        meta['corpus_id']=list(zip(meta.corpus,meta.id))
-        ok_corpus_ids=[(t.corpus.name, t.id) for t in texts]
-        return meta[meta.corpus_id.isin(ok_corpus_ids)]
-    
-    @property
-    def textdf(self): return self.meta.reset_index()
-    
-
-    def preprocess_mfw(self,
-            texts=None,
-            words=None,
-            yearbin=None,
-            yearbin_posthoc=None, # applied at end
-            year_min=None,
-            year_max=None,
-            by_ntext=False,
-            by_fpm=False,
-            num_proc=DEFAULT_NUM_PROC,
-            col_group='period',
-            estimate=True,
-            force=False,
-            verbose=False,
-            try_create_freqs=True,
-            progress=True,
-            pos=set(),
-            **attrs
-        ):
-        """
-        From tokenize_texts()
-        """
-        if yearbin is None: yearbin=self.mfw_yearbin
-        if type(yearbin)==str: yearbin=int(yearbin)
-        textdf=self.textdf if texts is None else self.to_textdf(texts)
-        if (year_min or year_max) and 'year' in set(textdf.columns):
-            textdf=textdf.query(f'{year_min if year_min is not None else -1000000} <= year < {year_max if year_max is not None else -1000000}')
-        key=self.mfwkey(yearbin,by_ntext,by_fpm,textdf.id)
-        # keyfn=os.path.join(self.path_mfw,key+'.ft')
-        keyfn=os.path.join(self.path_mfw,key+'.pkl')
-
-        if key in self._mfwd and self._mfwd[key] is not None:
-            return self._mfwd[key]
-
-        kwargs={
-            'by_ntext':by_ntext,
-            'estimate':estimate,
-            'by_fpm':by_fpm,
-            'progress':progress,
-            'desc':f'[{self.name}] Counting overall most frequent words (MFW)',
-            'num_proc':num_proc if yearbin is False else 1
-        }
-        odf=None
-        if not force and os.path.exists(keyfn):
-            # if log>0: self.log(f'MFW is cached for key {key}')
-            if log>0: self.log(f'Loading MFW from {ppath(keyfn)}')
-            odf=read_df(keyfn)
-            self._mfwd[key]=odf
-            return odf
-
-
-        if yearbin and not {'year','path_freqs'}-set(textdf.columns):
-            textdf[col_group]=textdf.year.apply(lambda y: to_yearbin(y,yearbin))
-            textdf[col_group+'_int']=textdf[col_group].apply(lambda y: int(y[:4]))
-            
-            if not len(textdf.path_freqs):
-                if log>0: self.log('No freqs files found to generate MFW')
-                if try_create_freqs:
-                    self.preprocess_freqs()
-                    return self.preprocess_mfw(
-                        yearbin=yearbin,
-                        year_min=year_min,
-                        year_max=year_max,
-                        by_ntext=by_ntext,
-                        by_fpm=by_fpm,
-                        num_proc=num_proc,
-                        col_group=col_group,
-                        # n=n,
-                        progress=progress,
-                        estimate=estimate,
-                        force=force,
-                        verbose=verbose,
-                        try_create_freqs=False
-                    )
-                return pd.DataFrame()
-
-            # run
-            pathdf=textdf[[col_group,'path_freqs']]
-            
-            kwargs['progress']=False
-            odf = pmap_groups(
-                do_gen_mfw_grp,
-                pathdf.groupby(col_group),
-                num_proc=num_proc,
-                kwargs=kwargs,
-                desc=f'[{self.name}] Counting most frequent words across {yearbin}-year periods',
-                progress=progress#yearbin is not False
-            )
-            if odf is None or not len(odf): return pd.DataFrame()
-            odf=odf.reset_index().sort_values(['period','rank'])
-        # no period
-        elif 'path_freqs' in set(textdf.columns):
-            pathdf=textdf[['path_freqs']]
-            odf=do_gen_mfw_grp(pathdf,progress=progress,num_proc=num_proc)
-
-        if odf is not None:
-            if log>0: self.log(f'Saving MFW to {ppath(keyfn)}')
-            save_df(odf, keyfn, verbose=False)
-
-        self._mfwd[key]=odf
-        return self._mfwd[key]
-
-
-
-    ###################################
-    # DTM
-    ###################################
-
-    def mfwkey(self,yearbin,by_ntext,by_fpm,text_ids):
-        if type(yearbin)==str: yearbin=int(yearbin)
-        tids=tuple(sorted([x for x in text_ids if x is not None]))
-        return hashstr(str((yearbin, int(by_ntext), int(by_fpm), tids)))[:12]
-
-    def wordkey(self,words):
-        return hashstr('|'.join(sorted(list(words))))[:12]
-    def preprocess_dtm(
-            self,
-            texts=None,
-            words=[],
-            n=DEFAULT_MFW_N,
-            num_proc=DEFAULT_NUM_PROC,
-            wordkey=None,
-            sort_cols_by='sum',
-            force=False,
-            verbose=False,
-            year_min=None,
-            year_max=None,
-            **attrs
-        ):
-
-
-        if not words: words=self.mfw(texts=texts,n=n,num_proc=num_proc,force=force,**attrs)
-        wordset = set(words)
-        # print(len(wordset))
-        if not wordkey: wordkey=self.wordkey(words)
-        if wordkey in self._dtmd: return self._dtmd[wordkey]
-        # keyfn=os.path.join(self.path_dtm,wordkey+'.ft')
-        keyfn=os.path.join(self.path_dtm,wordkey+'.pkl')
-        if not force:
-            if os.path.exists(keyfn):
-                # if log>0: self.log(f'DTM already saved for key {key}')
-                if log>0: self.log(f'Loading DTM from {ppath(keyfn)}')
-                df=read_df(keyfn)
-                self._dtmd[wordkey]=df
-                if log>0: self.log(f'Returning DTM from {ppath(keyfn)}')
-                return df
-
-        # get
-        texts=self.texts() if texts is None else self.to_texts(texts)
-        texts=[t for t in texts if (not year_min or t.year>=year_min) and (not year_max or t.year<year_max)]
-
-
-
-        objs = [
-            (t.path_freqs,wordset,{self.col_id:t.id})
-            for t in texts
-            if os.path.exists(t.path_freqs) and len(wordset) and t.id
-        ]
-
-        if not objs:
-            if log>0: self.log(f'No frequency files found to generate DTM. Run preprocess_freqs()?')
-            return
-
-        ld = pmap(
-            get_dtm_freqs,
-            objs,
-            num_proc=num_proc,
-            desc=f'[{self.name}] Assembling document-term matrix (DTM)',
-            progress=attrs.get('progress',True)
-        )
-
-        # return
-        dtm = pd.DataFrame(ld).set_index(self.col_id,drop=True).fillna(0)
-        dtm = dtm.reindex(dtm.agg(sort_cols_by).sort_values(ascending=False).index, axis=1)
-
-        # df.to_csv(self.path_dtm)
-        # df.reset_index().to_feather(self.path_dtm)
-        if log>0: self.log(f'Saving DTM to {ppath(keyfn)}')
-        save_df(dtm.reset_index(), keyfn, verbose=False)
-        self._dtmd[wordkey]=dtm
-        return dtm
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    ### WORD2VEC
-    @property
-    def model(self):
-        if not hasattr(self,'_model'):
-            self._model=gensim.models.Word2Vec.load(self.fnfn_model)
-        return self._model
-
-    @property
-    def fnfn_skipgrams(self):
-        return os.path.join(self.path_skipgrams,'skipgrams.'+self.name+'.txt.gz')
-
-    def word2vec(self,skipgram_n=10,name=None,skipgram_fn=None):
-        if not name: name=self.name
-        from lltk.model.word2vec import Word2Vec
-        if skipgram_fn and not type(skipgram_fn) in [six.text_type,str]:
-            skipgram_fn=self.fnfn_skipgrams
-
-        return Word2Vec(corpus=self, skipgram_n=skipgram_n, name=name, skipgram_fn=skipgram_fn)
-
-    def doc2vec(self,skipgram_n=5,name=None,skipgram_fn=None):
-        if not name: name=self.name
-        from lltk.model.word2vec import Doc2Vec
-        if not skipgram_fn or not type(skipgram_fn) in [six.text_type,str]:
-            skipgram_fn=os.path.join(self.path_skipgrams,'sentences.'+self.name+'.txt.gz')
-
-        return Doc2Vec(corpus=self, skipgram_n=skipgram_n, name=name, skipgram_fn=skipgram_fn)
-
-    def word2vec_by_period(self,bin_years_by=None,word_size=None,skipgram_n=10, year_min=None, year_max=None):
-        """NEW word2vec_by_period using skipgram txt files
-        DOES NOT YET IMPLEMENT word_size!!!
-        """
-        from lltk.model.word2vec import Word2Vec
-        from lltk.model.word2vecs import Word2Vecs
-
-        if not year_min: year_min=self.year_start
-        if not year_max: year_max=self.year_end
-
-        path_model = self.path_model
-        model_fns = os.listdir(path_model)
-        model_fns2=[]
-        periods=[]
-
-        for mfn in model_fns:
-            if not (mfn.endswith('.txt') or mfn.endswith('.txt.gz')) or '.vocab.' in mfn: continue
-            mfn_l = mfn.split('.')
-            period_l = [mfn_x for mfn_x in mfn_l if mfn_x.split('-')[0].isdigit()]
-            if not period_l: continue
-
-            period = period_l[0]
-            period_start,period_end=period.split('-') if '-' in period else (period_l[0],period_l[0])
-            period_start=int(period_start)
-            period_end=int(period_end)+1
-            if period_start<year_min: continue
-            if period_end>year_max: continue
-            if bin_years_by and period_end-period_start!=bin_years_by: continue
-            model_fns2+=[mfn]
-            periods+=[period]
-
-        #print '>> loading:', sorted(model_fns2)
-        #return
-
-        name_l=[self.name, 'by_period', str(bin_years_by)+'years']
-        if word_size: name_l+=[str(word_size / 1000000)+'Mwords']
-        w2vs_name = '.'.join(name_l)
-        W2Vs=Word2Vecs(corpus=self, fns=model_fns2, periods=periods, skipgram_n=skipgram_n, name=w2vs_name)
-        return W2Vs
-
-
-
-
-
-
-def meta_load_metadata(C):
-    odf=C.load_metadata()
-    odf['corpus']=C.name
-    return odf
-    
-#     # meta=C.meta
-#     if not os.path.exists(C.path_metadata): return pd.DataFrame()
-#     meta=read_df(C.path_metadata)
-#     meta['corpus']=C.name
-#     if not 'id' in meta.columns: meta=meta.reset_index()
-#     return meta
-
-
-
-# class MetaCorpus0(BaseCorpus):
-#     def __init__(self,corpora,**attrs):
-#         super().__init__(**attrs)
-#         self.corpora=[]
-#         actual_cnames = set(corpus_names()) | set(corpus_ids())
-#         for cname in corpora:
-#             if not cname in actual_cnames: continue
-#             self.corpora+=[load_corpus(cname)]
-            
-#     def to_texts(self,texts):
-#         if issubclass(texts.__class__, pd.DataFrame):
-#             textdf=texts.reset_index()
-#             tcols=set(textdf.columns)
-#             if self.col_id in tcols and self.col_corpus in tcols:
-#                 return [
-#                     self.textd.get((c,i))
-#                     for c,i in zip(textdf[self.col_corpus], textdf[self.col_id])
-#                 ]
-#         else:
-#             return [
-#                 x if (Text in x.__class__.mro()) else self.textd[x]
-#                 for x in texts
-#             ]
-
-    
-
-#     def load_metadata(self,*args,**attrs):
-#         """
-#         Magic attribute loading metadata, and doing any last minute customizing
-#         """
-#         if self._metadf is None:
-#             self._metadf=pd.concat(
-#                 pmap(
-#                     meta_load_metadata,
-#                     self.corpora,
-#                     num_proc=DEFAULT_NUM_PROC,
-#                     desc='Loading all subcorpora metadata'
-#                 )
-#             ).reset_index().set_index(['corpus','id'])
-#         return self._metadf
-
-
-#     @property
-#     def textd(self):
-#         if self._textd is None or not len(self._textd):
-#             self._textd={}
-#             for C in self.get_tqdm(self.corpora,desc='Assembling dictionary of text objects'):
-#                 for t in C.texts():
-#                     self._textd[(C.name, t.id)]=t
-#         return self._textd
-            
-#     def meta_iter(self,progress=False):
-#         iterr=get_tqdm(self.corpora) if progress else self.corpora
-#         for C in iterr:
-#             iterr.set_description(f'[{C.name}] Iterating through metadata')
-#             for dx in C.meta_iter(progress=False):
-#                 dx['corpus']=C.name
-#                 yield dx
-                
-#     def mfw_df(self,texts=None,keep_corpora=False,**attrs):
-#         o=[]
-#         for C in self.corpora:
-#             if type(texts)==pd.DataFrame and self.col_corpus in set(texts.columns):
-#                 Ctexts=texts[texts.corpus.isin({C.id,C.name})]
-#             else:
-#                 Ctexts=texts
-#             Cmfwdf=C.mfw_df(texts=Ctexts,**attrs)
-#             Cmfwdf['corpus']=C.name
-#             o+=[Cmfwdf]
-#         mfw_df=pd.concat(o)
-        
-#         # filter
-#         if not keep_corpora:
-#             aggqualcols=['word','pos','pos0']
-#             if 'period' in set(mfw_df.columns): aggqualcols.insert(0,'period')
-#             mfw_df=mfw_df.groupby(aggqualcols).agg(dict(
-#                 count=sum,
-#                 fpm=np.mean,
-#                 rank=np.median,
-#             )).reset_index()
-#         return mfw_df
-            
-
-
-#     def texts(self):
-#         return [t for C in self.corpora for t in C.texts()]
 
 
 
 
 
 class SectionCorpus(BaseCorpus):
+    def init(self): pass ##@TODO ???
+
     @property
     def source(self): return self._source
     @property
@@ -1881,7 +1135,7 @@ def Corpus(corpus=None,force=False,init=False,clear=False,**kwargs):
         C=corpus
         logg=False
     else:
-        if log>0: log(f'<- id = {corpus}')
+        if log>1: log(f'<- id = {corpus}')
         logg=True
         
         if type(corpus)==str and corpus:
@@ -1899,7 +1153,7 @@ def Corpus(corpus=None,force=False,init=False,clear=False,**kwargs):
         elif init:
             C.init(**kwargs)
 
-    if logg and log.verbose>0: log(f'-> {C}')
+    if logg and log.verbose>1: log(f'-> {C}')
     return C
 
 

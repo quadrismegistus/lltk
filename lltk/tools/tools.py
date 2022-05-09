@@ -1,12 +1,302 @@
 from lltk.imports import *
 
+
+
+def serialize(obj):
+    from pickle import dumps
+    from base64 import b64encode
+    return b64encode(compressed(dumps(obj)))
+
+def deserialize(obj):
+    from base64 import b64decode
+    from pickle import loads
+    return loads(decompressed(b64decode(obj)))
+
+
+def compressed(bytes):
+    import blosc
+    return blosc.compress(bytes, cname='lz4')
+def decompressed(bytes):
+    import blosc
+    return blosc.decompress(bytes)
+
+
+YEARKEYS=['year','date']
+def get_years(*ld,keys=YEARKEYS):
+    import pandas as pd
+
+    years = SetList()
+    for d in ld:
+        for trykey in keys:
+            for k in d:
+                if k.startswith(trykey):
+                    v = zeropunc(str(d[k]))[:4]
+                    if v.isdigit():
+                        vnum = pd.to_numeric(v,errors='coerce')
+                        if safebool(vnum):
+                            years.append(vnum)
+    if not years: return []
+    years.sort()
+    return years
+    # return self._years
+
+def get_year(*ld,**kwargs):
+    years = get_years(*ld,**kwargs)
+    if len(years)==0: return 0
+    if len(years)==1: return years[0]
+    if len(years)==2: return years[0]
+    if len(years)==3: return years[1]
+    if len(years)==4: return years[1]
+    imedian = len(years) // 2
+    return years[imedian]
+
+
+
+import contextlib
+@contextlib.contextmanager
+def tqdm_joblib(tqdm_object):
+    import joblib
+    from tqdm import tqdm
+    """Context manager to patch joblib to report into tqdm progress bar given as argument"""
+    class TqdmBatchCompletionCallback(joblib.parallel.BatchCompletionCallBack):
+        def __call__(self, *args, **kwargs):
+            tqdm_object.update(n=self.batch_size)
+            return super().__call__(*args, **kwargs)
+
+    old_batch_callback = joblib.parallel.BatchCompletionCallBack
+    joblib.parallel.BatchCompletionCallBack = TqdmBatchCompletionCallback
+    try:
+        yield tqdm_object
+    finally:
+        joblib.parallel.BatchCompletionCallBack = old_batch_callback
+        tqdm_object.close()
+
+
+
+
+def llmap(
+        addrs,
+        func,
+        num_proc=1,
+        each_args=[],
+        each_kwargs=[],
+        desc_prefix='[LLTK] ',
+        desc=None,
+        *all_args,
+        **all_kwargs):
+    
+    # args
+    if each_args and each_kwargs: objs = list(zip(func,each_args,each_kwargs))
+    else: objs = [(addr,[],{}) for addr in addrs]
+    
+    # func
+    if type(func)!=str:
+        if hasattr(func,'__name__'): func=func.__name__
+        else: raise Exception('func not valid')
+        
+    # setup
+    from joblib import Parallel, delayed
+    if not desc: desc = f'Mapping {func} across {len(objs)} texts'
+    if num_proc>1: desc+=f' [x{num_proc}]'
+    with tqdm_joblib(get_tqdm(addrs,desc=desc_prefix+desc)):
+        # run
+        return Parallel(n_jobs=num_proc)(
+            delayed(llfunc)(
+                addr,
+                func=func,
+                *SetList(list(args)+list(all_args)).data,
+                **{**all_kwargs, **kwargs}
+            ) for addr,args,kwargs in objs
+        )
+    
+def llfunc(addr,func,*args,**kwargs):
+    # obj = LLTK[addr]
+    from lltk import LLTK
+    try:
+        obj = LLTK[addr]
+        func = getattr(obj,func)
+        return func(*args,**kwargs)
+    except Exception as e:
+        LLTK.log.error(e)
+        return None
+
+
+
+
+
+
+
+def is_hashable_rly(v):
+    """Determine whether `v` can be hashed."""
+    try:
+        hash(v)
+        return True
+    except Exception:
+        return False
+
+def is_hashable(v):
+    from collections.abc import Hashable
+    return isinstance(v,Hashable) and is_hashable_rly(v)
+
+def is_dictish(v):
+    from collections.abc import MutableMapping
+    return issubclass(type(v), MutableMapping)
+
+def is_iterable(v):
+    from collections.abc import Iterable
+    return isinstance(v,Iterable)
+
+def flattendict(d,pref='',sep='_'):
+    odset=OrderedSetDict()
+    for k,v in d.items():
+        if type(v)==dict:
+            v_odset = flattendict(v,pref=k)
+            for kk,vv in v_odset.items(): odset[kk]=vv
+        else:
+            odset[pref+sep+k if pref else k]=v
+    return odset.to_dict()
+
+from ordered_set import OrderedSet
+from collections.abc import MutableMapping
+from collections import UserList
+
+
+class SetList(UserList):
+    def __init__(self, initlist=None):
+        self.data = []
+        self.data_set = set()
+        if initlist is not None:
+            for x in initlist:
+                self.append(x)
+    def __repr__(self): return self.data.__repr__()
+    
+    def append(self, item):
+        if is_hashable(item):
+            if item not in self.data_set:
+                self.data_set|={item}
+                self.data.append(item)
+        elif type(item) in {list,set} or isinstance(item, UserList):
+            for x in item:
+                self.append(x)
+        else:
+            self.data.append(item)
+            
+    def __iadd__(self, other):
+        if isinstance(other, UserList) or isinstance(other, type(self.data)):
+            for x in other:
+                self.append(x)
+        else:
+            self.append(other)
+        return self
+    
+    def extend(self, other):
+        for x in other: self.append(x)
+
+    def remove(self, item):
+        if is_hashable(item):
+            if item in self.data_set:
+                self.data_set = self.data_set - {item}
+        try:
+            self.data.remove(item)
+        except ValueError:
+            pass
+                
+        
+
+
+class OrderedSetDict(MutableMapping):
+    """A dictionary that applies an arbitrary key-altering
+    function before accessing the keys"""
+
+    def __init__(self, *args, flatten=False, **kwargs):
+        self.store = defaultdict(list)
+        self.store_set = defaultdict(set)
+        self.update(dict(*args, **kwargs))  # use the free update to set keys
+        self.flatten = flatten
+
+    def __getitem__(self, key):
+        return self.store[key]
+
+    def __setitem__(self, key, value):
+        vals = [v for v in value] if type(value) in {list,set} else [value]
+        for v in vals:
+            if is_hashable(v):
+                if not v in self.store_set[key]:
+                    self.store_set[key]|={v}
+                    self.store[key]+=[v]
+            elif type(v)==dict:
+                if self.flatten:
+                    for vk,vv in v.items():
+                        key2 = f'{key}_{vk}'
+                        print([key2,vv])
+                        if is_hashable(vv):
+                            if vv not in self.store_set[key2]:
+                                self.store[key2]+=[vv]
+                                self.store_set[key2]|={vv}
+                        else:
+                            self.store[key2]+=[vv]
+                else:
+                    self.store[key]+=[v]
+            else:
+                self.store[key]+=[v]
+
+
+    def __delitem__(self, key):
+        del self.store[key]
+        del self.store_set[key]
+
+    def __iter__(self):
+        return iter(self.store)
+    
+    def __len__(self):
+        return len(self.store)
+
+    def to_dict(self):
+        return {
+            k:(val[0] if len(val)==1 else val)
+            for k,val in self.store.items()
+        }
+
+
+
+import numpy as np
+def safebool(x,bad_vals={np.nan}):
+    if is_dictish(x):
+        return {
+            k:v
+            for k,v in x.items()
+            if safebool(k) and safebool(v)
+        }
+
+    import pandas as pd
+    try:
+        if is_hashable(x) and x in bad_vals: return False
+    except AssertionError as e:
+        log.error(e)
+    
+    try:
+        if is_iterable(x): return bool(len(x))
+    except AssertionError as e:
+        log.error(e)
+    
+    try:
+        if pd.isnull(x) is True: return False
+    except AssertionError as e:
+        log.error(e)
+
+    try:
+        return bool(x)
+    except AssertionError as e:
+        log.error(e)
+        return None
+
 def safeget(x,k):
     try:
         return x.get(k)
-    except Exception:    
+    except AssertionError:    
         try:
             return x[k]
-        except Exception:
+        except AssertionError:
             pass
     
 
@@ -34,14 +324,27 @@ def fixpath(path):
         path=os.path.abspath(path)
     return path
 
-def gethtml(safeurl,timeout=10):
+def gethtml(url,timeout=10):
+    from lltk import log
     import requests
-    try:
-        with requests.Session() as s:
-            return s.get(safeurl,timeout=timeout).text
-    except Exception as e:
-        if 'log' in globals() and log.verbose>0: log.error(e)
-    return ''
+    from requests.adapters import HTTPAdapter
+    from requests.packages.urllib3.util.retry import Retry
+
+    if log: log(f'? {url}')
+    session = requests.Session()
+    retry = Retry(connect=3, backoff_factor=0.5)
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    
+    res = session.get(url)
+    url2 = res.url
+    if url!=url2:
+        if log: log(f'? {url2}')
+        res = session.get(url2)
+    o = res.text
+    if log: log(f'-> {" ".join(o.split())[:100]} ... ({len(o)} chars)')
+    return o
 
 def unrelfile(path):
     if type(path)==str and path and not os.path.isabs(path):
@@ -57,11 +360,18 @@ def to_params_meta(_params_or_meta,prefix_params='_'):
     meta={k:v for k,v in _params_or_meta.items() if k and k[0]!=prefix_params}
     return (params,meta)
 
-def just_metadata(d,prefix_params='_'):
-    return to_params_meta(d,prefix_params=prefix_params)[1]
+def just_metadata(d,prefix_params='_',ok_keys=None):
+    from lltk.imports import COL_ADDR,COL_ID,COL_CORPUS
+    if not ok_keys: ok_keys={COL_ADDR,COL_ID,COL_CORPUS}
+    return {k:v for k,v in d.items() if k and (k in ok_keys or k[0] not in set(prefix_params))}
 
 def just_meta_no_id(d,**y):
-    return {k:v for k,v in just_metadata(d).items() if k!='id'}
+    from lltk.imports import COL_ADDR,COL_ID,COL_CORPUS
+    bad_keys={COL_ADDR,COL_ID,COL_CORPUS}
+    return {k:v for k,v in just_metadata(d).items() if k not in bad_keys}
+
+def no_id(d,col_id='id'):
+    return {k:v for k,v in d.items() if k!=col_id}
 
 def pf(*x,sep='\n',pad_start=False,pad_end=False,**y):
     from pprint import pformat
@@ -77,7 +387,12 @@ def diffdict(d1,d2,verbose=1,type_changes=False):
     return ddiff
 
 def is_cacheworthy(new,old,**kwargs):
-    from lltk.imports import log
+    return new != old
+    
+    from lltk import log
+    # log(f'old = {pf(old)}')
+
+    # log(f'new = {pf(new)}')
 
     if old is None:
         if log>0: log(f'new cache')
@@ -86,6 +401,9 @@ def is_cacheworthy(new,old,**kwargs):
         ddiff = diffdict(old,new,**kwargs)
         if ddiff:
             if log>0: log(pf(f'cache updated',ddiff))
+            # log(pf(old))
+            # log(pf(new))
+            # STOPPXPXPX
             return True
         else:
             if log>0: log(pf(f'cache unchanged'))
@@ -96,10 +414,10 @@ def force_int(x):
     if type(x)==int: return x
     try:
         return int(float(x))
-    except Exception:
+    except AssertionError:
         try:
             return int(pd.to_numeric(x))
-        except Exception as e:
+        except AssertionError as e:
             log.error(x)
             return x
     return np.nan
@@ -109,7 +427,7 @@ def force_float(x):
     if type(x)==float: return x
     try:
         return float(x)
-    except Exception:
+    except AssertionError:
         return np.nan
 
 
@@ -156,7 +474,7 @@ def rmfn(fn):
     if os.path.exists(fn):
         try:
             os.unlink(fn)
-        except Exception as e:
+        except AssertionError as e:
             pass
 
 
@@ -166,17 +484,17 @@ def read_json(path):
         try:
             import orjson
             with open(path,'rb') as f: return orjson.loads(f.read())
-        except Exception as e:
+        except AssertionError as e:
             log.error(e)
             try:
                 import ujson
                 with open(path) as f: return ujson.load(f)
-            except Exception as e:
+            except AssertionError as e:
                 log.error(e)
                 try:
                     import json as jsonog
                     with open(path) as f: return jsonog.load(f)
-                except Exception as e:
+                except AssertionError as e:
                     log.error(e)
                     pass
     return {}
@@ -194,19 +512,19 @@ def write_json(obj, path, indent=4):
                 )
             )
             return True
-    except Exception as e:
+    except AssertionError as e:
         log.error(e)
         try:
             import ujson
             with open(path,'w') as f: ujson.dump(obj, f, indent=indent)
             return True
-        except Exception as e:
+        except AssertionError as e:
             log.error(e)
             try:
                 import json as jsonog
                 with open(path,'w') as f: jsonog.dump(obj, f, indent=indent)
                 return True
-            except Exception as e:
+            except AssertionError as e:
                 log.error(e)
                 pass
     
@@ -525,14 +843,12 @@ import sys
 import csv
 #csv.field_size_limit(sys.maxsize)
 
-def get_tqdm(iterable,*args,**kwargs):
-    l=iterable
-    if type(l)==list and len(l)==1: return l
+def get_tqdm(*args,**kwargs):
     if in_jupyter():
         from tqdm.notebook import tqdm as tqdmx
     else:
         from tqdm import tqdm as tqdmx
-    return tqdmx(l,*args,**kwargs)
+    return tqdmx(*args,**kwargs)
 
 
 def get_the_getters(lang='en'):
@@ -682,7 +998,7 @@ def save_df(df,ofn,move_prev=False,index=None,key='',log=print,verbose=False,**k
             df.to_hdf(ofn, key=key)
         # else:
             # raise Exception(f'[save_df()] What kind of df is this: {ofn}')
-    except Exception as e:
+    except AssertionError as e:
         # try again as csv?
         ofn=os.path.splitext(ofn)[0]+'.csv'
         df.to_csv(ofn)
@@ -714,7 +1030,7 @@ def read_df(ifn,key='',fmt='',on_bad_lines='skip',**attrs):
             return pd.read_hdf(ifn, key=key,**attrs)
         else:
             raise Exception(f'[save_df()] What kind of df is this: {ifn}')
-    except Exception as e:
+    except AssertionError as e:
         from lltk import log
         if log>0: log(f'Error: {e}')
         pass
@@ -833,7 +1149,7 @@ def ensure_dir_exists(path,fn=None):
         if fn is None and os.path.splitext(path)!=path: fn=True
         if fn: path=os.path.dirname(path)
         if not os.path.exists(path): os.makedirs(path)
-    except Exception:
+    except AssertionError:
         pass
 
 
@@ -1088,7 +1404,7 @@ def readgen_csv(fnfn,sep=None,encoding='utf-8',errors='ignore',header=[],progres
                 try:
                     data = list(reader([row.strip()]))[0]
                     yield dict(zip(header,data))
-                except Exception:
+                except AssertionError:
                     pass
 
 def readgen(fnfn,**y):
@@ -1213,7 +1529,7 @@ def xls2ld(fn,header=[],sheetname=True,keymap={},keymap_all=str):
                     else:
                         d[key]=value
                     #print key,value,y,header.index(key),row[header.index(key)]
-                except Exception as e:
+                except AssertionError as e:
                     print('!! ERROR:',e)
                     print('!! on key =',key,'& value =',value, type(value))
                     #print "!! "+key+" not found in "+str(sheet)
@@ -2373,7 +2689,7 @@ def cloud_list(tmpfn='.tmp_lltk_cloud_list'):
                 txt = f.read()
             os.unlink(tmpfn)
             return txt
-    except Exception:
+    except AssertionError:
         return ''
 
 def cloud_share_all():

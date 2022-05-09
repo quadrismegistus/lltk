@@ -12,9 +12,9 @@ def htid2id(x):
     a,b=x.split('.',1)
     return a+'/'+b
 
-class TextHathi(BaseText):
+class TextHathi(BaseText):    
     def metadata(self,**kwargs):
-        d=super().metadata(self,**kwargs)
+        d=super().metadata(**kwargs)
         au=d.get('contributor')
         if au:
             if type(au)==list: au=au[0]
@@ -26,42 +26,78 @@ class TextHathi(BaseText):
 
 
 class TextHathiRecord(TextHathi):
+    
+
     @property
     def htrn(self): return self.id.split('/')[-1]
+
 
     def id_is_valid(self):
         return self.id and self.htrn and self.htrn.isdigit()
     
     def meta_is_valid(self,meta={}):
-        return bool((meta if meta else self._meta).get('recordURL'))
-
+        return bool((meta if meta else self._meta).get('url'))
     
-    def query(self,force=False,**kwargs):
-        if log: log(f'? {self.id}')
+    # def get_remote_sources(self, *args, remote=REMOTE_REMOTE_DEFAULT, lim=1, **kwargs):
+    #     #if log: log(f'<- remote = {remote} ?')
+    #     o=[]
+    #     for htid in self.htid_l:
+    #         t=self.corpus.text(f'htid/{htid}',_source=self).init_(remote=remote,**kwargs)
+    #         if log: log(f'-> {t}')
+    #         o.append(t)
+    #         if lim and len(o)>=lim: break
+    #     return o
+    
+    # def have_remote_sources(self,*x,**y):
+    #     print([self.sources])
+    #     print([self.id])
+    #     return any('htid' in src.id for src in self.sources if src and src.id)
 
-        from hathitrust_api import BibAPI
-        bib = BibAPI()
- 
-        bibd=bib.get_single_record_json('recordnumber',self.htrn)
-        recdd=bibd.get('records',{})
-        if not recdd: return {}
-
-        recd=recdd.get(self.htrn,{})
-        log(f'? {pf(recd)}')
-        recd['htids']=[
-            d.get('htid')
-            for d in bibd.get('items',[])
-            if d.get('fromRecord')==self.htrn
-        ]
-        recd['_sources']=['_hathi/htid/'+x for x in recd['htids']]
-        recd['num_vols']=len(recd['_sources'])
-        recd = hathi_clean_query_meta(recd)
-        if log: log(f'-> {pf(recd)}')
-        return recd
+    def init(self,*x,remote=None,**y):
+        remote=is_logged_on()
+        #if log: log(f'<- remote = {remote} ?')
+        super().init(*x,remote=remote,**y)
+        htid_srcs=set(t.htid for t in self.dsources if t.corpus.id.startswith('htid/'))
+        for htid in set(self.htid_l) - htid_srcs:
+            if log: log(htid)
+            t=self.corpus.text(f'htid/{htid}').init(remote=remote,**y)
+            t.add_source(self)
+            if log: log(t)
+        return self
 
 
-
-
+    def query(self,force=False,force_inner=False,sep='  - ',**kwargs):
+        odx=self.qdb.get(self.id)
+        if force or not odx:
+            if log: log(self)
+            import rispy
+            mapd=rispy.TAG_KEY_MAPPING
+            mapd['SN']='isbn'
+            mapd['TP']='type'
+            url=f'https://catalog.hathitrust.org/Search/SearchExport?handpicked={self.htrn}&method=ris'
+            txt=self.qdb.query(url).strip()
+            if not txt: return {}
+            odx=OrderedSetDict()
+            for ln in txt.strip().split('\n'):
+                try:
+                    if sep in ln:
+                        k,v = ln.strip().split(sep,1)
+                        k2=mapd.get(k.strip())
+                        if k2:
+                            odx[k2] = v
+                except AssertionError as e:
+                    log.error(e)
+            
+            for url in odx.get('url',[]):
+                if 'hdl.handle.net' in url:
+                    htid='/'.join(url.split('/')[4:])
+                    htid=htid.strip().split()[0].strip()
+                    odx['htid']=htid
+            
+            odx['isbn']=[x.strip().split()[0].replace('-','') for x in odx['isbn']]
+            odx=odx.to_dict()
+            self.qdb.set(self.id,odx)
+        return odx
 
 
 class TextHathiVolume(TextHathi):
@@ -75,22 +111,28 @@ class TextHathiVolume(TextHathi):
         return bool((meta if meta else self._meta).get('recordURL'))
 
     def query(self,force=False,**kwargs):
-        log(f'? {self.id}')
-        odx={}
-        try:
-            from htrc_features import Volume
-            vol = Volume(self.htid)
-            odx={
-                k:v
-                for k,v in vol.__dict__.items()
-                if k and k[0]!='_' and type(v) in {int,float,str,list,dict,set,tuple} and v
-            }
-            odx['htid']=odx.get('id','')
-            if odx['htid']: 
-                odx=self.ensure_id_addr(odx)
-        except Exception as e:
-            log.error(e)
-        if log: log(f'-> {pf(odx)}')
+        odx = self.qdb.get(self.id) if not force else None
+
+
+        if not odx or not just_meta_no_id(odx):
+            if log: log(self)
+            odx={}
+            try:
+                with Capturing() as __:
+                    from htrc_features import Volume
+                    vol = Volume(self.htid)
+                    odx={
+                        k:v
+                        for k,v in vol.__dict__.items()
+                        if k and k[0]!='_' and type(v) in {int,float,str,list,dict,set,tuple} and v
+                    }
+                odx['htid']=odx.get('id','')
+                if odx['htid']: odx=self.ensure_id_addr(odx)
+                self.qdb.set(self.id, odx)
+            except Exception as e:
+                log.error(f'query failed: {e}')
+
+        if log: log(f'-> {odx}')
         return odx
         
 
@@ -106,6 +148,7 @@ class Hathi(BaseCorpus):
     name='Hathi'
     LANGS=['eng']
     name=[]
+    REMOTE_SOURCES=[]
     METADATA_HEADER='htid	access	rights	ht_bib_key	description	source	source_bib_num	oclc_num	isbn	issn	lccn	title	imprint	rights_reason_code	rights_timestamp	us_gov_doc_flag	rights_date_used	pub_place	lang	bib_fmt	collection_code	content_provider_code	responsible_entity_code	digitization_agent_code	access_profile_code	author'.split('\t')
 
     @property
@@ -186,6 +229,7 @@ class Hathi(BaseCorpus):
 
     def get_text_id(self,text,**kwargs):
         if log>0: log(f'<- {get_imsg(text,**kwargs)}')
+        if is_addr_str(text): text=to_corpus_and_id(text)[1]
         if type(text)==str and text.split('/')[0] in {'htrn','htid'}: return text
 
         ids = self.query_for_ids(text)
@@ -194,26 +238,21 @@ class Hathi(BaseCorpus):
         return o
 
     def query_db(self,fn='query_for_ids'):
-        return DB(os.path.join(self.path,'data',fn))
+        return DB(os.path.join(self.path,'data',fn), engine='sqlite')
 
     # Corpus, Hathi
     def query_for_ids(self,text):
         import bs4
-        from urllib.parse import quote_plus
-        log(f'<- {text}')
+        if log: log(f'<- {text}')
+        text=Text(text)
         if not text.shorttitle or not text.au: return []
 
         url = HATHI_TITLE_QUERY_URL
         url = url.replace('[[[QSTR_TITLE]]]', quote_plus(text.shorttitle))
         url = url.replace('[[[QSTR_AUTHOR]]]', quote_plus(text.au))
-        log(f'<- {url}')
+        if log: log(f'<- {url}')
 
-        res = self.query_db().get(url)
-        if res: 
-            if log: log(f'found result on db ({len(res)} records)')
-            return res
-
-        html = gethtml(url)
+        html = self.qdb.query(url)
         dom = bs4.BeautifulSoup(html,'lxml')
 
         o = [
@@ -224,20 +263,28 @@ class Hathi(BaseCorpus):
         if o:
             if log: log(f'found result on website ({len(o)} records)')
             self.query_db().set(url,o)
-        log(f'-> {o}')
+        if log: log(f'-> {o}')
         return o
 
     def text_from(self,text,**kwargs):
         for newtext in self.texts_from(text,**kwargs):
-            newtext.add_source(text)
             return newtext
 
-    def texts_from(self,text,remote=True,**kwargs):
-        if not is_text_obj(text) or text.corpus == self: return text
+    def texts_from(self,text,remote=REMOTE_REMOTE_DEFAULT,**kwargs):
         for htrn in self.query_for_ids(text):
             htrnid = f'htrn/{htrn}'
-            t=self.text(htrnid).init(remote=remote,**kwargs)
+            t=self.text(htrnid).init_(remote=remote,**kwargs)
+            t.add_source(text)
             yield t
+        #if log: log(f'<- remote = {remote} ?')
+        # tobjs = [src for src in text.sources if src.corpus==self and src.id.startswith('htrn/')]
+        # if tobjs:
+        #     yield from tobjs
+        # else:
+        #     for htrn in self.query_for_ids(text):
+        #         htrnid = f'htrn/{htrn}'
+        #         t=self.text(htrnid,_source=text).init_(remote=remote,**kwargs)
+        #         yield t
 
 
 
@@ -354,7 +401,7 @@ def compile_text(idx,by_page=False):
             json.dump(vol_freqs_d, of)
 
     # except (HTTPError,FileNotFoundError,KeyError) as e:
-    except Exception as e:
+    except AssertionError as e:
         # print('!!',e)
         pass
 

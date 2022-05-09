@@ -10,7 +10,7 @@ class TextInternetArchive(BaseText):
 		x=self._meta.get('date')
 		try:
 			return int(str(x)[:4])
-		except Exception:
+		except AssertionError:
 			return np.nan
 	@property
 	def author(self): return self._meta.get('creator')

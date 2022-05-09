@@ -77,7 +77,7 @@ class MatcherModel(BaseModel,MutableMapping):
             edgelist=os.path.join(self.path, 'edgelist.txt')
         )
     
-    def db(self,*args,**kwargs): return DB(self.path_db)
+    def db(self,*args,**kwargs): return DB(self.path_db, engine='sqlite')
     
     
     
@@ -152,7 +152,7 @@ class MatcherModel(BaseModel,MutableMapping):
                             if self.add_edge_to_graph(edge, g=g):
                                 #g.add_edge(ux,vx,key=rel,rel=rel,**d)
                                 if log>1: log(f'{u} --{rel}--> {v}')
-                        except Exception as e:
+                        except AssertionError as e:
                             log.error(e)
                 
                 if log>0: log(f'read graph from {self.path_triples}')
@@ -222,7 +222,7 @@ class MatcherModel(BaseModel,MutableMapping):
             if cache: self.cache()
     
     def remove_nodes(self,nodes,cache=True):
-        for node in nodes: self.remove_node(node,cache=False)
+        for node in nodes: self.remove_node(node,cache=True)
         if cache: self.cache()
         
     
@@ -284,7 +284,7 @@ class MatcherModel(BaseModel,MutableMapping):
 
         # to matches
         for addr1,addr2 in res.index:
-            self.match(addr1, addr2,force=force, cache=False, **kwargs)
+            self.match(addr1, addr2,force=force, cache=True, **kwargs)
         if cache: self.cache()
 
         return res

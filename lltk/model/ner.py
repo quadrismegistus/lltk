@@ -65,7 +65,7 @@ def ner_parse_stanza(txt,nlp=None):
     for pi,para in enumerate(para_txts):
         try:
             pdoc = nlp(para)
-        except Exception as e:
+        except AssertionError as e:
             print('!!',e)
             continue
 

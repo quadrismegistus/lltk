@@ -3,7 +3,6 @@ from lltk.imports import *
 
 
 
-
 class EntityWikidata(BaseText):
     def __init__(self,id=None,_corpus=None,**kwargs):
         super().__init__(
@@ -31,7 +30,7 @@ class EntityWikidata(BaseText):
 
     def query(self,force=False,**kwargs):
         if self.id_is_valid() and not self.meta_is_valid():
-            if log>0: log(f'QUERYING: {self.id}')
+            if log: log(self)
             return query_get_wikidata(self.id,**kwargs)
         return {}
 
@@ -62,9 +61,10 @@ class EntityWikidata(BaseText):
 
 
 class TextWikidataClass(EntityWikidata): pass
+
 def NullTextWikidata(*x,**y): return Corpus('wikidata').text(NULL_QID)
 
-def TextWikidata(text,_sources=None,force=False,cache=True,verbose=2,remote=True,*args,**kwargs):
+def TextWikidata(text,_sources=None,force=False,cache=True,verbose=2,remote=REMOTE_REMOTE_DEFAULT,*args,**kwargs):
     if is_wiki_text_obj(text): return text
     if not force and is_wiki_text_obj(text._wikidata): return text._wikidata
 
@@ -83,13 +83,14 @@ def TextWikidata(text,_sources=None,force=False,cache=True,verbose=2,remote=True
         qid,qmeta=res
         #qmeta['id']=qid
         #twiki = TextWikidataClass(**qmeta) if is_valid_qid(qid) else NullTextWikidata()f
-        qtext = Text(qid, 'wikidata', **qmeta)
+        qmeta['id']=qid
+        qmeta['_corpus']='wikidata'
+        qtext = Text(**qmeta)
         if log>0: log(f'Generated wiki text: {qtext}')
     
     if is_wiki_text_obj(qtext):
-        if qtext.id_is_valid(): text.add_source(qtext,cache=True,viceversa=True,**kwargs)
-        if qtext.is_valid() and cache: qtext.metadata(remote=False,cache=True,from_sources=True)
-        #text.metadata(remote=False,cache=True,from_sources=True)        
+        if qtext.id_is_valid(): text.add_source(qtext,cache=cache,viceversa=True,**kwargs)
+        if qtext.is_valid() and cache: qtext.cache()
     return qtext
 
 
@@ -99,21 +100,48 @@ class Wikidata(BaseCorpus):
     NAME='Wikidata'
     ID='wikidata'
     TEXT_CLASS=TextWikidataClass
+    REMOTE_SOURCES=[]
 
     def init(self,force=False,by_files=True,**kwargs): self._init = True
 
-    def text_from(self,text,sources=None,force=False,**kwargs):
-        return TextWikidata(
-            text,
-            _sources=self.sources if sources is None else sources,
-            force=force,
-            cache=True,
-            **kwargs
-        )
+    # def text_from(self,text,sources=None,force=False,remote=REMOTE_REMOTE_DEFAULT,**kwargs):
+        
+    #     return TextWikidata(
+    #         text,
+    #         _sources=self.sources if sources is None else sources,
+    #         force=force,
+    #         cache=True,
+    #         remote=remote,
+    #         **kwargs
+    #     )
 
 
 
 
+    def texts_from(self,text,remote=REMOTE_REMOTE_DEFAULT,cache=True,**kwargs):
+        res = query_get_wikidata_id(text,**kwargs)
+        if log: log(f'<- query_get_wikidata_id = {res}')
+        if type(res)==tuple and len(res)==2:
+            qid,qmeta=res
+            qmeta['id']=qid
+            t=self.text(**qmeta).init_(remote=remote,cache=cache,**kwargs)
+            t.add_source(text)
+            if log: log(f'-> {t}')
+            yield t
+        #if log: log(f'<- remote = {remote} ?')
+        #qtext = NullTextWikidata()
+        # tobjs=[src for src in text.sources if is_wiki_text_obj(src)]
+        # if tobjs:
+        #     yield from tobjs
+        # else:    
+        #     res = query_get_wikidata_id(text,**kwargs)
+        #     if log: log(f'<- query_get_wikidata_id = {res}')
+        #     if type(res)==tuple and len(res)==2:
+        #         qid,qmeta=res
+        #         qmeta['id']=qid
+        #         t= self.text(_source=text,**qmeta).init_(remote=remote,cache=cache,**kwargs)
+        #         if log: log(f'-> {t}')
+        #         yield t
 
 
 
@@ -178,29 +206,32 @@ def query_get_wikidata_id(
         qstr='',
         what={"work","manuscript","text"},
         lim=10,
-        # cache=False,
+        # cache=True,
         null=(NULL_QID,{}),
         **kwargs):
+    from lltk.imports import log
+    
     if not qstr: qstr=wikidata_query_str(text)
     if not qstr or qstr=='None, None': return
     if log>0: log(f'Querying for ID: '+qstr)
-    
+    W=Corpus('wikidata')
     for qi,qidx in enumerate(query_iter_wikidata_id(qstr)):
         if qi>=lim: return null
-        qid_meta = {k:v for k,v in Corpus('wikidata').get_text_cache_json(qidx).items() if not META_KEY_SEP in k and k!='id'}
-        if qid_meta: 
+        qid_meta = W.qdb.get(qidx)
+        if qid_meta and just_meta_no_id(qid_meta):
             if log>0: log(f'qid_meta from db: {len(qid_meta)} keys')
         else:
             qid_meta = query_get_wikidata(qidx)
+            W.qdb.set(qidx,qid_meta)
             if log>0: log(f'qid_meta from query: {len(qid_meta)} keys')
         
         qid_meta[COL_ID] = qidx
         try:
-            Corpus('wikidata').text(_cache=True, **qid_meta)
+            W.text(_cache=True, **qid_meta)
             qid_what = qid_meta.get('what','')
             if not what or any(whatx in qid_what for whatx in what):
                 return (qidx,qid_meta)
-        except Exception as e:
+        except AssertionError as e:
             log.error(e)
             pass
 
@@ -209,7 +240,7 @@ def query_db():
     global WIKIQDB
     if WIKIQDB is None:
         dbfn=os.path.join(Corpus('wikidata').path_data, 'query_cache')
-        WIKIQDB=DB(dbfn)
+        WIKIQDB=DB(dbfn, engine='sqlite')
     return WIKIQDB
 
 
@@ -229,13 +260,10 @@ def query_set_db(qstr,res):
 
 
 def query_get_html(qstr,timeout=10,**kwargs):
-    import requests
-    from requests.exceptions import ConnectTimeout
-    from urllib.parse import quote_plus
-    
     sstr=quote_plus(clean_text(qstr))
     safeurl=f'https://www.wikidata.org/w/index.php?search={sstr}&ns0=1&ns120=1'
-    html=gethtml(safeurl,timeout=timeout)
+    C=Corpus('wikidata')
+    html=C.qdb.query(safeurl)
     return html
 
 
@@ -278,7 +306,7 @@ def query_get_wikidata(qid,verbose=False,**kwargs):
         )
         # log(f'Returning data with {len(odx)} keys')
         return odx
-    except Exception as e:
+    except AssertionError as e:
         log.error(f'Could not get wikidata [{e}]')
         return dict(id=qid)
 
@@ -439,7 +467,7 @@ def wikidata(self,sources=None,force=False,force_inner=None,**kwargs):
     #     self._wikidata=Text(self._wikidata)
 
     if force or not is_wiki_text_obj(self._wikidata):
-        if log>0: log('...')
+        # if log>0: log('...')
         from lltk.corpus.wikidata import TextWikidata
         self._wikidata = TextWikidata(
             self,
@@ -451,17 +479,3 @@ def wikidata(self,sources=None,force=False,force_inner=None,**kwargs):
     return self._wikidata
 
 
-
-def get_remote_sources(self,sources=None,wikidata=True,**kwargs):
-    if log>0: log('...')
-    sofar=set()
-    if wikidata:
-        wiki=self.wikidata(sources,**kwargs)
-        if wiki is not None:
-            sofar|={wiki}
-    return sofar - {self}
-
-
-# BaseText.wiki = wiki
-# BaseText.wikidata=wikidata
-# BaseText.get_remote_sources=get_remote_sources

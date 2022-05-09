@@ -239,7 +239,7 @@ def merc(lat, lon):
         scale = x/lon
         y = 180.0/math.pi * math.log(math.tan(math.pi/4.0 + lat * (math.pi/180.0)/2.0)) * scale
         return (x, y)
-    except Exception:
+    except AssertionError:
         return (np.nan,np.nan)
 
 

@@ -1,7 +1,25 @@
 from lltk.imports import *
 
-def get_prop_ish(meta,key,before_suf='|'):
-    keys=[k for k in meta.keys() if k.startswith(key)]
+
+
+def get_mini_meta(d,mapd=MINIMETAD):
+    odx=dict()
+    for mk,mv in mapd.items():
+        for k in mv:
+            keys = {x for x in d if x.startswith(k)}
+            for k2 in keys:
+                v=d.get(k2)
+                if safebool(v):
+                    odx[mk] = v
+    return odx
+
+
+
+
+def get_prop_ish(meta,key,before_suf='|',default=None):
+    if key in meta and safebool(meta[key]): return meta[key]
+
+    keys=[k for k in safebool(meta).keys() if k.startswith(key)]
     numkeys=len(keys)
     if numkeys==0: return None
     if numkeys==1: 
@@ -11,7 +29,7 @@ def get_prop_ish(meta,key,before_suf='|'):
         keyname=keys[0]
         if log>0: log.warning(f'using key: {keyname}')
     
-    res = meta.get(keyname)
+    res = meta.get(keyname,default)
 
     if before_suf and type(res)==str and res:
         res = res.split('|')[0]
@@ -121,7 +139,7 @@ def get_idx(
                 lower=False
             )
             if log>2:
-                log(f'id set via `id` str: {id1} -> {id}')
+                if log: log(f'id set via `id` str: {id1} -> {id}')
         
         elif type(id) in {int,float}:
             id = get_idx_from_int(int(id))
@@ -154,6 +172,8 @@ def is_addr(*x,**y): return id_is_addr(*x,**y)
 
 def get_addr_str(text=None,corpus=None,source=None,**kwargs):
     if log>3: log(f'<- {get_imsg(text,corpus,source,**kwargs)}')
+    from lltk.corpus.corpus import Corpus
+    corpus=Corpus(corpus)
 
     # rescue via source?
     if text is None:
@@ -183,8 +203,9 @@ def get_addr_str(text=None,corpus=None,source=None,**kwargs):
     if log>3: log(f'-> {o}')
     return o
 
-def get_imsg(_id=None,_corpus=None,_source=None,**kwargs):
+def get_imsg(__id=None,__corpus=None,__source=None,**kwargs):
     o=[]
+    _id,_corpus,_source = __id,__corpus,__source
     if _id: o.append(f'id = {_id}')
     if _corpus: o.append(f'corpus = {_corpus}')
     if _source: o.append(f'source = {_source}')
@@ -456,7 +477,7 @@ def do_preprocess_txt(obj):
     if not os.path.exists(odir):
         try:
             os.makedirs(odir)
-        except Exception:
+        except AssertionError:
             pass
     
     with open(ofnfn,'w',encoding='utf-8',errors='ignore') as f:
@@ -506,7 +527,7 @@ def skipgram_do_text2(text_i,n=10,lowercase=True):
         #sld+=[sdx]
     #return sld
 
-def skipgram_save_text(text_i_mongotup,n=10,lowercase=True,batch_size=1000):
+def skipgram_save_text(text_i_mongotup,n=10,lowercase=True,batch_size=100):
     text,i,mongotuple = text_i_mongotup
     from pymongo import MongoClient
     c=MongoClient()
@@ -547,58 +568,43 @@ def save_tokenize_text(text,ofolder=None,force=False):
         json.dump(tokd,of)
     #assert 1 == 2
 
-def is_hashable(v):
-    """Determine whether `v` can be hashed."""
-    try:
-        hash(v)
-        return True
-    except Exception:
-        return False
 
-def is_iterable(v):
-    from collections.abc import Hashable,Iterable
-    return isinstance(v,Iterable)
+def merge_dict_oset(*l,**kwargs):
+    od=OrderedSetDict()
+    for d in l:
+        for k,v in d.items():
+            od[k]=v
+    return od.to_dict()
 
-def is_hashable(v):
-    """Determine whether `v` can be hashed."""
-    try:
-        hash(v)
-    except TypeError:
-        return False
-    return True
+def merge_dict_smpl(*l,**kwargs):
+    od={}
+    for d in l:
+        for k,v in d.items():
+            k=str(k)
+            if k and (v is not None) and (type(v)!=str or v):
+                od[k]=v
+    return od
 
-def safebool(x,bad_vals={np.nan}):
-    import pandas as pd
-    try:
-        if is_hashable(x) and x in bad_vals: return False
-    except Exception as e:
-        log.error(e)
-    
-    try:
-        if is_iterable(x): return bool(len(x))
-    except Exception as e:
-        log.error(e)
-    
-    try:
-        if pd.isnull(x) is True: return False
-    except Exception as e:
-        log.error(e)
-
-    try:
-        return bool(x)
-    except Exception as e:
-        log.error(e)
-        return None
 
 def merge_dict(*l,bad_keys_final=set()):
     od={}
     for d in l:
-        if not issubclass(type(d), dict): continue
+        if not issubclass(type(d), MutableMapping): continue
         for k,v in d.items():
             if safebool(k) and safebool(v):
-                # log(f'k,v = {k},{v}')
                 od[k]=v
     return {k:v for k,v in od.items() if k not in bad_keys_final}
+
+def merge_dict(*l,bad_keys_final=set()):
+    od={}
+    for d in l:
+        if not issubclass(type(d), MutableMapping): continue
+        for k,v in d.items():
+            if safebool(k) and safebool(v):
+                od[k]=v
+    return {k:v for k,v in od.items() if k not in bad_keys_final}
+
+
 
 def merge_dict_list(*l):
     od={}
@@ -650,6 +656,9 @@ def MaybeListDict(key_val_iter):
 
 def is_textish(obj):
     return is_text_obj(obj) or is_addr_str(obj)
+
+def is_valid_text_obj(obj):
+    return is_text_obj(obj) and obj.id_is_valid()
 
 def is_text_obj(obj):
     from lltk.text.text import BaseText
@@ -908,3 +917,8 @@ def unstamp_d(src,sd):
         # if not sdk.startswith(stamppref)
         # if not sdk.endswith(stampsuf)
     }
+
+
+
+
+

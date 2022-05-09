@@ -34,3 +34,11 @@ lltk.egg-info/
 
 venv
 .vscode
+
+
+.*.py
+.*.ipynb
+*-jvsc-*
+Preview*
+*.html
+Untitled*

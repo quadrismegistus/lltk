@@ -80,9 +80,9 @@ class Logger():
             from lltk.tools.tools import ensure_dir_exists,backup_fn,rmfn
             ensure_dir_exists(self.fn)
             if os.path.exists(self.fn): backup_fn(self.fn)
-            rmfn(self.fn)
+            # rmfn(self.fn)
             
-            self.id_file=logger.add(self.fn, rotation=self.fn_rotation, colorize=False, format=self.format)
+            self.id_file=logger.add(self.fn, rotation=self.fn_rotation, colorize=True, format=self.format)
             #logger.debug(f'log added: {self.id_file}')
 
     def stop_file(self):
@@ -110,6 +110,8 @@ class Logger():
     def showing(self): return self.shown()
     @property
     def hiding(self): return self.hidden()
+    @property
+    def silent(self): return self.hidden(verbose=0)
     @property
     def showing_v(self): return self.shown(verbose=2)
     @property
@@ -152,16 +154,18 @@ def Log(force=False,**kwargs):
     return LOGGER
 
 class log_hidden():
-    def __init__(self,verbose=0,log=None):
+    def __init__(self,verbose=None,log=None):
         self.log=log if log is not None else Log()
-        # self.verbose=verbose
+        self.verbose=verbose
     def __enter__(self): 
-        # self.log.verbose_was=self.log.verbose
-        # self.log.verbose=self.verbose
+        if self.verbose is not None:
+            self.log.verbose_was=self.log.verbose
+            self.log.verbose=self.verbose
         self.log.stop_screen()
     def __exit__(self,*x):
-        # self.log.verbose=self.log.verbose_was
-        # self.log.verbose_was=self.verbose
+        if self.verbose is not None:
+            self.log.verbose=self.log.verbose_was
+            self.log.verbose_was=self.verbose
         if self.log.to_screen: self.log.start_screen()
 
 class log_shown():

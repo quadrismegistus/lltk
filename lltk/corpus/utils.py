@@ -70,13 +70,9 @@ def corpora(load=True,load_meta=False,incl_meta_corpora=True):
         if not incl_meta_corpora and manifest[corpus_name]['is_meta']: continue
         try:
             corpus_obj=load_corpus(corpus_name,load_meta=load_meta) if load else manifest[corpus_name]
-        except Exception:
-            continue
-        # print(corpus_name, corpus_obj)
-        if corpus_obj is None: continue
-        from lltk.corpus.corpus import MetaCorpus
-        if not incl_meta_corpora and issubclass(corpus_obj.__class__, MetaCorpus): continue
-        yield (corpus_name, corpus_obj)
+            if is_corpus_obj(corpus_obj): yield (corpus_name, corpus_obj)
+        except Exception as e:
+            log.error(e)
 
 def check_corpora(paths=['path_raw','path_xml','path_txt','path_freqs','path_metadata'],incl_meta_corpora=False):
     old=[]
@@ -712,6 +708,7 @@ def load_corpus(id,manifestd={},load_meta=False,force=False,install_if_nec=True,
         if log>0: log(f'-> ?')
         return
 
+    from lltk.text.utils import merge_dict
     inpd = merge_dict(manifestd, input_kwargs)
     if log>0: log(f'Importing corpus class "{class_name}" from {path_python}')
     
@@ -721,7 +718,7 @@ def load_corpus(id,manifestd={},load_meta=False,force=False,install_if_nec=True,
         C = class_class(**inpd)
         if log>0: log(f'-> {C}')
         return C
-    # except Exception as e:
+    # except AssertionError as e:
     except AssertionError:
         log.error(f'corpus loading failed: {e}')    
     return None

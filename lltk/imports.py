@@ -1,5 +1,5 @@
 import sys,os,warnings,shutil
-# warnings.filterwarnings('ignore')
+warnings.filterwarnings('ignore')
 import multiprocessing as mp
 try:
 	mp.set_start_method('fork')
@@ -18,11 +18,26 @@ LLTK_ROOT = PATH_HERE = ROOT = os.path.dirname(os.path.realpath(__file__))
 PATH_BASE_CONF=os.path.join(HOME,'.lltk_config')
 PATH_DEFAULT_LLTK_HOME = os.path.join(HOME,'lltk_data')
 PATH_DEFAULT_CONF=os.path.abspath(os.path.join(PATH_DEFAULT_LLTK_HOME,'config_default.txt'))
+PATH_SECURE_BUNDLE=os.path.abspath(os.path.join(PATH_DEFAULT_LLTK_HOME,'config','secure-connect-lltk.zip'))
+PATH_ASTRA_ENV=os.path.abspath(os.path.join(PATH_DEFAULT_LLTK_HOME,'config','.env'))
 META_KEY_SEP='__'
 CACHE_DB=True
 CACHE_JSON=False
 MATCHRELNAME='rdf:type'
-REMOTE_SOURCES=['hathi','wikidata']
+REMOTE_SOURCES=['hathi','wikidata','goodreads','isbn']
+REMOTE_DEFAULT=False
+REMOTE_REMOTE_DEFAULT = True
+
+
+MINIMETAD={
+    'author':['author'],
+    'title':['title'],
+    'year':['year','date']
+}
+
+#'worldcat','goodreads']
+# REMOTE_SOURCES=['worldcat']
+# REMOTE_SOURCES=['hathi']
 
 # Get tools
 LOG_TO_SCREEN = False
@@ -81,7 +96,7 @@ PATH_LLTK_REPO=os.path.abspath(os.path.join(LLTK_ROOT,'..'))
 URL_DEFAULT_DATA='https://www.dropbox.com/s/cq1xb85yaysezx4/lltk_default_data.zip?dl=1'
 PATH_LLTK_LOG_FN = os.path.join(PATH_LLTK_HOME, 'logs','debug.log')
 DIR_SECTION_NAME='sections'
-TEXT_META_DEFAULT = {}
+TEXT_META_DEFAULT = {'id':'', 'author':'', 'title':'', 'year':''}
 
 BAD_COLS={'Unnamed: 0','_llp_'}
 
@@ -92,7 +107,7 @@ DIR_TEXTS_NAME='texts'
 
 ### OPTIONS
 COL_ID='id'
-COL_ADDR='_addr'
+COL_ADDR='_id'
 COL_CORPUS='_corpus'
 IDSEP_START='_'
 IDSEP='/'
@@ -184,7 +199,7 @@ MANIFEST_DEFAULTS=dict(
 	class_name='',
 	path_freq_table={},
 	col_id='id',
-	col_addr='_addr',
+	col_addr='_id',
 	col_id_corpus='id_corpus',
 	col_id_text='id_text',
 	idsep='|',col_t='_text',
@@ -252,13 +267,37 @@ chardata_metakeys_initial = dict(
 
 
 CORPUS_SOURCE_RANKS={
-	'wikidata':1,
+	'chadwyck':1,
+	'hathi':4,
+	'wikidata':7,
 	'chicago':3,
-	'chadwyck':5,
+	'markmark':2,
 }
 
+YEARKEYS=['year','date']
 
-
+INIT_DB_WITH_CORPORA = {
+	# 'bpo',
+	'chadwyck',
+	'chicago',
+	'markmark',
+	'txtlab',
+	'tedjdh',
+	'gildedage',
+	# 'canon_fiction',
+	'clmet',
+	'dta',
+	'dialnarr',
+	'estc',
+	'eebo_tcp',
+	'ecco_tcp',
+	'ecco',
+	'evans_tcp',
+	'litlab',
+	'ravengarside',
+	'semantic_cohort',
+	'spectator'
+}
 
 
 
@@ -281,7 +320,7 @@ CORPUS_FUNCS={}
 ### BUILTIN MODULES
 import imp,os,sys,json,random,gzip,time,inspect,pickle,re,configparser,urllib,tempfile,six,shutil,tarfile,gzip,time,logging,math
 from pprint import pprint,pformat
-from collections import defaultdict,Counter
+from collections import defaultdict,Counter,OrderedDict,UserList,UserDict,UserString
 from functools import partial
 from datetime import datetime
 from os.path import expanduser
@@ -289,10 +328,23 @@ from pkg_resources import ensure_directory
 from argparse import Namespace
 from urllib.error import HTTPError
 from zipfile import ZipFile
-from typing import Union,Literal,Optional
+from typing import (
+    Callable,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Mapping,
+    Optional,
+    Union,
+    cast,
+    Tuple,
+	Literal
+)
+
 from pathlib import Path
-
-
+from urllib.parse import quote_plus
+import requests
 
 ### EXTERNAL MODULES
 from yapmap import *
@@ -301,11 +353,15 @@ import plotnine as p9
 import networkx as nx
 from yapmap import *
 from xopen import xopen
-from lmdbm import Lmdb
+from base64 import b64decode, b64encode
+from dotenv import load_dotenv
+
+if os.path.exists(PATH_ASTRA_ENV): load_dotenv(PATH_ASTRA_ENV)
 
 
 ## Setup logger
 ### MY MODULES
+
 from lltk.tools import *
 log = Log(
 	to_screen=LOG_TO_SCREEN,
@@ -314,19 +370,9 @@ log = Log(
 	force=True,
 	verbose=LOG_VERBOSE_JUPYTER if in_jupyter() else LOG_VERBOSE_TERMINAL
 )
-def log_start(*x,**y): log.show()
-def log_stop(*x,**y): log.hide()
 
-from lltk.text.utils import *
-from lltk.corpus.utils import *
-from lltk.text.text import *
-
-from lltk.corpus.corpus import *
+from lltk.text import *
+from lltk.corpus import *
 from lltk.model import *
-from lltk.text.text import BaseText,Text
-from lltk.corpus.corpus import BaseCorpus,Corpus
-
-# models
-from lltk.model.matcher import *
-from lltk.model.wikidata import *
-with log.quiet: M = Matcher()
+log_on() if REMOTE_DEFAULT else log_off()
+LLTK = BaseLLTK(log=log)

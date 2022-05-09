@@ -317,7 +317,7 @@ def make_vid_from_folder(folder,ofn=None,fps=5):
     clip = moviepy.video.io.ImageSequenceClip.ImageSequenceClip(image_files, fps=fps)
     try:
         clip.write_videofile(ofn,verbose=False,logger=None) #progress_bar=False)
-    except Exception:
+    except AssertionError:
         clip.write_videofile(ofn,verbose=False,progress_bar=False)
 
     

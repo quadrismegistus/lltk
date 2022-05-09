@@ -253,12 +253,11 @@ class SectionCorpusLetterChadwyck(SectionCorpusLetter):
 
     def init(self,force=False,lim=None,progress=True,**kwargs):
         if not force and self._init: return
-
         # from meta?
         super().init(force=force)
         if not force and self._init: return
         
-        if log>0: log(f'Initializing: {self}')
+        if log>0: log(f'Initializing: {self.addr}')
         from string import ascii_lowercase
         alpha=ascii_lowercase#.replace('x','')
         alpha = (alpha*1000)
@@ -416,13 +415,6 @@ class Epistolary(BaseCorpus):
     TEXT_CLASS=TextEpistolary
     CORPORA_TO_START_WITH = ['Chadwyck']
 
-    # def init(self,*x,**y):
-    #     super().init(*x,**y)
-        
-    #     # recast text objects by corpus
-    #     for idx,t in self._textd.items():
-    #         if t.source and t.source.corpus.id=='chadwyck':
-    #             t.__class__ = TextEpistolaryChadwyck
 
     def init_text(self,*args,**kwargs):
         t=super().init_text(*args,**kwargs)
