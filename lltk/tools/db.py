@@ -743,66 +743,66 @@ class LLDBSqlite(LLDBBase):
 
 
 
-from blitzdb import Document as BDoc
-class BTextDoc(BDoc): pass
-class BCorpusDoc(BDoc): pass
+# from blitzdb import Document as BDoc
+# class BTextDoc(BDoc): pass
+# class BCorpusDoc(BDoc): pass
 
 
-_TYPE='Text'
-DOCD={'Text':BTextDoc, 'Corpus':BCorpusDoc}
-DEFAULTDOC=BTextDoc
+# _TYPE='Text'
+# DOCD={'Text':BTextDoc, 'Corpus':BCorpusDoc}
+# DEFAULTDOC=BTextDoc
 
-class LLDBBlitz(LLDBBase):
-    ext='.blitz'
-    col_id='id'
+# class LLDBBlitz(LLDBBase):
+#     ext='.blitz'
+#     col_id='id'
 
-    def open(self):
-        if self._db is None:
-            from blitzdb import FileBackend
-            self._db = FileBackend(self.path)
-            self._db.create_index(TextDoc,'_corpus')
-            # self._db.create_index(TextDoc,'__id')
-            # self._db.create_index(TextDoc,'_id')
-            self._db.create_index(TextDoc,'id')
-        return self._db
+#     def open(self):
+#         if self._db is None:
+#             from blitzdb import FileBackend
+#             self._db = FileBackend(self.path)
+#             self._db.create_index(TextDoc,'_corpus')
+#             # self._db.create_index(TextDoc,'__id')
+#             # self._db.create_index(TextDoc,'_id')
+#             self._db.create_index(TextDoc,'id')
+#         return self._db
 
 
-    def upsert(self,id,d={},_type=_TYPE,**meta):
-        obj = self.get(id)
-        ometa={**d, **meta, **{self.col_id:id}}
-        if obj:
-            for k,v in ometa.items(): setattr(obj,k,v)
-        else:
-            Doc = DOCD.get(_type)
-            obj = Doc(ometa)
-        self.db.save(obj)
-        self.db.commit()
-        return obj
+#     def upsert(self,id,d={},_type=_TYPE,**meta):
+#         obj = self.get(id)
+#         ometa={**d, **meta, **{self.col_id:id}}
+#         if obj:
+#             for k,v in ometa.items(): setattr(obj,k,v)
+#         else:
+#             Doc = DOCD.get(_type)
+#             obj = Doc(ometa)
+#         self.db.save(obj)
+#         self.db.commit()
+#         return obj
 
-    set = upsert
+#     set = upsert
     
-    def get(self,id=None,_type=_TYPE,**meta):
-        Doc=DOCD.get(_type)
-        if id:
-            qdx={self.col_id:id}
-            try:
-                return self.db.get(Doc,qdx)
-            except Doc.DoesNotExist:
-                return None
-            except Doc.MultipleDocumentsReturned:
-                #more than one 'Charlie' in the database
-                return self.db.filter(Doc,qdx)
+#     def get(self,id=None,_type=_TYPE,**meta):
+#         Doc=DOCD.get(_type)
+#         if id:
+#             qdx={self.col_id:id}
+#             try:
+#                 return self.db.get(Doc,qdx)
+#             except Doc.DoesNotExist:
+#                 return None
+#             except Doc.MultipleDocumentsReturned:
+#                 #more than one 'Charlie' in the database
+#                 return self.db.filter(Doc,qdx)
         
-        return self.where(**meta)
+#         return self.where(**meta)
     
-    def where(self,_type=_TYPE,**meta):
-        Doc = DOCD.get(_type)
-        return self.db.filter(Doc,meta)
+#     def where(self,_type=_TYPE,**meta):
+#         Doc = DOCD.get(_type)
+#         return self.db.filter(Doc,meta)
 
-    def insert(self,*lt):
-        from lltk.tools.tools import get_tqdm
-        for id,d in get_tqdm(lt):
-            self.upsert(id,d)
+#     def insert(self,*lt):
+#         from lltk.tools.tools import get_tqdm
+#         for id,d in get_tqdm(lt):
+#             self.upsert(id,d)
     
     
 

@@ -153,7 +153,11 @@ class BaseCorpus(TextList):
     def xml2txt(self,*x,**y): return self.XML2TXT.__func__(*x,**y)
 
     @property
-    def path_key(self): return os.path.join(self.path,'.key')
+    def path_key(self):
+        ofn=os.path.join(PATH_LLTK_KEYS,f'{self.id}.key')
+        ensure_dir_exists(ofn,fn=True)
+        return ofn
+
     def generate_key(self,force=False):
         if force or not os.path.exists(self.path_key):
             from cryptography.fernet import Fernet

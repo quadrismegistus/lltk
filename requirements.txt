@@ -34,3 +34,5 @@ blosc
 cryptography
 ordered_set
 orjson
+tinydb
+cassandra-driver
