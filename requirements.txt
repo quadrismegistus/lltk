@@ -39,3 +39,6 @@ cassandra-driver
 recordlinkage
 datasketch
 sqlitedict
+rispy
+wptools
+unidecode

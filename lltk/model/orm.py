@@ -12,9 +12,10 @@ from cassandra.cqlengine.connection import register_connection, set_default_conn
 
 DEFAULT_KEYSPACE='dataspace' #os.environ.get('ASTRA_DB_KEYSPACE','dataspace_2020_05_09')
 SERVERS = [
+    '128.232.229.63', # '10.42.0.1',
+
     '185.143.45.10',
-    # '10.42.0.1',
-    '128.232.229.63',
+
     # '127.0.0.1',
 ]
 
