@@ -42,3 +42,4 @@ sqlitedict
 rispy
 wptools
 unidecode
+pickle5

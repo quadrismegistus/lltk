@@ -318,7 +318,7 @@ INIT_DB_WITH_CORPORA = {
 
 
 ### BUILTIN MODULES
-import imp,os,sys,json,random,gzip,time,inspect,pickle,re,configparser,urllib,tempfile,six,shutil,tarfile,gzip,time,logging,math
+import imp,os,sys,json,random,gzip,time,inspect,pickle5 as pickle,re,configparser,urllib,tempfile,six,shutil,tarfile,gzip,time,logging,math
 from pprint import pprint,pformat
 from collections import defaultdict,Counter,OrderedDict,UserList,UserDict,UserString
 from functools import partial
