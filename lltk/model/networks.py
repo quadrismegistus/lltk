@@ -85,6 +85,7 @@ def draw_nx(
         node_color=node_colors,
     )
     if save_to: fig.savefig(save_to)
+    if not show: return fig
 
     if show:
         plt.show()
@@ -294,11 +295,11 @@ def layout_graph_force(g,pos=None,iterations=10000,**attrs):
         return pos
     
     except (ImportError,ModuleNotFoundError,AttributeError) as e:
-        print('!! {e}, trying graphviz for layout')
+        # print(f'!! {e}, trying graphviz for layout')
         try:
             return nx.nx_agraph.graphviz_layout(g,prog='neato')
         except (ImportError,ModuleNotFoundError) as e2:
-            print('!! {e}, trying networkx for layout')
+            # print(f'!! {e}, trying networkx for layout')
             return nx.spring_layout(g,k=0.15, iterations=20)
 
 
