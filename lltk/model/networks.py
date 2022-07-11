@@ -107,46 +107,49 @@ def draw_nx_dynamic(
     from base64 import b64encode
     from IPython.display import HTML
     import matplotlib.pyplot as plt
-    plt.ioff()
-    if final_g is not None:
-        if pos is None: pos = layout_graph_force(final_g)
-        if max_weight is None: max_weight = max(d.get('weight',1) for a,b,d in final_g.edges(data=True))
-    
-    
-    if not odir_imgs:
-        tdir=tempfile.TemporaryDirectory()
-        odir_imgs=tdir.name
-    else:
-        tdir=None
-        if not os.path.exists(odir_imgs): os.makedirs(odir_imgs)
 
-    # with tempfile.TemporaryDirectory() as odir:    
-    ofn_l=[]
-    posnow=None
-    for gi,g in enumerate(iter_g):
-        gi=g.t if hasattr(g,'t') and g.t else gi
-        if type(gi) in {tuple,list}: gi='_'.join(str(gix) for gix in gi)
-        ofn_png = os.path.join(odir_imgs,f'graph{gi}.png')
-        posnow = pos if pos else layout_graph_force(
-            g,
-            pos=posnow,
-            iterations=1
-        )
+    tdir = None
+    if force or not os.path.exists(ofn):
+        plt.ioff()
+        if final_g is not None:
+            if pos is None: pos = layout_graph_force(final_g)
+            if max_weight is None: max_weight = max(d.get('weight',1) for a,b,d in final_g.edges(data=True))
+        
+        
+        if not odir_imgs:
+            tdir=tempfile.TemporaryDirectory()
+            odir_imgs=tdir.name
+        else:
+            tdir=None
+            if not os.path.exists(odir_imgs): os.makedirs(odir_imgs)
 
-        if force or not os.path.exists(ofn_png):
-            draw_nx(
+        # with tempfile.TemporaryDirectory() as odir:    
+        ofn_l=[]
+        posnow=None
+        for gi,g in enumerate(iter_g):
+            gi=g.t if hasattr(g,'t') and g.t else gi
+            if type(gi) in {tuple,list}: gi='_'.join(str(gix) for gix in gi)
+            ofn_png = os.path.join(odir_imgs,f'graph{gi}.png')
+            posnow = pos if pos else layout_graph_force(
                 g,
                 pos=posnow,
-                max_weight=max_weight,
-                save_to=ofn_png,
-                show=False,
-                **kwargs)
-        ofn_l.append(ofn_png)
+                iterations=1
+            )
 
-    print(f'Making movie ({ofn}) [{len(ofn_l)})]...')
-    
-    clip = moviepy.video.io.ImageSequenceClip.ImageSequenceClip(ofn_l, fps=fps)
-    clip.write_videofile(ofn,verbose=False,logger=None) #progress_bar=False)
+            if force or not os.path.exists(ofn_png):
+                draw_nx(
+                    g,
+                    pos=posnow,
+                    max_weight=max_weight,
+                    save_to=ofn_png,
+                    show=False,
+                    **kwargs)
+            ofn_l.append(ofn_png)
+
+        print(f'Making movie ({ofn}) [{len(ofn_l)})]...')
+        
+        clip = moviepy.video.io.ImageSequenceClip.ImageSequenceClip(ofn_l, fps=fps)
+        clip.write_videofile(ofn,verbose=False) #progress_bar=False)
 
 
     with open(ofn,'rb') as f: mp4=f.read()

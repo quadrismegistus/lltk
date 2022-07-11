@@ -3,7 +3,7 @@ notebooks/figures
 notebooks/graph_imgs
 test_*.ipynb
 *.egg-info
-
+*.mp4
 test.*
 
 *.pyc
