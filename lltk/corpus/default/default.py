@@ -1,8 +1,8 @@
 import os
-from lltk.corpus.corpus import Corpus
+from lltk.corpus.corpus import BaseCorpus
 
-class PlainTextCorpus(Corpus):
+class PlainTextCorpus(BaseCorpus):
 	pass
 
-class XMLCorpus(Corpus):
+class XMLCorpus(BaseCorpus):
 	pass

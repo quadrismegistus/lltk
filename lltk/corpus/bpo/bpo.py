@@ -2,10 +2,10 @@ from lltk.imports import *
 
 
 
-class TextBPO(Text): pass
+class TextBPO(BaseText): pass
 
 
-class BPO(Corpus):
+class BPO(BaseCorpus):
     TEXT_CLASS=TextBPO
     
     def load_metadata(self,**kwargs):

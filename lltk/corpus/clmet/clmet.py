@@ -7,7 +7,7 @@ from lltk.imports import *
 # 	 u'Other':'Other',
 # 	 u'Treatise':'Treatise'}
 
-class TextCLMET(Text): pass
+class TextCLMET(BaseText): pass
 	
 
 	# @property
@@ -29,4 +29,4 @@ class TextCLMET(Text): pass
 	# 	return md
 
 
-class CLMET(Corpus): pass
+class CLMET(BaseCorpus): pass

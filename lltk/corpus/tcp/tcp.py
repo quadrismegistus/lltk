@@ -61,7 +61,7 @@ def xml2txt_tcp(xmlfn,OK=['p','l'], BAD=[], body_tag='text', force_xml=False, te
 
 
 
-class TextTCP(Text):
+class TextTCP(BaseText):
     @property
     def sections_xml(self,divider_tag='DIV1'):
         return super(TextTCP,self).sections_xml(divider_tag=divider_tag,text_section_class=self.corpus.TEXT_SECTION_CLASS)
@@ -71,7 +71,7 @@ class TextTCP(Text):
 
 
 
-class TCP(Corpus):
+class TCP(BaseCorpus):
     XML2TXT=xml2txt_tcp
 
     
@@ -81,14 +81,14 @@ class TCP(Corpus):
         self.compile_download()
         # loop
         for n in range(walks):
-            for root,dirs,fns in tqdm(sorted(os.walk(self.path_raw)),desc='Unzipping raw data archives'):
+            for root,dirs,fns in get_tqdm(sorted(os.walk(self.path_raw)),desc='Unzipping raw data archives'):
                 if os.path.basename(root) in set(extract_in):
                     # only get xml for now
                     for fn in fns:
                         tools.extract(os.path.join(root,fn), root, progress=False)
 
     def compile_texts(self,fn_startswith='',exts={'xml'},replacements={}):
-        for root,dirs,fns in tqdm(sorted(os.walk(self.path_raw)),desc='Moving and renaming texts'):
+        for root,dirs,fns in get_tqdm(sorted(os.walk(self.path_raw)),desc='Moving and renaming texts'):
             for fn in fns:
                 if fn_startswith and not fn.startswith(fn_startswith): continue
                 ext=fn.split('.')[-1]

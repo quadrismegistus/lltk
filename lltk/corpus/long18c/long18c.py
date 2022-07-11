@@ -2,11 +2,11 @@ from __future__ import absolute_import
 from __future__ import print_function
 # -*- coding: utf-8 -*-
 
-from lltk.corpus.corpus import Corpus
-from lltk.text.text import Text
+from lltk.corpus.corpus import BaseCorpus
+from lltk.text.text import BaseText
 import os
 
-class Long18C(Corpus):
+class Long18C(BaseCorpus):
 	TEXT_CLASS=Text
 	PATH_TXT = 'long18c/_txt_long18c'
 	PATH_XML = 'long18c/_xml_long18c'

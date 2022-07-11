@@ -1,6 +1,6 @@
 import os
-from lltk.text.text import Text
-from lltk.corpus.corpus import Corpus
+from lltk.text.text import BaseText
+from lltk.corpus.corpus import BaseCorpus
 from tqdm import tqdm
 from lltk import tools
 import gzip,tarfile,sys
@@ -24,7 +24,7 @@ PATH_HERE_DIRNAME=os.path.dirname(PATH_HERE)
 # (1) Text Class
 ########################################################################################################################
 
-class TextHathiBio(Text):
+class TextHathiBio(BaseText):
 	pass
 
 
@@ -62,7 +62,7 @@ def untar_to_freqs_folder(args):
 	with gzip.GzipFile(fnfn) as f:
 		with tarfile.open(fileobj=f) as tf:
 			members=tf.getmembers()
-			for member in tqdm(members,position=position,desc='untarring a file'):
+			for member in get_tqdm(members,position=position,desc='untarring a file'):
 				if not member.name.endswith('.tsv'): continue
 				if os.path.basename(member.name).startswith('.'): continue
 				try:
@@ -84,7 +84,7 @@ def untar_to_freqs_folder(args):
 
 
 
-class HathiBio(Corpus):
+class HathiBio(BaseCorpus):
 	TEXT_CLASS=TextHathiBio
 
 

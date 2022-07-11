@@ -1,6 +1,6 @@
 from lltk.imports import *
 
-class TextGildedAge(Text): pass
+class TextGildedAge(BaseText): pass
 
-class GildedAge(Corpus):
+class GildedAge(BaseCorpus):
 	TEXT_CLASS = TextGildedAge

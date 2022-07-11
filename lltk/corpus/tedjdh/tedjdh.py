@@ -1,2 +1,2 @@
 from lltk.imports import *
-class TedJDH(Corpus): pass
+class TedJDH(BaseCorpus): pass

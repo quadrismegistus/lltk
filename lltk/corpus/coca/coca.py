@@ -1,6 +1,6 @@
 import os
-from lltk.text.text import Text
-from lltk.corpus.corpus import Corpus
+from lltk.text.text import BaseText
+from lltk.corpus.corpus import BaseCorpus
 from lltk import tools
 from tqdm import tqdm
 import shutil
@@ -23,7 +23,7 @@ folder2genre=dict((v,k) for k,v in genre2folder.items())
 # (1) Text Class
 ########################################################################################################################
 
-class TextCOCA(Text):
+class TextCOCA(BaseText):
 	pass
 
 
@@ -31,7 +31,7 @@ class TextCOCA(Text):
 # (2) Corpus Class
 ########################################################################################################################
 
-class COCA(Corpus):
+class COCA(BaseCorpus):
 	TEXT_CLASS=TextCOCA
 
 
@@ -72,8 +72,8 @@ class COCA(Corpus):
 	def compile_txt(self):
 		path_to_txt = os.path.join(self.path_raw,'COCA Text')
 		all_files = list(os.walk(path_to_txt))
-		for root,dirs,files in tqdm(all_files,position=0):
-			for fn in tqdm(files,position=1):
+		for root,dirs,files in get_tqdm(all_files,position=0):
+			for fn in get_tqdm(files,position=1):
 				if fn.endswith('.txt'):
 					ifnfn=os.path.join(root,fn)
 					#print(ifnfn)
@@ -84,7 +84,7 @@ class COCA(Corpus):
 						continue
 
 					with open(ifnfn) as f:
-						for ln in tqdm(f,position=2,total=total):
+						for ln in get_tqdm(f,position=2,total=total):
 							ln=ln.strip()
 							if not ln.startswith('@@') and not ln.startswith('##'):
 								#print('!?!?!',ln[:100],'...')

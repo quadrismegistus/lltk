@@ -3,7 +3,7 @@ from lltk.imports import *
 
 
 
-class TextECCO(Text):
+class TextECCO(BaseText):
 	@property
 	def meta_by_file(self):
 		if not hasattr(self,'_meta'):
@@ -28,7 +28,7 @@ class TextECCO(Text):
 		md={}
 		## IDs
 		import bs4
-		dom=bs4.BeautifulSoup(mtxt,'html.parser')
+		dom=bs4.BeautifulSoup(mtxt,'lxml')
 		md={}
 
 		simples = ['documentID','ESTCID','pubDate','releaseDate','sourceLibrary','language','model','documentType','marcName','birthDate','deathDate','marcDate','fullTitle','currentVolume','totalVolumes','imprintFull','imprintCity','imprintPublisher','imprintYear','collation','publicationPlace','totalPages']
@@ -194,7 +194,7 @@ class TextECCO(Text):
 
 
 
-class ECCO(Corpus):
+class ECCO(BaseCorpus):
 	TEXT_CLASS=TextECCO
 	EXT_XML = '.xml.gz'
 

@@ -1,7 +1,7 @@
 from lltk.imports import *
 
 
-class BigHist(MetaCorpus):
+class BigHist(BaseCorpus):
     CORPORA=[
         #'ARTFL',
         #'BPO',

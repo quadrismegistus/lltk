@@ -1,15 +1,44 @@
 from lltk.imports import *
 
+def get_inducted_corpus_ids():
+    return {d.get('id') for d in load_manifest().values() if d.get('id')}
+
+# nec?
+def register_corpus_func(func,name=None):
+    global CORPUS_FUNCS
+    if not name: name=func.__name__
+    CORPUS_FUNCS[name]=func
+    
+
 ### Accessing corpora
 
+def is_corpus_obj(x):
+    from lltk.corpus.corpus import BaseCorpus
+    return issubclass(x.__class__,BaseCorpus)
 
+
+    
+def update_df(odf, opath, reset=False, force=False, index=False, verbose=False, idcols=['id'],sort_by=None, sort_by_asc=[]):
+    if not os.path.exists(opath):
+        odf=odf
+    else:
+        dfl=[odf,read_df(opath)]
+        odf=pd.concat(dfl).fillna('')
+    odf=odf.drop_duplicates(idcols,keep='last').fillna('')        
+    odf=fix_meta(odf.fillna(''))
+    if sort_by: odf=odf.sort_values(sort_by, ascending=sort_by_asc)
+    return odf
 
 
 def load_metadata_from_df_or_fn(idf,force=False,**attrs):
     if type(idf)==str: idf=read_df(idf)
     if idf is None or not len(idf): return pd.DataFrame()
-    #return df_requiring_id_and_corpus(idf,**attrs)
     return df_requiring_id(idf,**attrs).fillna('')
+
+def iter_metadata_from_df_or_fn(df_or_fn,force=False,**attrs):
+    for odx in readgen(df_or_fn):
+        yield odx
+
 
 
 def df_requiring_id(df,idkey='id',fillna='',*x,**y):
@@ -22,38 +51,6 @@ def df_requiring_id(df,idkey='id',fillna='',*x,**y):
     df=df.set_index(idkey)
     return df
 
-def df_requiring_id_and_corpus(df,
-        col_id='id',
-        col_id_corpus='id_corpus',
-        col_id_text='id_text',
-        col_id_new='_id',
-        id_corpus_default='',
-        id_text_default='',
-        idsep='|',
-        fillna='',
-        *x,**y):
-    meta=fix_meta(df.reset_index().fillna(''))
-    metacols = set(meta.columns)
-    needcols={col_id,col_id_corpus,col_id_text,col_id_new}
-    for col in needcols-metacols: meta[col]=''
-
-    # deduce
-    new=[]
-    for i,(idx,id_corpus,id_text) in enumerate(zip(meta[col_id], meta[col_id_corpus], meta[col_id_text])):
-        _idx=''
-        if idx and idsep in idx: id_corpus,id_text = idx.split(idsep,1)
-        if not id_corpus: id_corpus=id_corpus_default
-        if not id_text: id_text=id_text_default
-        if not idx and id_corpus and id_text:
-            _idx=idx=f'{id_corpus}{idsep}{id_text}'
-        if not idx: idx=f'X{id_text_default}{i+1:04}'
-        if not id_text: id_text=idx
-        #if not id_corpus and id_corpus_default: id_corpus=id_corpus_default
-        if not _idx: _idx=f'{id_corpus}{idsep}{idx}' if id_corpus and not idsep in idx else idx
-        new+=[(idx,id_corpus,id_text,_idx)]
-    meta[col_id],meta[col_id_corpus],meta[col_id_text],meta[col_id_new] = zip(*new)
-
-    return df_requiring_id(meta, idkey=col_id)
 
 
 
@@ -74,13 +71,9 @@ def corpora(load=True,load_meta=False,incl_meta_corpora=True):
         if not incl_meta_corpora and manifest[corpus_name]['is_meta']: continue
         try:
             corpus_obj=load_corpus(corpus_name,load_meta=load_meta) if load else manifest[corpus_name]
-        except Exception:
-            continue
-        # print(corpus_name, corpus_obj)
-        if corpus_obj is None: continue
-        from lltk.corpus.corpus import MetaCorpus
-        if not incl_meta_corpora and issubclass(corpus_obj.__class__, MetaCorpus): continue
-        yield (corpus_name, corpus_obj)
+            if is_corpus_obj(corpus_obj): yield (corpus_name, corpus_obj)
+        except Exception as e:
+            log.error(e)
 
 def check_corpora(paths=['path_raw','path_xml','path_txt','path_freqs','path_metadata'],incl_meta_corpora=False):
     old=[]
@@ -149,7 +142,7 @@ def status_corpora_markdown(maxcolwidth=45,link=False,**attrs):
 
 def yield_corpora_meta(corpora,incl_meta=[]):
     o=[]
-    for cname in tqdm(corpora,desc='Loading metadata'):
+    for cname in get_tqdm(corpora,desc='Loading metadata'):
         C=load_corpus(cname) if type(cname)==str else cname
         for dx in C.meta_iter():
             if incl_meta:
@@ -231,6 +224,7 @@ def status_corpora_readme():
 
 def to_authorkey(name):
     return zeropunc(to_lastname(name))
+
 def to_titlekey(title):
     return zeropunc(''.join(x.title() for x in title[:30].split()))[:25]
 
@@ -559,6 +553,7 @@ def load_corpus_manifest_unique(id,name):
 
 def load_corpus_manifest(name_or_id,manifestd={},make_path_abs=True):
     if not manifestd:
+        manifestd = dict(MANIFEST_DEFAULTS.items())
         manifest=load_manifest(name_or_id)
         if name_or_id in manifest:
             manifestd=manifest[name_or_id]
@@ -592,6 +587,11 @@ def load_corpus_manifest(name_or_id,manifestd={},make_path_abs=True):
             if k.startswith('path_'):
                 if type(v)==str and v and not os.path.isabs(v):
                     manifestd[k]=os.path.join(manifestd['path_root'], v)
+
+    if not manifestd.get('path_python'):
+        manifestd['path_python'] = os.path.join(manifestd['path_root'], manifestd['id']+'.py')
+    
+    # log(f'Corpus python path: {manifestd["path_python"]}')
 
     return manifestd
 
@@ -685,19 +685,44 @@ def to_yearbin(year,yearbin):
         return
     
 
+def get_all_sources_recursive(text,sofar=set(),**kwargs):
+    sources = text._sources #get_sources(**kwargs)
+    for src in sources:
+        if src in sofar: continue
+        if log>0: log(f'{text} --?--> {src}')
+        sofar|=get_all_sources_recursive(src,sofar=sofar|{text,src})
+    sofar|={text} | set(sources)
+    return sofar
 
 
-def load_corpus(name_or_id,manifestd={},load_meta=False,install_if_nec=False,**input_kwargs):
-    if not manifestd: manifestd=load_corpus_manifest(name_or_id,make_path_abs=True)
-    # print('>> loading:',name_or_id,manifestd)
-    module = imp.load_source(manifestd['id'], manifestd['path_python'])
-    class_class = getattr(module,manifestd['class_name'])
-    C = class_class(load_meta=load_meta,**manifestd)
-    from lltk.corpus.corpus import MetaCorpus
-    if issubclass(class_class, MetaCorpus): return C
-    if install_if_nec and (C.meta is None or not len(C.meta)):
-        return C.install(**input_kwargs)
-    return C
+def load_corpus(id,manifestd={},load_meta=False,force=False,install_if_nec=True,**input_kwargs):
+    from lltk.imports import log
+    if not manifestd: manifestd=load_corpus_manifest(id,make_path_abs=True)
+    # plog('>> loading:',name_or_id,manifestd)
+    if log>0: log(f'<- id = {id}')
+    id,path_python,class_name=(
+        manifestd.get('id'),
+        manifestd.get('path_python'),
+        manifestd.get('class_name')
+    )
+    if not path_python or not os.path.exists(path_python): 
+        if log>0: log(f'-> ?')
+        return
+
+    from lltk.text.utils import merge_dict
+    inpd = merge_dict(manifestd, input_kwargs)
+    if log>0: log(f'Importing corpus class "{class_name}" from {path_python}')
+    
+    try:
+        module = imp.load_source(id,path_python)
+        class_class = getattr(module,class_name)
+        C = class_class(**inpd)
+        if log>0: log(f'-> {C}')
+        return C
+    # except AssertionError as e:
+    except AssertionError:
+        log.error(f'corpus loading failed: {e}')    
+    return None
 
 
 
@@ -866,7 +891,9 @@ def do_gen_mfw_grp(group,*x,**y):
 CORPUSOBJD={}
 def load(name_or_id,load_meta=False,force=False,install_if_nec=False,**y):
     global CORPUSOBJD
+    # log([force, name_or_id, name_or_id in CORPUSOBJD, CORPUSOBJD.get(name_or_id)])
     if force or not name_or_id in CORPUSOBJD or CORPUSOBJD[name_or_id] is None:
+        # log('Loading...')
         CORPUSOBJD[name_or_id] = load_corpus(name_or_id,load_meta=load_meta,install_if_nec=install_if_nec,**y)
     return CORPUSOBJD[name_or_id]
 #################################################################
@@ -894,7 +921,7 @@ def meta_iter_corpora(corpora,**y):
 def meta_iter(corpora,progress=True,total=None,**y):
     iterr=meta_iter_corpora(corpora,progress=False,**y)
     if progress:
-        iterr=tqdm(
+        iterr=get_tqdm(
             iterr,
             desc='Iterating through all corpora metadata',
 #             total=meta_numlines(corpora)
@@ -913,7 +940,7 @@ def load_metadata(corpora,ids=set(),keys=None):
 
 ### Clean all?
 def clean_all_meta():
-    iterr=tqdm(list(corpora(load=False)))
+    iterr=get_tqdm(list(corpora(load=False)))
     for cname,Cd in iterr:
         if cname<'Chicago': continue
         if Cd.get('path_metadata')!='metadata.csv': continue
@@ -970,3 +997,88 @@ def get_text(c_id_q):#,sample=True):
     for t in iter_texts(c_id_q): return t
     #return (random.choice(o) if sample else o[0]) if type(o)==list and o else None
     
+
+
+
+
+
+
+
+
+
+
+
+class AuthorBunch(Bunch):
+    def __iter__(self):
+        for v in self.__dict__.values():
+            if is_text_obj(v):
+                yield v
+    def __getitem__(self,i): return list(self)[i]
+    
+    def __len__(self):
+        i=0
+        for x in self:
+            i+=1
+        return i
+    
+    @property
+    def ti(self): return list(self)
+    @property
+    def tl(self): return list(self)
+    @property
+    def ids(self): return [t.id for t in self]
+    @property
+    def id(self): return self.ids    
+    @property
+    def meta(self): return self.corpus.meta[self.corpus.meta.id.isin(set(self.ids))]
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def picklify(obj):
+    # return obj
+    from lltk.text.utils import is_text_obj,is_corpus_obj
+    if is_text_obj(obj): return obj.addr
+    if is_corpus_obj(obj): return obj.id
+    if type(obj)==set: return {picklify(x) for x in obj}
+    if type(obj)==list: return [picklify(x) for x in obj]
+    if type(obj)==tuple: return set([picklify(x) for x in obj])
+    if type(obj)==dict: return {picklify(k):picklify(v) for k,v in obj.items()}
+    return obj
+
+def unpicklify(obj,objtype=None):
+    # return obj
+    from lltk.text.utils import id_is_addr
+    from lltk.text.text import Text
+    from lltk.corpus.corpus import Corpus
+
+    if type(obj)==set: return {unpicklify(x) for x in obj}
+    if type(obj)==list: return [unpicklify(x) for x in obj]
+    if type(obj)==tuple: return set([unpicklify(x) for x in obj])
+    if type(obj)==dict: 
+        return {
+            unpicklify(k):unpicklify(v,objtype='Corpus' if k in {'_corpus','_section_corpus'} else '')
+            for k,v in obj.items()
+        }
+    if objtype=='Corpus' and type(obj)==str: return Corpus(obj)
+    if type(obj)==str and id_is_addr(obj): return Text(obj)
+    return obj
+
+
+

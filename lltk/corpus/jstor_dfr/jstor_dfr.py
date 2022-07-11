@@ -2,19 +2,19 @@ import os,json,bs4
 import numpy as np
 
 import lltk
-from lltk.text.text import Text
-from lltk.corpus.corpus import Corpus
+from lltk.text.text import BaseText
+from lltk.corpus.corpus import BaseCorpus
 from zipfile import ZipFile
 from tqdm import tqdm
 import shutil
 
 
-class TextJstorDFR(Text):
+class TextJstorDFR(BaseText):
 	pass
 
 
 
-class JstorDFR(Corpus):
+class JstorDFR(BaseCorpus):
 	TEXT_CLASS=TextJstorDFR
 
 	@property
@@ -39,7 +39,7 @@ class JstorDFR(Corpus):
 		with ZipFile(self.path_dataset) as zip_file:
 			namelist=zip_file.namelist()
 			# Loop over each file
-			for member in tqdm(iterable=namelist, total=len(namelist)):
+			for member in get_tqdm(iterable=namelist, total=len(namelist)):
 				filename = os.path.basename(member)
 				ext=os.path.splitext(filename)[1]
 				idx=os.path.splitext(filename)[0].split('-ngram')[0].replace('-','/')

@@ -1,6 +1,6 @@
 from lltk.imports import *
 
-class TextESTC(Text):
+class TextESTC(BaseText):
 	META_SEP=' | '
 
 	@property
@@ -126,7 +126,7 @@ class TextESTC(Text):
 
 ## CORPUS ##
 
-from lltk.corpus.corpus import Corpus
+from lltk.corpus.corpus import BaseCorpus
 from collections import defaultdict,Counter
 import os
 from lltk import tools
@@ -154,7 +154,7 @@ u'|': 467740  --> Not tagged
 
 
 
-class ESTC(Corpus):
+class ESTC(BaseCorpus):
 	TEXT_CLASS=TextESTC
 	PATH_TXT = 'estc/_json_estc'
 	EXT_TXT='.json.txt'
@@ -169,7 +169,7 @@ class ESTC(Corpus):
 		num_texts = len(texts)
 		estc_ids_in_ecco = set(open('/Users/ryan/DH/18C/titles/estc/estc_ids_in_ecco.txt').read().split())
 
-		# def meta(text):
+		# def meta(BaseText):
 		# 	dx=text.meta_by_file
 		# 	dx['in_ecco']=dx['id_estc'] in estc_ids_in_ecco
 		# 	return dx

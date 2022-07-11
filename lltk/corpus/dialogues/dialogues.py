@@ -1,6 +1,6 @@
 from lltk.imports import *
 
-class TextEnglishDialogues(Text):
+class TextEnglishDialogues(BaseText):
 	STANZA_TAGS = ['stanza','versepara','pdiv']
 	LINE_TAGS = ['l','lb']
 
@@ -54,5 +54,5 @@ class TextEnglishDialogues(Text):
 
 
 
-class EnglishDialogues(Corpus):
+class EnglishDialogues(BaseCorpus):
 	TEXT_CLASS=TextEnglishDialogues

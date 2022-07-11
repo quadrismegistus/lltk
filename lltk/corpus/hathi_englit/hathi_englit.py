@@ -55,7 +55,7 @@ PATH_HERE=os.path.abspath(__file__)
 PATH_HERE_DIRNAME=os.path.dirname(PATH_HERE)
 
 
-class TextHathiEngLit(Text): pass
+class TextHathiEngLit(BaseText): pass
 
 
 def freq_tsv2dict(freq_str):
@@ -78,7 +78,7 @@ def untar_to_freqs_folder(args):
 	with gzip.GzipFile(fnfn) as f:
 		with tarfile.open(fileobj=f) as tf:
 			members=tf.getmembers()
-			for member in tqdm(members,position=position,desc='untarring a file'):
+			for member in get_tqdm(members,position=position,desc='untarring a file'):
 				ofnfn=os.path.join(path_freqs, htid2id(os.path.splitext(os.path.basename(member.name))[0]) + '.json')
 				if os.path.exists(ofnfn): continue
 				f = tf.extractfile(member)
@@ -92,7 +92,7 @@ def untar_to_freqs_folder(args):
 
 
 
-class HathiEngLit(Corpus):
+class HathiEngLit(BaseCorpus):
 	TEXT_CLASS=TextHathiEngLit
 
 
@@ -103,7 +103,7 @@ class HathiEngLit(Corpus):
 
 	def compile_download(self):
 		if not os.path.exists(self.path_raw): os.makedirs(self.path_raw)
-		for url in tqdm(CORPUS_DOWNLOAD_URLS,position=1):
+		for url in get_tqdm(CORPUS_DOWNLOAD_URLS,position=1):
 			ofnfn=os.path.join(self.path_raw,os.path.basename(url))
 			if os.path.exists(ofnfn): continue
 			tools.download(url,ofnfn)

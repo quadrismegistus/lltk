@@ -1,9 +1,15 @@
 from lltk.imports import *
 
-class TextChicago(Text): pass
 
-class Chicago(Corpus):
+
+
+class TextChicago(BaseText):
+	META={'genre':'Fiction'}
+	
+
+class Chicago(BaseCorpus):
 	TEXT_CLASS=TextChicago
+	
 	RAW_FN_METADATA_CSV_AUTHORS = 'AUTHORS_METADATA.csv'
 	RAW_FN_METADATA_CSV_TEXTS = 'NOVELS_METADATA.csv'
 	RAW_FOLDER_TEXTS='Texts'
@@ -15,14 +21,17 @@ class Chicago(Corpus):
 		path_novels_metadata=os.path.join(self.path_raw,self.RAW_FN_METADATA_CSV_TEXTS)
 		path_texts = os.path.join(self.path_raw,self.RAW_FOLDER_TEXTS)
 
-		if any([not os.path.exists(_path) for _path in [path_author_metadata,path_novels_metadata,path_texts]]):
-			print(f"""Instructions for compiling the Chicago Novels corpus.
+		instructs = f"""Instructions for compiling the Chicago Novels corpus.
 
-			First, place into the folder {self.path_raw} the following files:
-				* AUTHORS_METADATA.csv
-				* NOVELS_METADATA.csv
-				* Texts (a folder of 9,089 text files, numbered 00000001.txt to 00026233.txt)
-			""")
+First, place into the folder {self.path_raw} the following files:
+	* AUTHORS_METADATA.csv
+	* NOVELS_METADATA.csv
+	* Texts (a folder of 9,089 text files, numbered 00000001.txt to 00026233.txt)
+"""
+
+
+		if any([not os.path.exists(_path) for _path in [path_author_metadata,path_novels_metadata,path_texts]]):
+			print(instructs)
 		else:
 			self.compile_txt()
 			self.compile_metadata()
@@ -43,7 +52,7 @@ class Chicago(Corpus):
 
 		path_texts = os.path.join(self.path_raw,self.RAW_FOLDER_TEXTS)
 		if not os.path.exists(self.path_txt): os.makedirs(self.path_txt)
-		for fn in tqdm(os.listdir(path_texts)):
+		for fn in get_tqdm(os.listdir(path_texts)):
 			if not fn.endswith('.txt') or not fn.startswith('0'): continue
 			fnfn=os.path.join(path_texts,fn)
 			ofnfn=os.path.join(self.path_txt,fn)
@@ -86,8 +95,4 @@ class Chicago(Corpus):
 		df=pd.DataFrame(text_ld)
 		df.to_csv(self.path_metadata, sep='\t')
 
-	def load_metadata(self,*x,**y):
-		meta=super().load_metadata()
-		meta['genre']='Fiction'
-		#meta['id']=[str(int(x)).zfill(8) for x in meta.id]
-		return meta
+	

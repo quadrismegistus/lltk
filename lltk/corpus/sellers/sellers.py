@@ -1,9 +1,9 @@
 from __future__ import absolute_import
 import os
-from lltk.corpus.corpus import Corpus
-from lltk.text.text import Text
+from lltk.corpus.corpus import BaseCorpus
+from lltk.text.text import BaseText
 
-class TextSellers(Text):
+class TextSellers(BaseText):
 	@property
 	def medium(self):
 		if self.genre in {'Drama'}:
@@ -14,5 +14,5 @@ class TextSellers(Text):
 			return 'Prose'
 
 
-class Sellers(Corpus):
+class Sellers(BaseCorpus):
 	TEXT_CLASS=TextSellers

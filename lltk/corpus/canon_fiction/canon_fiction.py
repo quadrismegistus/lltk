@@ -1,6 +1,6 @@
 from lltk.imports import *
 
-class TextCanonFiction(Text):
+class TextCanonFiction(BaseText):
 	pass
 	# @property
 	# def xml(self):
@@ -14,7 +14,7 @@ class TextCanonFiction(Text):
 
 
 
-class CanonFiction(Corpus):
+class CanonFiction(BaseCorpus):
 	TEXT_CLASS=TextCanonFiction
 	CORPORA_TO_START_WITH = ['Chadwyck','MarkMark']
 	def compile(self,**attrs):

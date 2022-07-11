@@ -1,7 +1,10 @@
 notebooks/dev/
 notebooks/figures
 notebooks/graph_imgs
+test_*.ipynb
 *.egg-info
+
+test.*
 
 *.pyc
 backups/
@@ -31,3 +34,12 @@ lltk.egg-info/
 
 venv
 .vscode
+
+
+.*.py
+.*.ipynb
+*-jvsc-*
+Preview*
+*.html
+Untitled*
+*.pkl

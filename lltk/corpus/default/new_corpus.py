@@ -1,7 +1,7 @@
 from lltk.imports import *
 
 
-class TextNewCorpus(Text):
+class TextNewCorpus(BaseText):
 	def text_plain(self,*x,**y):
 		# By default will load from file
 		txt=super().text_plain(*x,**y)
@@ -10,9 +10,9 @@ class TextNewCorpus(Text):
 		return txt
 
 def xml2txt(xml_txt_or_fn,*x,**y):
-    return default_xml2txt(xml_txt_or_fn,*x,**y)
+    return xml2txt_default(xml_txt_or_fn,*x,**y)
 
-class NewCorpus(Corpus):
+class NewCorpus(BaseCorpus):
 	XML2TXT = xml2txt
 	TEXT_CLASS=TextNewCorpus
 	COL_ID = 'id'

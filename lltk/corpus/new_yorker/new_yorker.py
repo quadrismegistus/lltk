@@ -1,6 +1,6 @@
 import os
-from lltk.text.text import Text
-from lltk.corpus.corpus import Corpus
+from lltk.text.text import BaseText
+from lltk.corpus.corpus import BaseCorpus
 import tarfile
 import bs4
 import lltk
@@ -10,7 +10,7 @@ import pandas as pd
 # (1) Text Class
 ########################################################################################################################
 
-class TextNewYorker(Text):
+class TextNewYorker(BaseText):
 	pass
 
 
@@ -53,7 +53,7 @@ def compile_tar(obj):
 		pass
 	return meta
 
-class NewYorker(Corpus):
+class NewYorker(BaseCorpus):
 	TEXT_CLASS=TextNewYorker
 
 

@@ -36,7 +36,7 @@ META_COLS=['id',
  'decade']
 
 
-class TextLongArcPrestige(Text):
+class TextLongArcPrestige(BaseText):
     def text_plain(self,*x,**y):
         # By default will load from file
         txt=super().text_plain(*x,**y)
@@ -45,7 +45,7 @@ class TextLongArcPrestige(Text):
         return txt
 
 def xml2txt(xml_txt_or_fn,*x,**y):
-    return default_xml2txt(xml_txt_or_fn,*x,**y)
+    return xml2txt_default(xml_txt_or_fn,*x,**y)
 
 def tsv2json(inp):
     ifnfn,ofnfn=inp
@@ -62,7 +62,7 @@ def tsv2json(inp):
     with open(ofnfn,'w') as of: json.dump(freqd,of)
 
 
-class LongArcPrestige(Corpus):
+class LongArcPrestige(BaseCorpus):
     XML2TXT = xml2txt
     TEXT_CLASS=TextLongArcPrestige
     COL_ID = 'id'

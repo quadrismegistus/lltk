@@ -1,281 +1,437 @@
 from lltk.imports import *
+from lltk.model.characters import CharacterSystem
 from lltk.model.charnet import *
+from lltk.corpus.corpus import SectionCorpus
+
+
+CLAR_ID=f'_chadwyck/Eighteenth-Century_Fiction/richards.01'
+CLAR_IDX=f'Eighteenth-Century_Fiction/richards.01'
 
 
 
 
-TITLE_WORDS = set("""
-Miss Ms.
-Mr. Mrs.
-Lord Lady
-Baron Baroness
-Count Countess
-Sir Madam
-Queen King
-Goodman` p
-Uncle Aunt
-Father Mother
-Brother Sister
-Cousin
-""".strip().split())
+
+def get_clarissa():
+    clarissa = get_canon()['clarissa']
+    return clarissa
+
+def get_clarissa_id():
+    return 
 
 
-def grab_tag_text(dom,tagname,limit=None,sep_tag=' || ',sep_ln=' | '):
-    tagnames = [tagname] if type(tagname) not in {tuple,list} else tagname
-    tags = [
-        tag
-        for tagname in tagnames
-        for tag in dom(tagname)
-    ]
+
+
+
+
+##
+### CLASSES
+##
+
+
+def getxmlcontents(dom):
+    return '\n'.join(str(x) for x in dom.contents)
+
+class TextSectionLetter(TextSection): pass
+
+
+class TextSectionLetterChadwyck(TextSectionLetter):
+    sep_sents='\n'
+    sep_paras='\n\n'
+    sep_txt='\n\n------------\n\n'
+
+    @property
+    def meta(self): return self.metadata(force=False)
     
-    tags_txt = [
-        unhtml(str(tag)).strip().replace('\n',sep_ln)
-        for tag in tags
-    ]
-
-    otxt = sep_tag.join(tags_txt).strip()
-
-    return otxt
-
-
-
-## Functions
-def epistolarized_chadwyck_ltr_meta(ltr_dom,id_text='',id_corpus='',*x,**y):
-    ## meta
-    meta={}
-    # meta['id_corpus']=id_corpus
-    # meta['id_text']=id_text
-    meta_map={
-        # 'id':'',
-        'id_letter':'idref',
-        'txt_front':['front','caption']
-    }
-    for newtag,xtag in meta_map.items():
-        meta[newtag]=clean_text(grab_tag_text(ltr_dom, xtag)) if xtag else ''
-    
-    ## letter init?
-    ltrtitle=''
-    ltr_xml=str(ltr_dom)
-    if '</collection>' in ltr_xml and '<attbytes>' in ltr_xml:
-        ltrtitle=ltr_xml.split('</collection>')[-1].split('<attbytes>')[0].strip()
-
-    #if ltrtitle:
-    #    ltrtitledom=bs4.BeautifulSoup(f'<ltrtitle>{ltrtitle}</ltrtitle>')
-    #    ltrtitle=grab_tag_text(ltrtitledom, 'ltrtitle')
-    meta['txt_head']=ltrtitle if ltrtitle!=meta['txt_front'] else ''
-    meta['id']=meta['id_letter']
-    return meta
-
-
-
-
-
-
-def epistolarized_chadwyck_ltr_recip(ltr_meta, keys=['txt_front','txt_head']):
-    txt = '     '.join(
-        ltr_meta.get(argname,'').replace(' | ',' ')
-        for argname in keys
-    )
-    byline_sentdf = None
-    if not ltr_meta.get('sender_tok'):
-        if byline_sentdf is None: byline_sentdf = get_sentdf(txt)
-        if 'epistolary_role' in set(byline_sentdf.columns):
-            ltr_meta['sender_tok']=' '.join(byline_sentdf[byline_sentdf.epistolary_role=='sender'].text)
-        else:
-            ltr_meta['sender_tok']=''
-
-    ## recip
-    if not ltr_meta.get('recip_tok'):
-        if byline_sentdf is None: byline_sentdf = get_sentdf(txt)
-        if 'epistolary_role' in set(byline_sentdf.columns):
-            ltr_meta['recip_tok']=' '.join(byline_sentdf[byline_sentdf.epistolary_role=='recip'].text)
-        else:
-            ltr_meta['recip_tok']=''
-
-    return ltr_meta
-
-
-
-
-def epistolarized_chadwyck_ltr_txt(ltr_xml_str,sep_sents=' | ',sep_paras=' || ',sep_txt=' ||| ',*x,**y):
-    ltr_xml_str=escape_linebreaks(ltr_xml_str)
-    ltr_dom=bs4.BeautifulSoup(ltr_xml_str)
-    ltr_dom = remove_bad_tags(ltr_dom, BAD_TAGS)
-    
-    letters = list(ltr_dom('letter'))
-    if not len(letters): letters=[ltr_dom]
-    ltxts=[]
-    for ltr in letters:
-        # print(ltr)
-        ptxts=[]
-        paras=list(ltr('p'))
-        if not len(paras): paras=[ltr]
-        for p in paras:
-            sents = p('s')
-            if not len(sents):
-                sents=nltk.sent_tokenize(p.text)
-            else:
-                sents=[s.text.strip() for s in sents]
-            ptxt=sep_sents.join([x for x in sents if x])
-            ptxts.append(ptxt)
-        ltrtxt=sep_paras.join(ptxts).strip()
-        ltxts.append(ltrtxt)
-    otxt=sep_txt.join(ltxts).strip()
-    return clean_text(otxt)
-
-def escape_linebreaks(txt):
-    return txt.strip().replace('\n','↵')
-def unescape_linebreaks(txt):
-    return txt.replace('↵','\n').strip()
-
-def epistolarized_chadwyck_ltr(ltr_dom,id_text='',*x,**y):
-    ltr_meta = epistolarized_chadwyck_ltr_meta(ltr_dom,*x,**y)
-    ltr_meta['id_text']=id_txt
-    txt=epistolarized_chadwyck_ltr_txt(ltr_dom,*x,**y)
-    return ltr_meta,txt
-
-
-
-
-def join_if(*l,sep):
-    return sep.join(str(x) for x in l if x)
-
-
-
-def parse_possibly_nested_letters(ltr_dom,depth=0,ltr_tag='letter',idx='',ltr_i=0,id_tag='idref'):
-    letters = ltr_dom(ltr_tag)
-    ltr_meta=epistolarized_chadwyck_ltr_meta(ltr_dom)
-    if not idx: idx=ltr_meta.get('id_letter','')
-
-    ol=[]
-    ltr_i=0
-    for ltr in letters:
-        # orig meta
-        odx=dict(ltr_meta.items())
-        odx['id']=idx
-        ltr_i+=1
+    def metadata(self,force=False):
+        # return self._meta
+        # already good?
+        # if not force and not {'txt_front','sender_tok','recip_tok'} - set(self._meta.keys()): return self._meta
+        if not force and len(self._meta)>2: return self._meta
+        # have anything?
+        ltr_xml=self.xml
+        if not ltr_xml: return self._meta
+        ltr_dom=self.dom
         
-        ## enclosed meta?
-        for k,v in epistolarized_chadwyck_ltr_meta(ltr).items():
-            if k and v: odx[k]=v
-        ## new meta
-        odx['ltr_i']=ltr_i
-        odx=epistolarized_chadwyck_ltr_recip(odx)
-        # odx['txt']=epistolarized_chadwyck_ltr_txt(ltr)
-        odx['xml']=clean_text(str(ltr))
-        odx['ltr_num_enclosed']=len(ltr(ltr_tag))
-        ## add
-        ol.append(odx)
-    odf=pd.DataFrame(ol).fillna('')
 
-    
-    odf['ltr_depth']=odf.ltr_num_enclosed.max() - odf.ltr_num_enclosed
-    odf=odf.sort_values(['ltr_depth','ltr_i'])
-    odf['ltr_depth_i']=[
-        i+1
-        for ltr_depth,ltr_depth_df in sorted(odf.groupby('ltr_depth'))
-        for i in range(len(ltr_depth_df.sort_values('ltr_i')))
-    ]
-    odf['id']=[
-        join_if(idx,ltr_i, sep='/')
-        for idx,ltr_i in zip(odf.id, odf.ltr_i)
-    ]
-
-    # remove enclosed
-    odf = odf.sort_values(['ltr_depth','ltr_depth_i'],ascending=True)
-    for ltr_id,ltr_xml in zip(odf.id, odf.xml):
-        ltr_xml_ref=f'<letter id="{ltr_id}" />'
-        newxml_l=[]
-        for ltr_id2,ltr_xml2 in zip(odf.id, odf.xml):
-            if ltr_id!=ltr_id2 and ltr_xml in ltr_xml2:
-                ltr_newxml = ltr_xml2.replace(ltr_xml, ltr_xml_ref)
-            else:
-                ltr_newxml = ltr_xml2
-            # print([ltr_id2,ltr_newxml])
-            
-            newxml_l.append(ltr_newxml)
-        odf['xml']=newxml_l
-    
-    newxml_l=[]
-    for ltr_id,ltr_xml in zip(odf.id, odf.xml):
-        if ltr_xml.startswith('<letter'):
-            ltr_xml=f'<letter id="{ltr_id}"' + ltr_xml[len("<letter"):]
-            newxml_l.append(ltr_xml)
-    odf['xml']=newxml_l
-    odf['txt']=odf.xml.apply(epistolarized_chadwyck_ltr_txt)
-
-    for tkey in ['xml','txt']:
-        odf[tkey]=odf[tkey].apply(escape_linebreaks)
-    
-
-    # give ids to top level
-    
-
-    prefcols = [
-        'id','id_letter','ltr_i','ltr_depth','ltr_depth_i','ltr_num_enclosed',
-        'txt_head','txt_front',
-
-    ]
-    colcols = [col for col in odf.columns if col not in set(prefcols)]
-    return odf[prefcols + colcols]
-
-
-
-
-
-
-NLP_FROMTO=None
-def nlp_epistolarized_fromto_stanza():
-    global NLP_FROMTO
-    if NLP_FROMTO is not None: return NLP_FROMTO    
-    import stanza
-    nlp = stanza.Pipeline(lang='en',verbose=False)#, processors='tokenize,ner')
-    NLP_FROMTO=nlp
-    return nlp
-
-
-# def epistolarized_chadwyck_ltr(ltr_dom,id_text='',*x,**y):
-#     ltr_meta = epistolarized_chadwyck_ltr_meta(ltr_dom,id_text=id_text,*x,**y)
-#     txt= epistolarized_chadwyck_ltr_txt(ltr_dom,*x,**y)
-#     return ltr_meta,txtometa
-
-def nlp_get_doc(txt):
-    if type(txt)!=str: return txt
-    nlp = nlp_epistolarized_fromto_stanza()
-    doc = nlp(txt)
-    return doc
-
-def nlp_get_ents(txt):
-    dom=nlp_get_doc(txt) if type(txt)==str else txt
-    return list(doc.ents)
-
-# s = 'Miss Belford, To Robert Lovelace, Esq; | [In answer to his Letters, Num. LIV. LVII.]'
-# doc = nlp_get_doc(s)
-# doc.sentences[0].tokens[0]
-
-
-def get_propn_i_l(sentdf):
-    i=0
-    o=[]
-    propnow=[]
-    was_propn=None
-    
-    
-    for upos,deprel in zip(sentdf.upos,sentdf.deprel):
-        is_propn=upos=='PROPN'
-        if is_propn:
-            was_propn=True
-            o+=[i+1]
-        elif was_propn:
-            i+=1
-            was_propn=False
-            o+=['']
+        # otherwise..
+        meta = self._meta
+        meta['txt_head']=''
+        meta['txt_front']=''
+        meta_map={
+        # 'id_letter':'idref',
+        'txt_front':['front','caption']
+        }
+        
+        for newtag,xtag in meta_map.items():
+            meta[newtag]=clean_text(grab_tag_text(ltr_dom, xtag, sep_ln=' ', sep_tag=' | ')) if xtag else ''
+        if '</collection>' in ltr_xml and '<attbytes>' in ltr_xml:
+            ltrtitle=clean_text(unhtml(ltr_xml.split('</collection>')[-1].split('<attbytes>')[0].strip()))
         else:
-            o+=['']
-    return o
+            ltrtitle=''
+        meta['txt_head']=ltrtitle if ltrtitle!=meta['txt_front'] else ''        
+        ltr_txt=self.txt
+        meta['txt_start'] = clean_text(ltr_txt[:1000].replace('\n',' ').replace('\t',' '))
+        meta['txt_end'] = clean_text(ltr_txt[-1000:].replace('\n',' ').replace('\t',' '))
+        
+        ### NER
+        from lltk.model.ner import extract_places, extract_times, nlp_ner_get_doc_simple
+        import dateparser
+
+        itxt=meta.get('txt_head','') + '  ...  ' + meta.get('txt_front','')
+        meta['sender_tok'], meta['recip_tok'] = get_sender_recip(itxt)
+        
+        # start of text
+        txt=meta['txt_front'] + '  ' + meta['txt_start'][:100]
+        doc=nlp_ner_get_doc_simple(txt)
+        meta['date_ner']=extract_times(doc)
+        meta['date_time']=str(dateparser.parse(meta['date_ner'])) if meta['date_ner'] else ''
+        meta['num_words']=len(tokenize_fast(ltr_txt))
+        
+        return meta
+
+    @property
+    def txt(self,*x,_force=False,**y):
+        if not _force and os.path.exists(self.path_txt):
+            with open(self.path_txt) as f:
+                return f.read()
+    
+        dom = bs4.BeautifulSoup(self.xml,'lxml')
+        ltr_dom = remove_bad_tags(dom, BAD_TAGS)
+        letters = list(ltr_dom(self.LTR))
+        ltxts=[]
+        for ltr in letters:
+            ptxts=[]
+            paras=list(ltr('p'))
+            if not len(paras): paras=[ltr]
+            for p in paras:
+                sents = p('s')
+                if not len(sents):
+                    sents=nltk.sent_tokenize(p.text)
+                else:
+                    sents=[s.text.strip() for s in sents]
+                # ptxt=self.sep_sents.join([escape_linebreaks(x) for x in sents if x])
+                ptxt=self.sep_sents.join([x.replace('\n',' ') for x in sents if x])
+                ptxts.append(ptxt)
+            ltrtxt=self.sep_paras.join(ptxts).strip()
+            ltxts.append(ltrtxt)
+        otxt=self.sep_txt.join(ltxts).strip()
+        pref=self.meta.get('txt_front')
+        if pref: otxt=pref+'\n\n\n'+otxt
+        return clean_text(otxt)
 
 
-def decide_recips(sentdf,recip_words={'to'},sender_words={'from'}):
+class SectionCorpusLetter(SectionCorpus, CharacterSystem):
+    CHARACTER_SYSTEM_ID='letters'
+
+    def get_character_token_counts(
+            self,
+            char_keys=['sender_tok','recip_tok','char_tok','character_tok']):
+        counter=Counter()
+        sdf=self.metadata().fillna('')
+        if sdf is not None and len(sdf):
+            for ckey in char_keys:
+                if ckey in set(sdf.columns):
+                    for cval in sdf[ckey]:
+                        for cvalx in cval.strip().split('; '):
+                            counter[cvalx.strip()]+=1
+        return counter
+
+    def iter_interactions(self,
+            col_sender='sender_tok',
+            col_recip='recip_tok',
+            col_t='id',
+            **kwargs):
+
+        df = self.metadata()#.reset_index()
+        cols=set(df.reset_index().columns)
+        for colx in [col_sender,col_recip,col_t]:
+            if not colx in cols:
+                log.error(f'Error: columns {colx} not found in epistolary data df ({cols})')
+                return pd.DataFrame()
+        df['_sender_id'] = df[col_sender].fillna('').apply(self.get_character_id)
+        df['_recip_id'] = df[col_recip].fillna('').apply(self.get_character_id)
+        df = df[[col for col in df.columns if col not in {'txt_start','txt_end'}]]
+        # df['txt']=[self.letters.text(idx).txt for idx in df['id']]
+
+        for text_id,row in df.iterrows():
+            # X wrote letter to Y
+            yield dict(
+                source=row._sender_id,
+                rel='wrote_letter_to',
+                target=row._recip_id,
+                t=(text_id,0),
+                text_id=text_id,
+                source_tok=row[col_sender],
+                target_tok=row[col_recip],
+            )
+
+            ## encloser?
+            encloser_id=row.get('id_parent')
+            if encloser_id:
+                try:
+                    encloser_row = df.loc[encloser_id]
+                    enclosed_row = row
+
+                    # X enclosed a letter written by Y
+                    yield dict(
+                        source=encloser_row._sender_id,
+                        rel='enclosed_letter_from',
+                        target=enclosed_row._sender_id,
+                        text_id = encloser_id,
+                        source_tok=encloser_row[col_sender],
+                        target_tok=enclosed_row[col_sender],
+                    )
+                except KeyError:
+                    pass
+
+                # X enclosed a letter written to Y
+                # yield dict(
+                #     source=encloser_row._sender_id,
+                #     rel='enclosed_letter_to',
+                #     target=enclosed_row._recip_id,
+                #     text_id = encloser_id,
+                #     source_tok=encloser_row[col_sender],
+                #     target_tok=enclosed_row[col_recip],
+                # )
+        
+
+
+        # return xdf
+
+
+
+class SectionCorpusLetterChadwyck(SectionCorpusLetter):
+    @property
+    def txt(self): return self.get_txt(extra_txt_pref=['txt_front'])
+
+    def init_text(self,*x,_force=True,**y):
+        t = super().init_text(*x,**y)
+        # save xml?
+        if _force or not os.path.exists(t.path_xml):
+            o=t.xml
+            if o:
+                ensure_dir_exists(os.path.dirname(t.path_xml))
+                with open(t.path_xml,'w') as of:
+                    of.write(o) 
+        
+        # save txt?
+        if _force or not os.path.exists(t.path_txt):
+            o=t.txt
+            if o:
+                ensure_dir_exists(os.path.dirname(t.path_txt))
+                with open(t.path_txt,'w') as of:
+                    of.write(o)
+
+
+    def redo_xml(self):
+        dom = self.dom
+        vols = dom(self.DIV_VOL)
+        if not len(vols): vols=[dom]
+        newxml = []   
+        for voldom in get_tqdm(vols,desc='Iterating volumes 1',position=0): 
+            divs = voldom(self.DIV_LTR)
+            if not len(divs): divs=[voldom]
+            newxml+=[f'<{self.DIV_VOL}>']
+            
+            for divdom in get_tqdm(divs,desc='Iterating volume letters',position=1,disable=True):
+                _xmldiv = clean_text(getxmlcontents(divdom))
+                for tagposs in [self.LTR,self.BODY,self.P+'>']:
+                    try:
+                        _xmldiv_hdr,_xmldiv_body = _xmldiv.split(f'<{tagposs}',1)
+                        break
+                    except ValueError:
+                        pass
+                else:
+                    # print('!?!?!?!')
+                    # print(_xmldiv)
+                    continue
+                
+                divxml2 = f'<{self.DIV_LTR}>{_xmldiv_hdr}<{self.LTR}>{_xmldiv_body}</{self.LTR}></{self.DIV_LTR}>'
+                newxml.append(divxml2)
+            newxml+=[f'</{self.DIV_VOL}>']
+        return bs4.BeautifulSoup('\n'.join(newxml),'lxml')
+
+    def init(self,force=False,lim=None,progress=True,**kwargs):
+        if not force and self._init: return
+        # from meta?
+        super().init(force=force)
+        if not force and self._init: return
+        
+        if log>0: log(f'Initializing: {self.addr}')
+        from string import ascii_lowercase
+        alpha=ascii_lowercase#.replace('x','')
+        alpha = (alpha*1000)
+        letter_i=0
+        letter_ii=0
+
+        ## VOLUME
+        dom = self.redo_xml() #self.dom
+        vols = dom(self.DIV_VOL)
+        if not len(vols): vols=[dom]
+        vol_i=0
+
+        for voldom in get_tqdm(vols,desc='Iterating volumes',position=0): 
+            vol_i+=1
+            divs = voldom(self.DIV_LTR)
+            # if not len(divs): continue
+            if not len(divs): divs=[voldom]
+
+            for divdom in get_tqdm(divs,desc='Iterating volume letters',position=1,disable=True):
+                ltrs=divdom(self.LTR)
+                num_letters = len(ltrs)
+                # if not num_letters: continue
+                _xmldiv = clean_text(str(divdom))
+                _xmldiv_hdr = _xmldiv[:_xmldiv.index(f'<{self.LTR}')]
+                
+                letter_i+=1
+                letter_ii = 0 if num_letters<2 else 1
+                
+                #meta_hdr = letter_xml_hdr_to_meta(_xmldiv_hdr)
+                #idz = meta_hdr.get('id_letter')
+                idz = grab_tag_text(divdom,'idref',limit=1)
+
+                for ldomi,ltrdom in enumerate(ltrs):
+                    num_enclosed = len(ltrdom(self.LTR))
+                    depth_enclosed = len(ltrdom.find_parents(self.LTR))
+                    letter_subid = alpha[letter_ii]
+                    letter_id=f'L{letter_i:03}{letter_subid}'
+
+                    _xml=clean_text(str(ltrdom))
+                    if ldomi==0:
+                        try:
+                            _xml=_xmldiv_hdr + _xml[_xml.index(f'<{self.LTR}'):]
+                        except ValueError:
+                            _xml=_xmldiv_hdr + _xml[_xml.index(f'<{self.BODY}'):]
+
+                    odx=dict(
+                        id=letter_id,
+                        id_orig=idz,
+                        vol_i=vol_i,
+                        letter_i=letter_i,
+                        letter_ii=letter_ii,
+                        num_enclosed=num_enclosed,
+                        depth_enclosed=depth_enclosed,
+                        _xml=_xml,
+                        _xml_ref=f'<letter id="{letter_id}" />'
+                    )
+                    ltrdom.odx=odx
+                    letter_ii+=1
+        
+        for ltrdom in dom(self.LTR):
+            parent=ltrdom.find_parent(self.LTR)
+            if parent:
+                ltrdom.odx['id_parent']=parent.odx['id']
+                parent.odx['_xml'] = parent.odx['_xml'].replace( ltrdom.odx['_xml'], ltrdom.odx['_xml_ref'] )
+            else:
+                ltrdom.odx['id_parent']=''
+
+        # o=[]
+        oi=0
+        for ltrdom in dom(self.LTR):
+            # ltrdom.odx['_xml'] = ltrdom.odx['_xml_ref'][:-3] + ltrdom.odx['_xml'][1+len(self.LTR):]
+            okeys=[
+                # 'id',
+                'id_orig',
+                'id_parent',
+                'vol_i',
+                'letter_i',
+                'letter_ii',
+                'num_enclosed',
+                'depth_enclosed',
+                '_xml'
+            ] #txt_head','txt_front','_xml']
+            odx=dict((k,ltrdom.odx.get(k)) for k in okeys)
+
+            ## nowww init text
+            t=self.init_text(ltrdom.odx['id'], **odx)
+            oi+=1
+            # o.append(odx)
+        # odf=pd.DataFrame(o).fillna('')
+        if oi: self._init=True
+        # return self._init
+        # return odf
+
+        
+
+
+
+
+
+from lltk.model.characters import CharacterSystem
+class TextEpistolary(BaseText):
+    DIV_VOL=''
+    DIV_LTR=''
+    DIV=''
+    LTR=''
+    BODY=''
+    P=''
+    SECTION_CLASS=TextSectionLetter
+    SECTION_DIR_NAME='letters'
+
+    def characters(self,systems={'letters','booknlp'},**kwargs):
+        return super().characters(systems=systems,**kwargs)
+
+    def interactions(self,ignore_blank=True,**kwargs):
+        odf=super().interactions(**kwargs)
+        # overwrite NARRATOR with author
+        odf_wrote = odf[odf.rel=='wrote_letter_to']
+        writers = dict(zip(odf_wrote.text_id, odf_wrote.source))
+
+        if ignore_blank:
+            odf=odf[~odf.source.isin(BAD_CHAR_IDS)]
+            odf=odf[~odf.target.isin(BAD_CHAR_IDS)]
+
+        def getnewsrc(src,text_id):
+            if src!=BOOKNLP_NARRATOR_ID: return src
+            if text_id not in writers: return src
+            o=writers[text_id]
+            if not o or o in BAD_CHAR_IDS: return src
+            return o
+
+        odf['source']=[
+            getnewsrc(src,text_id)
+            for src,text_id in zip(odf.source, odf.text_id)
+        ]
+
+        return odf
+
+
+
+
+
+
+class TextEpistolaryChadwyck(TextEpistolary):
+    DIV_VOL='div2'
+    DIV_LTR='div3'
+    LTR='letter'
+    BODY='body'
+    P='p'
+    SECTION_CLASS=TextSectionLetterChadwyck
+    SECTION_CORPUS_CLASS=SectionCorpusLetterChadwyck
+
+class Epistolary(BaseCorpus):
+    NAME='Epistolary'
+    ID='epistolary'
+    TEXT_CLASS=TextEpistolary
+    CORPORA_TO_START_WITH = ['Chadwyck']
+
+
+    def init_text(self,*args,**kwargs):
+        t=super().init_text(*args,**kwargs)
+        if t.source and t.source.corpus.id=='chadwyck':
+            t.__class__ = TextEpistolaryChadwyck
+        return t
+
+
+##
+# Recips
+##
+
+
+
+def deduce_recip(txt,recip_words={'to'},sender_words={'from'}):
+    from lltk.model.ner import get_ner_sentdf
+    sentdf=get_ner_sentdf(txt)
     groupd={}
     o=[]
     for propn_i,propndf in sorted(sentdf[sentdf.propn_i!=''].groupby('propn_i')):
@@ -293,113 +449,15 @@ def decide_recips(sentdf,recip_words={'to'},sender_words={'from'}):
     
     sentdf['epistolary_role']=sentdf.propn_i.apply(lambda pi: groupd.get(pi,''))
     return sentdf
-            
-    
 
-def get_sentdf(doc):
-    doc=nlp_get_doc(doc)
-    sents=[]
-    for sent in doc.sentences:
-        for word in sent.tokens:
-            worddx=word.to_dict()[0]
-            worddx['sent_i']=len(sents)+1
-            if worddx['text'] in TITLE_WORDS: worddx['upos']='PROPN'
-            sents.append(worddx)
-    sentdf=pd.DataFrame(sents).fillna('')
-    
-    if len(sentdf):
-        sentdf['propn_i']=get_propn_i_l(sentdf)
-        decide_recips(sentdf)
-    return sentdf
-
-
-# def epistolarized_chadwyck_ltr_recip(ltr_meta):
-#     argstr=ltr_meta.get('txt_front','').replace(' | ',' ')
-#     if argstr:
-#         byline_sentdf = get_sentdf(argstr)
-#         ltr_meta['sender_tok']=' '.join(byline_sentdf[byline_sentdf.epistolary_role=='sender'].text)
-#         ltr_meta['recip_tok']=' '.join(byline_sentdf[byline_sentdf.epistolary_role=='recip'].text)
-#     return ltr_meta
-
-
-
-
-def epistolarized_chadwyck_ltr(ltr,*x,**y):
-    ltr_meta = epistolarized_chadwyck_ltr_meta(ltr,*x,**y)
-    txt = epistolarized_chadwyck_ltr_txt(ltr,*x,**y)
-    ltr_meta = epistolarized_chadwyck_ltr_recip(ltr_meta)
-    return ltr_meta,txt
-
-
-def epistolarized_chadwyck_t(C,t,div1='div3',force=True,lim=None,progress=False,i=None,**kwargs):
-    import bs4
-    odir_xml=C.paths.get('path_xml')
-    odir_txt=C.paths.get('path_txt')
-    ifn_xml=t.path_xml
-    # print(odir_xml,ifn_xml)
-    if not os.path.exists(ifn_xml): return pd.DataFrame()
-    with open(ifn_xml) as f: xml=f.read()
-    dom = bs4.BeautifulSoup(xml,'lxml')
-    # spit out meta
-    ometa=[]
-    letters=[ltrdiv for i,ltrdiv in enumerate(dom(div1)) if 'letter' in set([tag.name for tag in ltrdiv()])][:lim]
-    if not letters: return pd.DataFrame()
-    
-    iterr=tqdm(letters,disable=not progress,position=0,desc='Scanning XML into letters')
-    for letter in iterr:
-        letter_i=len(ometa)+1
-        # iterr.set_description(f'Computing letter (t={i}): {letter_i}')
-        meta,otxt = epistolarized_chadwyck_ltr(letter,id_text=t.id,id_corpus=t.corpus.id)
-        meta['letter_i']=letter_i
-        meta['path_xml']=os.path.join(odir_xml, meta['id'] + '.xml')
-        meta['path_txt']=os.path.join(odir_txt, meta['id'] + '.txt')
-        meta['xml']=str(letter)
-        meta['txt']=otxt
-        ometa.append(meta)
-        # iterr.set_description(f'Computing letter #{letter_i} (text #{i+1}): ')
-    odf=pd.DataFrame(ometa).fillna('')
-    odf=fix_meta(odf)
-    odf=odf.sort_values('id') if 'id' in set(odf.columns) else odf
-    return odf
-    #return odf.set_index('id').sort_index() if 'id' in set(odf.columns) else odf
-
-    
-    
-    
-def update_df(odf, opath, reset=False, force=False, index=False, verbose=False, idcols=['id'],sort_by=None, sort_by_asc=[]):
-    if not os.path.exists(opath):
-        odf=odf
-    else:
-        dfl=[odf,read_df(opath)]
-        odf=pd.concat(dfl).fillna('')
-    odf=odf.drop_duplicates(idcols,keep='last').fillna('')        
-    odf=fix_meta(odf.fillna(''))
-    if sort_by: odf=odf.sort_values(sort_by, ascending=sort_by_asc)
-    return odf
-
-
-
-# save txt
-def ensure_abs(path_root,path):
-    return os.path.join(path_root,path) if not os.path.isabs(path) else path
-
-
-
-
-
-
-chardata_metakeys_initial = dict(
-    char_race='',
-    char_gender='',
-    char_class='',
-    char_geo_birth='',
-    char_geo_marriage='',
-    char_geo_death='',
-    char_geo_begin='',
-    char_geo_middle='',
-    char_geo_end='',
-)
-
+def get_sender_recip(txt,*x,**y):
+    if not txt: return '?','?'
+    byline_sentdf = deduce_recip(txt,*x,**y)
+    sender,recip = '',''
+    if 'epistolary_role' in set(byline_sentdf.columns):
+        sender=' '.join(byline_sentdf[byline_sentdf.epistolary_role=='sender'].text)
+        recip=' '.join(byline_sentdf[byline_sentdf.epistolary_role=='recip'].text)
+    return (sender if sender else '?', recip if recip else '?')
 
 
 def calculate_tok2id(df_text_letters):
@@ -427,220 +485,42 @@ def calculate_tok2id(df_text_letters):
     )
 
 
-
-
-#### CLASSES
-
-
-# class TextEpistolary(Text): pass
-
-
-# class Epistolary(Corpus):
-#     NAME='Epistolary'
-#     ID='epistolary'
-#     TEXT_CLASS=TextEpistolary
-#     CORPORA_TO_START_WITH = ['Chadwyck']
-
-    
-
-#     def load_metadata(self):
-#         meta=super().load_metadata()
-#         meta['genre']='Fiction'
-#         return meta.fillna('')
-
-#     def get_init_texts(self,texts=[],lim=None):
-#         # get initial texts
-#         texts=load('Chadwyck').texts() if not texts else texts
-#         return texts[:lim]
-
-#     def compile(self,
-#             parts=['texts','chars'],
-#             *x,
-#             **y):
-#         # Get parts
-#         parts=set(parts)
-#         if 'texts' in parts: self.compile_texts(*x,**y)
-#         if 'chars' in parts: self.compile_chars(*x,**y)
-
-
-#     def compile_texts(self,texts=None,lim=None,lim_inner=None,progress=True,progress_inner=False,force=False,force_inner=False,*x,**y):
-#         ofn_meta=self.paths['path_metadata']
-#         if not force and os.path.exists(ofn_meta): return 
-        
-#         texts = self.get_init_texts(texts,lim)
-#         iterr=tqdm(texts,desc='Compiling letter texts',disable=not progress,position=1)
-        
-#         ol=[
-#             self.compile_text(t,lim=lim_inner,progress=progress_inner,force=force_inner,*x,**y)
-#             for t in iterr
-#         ]   
-#         odf=pd.concat(ol).fillna('') if len(ol) else pd.DataFrame()
-#         save_df(odf, ofn_meta, verbose=False)
-#         return odf
-
-#     def compile_text(C,t,lim=None,progress=True,force=False,*x,**y):
-#         ofn_ltrs = os.path.join(C.paths['path_letters'], t.corpus.id, t.id + '.csv')
-#         ofn_xml = os.path.join(C.paths['path_xml'], t.corpus.id, t.id + '.xml')
-#         ofn_txt = os.path.join(C.paths['path_txt'], t.corpus.id, t.id + '.txt')
-
-#         if not force and os.path.exists(ofn_ltrs):
-#             odf = read_df(ofn_ltrs)
-#             odf_anno=load_with_anno(ofn_ltrs)
-#             if len(odf_anno) and 'id' in set(odf_anno.columns):
-#                 odf_anno=odf_anno.set_index('id')
-#                 odf_anno=odf_anno[[col for col in odf_anno.columns if not col.startswith('id_')]]
-#                 odx_anno=dict((idx, dict(row)) for idx,row in odf_anno.iterrows())
-
-#                 newkeys=set(rowdk for idx,rowd in odx_anno.items() for rowdk in rowd)
-#                 for nk in newkeys:
-#                     odf[nk]=[odx_anno.get(idx,{}).get(nk,'') for idx in odf.id]
-            
-#             return fix_meta(odf)
-            
-
-#         ol=[]
-#         #if force or not os.path.exists(ofn_ltrs) or not os.path.exists(ofn_xml) or not os.path.exists(ofn_txt):
-#         if not os.path.exists(os.path.dirname(ofn_xml)): os.makedirs(os.path.dirname(ofn_xml))
-#         if not os.path.exists(os.path.dirname(ofn_txt)): os.makedirs(os.path.dirname(ofn_txt))            
-#         if not os.path.exists(os.path.dirname(ofn_ltrs)): os.makedirs(os.path.dirname(ofn_ltrs))            
-        
-#         tdf=epistolarized_chadwyck_t(C,t=t,lim=lim,progress=progress,*x,**y)
-#         if not len(tdf): return pd.DataFrame()
-
-    
-#         todf=fix_meta(tdf)
-
-#         for pxml,txml in zip(tdf.path_xml,tdf.xml):
-#             if pxml and txml:
-#                 with open(pxml,'w') as of: of.write(txml)
-#         for ptxt,ttxt in zip(tdf.path_txt,tdf.txt):
-#             if ptxt and ttxt:
-#                 with open(ptxt,'w') as of: of.write(ttxt)
-
-#         for needcol in {'sender_tok','sender_id','recip_tok','recip_id','front','title_letter'}:
-#             if not needcol in set(todf.columns): todf[needcol]=''
-#         for badcol in {'txt','xml','path_txt','path_xml'} & set(todf.columns):
-#             todf=todf.drop(badcol,1)
-        
-#         cols=[
-#             'id','id_corpus','id_text','id_letter','letter_i',
-#             'txt_head',
-#             'txt_front',
-#             'sender_tok',#'sender_id',
-#             'recip_tok',#'recip_id',
-#         ]
-#         odf_ltrs=todf[[c for c in cols if c in set(todf.columns)]].fillna('')
-#         save_df(fix_meta(odf_ltrs), ofn_ltrs, verbose=True)
-#         return odf_ltrs
-
-        
-#     def compile_text_chars(self,t,tdf=None,force=False,force_inner=False,verbose=False,*x,**y):
-#         id_corpus=t.corpus.id
-#         id_text=t.id
-
-#         ofn_tok2id = os.path.join(self.path_chars, id_corpus, id_text, 'tok2id.csv')
-#         ofn_id2meta = os.path.join(self.path_chars, id_corpus, id_text, 'id2meta.csv')
-
-#         if force or not os.path.exists(ofn_tok2id):
-#             # get latest sender,recip data
-#             if tdf is None: tdf=self.compile_text(t,force=force_inner,*x,**y)
-#             odf_tok2id=calculate_tok2id(tdf.fillna(''))
-#             save_df(odf_tok2id, ofn_tok2id, verbose=verbose, index=False)
-#             if verbose: display(odf_tok2id)
-#         else:
-#             odf_tok2id=read_df(ofn_tok2id)
-        
-#         # update with anno
-#         odf_tok2id_anno=load_with_anno(ofn_tok2id)
-#         if len(odf_tok2id_anno):
-#             d_tok2id_anno=dict(zip(odf_tok2id_anno.char_tok, odf_tok2id_anno.char_id)) if len(odf_tok2id_anno) else {}
-#             odf_tok2id['char_id']=[d_tok2id_anno.get(ctok,cid) for ctok,cid in zip(odf_tok2id.char_tok,odf_tok2id.char_id)]
-        
-        
-
-#         ## id2meta
-#         if force or not os.path.exists(ofn_id2meta):
-#             ## id2meta
-#             char_ids = Counter()
-#             for char_id,char_tok_count in zip(odf_tok2id.char_id, odf_tok2id.char_tok_count):
-#                 char_ids[char_id]+=char_tok_count
-#             # init?
-#             id2meta_l=[]
-#             for char_id,char_id_count in char_ids.most_common():
-#                 char_dx={'char_id':char_id, 'char_id_count':char_id_count, **chardata_metakeys_initial}
-#                 id2meta_l.append(char_dx)
-#             odf_id2meta = pd.DataFrame(id2meta_l).fillna('')
-#             save_df(odf_id2meta, ofn_id2meta, verbose=verbose, index=False)
-#             if verbose: display(odf_id2meta)
-#         else:
-#             odf_id2meta=read_df(ofn_id2meta)
-
-#         # update with anno
-#         odf_id2meta=odf_id2meta.set_index('char_id')
-#         odf_id2meta_anno=load_with_anno(ofn_id2meta)
-#         if len(odf_id2meta_anno) and 'char_id' in set(odf_id2meta_anno.columns):
-#             odf_id2meta_anno=odf_id2meta_anno.fillna('').set_index('char_id')
-#             odf_id2meta_anno=odf_id2meta_anno[[col for col in odf_id2meta_anno if col not in {'char_id_count'}]]
-#             odf_id2meta.update(odf_id2meta_anno)
-#         odf_id2meta=odf_id2meta.reset_index()
-        
-#         return odf_tok2id.fillna(''), odf_id2meta.fillna('')
-        
-#     def get_letters(self,t,force=False,*x,**y):
-#         df_letters=self.compile_text(t,force=force,*x,**y)
-#         df_tok2id,df_id2meta=self.compile_text_chars(t,force=force,*x,**y)
-#         d_tok2id=dict(zip(df_tok2id.char_tok, df_tok2id.char_id))
-#         cols_id2meta_uniq=[col for col in df_id2meta if col not in set(df_letters.columns)]
-#         df_id2meta=df_id2meta[cols_id2meta_uniq]
-
-#         for sndr in ['sender','recip']:
-#             sidkey=f'{sndr}_id'
-#             df_letters[sidkey]=df_letters[f'{sndr}_tok'].apply(lambda stok: d_tok2id.get(stok,stok))
-#             senders = set(df_letters[sidkey])
-#             df_id2meta_now = df_id2meta[df_id2meta.char_id.isin(senders)]
-#             df_id2meta_now.columns=[col.replace('char_',f'{sndr}_') for col in df_id2meta.columns]
-#             if sidkey in set(df_id2meta_now.columns):
-#                 df_letters = df_letters.merge(df_id2meta_now, how='left', on=sidkey)
-            
-#         return df_letters
-
-
-#     def iter_letter_networks(self,t,dfletters=None,*x,**y):
-#         dfletters=self.get_letters(t,*x,**y) if dfletters is None else dfletters
-#         return iter_letter_networks_from_dfletters(dfletters,*x,**y)
-
-#     def get_letter_network(self,t,dfletters=None,*x,**y):
-#         dfletters=self.get_letters(t,*x,**y) if dfletters is None else dfletters
-#         return get_letter_network_from_dfletters(dfletters,*x,**y)
+##
+# Networks
+##
 
 
 
 
-
-
-
-
-def iter_letter_networks_from_dfletters(dfletters,bad_ids={'?',''},progress=True,*x,**y):
+def iter_letter_networks_from_dfletters(
+        dfletters,
+        key_source='source',
+        key_target='target',
+        key_rel='rel',
+        bad_ids=BAD_CHAR_IDS,
+        progress=True,
+        *x,**y):
     G=nx.DiGraph()
-    iterr=tqdm(
+    iterr=get_tqdm(
         dfletters.to_dict(orient='records'),
         disable=not progress,
         desc='Iterating letters as networks'
     )
     for row in iterr:
-        sender_id=row.get('sender_id','')
-        recip_id=row.get('recip_id','')
+        sender_id=row.get(key_source,'')
+        recip_id=row.get(key_target,'')
         if not sender_id or not recip_id: continue
         if sender_id in bad_ids or recip_id in bad_ids: continue
         
-        node_types = ['sender','recip']
-        for node_type in node_types:
-            node_id=row[f'{node_type}_id']
-            if not G.has_node(node_id):
-                node_feats=dict((k.replace(f'{node_type}_','char_'),v) for k,v in row.items() if k.startswith(f'{node_type}_'))
-                G.add_node(node_id,**node_feats)
+        # node_types = ['sender','recip']
+        # for node_type in node_types:
+        #     node_id=row[f'{node_type}_id']
+        #     if not G.has_node(node_id):
+        #         node_feats=dict((k.replace(f'{node_type}_','char_'),v) for k,v in row.items() if k.startswith(f'{node_type}_'))
+        #         G.add_node(node_id,**node_feats)
         
-        edge_attrs = dict((k,v) for k,v in row.items() if not k.split('_')[0] in set(node_types))
+        # edge_attrs = dict((k,v) for k,v in row.items() if not k.split('_')[0] in set(node_types))
+        edge_attrs={}
         if not G.has_edge(sender_id, recip_id):
             edge_attrs['weight']=1
             G.add_edge(sender_id,recip_id,**edge_attrs)
@@ -656,298 +536,26 @@ def iter_letter_networks_from_dfletters(dfletters,bad_ids={'?',''},progress=True
         yield G
 
 def get_letter_network_from_dfletters(dfletters,progress=False,*x,**y):
+    g=None
     for g in iter_letter_networks_from_dfletters(dfletters,progress=progress,*x,**y): pass
     return g
 
 
-
-def get_canon():
-    Chad = load('Chadwyck')
-    return dict(
-        clarissa = Chad.textd['Eighteenth-Century_Fiction/richards.01'],
-        pamela=Chad.textd['Eighteenth-Century_Fiction/richards.04'],
-        evelina=Chad.textd['Eighteenth-Century_Fiction/burney.01'],
+def get_canon(idx=None):
+    C = Epistolary()
+    d=dict(
+        clarissa=C.text('_chadwyck/Eighteenth-Century_Fiction/richards.01'),
+        pamela=C.text('_chadwyck/Eighteenth-Century_Fiction/richards.04'),
+        evelina=C.text('_chadwyck/Eighteenth-Century_Fiction/burney.01'),
     )
+    return d if not idx else d.get(idx)
 
-def get_clarissa():
-    clarissa = get_canon()['clarissa']
-    return clarissa
-
-def get_clarissa_id():
-    return f'_chadwyck/Eighteenth-Century_Fiction/richards.01'
+def get_clarissa(): return get_canon().get('clarissa')
+def get_pamela(): return get_canon().get('pamela')
+def get_evelina(): return get_canon().get('evelina')
 
 
-# # def cast_init(obj, Class,*x,**y):
-# #     obj.__class__=Class
-# #     obj.__init__(*x,**y)
-# #     return obj
-
-# # def CastObjCls(old_text_obj,new_text_class,*x,**y):
-# #     return cast_init(old_text_obj,new_text_class,*x, **y)
-
-# # def SourceTextEpistolary(text_obj,*x, **y):
-# #     return CastObjCls(text_obj, SourceTextEpistolaryCls,*x,**y)
-
-# class TextEpistolary(Text):
-#     pass
-
-
-
-
-# class SourceTextEpistolaryCls(Text):
-#     def __init__(self,epistolary_corpus,**kwargs):
-#         self.C=epistolary_corpus
-#         for k,v in kwargs.items(): setattr(self,k,v)
-        
-#     def compile(self,lim=None,progress=True,force=False,*x,**y):
-#         ofn_ltrs = os.path.join(C.paths['path_letters'], t.corpus.id, t.id + '.csv')
-#         ofn_xml = os.path.join(C.paths['path_xml'], t.corpus.id, t.id + '.xml')
-#         ofn_txt = os.path.join(C.paths['path_txt'], t.corpus.id, t.id + '.txt')
-
-#         if not force and os.path.exists(ofn_ltrs):
-#             odf = read_df(ofn_ltrs)
-#             odf_anno=load_with_anno(ofn_ltrs)
-#             if len(odf_anno) and 'id' in set(odf_anno.columns):
-#                 odf_anno=odf_anno.set_index('id')
-#                 odf_anno=odf_anno[[col for col in odf_anno.columns if not col.startswith('id_')]]
-#                 odx_anno=dict((idx, dict(row)) for idx,row in odf_anno.iterrows())
-
-#                 newkeys=set(rowdk for idx,rowd in odx_anno.items() for rowdk in rowd)
-#                 for nk in newkeys:
-#                     odf[nk]=[odx_anno.get(idx,{}).get(nk,'') for idx in odf.id]
-            
-#             return fix_meta(odf)
-            
-
-#         ol=[]
-#         #if force or not os.path.exists(ofn_ltrs) or not os.path.exists(ofn_xml) or not os.path.exists(ofn_txt):
-#         if not os.path.exists(os.path.dirname(ofn_xml)): os.makedirs(os.path.dirname(ofn_xml))
-#         if not os.path.exists(os.path.dirname(ofn_txt)): os.makedirs(os.path.dirname(ofn_txt))            
-#         if not os.path.exists(os.path.dirname(ofn_ltrs)): os.makedirs(os.path.dirname(ofn_ltrs))            
-        
-#         tdf=epistolarized_chadwyck_t(C,t=t,lim=lim,progress=progress,*x,**y)
-#         if not len(tdf): return pd.DataFrame()
-
-    
-#         todf=fix_meta(tdf)
-
-#         for pxml,txml in zip(tdf.path_xml,tdf.xml):
-#             if pxml and txml:
-#                 with open(pxml,'w') as of: of.write(txml)
-#         for ptxt,ttxt in zip(tdf.path_txt,tdf.txt):
-#             if ptxt and ttxt:
-#                 with open(ptxt,'w') as of: of.write(ttxt)
-
-#         for needcol in {'sender_tok','sender_id','recip_tok','recip_id','front','title_letter'}:
-#             if not needcol in set(todf.columns): todf[needcol]=''
-#         for badcol in {'txt','xml','path_txt','path_xml'} & set(todf.columns):
-#             todf=todf.drop(badcol,1)
-        
-#         cols=[
-#             'id','id_corpus','id_text','id_letter','letter_i',
-#             'txt_head',
-#             'txt_front',
-#             'sender_tok',#'sender_id',
-#             'recip_tok',#'recip_id',
-#         ]
-#         odf_ltrs=todf[[c for c in cols if c in set(todf.columns)]].fillna('')
-#         save_df(fix_meta(odf_ltrs), ofn_ltrs, verbose=True)
-#         return odf_ltrs
-
-        
-#     def compile_text_chars(self,t,tdf=None,force=False,force_inner=False,verbose=False,*x,**y):
-#         id_corpus=t.corpus.id
-#         id_text=t.id
-
-#         ofn_tok2id = os.path.join(self.path_chars, id_corpus, id_text, 'tok2id.csv')
-#         ofn_id2meta = os.path.join(self.path_chars, id_corpus, id_text, 'id2meta.csv')
-
-#         if force or not os.path.exists(ofn_tok2id):
-#             # get latest sender,recip data
-#             if tdf is None: tdf=self.compile_text(t,force=force_inner,*x,**y)
-#             odf_tok2id=calculate_tok2id(tdf.fillna(''))
-#             save_df(odf_tok2id, ofn_tok2id, verbose=verbose, index=False)
-#             if verbose: display(odf_tok2id)
-#         else:
-#             odf_tok2id=read_df(ofn_tok2id)
-        
-#         # update with anno
-#         odf_tok2id_anno=load_with_anno(ofn_tok2id)
-#         if len(odf_tok2id_anno):
-#             d_tok2id_anno=dict(zip(odf_tok2id_anno.char_tok, odf_tok2id_anno.char_id)) if len(odf_tok2id_anno) else {}
-#             odf_tok2id['char_id']=[d_tok2id_anno.get(ctok,cid) for ctok,cid in zip(odf_tok2id.char_tok,odf_tok2id.char_id)]
-        
-        
-
-#         ## id2meta
-#         if force or not os.path.exists(ofn_id2meta):
-#             ## id2meta
-#             char_ids = Counter()
-#             for char_id,char_tok_count in zip(odf_tok2id.char_id, odf_tok2id.char_tok_count):
-#                 char_ids[char_id]+=char_tok_count
-#             # init?
-#             id2meta_l=[]
-#             for char_id,char_id_count in char_ids.most_common():
-#                 char_dx={'char_id':char_id, 'char_id_count':char_id_count, **chardata_metakeys_initial}
-#                 id2meta_l.append(char_dx)
-#             odf_id2meta = pd.DataFrame(id2meta_l).fillna('')
-#             save_df(odf_id2meta, ofn_id2meta, verbose=verbose, index=False)
-#             if verbose: display(odf_id2meta)
-#         else:
-#             odf_id2meta=read_df(ofn_id2meta)
-
-#         # update with anno
-#         odf_id2meta=odf_id2meta.set_index('char_id')
-#         odf_id2meta_anno=load_with_anno(ofn_id2meta)
-#         if len(odf_id2meta_anno) and 'char_id' in set(odf_id2meta_anno.columns):
-#             odf_id2meta_anno=odf_id2meta_anno.fillna('').set_index('char_id')
-#             odf_id2meta_anno=odf_id2meta_anno[[col for col in odf_id2meta_anno if col not in {'char_id_count'}]]
-#             odf_id2meta.update(odf_id2meta_anno)
-#         odf_id2meta=odf_id2meta.reset_index()
-        
-#         return odf_tok2id.fillna(''), odf_id2meta.fillna('')
-        
-#     def get_letters(self,t,force=False,*x,**y):
-#         df_letters=self.compile_text(t,force=force,*x,**y)
-#         df_tok2id,df_id2meta=self.compile_text_chars(t,force=force,*x,**y)
-#         d_tok2id=dict(zip(df_tok2id.char_tok, df_tok2id.char_id))
-#         cols_id2meta_uniq=[col for col in df_id2meta if col not in set(df_letters.columns)]
-#         df_id2meta=df_id2meta[cols_id2meta_uniq]
-
-#         for sndr in ['sender','recip']:
-#             sidkey=f'{sndr}_id'
-#             df_letters[sidkey]=df_letters[f'{sndr}_tok'].apply(lambda stok: d_tok2id.get(stok,stok))
-#             senders = set(df_letters[sidkey])
-#             df_id2meta_now = df_id2meta[df_id2meta.char_id.isin(senders)]
-#             df_id2meta_now.columns=[col.replace('char_',f'{sndr}_') for col in df_id2meta.columns]
-#             if sidkey in set(df_id2meta_now.columns):
-#                 df_letters = df_letters.merge(df_id2meta_now, how='left', on=sidkey)
-            
-#         return df_letters
-
-
-#     def iter_letter_networks(self,t,dfletters=None,*x,**y):
-#         dfletters=self.get_letters(t,*x,**y) if dfletters is None else dfletters
-#         return iter_letter_networks_from_dfletters(dfletters,*x,**y)
-
-#     def get_letter_network(self,t,dfletters=None,*x,**y):
-#         dfletters=self.get_letters(t,*x,**y) if dfletters is None else dfletters
-#         return get_letter_network_from_dfletters(dfletters,*x,**y)
-
-
-
-    
-
-# class Epistolary(Corpus):
-#     NAME='Epistolary2'
-#     ID='epistolary2'
-#     TEXT_CLASS=TextEpistolary
-#     CORPORA_TO_START_WITH = ['Chadwyck']
-
-    
-
-
-    
-                
-
-
-
-
-#     # if not self.col_id in metacols:
-#     #     if self.col_fn in metacols:
-#     #         meta[self.col_id]=meta[self.col_fn].apply(lambda x: os.path.splitext(x)[0])
-#     #     else:
-#     #         # print(f'!! [{self.name}] Corpus does not have "id" column in {self.col_id}')
-#     #         meta[self.col_id]=[f't{i+1:08}' for i in range(len(meta))]
-        
-#     #     if not 'id_corpus' in metacols:
-            
-    
-
-#     #     # outfit with extra    
-#     #     meta['id_corpus']=self.id
-#     #     meta['id_text']=meta[self.col_id]
-        
-#     #     meta['id']=[f'']
-
-#     #     meta['_id']=[f'']
-#     #     meta['path_freqs']=meta[self.col_id].apply(lambda idx: os.path.join(self.path_freqs, idx + self.EXT_FREQS))
-#     #     meta['path_txt']=meta[self.col_id].apply(lambda idx: os.path.join(self.path_txt, idx + self.EXT_TXT))
-#     #     meta['path_xml']=meta[self.col_id].apply(lambda idx: os.path.join(self.path_xml, idx + self.EXT_XML))
-        
-#     #     if 'year' in metacols:
-#     #         meta['_year_orig']=meta['year']
-#     #         meta['year']=pd.to_numeric(meta['year'],errors='coerce',downcast='integer')
-    
-#     #     # reorder
-#     #     meta=fix_meta(meta)
-#     #         # cache
-#     #         # save_df(meta, self.path_metadata_cache)
-#     #     else:
-#     #         meta=pd.DataFrame()
-#     #         textld=None
-
-#     #     if len(meta):
-#     #         # filter
-#     #         if self.year_start is not None and str(self.year_start).isdigit() and 'year' in set(meta.columns):
-#     #             meta=meta[meta.year>=self.year_start]
-#     #         if self.year_end is not None and str(self.year_end).isdigit() and 'year' in set(meta.columns):
-#     #             meta=meta[meta.year<self.year_end]                
-#     #         self._metadf=meta.set_index(self.col_id,drop=True)
-
-#     #         if init_texts:
-#     #             self.load_texts()
-
-
-#     #     else:
-#     #         self._metadf=meta
-#     #         self._textd={}
-#     #         self._texts=[]
-    
-#     # return self._metadf
-
-
-#     # def init_metadata(self, meta_init=pd.DataFrame(), set_index=['id','id_corpus','id_text']):
-#     #     # local too?
-#     #     meta_local = read_df(self.path_metadata_init) if os.path.exists(self.path_metadata_init) else pd.DataFrame()
-        
-#     #     # all of chad?
-#     #     Chad = load('Chadwyck')
-#     #     chad_meta = Chad.meta.reset_index()
-#     #     chad_meta['id'] = chad_meta['id'].apply(lambda x: f'{Chad.id}|{x}')
-
-#     #     # updated?
-#     #     meta_l = map(df_requiring_id,[chad_meta, meta_local, meta_init])
-#     #     meta_l=[mdf for mdf in meta_l if mdf is not None and len(mdf)]
-#     #     for mdf in meta_l:
-#     #         display(mdf)
-            
-
-
-#     #     if meta_l:
-#     #         meta=meta_l[0]
-#     #         display(meta)
-#     #         for meta2 in meta_l[1:]:
-#     #             display(meta2)
-#     #             meta.update(meta2)
-
-        
-        
-#     #     set_index=[si for si in set_index if si in set(meta_chad)]
-        
-
-
-
-class TextEpistolary(Text):
-    pass
-
-
-class Epistolary(Corpus):
-    NAME='Epistolary'
-    ID='epistolary'
-    TEXT_CLASS=TextEpistolary
-    CORPORA_TO_START_WITH = ['Chadwyck']
-
-
-# C = Epistolary()
-# C.meta
+# t = C.init_text('_chadwyck/Eighteenth-Century_Fiction/richards.01')    # clarissa
+# # t = C.init_text('_chadwyck/Eighteenth-Century_Fiction/richards.04')  # pamela
+# # t = C.init_text('_chadwyck/Eighteenth-Century_Fiction/smollett.03')  # clinker
+# # t=C.init_text('_chadwyck/Eighteenth-Century_Fiction/brookefm.02')    # julia mandeville

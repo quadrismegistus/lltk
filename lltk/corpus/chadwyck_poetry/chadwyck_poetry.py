@@ -10,7 +10,7 @@ META_KEYS = ['_path', 'a1', 'alias', 'aliasinv', 'anote', 'argument', 'attauth',
 ### TEXT CLASS
 import codecs,os
 from lltk import tools
-from lltk.text.text import Text
+from lltk.text.text import BaseText
 from lltk.tools import get_spelling_modernizer,modernize_spelling_in_txt
 import pandas as pd
 
@@ -20,7 +20,7 @@ LINE_TAGS = ['l','lb']
 spelling_d = None
 
 
-class TextChadwyckPoetry(Text):
+class TextChadwyckPoetry(BaseText):
 	STANZA_TAGS = ['stanza','versepara','pdiv']
 	LINE_TAGS = ['l','lb']
 
@@ -115,11 +115,11 @@ class TextChadwyckPoetry(Text):
 
 
 ### CORPUS CLASS
-from lltk.corpus.corpus import Corpus
+from lltk.corpus.corpus import BaseCorpus
 import os,codecs,re
 from lltk import tools
 
-class ChadwyckPoetry(Corpus):
+class ChadwyckPoetry(BaseCorpus):
 	"""
 	Steps taking in bringing this corpus from raw to refined.
 
@@ -271,7 +271,7 @@ def save_poems_from_raw_author_folder(xxx_todo_changeme, use_bs4=False):
 	print('>>',opath,'...')
 	with codecs.open(author_fnfn,encoding='latin1') as f:
 		txt=f.read()
-		txt=six.text_type(txt.replace('\r\n','\n').replace('\r','\n'))
+		txt=str(txt.replace('\r\n','\n').replace('\r','\n'))
 		if use_bs4:
 			dom = bs4.BeautifulSoup(txt,'lxml')
 			for poem_i,poem in enumerate(dom('poem')):
@@ -280,7 +280,7 @@ def save_poems_from_raw_author_folder(xxx_todo_changeme, use_bs4=False):
 				if not ids: continue
 				idx=ids[0].text
 				if not idx: continue
-				poem_xml_str = six.text_type(poem)
+				poem_xml_str = str(poem)
 
 				ofnfn = os.path.join(opath, idx+'.xml')
 				with codecs.open(ofnfn,'w',encoding='utf-8') as of:

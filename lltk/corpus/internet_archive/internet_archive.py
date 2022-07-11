@@ -4,8 +4,18 @@ from internetarchive import search_items
 
 
 DEFAULT_COLLECTION='19thcennov'
-class TextInternetArchive(Text): pass
-class InternetArchive(Corpus):
+class TextInternetArchive(BaseText):
+	@property
+	def year(self):
+		x=self._meta.get('date')
+		try:
+			return int(str(x)[:4])
+		except AssertionError:
+			return np.nan
+	@property
+	def author(self): return self._meta.get('creator')
+
+class InternetArchive(BaseCorpus):
 	TEXT_CLASS=TextInternetArchive
 	def get_collection_ids(self,collection=DEFAULT_COLLECTION,iter_as_items=False):
 		# search
@@ -48,7 +58,7 @@ class InternetArchive(Corpus):
 	def compile_metadata(self,collection=DEFAULT_COLLECTION,force=False):
 		if force or not os.path.exists(self.path_metadata):
 			def _writegen():
-				for item in tqdm(list(self.get_collection_ids(collection=collection,iter_as_items=True)),desc='Compiling metadata'):
+				for item in get_tqdm(list(self.get_collection_ids(collection=collection,iter_as_items=True)),desc='Compiling metadata'):
 					dx=item.metadata
 					try:
 						dx['id']=dx['identifier']+'/'+dx['identifier']+'_djvu'
@@ -96,7 +106,7 @@ class InternetArchive(Corpus):
 		return super().install(parts=parts,force=force,**attrs)
 
 
-
+	
 
 	def load_metadata(self,*x,**y):
 		import numpy as np

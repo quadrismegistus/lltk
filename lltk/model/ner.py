@@ -65,7 +65,7 @@ def ner_parse_stanza(txt,nlp=None):
     for pi,para in enumerate(para_txts):
         try:
             pdoc = nlp(para)
-        except Exception as e:
+        except AssertionError as e:
             print('!!',e)
             continue
 
@@ -112,7 +112,7 @@ def ner_txt2names(txt,incl_labels={}):
     # clean
     # txt = txt.replace('--','—')
     para_txts = txt.split('\n\n')
-    for para in tqdm(para_txts,desc="Parsing paragraphs"):
+    for para in get_tqdm(para_txts,desc="Parsing paragraphs"):
         pdoc = nlp(para)
         for entd in pdoc.ents:
             countd[entd.text]+=1
@@ -160,9 +160,117 @@ def ner_txt2names_spacy(txt,incl_labels={}): # 'PERSON'
     # print(f'done in {int(time.time()-now)} seconds')
 
     para_txts = txt.split('\n\n')
-    for para in tqdm(para_txts,desc="Parsing paragraphs"):
+    for para in get_tqdm(para_txts,desc="Parsing paragraphs"):
         pdoc = nlp(para)
         for entd in pdoc.ents:
             countd[entd.text]+=1
     
     return countd
+
+
+
+
+
+
+
+
+
+TITLE_WORDS = set("""
+Miss Ms.
+Mr. Mrs.
+Lord Lady
+Baron Baroness
+Count Countess
+Sir Madam
+Queen King
+Goodman` p
+Uncle Aunt
+Father Mother
+Brother Sister
+Cousin
+""".strip().split())
+
+
+
+
+NLP_FROMTO=None
+def nlp_ner_stanza():
+    global NLP_FROMTO
+    if NLP_FROMTO is not None: return NLP_FROMTO    
+    import stanza
+    nlp = stanza.Pipeline(lang='en',verbose=False)#,processors='tokenize,ner')
+    NLP_FROMTO=nlp
+    return nlp
+
+
+NLP_DATE=None
+def nlp_ner_dates_stanza():
+    global NLP_DATE
+    if NLP_DATE is not None: return NLP_DATE
+    import stanza
+    nlp = stanza.Pipeline(lang='en',verbose=False,processors='tokenize,ner')
+    NLP_DATE=nlp
+    return nlp
+
+
+def nlp_ner_get_doc(txt):
+    if type(txt)!=str: return txt
+    nlp = nlp_ner_stanza()
+    doc = nlp(txt)
+    return doc
+
+def nlp_ner_get_doc_simple(txt):
+    if type(txt)!=str: return txt
+    nlp = nlp_ner_dates_stanza()
+    doc = nlp(txt)
+    return doc
+
+
+def get_propn_i_l(sentdf):
+    i=0
+    o=[]
+    propnow=[]
+    was_propn=None
+    for upos,deprel in zip(sentdf.upos,sentdf.deprel):
+        is_propn=upos=='PROPN'
+        if is_propn:
+            was_propn=True
+            o+=[i+1]
+        elif was_propn:
+            i+=1
+            was_propn=False
+            o+=['']
+        else:
+            o+=['']
+    return o
+
+
+def get_ner_sentdf(doc):
+    doc=nlp_ner_get_doc(doc)
+
+    sents=[]
+    for sent in doc.sentences:
+        for word in sent.tokens:
+            worddx=word.to_dict()[0]
+            worddx['sent_i']=len(sents)+1
+            if worddx['text'] in TITLE_WORDS: worddx['upos']='PROPN'
+            sents.append(worddx)
+    sentdf=pd.DataFrame(sents).fillna('')
+    if len(sentdf):
+        sentdf['propn_i']=get_propn_i_l(sentdf)
+        # decide_recips(sentdf)
+    return sentdf
+
+
+
+def extract_ents(txt,types={"DATE","TIME"}):
+    doc = nlp_ner_get_doc(txt)
+
+    if doc.entities:
+        dates = [ent.text for ent in doc.entities if ent.type in types]
+        if dates:
+            return ' | '.join(dates)
+    return ''
+
+def extract_places(txt,**y): return extract_ents(txt,types={'FAC','ORG','GPE'})
+def extract_times(txt,**y): return extract_ents(txt,types={'DATE','TIME'})

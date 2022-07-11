@@ -1,16 +1,16 @@
 import os
 import lltk
-from lltk.text.text import Text
-from lltk.corpus.corpus import Corpus
+from lltk.text.text import BaseText
+from lltk.corpus.corpus import BaseCorpus
 
 
 
-class TextFanFic(Text):
+class TextFanFic(BaseText):
 	pass
 
 
 
-class FanFic(Corpus):
+class FanFic(BaseCorpus):
 	TEXT_CLASS=TextFanFic
 
 	def compile(self,**attrs):

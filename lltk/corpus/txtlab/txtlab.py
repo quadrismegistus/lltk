@@ -1,8 +1,15 @@
 from lltk.imports import *
+from lltk.tools.tools import camel_case_split
 
-class TextTxtLab(Text): pass
+class TextTxtLab(BaseText):
+	def __init__(self,*args,**kwargs):
+		super().__init__(*args,**kwargs)
+		if 'title' in self._meta and not ' ' in self._meta.get('title'):
+			self._meta['title'] = ' '.join(camel_case_split(self._meta['title']))
+		
 
-class TxtLab(Corpus):
+
+class TxtLab(BaseCorpus):
 	TEXT_CLASS=TextTxtLab
 
 
@@ -21,8 +28,8 @@ class TxtLab(Corpus):
 		self.compile_extract()
 		# clean
 		self.compile_metadata()
-		
-		
+
+	
 
 	# Extract once downloaded
 	def compile_extract(self):
@@ -33,7 +40,7 @@ class TxtLab(Corpus):
 		with ZipFile(zipfn) as zip_file:
 			namelist=zip_file.namelist()
 			# Loop over each file
-			for member in tqdm(iterable=namelist, total=len(namelist), desc=f'[{self.name}] Extracting texts from {os.path.basename(zipfn)}'):
+			for member in get_tqdm(iterable=namelist, total=len(namelist), desc=f'[{self.name}] Extracting texts from {os.path.basename(zipfn)}'):
 				# copy file (taken from zipfile's extract)
 				source = zip_file.open(member)
 				filename = os.path.basename(member)
