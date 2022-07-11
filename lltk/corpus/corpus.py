@@ -134,8 +134,9 @@ class BaseCorpus(TextList):
     @property
     def path(self):
         res=getattribute(self,'_path')
-        if res is None: res=os.path.expanduser(os.path.join(PATH_CORPUS,self.id))
-        return res
+        if res is None: res=os.path.join(PATH_CORPUS,self.id)
+        return os.path.expanduser(res)
+    
     @property
     def path_data(self): return os.path.join(self.path,'data')
     @property
