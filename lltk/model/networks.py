@@ -249,6 +249,7 @@ def merc(lat, lon):
 def layout_graph_force(g,pos=None,iterations=10000,**attrs):
 
     try:
+        import nevermind
         from fa2 import ForceAtlas2
         defaults=dict(
             # Behavior alternatives
@@ -293,9 +294,11 @@ def layout_graph_force(g,pos=None,iterations=10000,**attrs):
         return pos
     
     except (ImportError,ModuleNotFoundError,AttributeError) as e:
+        print('!! {e}, trying graphviz for layout')
         try:
             return nx.nx_agraph.graphviz_layout(g,prog='neato')
         except (ImportError,ModuleNotFoundError) as e2:
+            print('!! {e}, trying networkx for layout')
             return nx.spring_layout(g,k=0.15, iterations=20)
 
 
