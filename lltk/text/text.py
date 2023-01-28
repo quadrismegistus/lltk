@@ -943,6 +943,7 @@ class BaseText(BaseObject):
 
 
     def match(self,other,yn='',rel=MATCHRELNAME,rel_type='',cache=True,viceversa=True,**kwargs):
+        return
         self.cdb # make sure active
         if is_textish(other): 
             other = Text(other)

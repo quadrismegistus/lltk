@@ -397,27 +397,27 @@ from lltk.corpus import *
 from lltk.model import *
 from lltk.model.networks import draw_nx
 
-log_on() if REMOTE_DEFAULT else log_off()
-LLTK = BaseLLTK(log=log)
-online=LLTK.online
-offline=LLTK.offline
+# log_on() if REMOTE_DEFAULT else log_off()
+# LLTK = BaseLLTK(log=log)
+# online=LLTK.online
+# offline=LLTK.offline
 
-def search(*x,**y): return LLTK.search(*x,**y)
-def get(*x,**y): return LLTK.get(*x,**y)
-def sync(*x,**y): return LLTK.sync(*x,**y)
-def walk(*x,**y): yield from LLTK.search_iter(*x,**y)
-where = get
-find = search
-G = LLTK
-look = hunt = walk
-cdb=db=CDB
-try:
-	CDB()
-except:
-	pass
-# cdb = db = CDB()
-# cdb = lambda: CDB()
-T=Text
-C=Corpus
-# log.info('--' * 25)
-# log.info('ready')
+# def search(*x,**y): return LLTK.search(*x,**y)
+# def get(*x,**y): return LLTK.get(*x,**y)
+# def sync(*x,**y): return LLTK.sync(*x,**y)
+# def walk(*x,**y): yield from LLTK.search_iter(*x,**y)
+# where = get
+# find = search
+# G = LLTK
+# look = hunt = walk
+# cdb=db=CDB
+# try:
+# 	CDB()
+# except:
+# 	pass
+# # cdb = db = CDB()
+# # cdb = lambda: CDB()
+# T=Text
+# C=Corpus
+# # log.info('--' * 25)
+# # log.info('ready')
