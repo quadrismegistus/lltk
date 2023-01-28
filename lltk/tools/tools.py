@@ -180,7 +180,7 @@ def load_default_config():
 		if not os.path.isabs(v):
 			# configd[k]=os.path.join(PATH_LLTK_REPO,v)
 			configd[k]=os.path.join(PATH_LLTK_HOME,v)
-	if not 'PATH_TO_CORPORA' in configd: configd['PATH_TO_CORPORA']='~/lltk_data/corpora'
+	if not 'PATH_TO_CORPORA' in configd: configd['PATH_TO_CORPORA']=os.path.expanduser('~/lltk_data/corpora')
 	# configd=dict((k,v.replace(os.path.expanduser('~'),'~')) for k,v in configd.items())
 	# if not 'PATH_TO_CORPORA' in configd: configd['PATH_TO_CORPORA']=os.path.expanduser('~/lltk_data/corpora')
 	return configd

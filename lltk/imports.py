@@ -213,7 +213,7 @@ from lltk.model import *
 
 
 # corenlp
-PATH_CORENLP = '~/lltk_data/tools/corenlp'
+PATH_CORENLP = os.path.expanduser('~/lltk_data/tools/corenlp')
 
 # Files for text processing
 PATH_TO_ENGLISH_WORDLIST = 'data/default/wordlist.aspell.net.with_caps.txt.gz'
