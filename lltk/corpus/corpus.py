@@ -312,6 +312,17 @@ class BaseCorpus(TextList):
                 yield from zip(o1,o2)
 
 
+    def load_metadata(self,clean=True,**kwargs):
+        if not os.path.exists(self.path_metadata): self.install_metadata()
+        if not os.path.exists(self.path_metadata): return pd.DataFrame()
+        df=read_df_anno(self.path_metadata,dtype=str)
+        if df is None or not len(df): return pd.DataFrame()
+        if self.col_id in set(df.columns):
+            df=df.set_index(self.col_id)
+        if clean:
+            from lltk.corpus.utils import clean_meta
+            df=clean_meta(df)
+        return df
 
 
 
