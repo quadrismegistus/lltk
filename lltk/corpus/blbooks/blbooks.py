@@ -46,8 +46,8 @@ class BLBooks(BaseCorpus):
             if not records[rid]['meta']:
                 # Grab all per-record fields (exclude per-page: text, pg, empty_pg)
                 meta = {k: v for k, v in row.items() if k not in {'text', 'pg', 'empty_pg'}}
-                # Normalize column names (spaces → underscores)
-                meta = {k.replace(' ', '_'): v for k, v in meta.items()}
+                # Normalize column names (spaces → underscores, lowercase)
+                meta = {k.replace(' ', '_').lower(): v for k, v in meta.items()}
                 # Add derived fields
                 meta['author'] = _join_authors(
                     row.get('all names', ''),
