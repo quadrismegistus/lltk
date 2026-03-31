@@ -1156,7 +1156,79 @@ class BaseCorpus(TextList):
 
 
 class SectionCorpus(BaseCorpus):
-    def init(self): pass ##@TODO ???
+    DIV_SECTION = None    # e.g. 'div3' — which div level holds sections
+    DIV_GROUP = None      # e.g. 'div2' — optional grouping level (volumes/books)
+    SECTION_PREFIX = 'S'  # prefix for generated section IDs
+
+    def init(self, force=False, **kwargs):
+        if not force and self._init: return
+        self.parse_sections(force=force, **kwargs)
+
+    def parse_sections(self, force=False, **kwargs):
+        source = self.source
+        if source is None: return
+        xml = source.xml
+        if not xml: return
+
+        import bs4
+        dom = bs4.BeautifulSoup(xml, 'lxml')
+
+        div_tag = self.DIV_SECTION or self._find_div_tag(dom)
+        if not div_tag: return
+
+        group_tag = self.DIV_GROUP
+        groups = dom(group_tag) if group_tag else [dom]
+        if not groups: groups = [dom]
+
+        section_i = 0
+        for group_i, group_dom in enumerate(groups):
+            divs = group_dom(div_tag)
+            if not divs: divs = [group_dom]
+
+            for div_dom in divs:
+                section_i += 1
+                section_id = f'{self.SECTION_PREFIX}{section_i:04}'
+                # extract title before stripping bad tags (head is in BAD_TAGS)
+                title = self._extract_title(div_dom)
+                idref = grab_tag_text(div_dom, 'idref', limit=1)
+                section_xml = clean_text(str(div_dom))
+                meta = dict(
+                    _xml=section_xml,
+                    title=title,
+                    id_orig=idref,
+                    group_i=group_i + 1,
+                    section_i=section_i,
+                )
+                self.init_text(id=section_id, **meta)
+
+        if section_i: self._init = True
+
+    def _find_div_tag(self, dom):
+        for tag in ['div5', 'div4', 'div3', 'div2', 'div1', 'div0']:
+            if dom(tag): return tag
+        return None
+
+    def _extract_title(self, div_dom):
+        for tag_name in ['comhd5','comhd4','comhd3','comhd2','comhd1','head','caption']:
+            tags = div_dom(tag_name, recursive=False) or div_dom(tag_name)
+            if tags:
+                raw = str(tags[0])
+                # extract title text between </collection> and <attbytes> if present
+                if '</collection>' in raw and '<attbytes>' in raw:
+                    title = raw.split('</collection>')[-1].split('<attbytes>')[0].strip()
+                else:
+                    title = tags[0].get_text().strip()
+                title = clean_text(unhtml(title))
+                if title: return title
+        # fallback: lxml strips <head> into bare text — check first text node
+        from bs4 import NavigableString
+        for child in div_dom.children:
+            if isinstance(child, NavigableString):
+                text = child.strip()
+                if text: return clean_text(text)
+            else:
+                break  # stop at first tag
+        return ''
 
     @property
     def source(self): return self._source
@@ -1170,19 +1242,18 @@ class SectionCorpus(BaseCorpus):
     def get_section_class(self,*x,**y): return self.source.get_section_class(*x,**y)
 
     def init_text(self,id=None,section_class=None,**meta):
-        # make id
         if id is None: id=get_idx(i=len(self._textd), prefstr='S', numposs=1000)
-        # id=os.path.join(self.id,id)
-        # check not duplicate
-        #assert id not in set(self._textd.keys())
         if id not in self._textd:
-            # gen obj
             section_class=self.get_section_class(section_class)
             sec = section_class(id, _source=self.source, _section_corpus=self, **meta)
             self._textd[id]=sec
         else:
             sec=self._textd[id]
         return sec
+
+    def texts(self, *args, **kwargs):
+        if not self._init: self.init()
+        return super().texts(*args, **kwargs)
 
     @property
     def txt(self): return self.get_txt()

@@ -201,6 +201,9 @@ class SectionCorpusLetter(SectionCorpus, CharacterSystem):
 
 
 class SectionCorpusLetterChadwyck(SectionCorpusLetter):
+    def parse_sections(self, **kwargs):
+        pass  # letter parsing handled in init() directly
+
     @property
     def txt(self): return self.get_txt(extra_txt_pref=['txt_front'])
 

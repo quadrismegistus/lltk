@@ -180,3 +180,51 @@ class TestDTM:
         dtm = corpus.dtm(n=10, tfidf=True)
         assert isinstance(dtm, pd.DataFrame)
         assert dtm.shape[0] == 3
+
+
+class TestSections:
+    @pytest.fixture
+    def shelley(self, corpus):
+        for t in corpus.texts():
+            if t.id == 'shelley_frank':
+                return t
+        pytest.fail('shelley_frank not found')
+
+    def test_chapters_returns_section_corpus(self, shelley):
+        chaps = shelley.chapters
+        assert chaps is not None
+        assert 'SectionCorpus' in type(chaps).__name__ or hasattr(chaps, 'texts')
+
+    def test_chapters_count(self, shelley):
+        sections = list(shelley.chapters.texts())
+        assert len(sections) == 3
+
+    def test_section_has_title(self, shelley):
+        sections = list(shelley.chapters.texts())
+        titles = [s.get('title', '') for s in sections]
+        assert 'Letter 1' in titles
+        assert 'Chapter 1' in titles
+
+    def test_section_has_text(self, shelley):
+        sections = list(shelley.chapters.texts())
+        for s in sections:
+            assert len(s.txt) > 0
+
+    def test_section_text_content(self, shelley):
+        sections = list(shelley.chapters.texts())
+        # Letter 1 should contain "rejoice"
+        assert 'rejoice' in sections[0].txt
+        # Chapter 1 should contain "Genevese"
+        assert 'Genevese' in sections[2].txt
+
+    def test_section_freqs(self, shelley):
+        sections = list(shelley.chapters.texts())
+        freqs = sections[0].freqs()
+        assert isinstance(freqs, Counter)
+        assert len(freqs) > 0
+
+    def test_sections_lazy_init(self, shelley):
+        chaps = shelley.chapters
+        # texts() should trigger init automatically
+        sections = list(chaps.texts())
+        assert len(sections) > 0

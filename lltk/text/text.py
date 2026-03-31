@@ -1287,14 +1287,66 @@ with lltk.online: self.get_remote_sources()
 
 class TextSection(BaseText):
     _type='sections'
-    @property
-    def corpus(self): return self._section_corpus
+    PARA_TAG = 'p'
+    VERSE_TAG = 'l'
+
+    def __init__(self, id=None, _section_corpus=None, _source=None, **kwargs):
+        kwargs['_corpus'] = _source.corpus if _source else None
+        kwargs['_source'] = _source
+        kwargs['_section_corpus'] = _section_corpus
+        super().__init__(id=id, **kwargs)
+        # override corpus set by BaseText.__init__
+        self.corpus = _section_corpus
     @property
     def path_txt(self): return self.get_path_text('txt')
     @property
     def path_xml(self): return self.get_path_text('xml')
-    
-    
+
+    @property
+    def txt(self):
+        # try cached file first
+        if self.path_txt and os.path.exists(self.path_txt):
+            with open(self.path_txt) as f: return f.read()
+        return self.txt_from_xml()
+
+    def txt_from_xml(self):
+        xml = self.xml
+        if not xml: return ''
+        import bs4
+        dom = bs4.BeautifulSoup(xml, 'lxml')
+        source = self._source or self
+        bad_tags = getattr(source, 'BAD_TAGS', BAD_TAGS)
+        dom = remove_bad_tags(dom, bad_tags)
+
+        # try paragraphs
+        paras = []
+        for p in dom(self.PARA_TAG):
+            text = p.get_text().strip().replace('\n', ' ')
+            while '  ' in text: text = text.replace('  ', ' ')
+            if text: paras.append(text)
+
+        if not paras:
+            # try verse lines
+            for l in dom(self.VERSE_TAG):
+                text = l.get_text().strip()
+                if text: paras.append(text)
+
+        if not paras:
+            # last resort
+            text = dom.get_text(separator='\n').strip()
+            return clean_text(text)
+
+        return clean_text('\n\n'.join(paras))
+
+    def freqs(self, lower=True, modernize_spelling=None):
+        if not self._freqs:
+            txt = self.txt
+            if not txt: return Counter()
+            tokenizer = self.TOKENIZER.__func__
+            tokens = tokenizer(txt.lower() if lower else txt)
+            self._freqs = Counter(tokens)
+        return filter_freqs(self._freqs, modernize=modernize_spelling, lower=lower)
+
 
 def get_addr_from_d(d,keys=['_id','_addr','id']):
     for k in keys:
