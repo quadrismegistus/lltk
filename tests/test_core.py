@@ -101,6 +101,15 @@ class TestText:
         assert os.path.exists(austen.path_txt)
         assert austen.path_txt.endswith('.txt')
 
+    def test_text_author(self, austen):
+        assert austen.author == 'Jane Austen'
+
+    def test_text_au(self, austen):
+        assert austen.au == 'Austen'
+
+    def test_text_title(self, austen):
+        assert austen.title == 'Pride and Prejudice'
+
     def test_text_year(self, austen):
         assert austen.year == 1813
 

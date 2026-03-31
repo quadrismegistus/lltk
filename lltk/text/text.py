@@ -206,7 +206,6 @@ class BaseText(BaseObject):
         if not ish:
             res=meta.get(key,default)
         else:
-            # log(f'? {key} in {pf(meta)}')
             vals = []
             hvals = set()
             for k in meta:
@@ -220,7 +219,8 @@ class BaseText(BaseObject):
             if vals:
                 o=(vals if ish_all else vals[0])
                 res=o if o is not None else default
-        res = default
+            else:
+                res = default
         self._gcache[key]=res
         return res
         
