@@ -6,7 +6,7 @@ import os
 import sys
 import readline
 import glob
-from six.moves import input
+
 
 class tabCompleter(object):
     """

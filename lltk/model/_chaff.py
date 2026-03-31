@@ -1,6 +1,6 @@
 from __future__ import absolute_import
 from __future__ import print_function
-from six.moves import range
+
 def model_ranks_lm(self,fn=None):
     import pystats
     if not fn: fn='data.word2vec.consolidated.ranks.{0}.txt'.format(self.name)

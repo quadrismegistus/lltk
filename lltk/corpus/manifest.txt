@@ -537,3 +537,10 @@ url_metadata = https://www.dropbox.com/s/eh33qy6bcm7rvcp/txtlab_metadata.zip?dl=
 public = metadata,freqs,txt,raw
 license_type = Free
 
+[TestFixture]
+id = test_fixture
+name = TestFixture
+desc = Test fixture corpus for LLTK testing
+path_python = test_fixture/test_fixture.py
+class_name = TestFixture
+

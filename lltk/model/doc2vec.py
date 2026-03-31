@@ -3,8 +3,7 @@ from __future__ import print_function
 from lltk.model import Model
 from lltk import tools
 from gensim.models.doc2vec import LabeledSentence
-import six
-from six.moves import range
+
 class SentenceSampler(Model):
 	def __init__(self, fn, num_skips_wanted=True,min_words=50,min_words_in_sent=6,save_key=False, key_fn=None,save_word2vec=False):
 		self.fn=fn
@@ -199,7 +198,7 @@ class Doc2Vec(Word2Vec):
 				wordvecs=[self.gensim[w.lower()] for w in words if w in self.gensim]
 				words_included+=[w.lower() for w in words]
 				#wordvecs=words
-		elif type(words) in [str,six.text_type]:
+		elif type(words) is str:
 			if infer_vector:
 				wordvecs=[self.gensim.infer_vector(words)]
 			else:

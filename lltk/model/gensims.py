@@ -1,12 +1,10 @@
 from __future__ import absolute_import
 import gensim
 from lltk import tools
-import six
-from six.moves import range
-from six.moves import zip
+
 
 def load_model(model_or_path):
-	if type(model_or_path) in {str,six.text_type}:
+	if type(model_or_path) is str:
 		return gensim.models.KeyedVectors.load_word2vec_format(fnfn)
 	else:
 		return model

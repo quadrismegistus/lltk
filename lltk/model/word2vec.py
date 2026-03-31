@@ -1397,11 +1397,11 @@ def reject_binaries(model, A, binaries, return_vector=True):
 
 	r=model.syn0[A] if type(A)==int else model[A]
 	for B,C in binaries:
-		if type(B) in [str,six.text_type]:
+		if type(B) is str:
 			if not B in model: continue
 			print('>> B:',B)
 			B = model[B]
-		if type(C) in [str,six.text_type]:
+		if type(C) is str:
 			if not C in model: continue
 			print('>> C:',C)
 			C = model[C]

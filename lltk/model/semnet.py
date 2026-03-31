@@ -4,8 +4,7 @@ from lltk.model import Model,NullModel
 import networkx as nx
 import numpy as np
 from lltk import tools
-import six
-from six.moves import zip
+
 
 # Semantic Networks
 
@@ -97,7 +96,7 @@ class SemanticNetwork(Model):
 		## add attrs
 		for word in g.nodes():
 			for k,v in list(word2d.get(word,{}).items()):
-				if type(v) in [int,str,float,six.text_type]:
+				if type(v) in [int,str,float]:
 					g.node[word][k]=v
 			if 'pos' in g.node[word]:
 				g.node[word]['pos_simple']=g.node[word]['pos'][0]
