@@ -297,3 +297,129 @@ class TestPassages:
         p100 = list(austen.passages(n=100).texts())
         p50 = list(austen.passages(n=50).texts())
         assert len(p50) >= len(p100)
+
+
+class TestLoadMetadata:
+    """Tests for BaseCorpus.load_metadata() and corpus overrides."""
+
+    def test_load_metadata_returns_dataframe(self, corpus):
+        meta = corpus.load_metadata()
+        assert isinstance(meta, pd.DataFrame)
+
+    def test_load_metadata_has_rows(self, corpus):
+        meta = corpus.load_metadata()
+        assert len(meta) == 3
+
+    def test_load_metadata_has_expected_columns(self, corpus):
+        meta = corpus.load_metadata()
+        assert 'title' in meta.columns
+        assert 'author' in meta.columns
+        assert 'year' in meta.columns
+
+    def test_load_metadata_index_is_id(self, corpus):
+        meta = corpus.load_metadata()
+        assert meta.index.name == 'id'
+        assert 'austen_pride' in meta.index
+
+    def test_load_metadata_content(self, corpus):
+        meta = corpus.load_metadata()
+        assert meta.loc['austen_pride', 'author'] == 'Jane Austen'
+
+    def test_load_metadata_no_clean(self, corpus):
+        meta = corpus.load_metadata(clean=False)
+        assert isinstance(meta, pd.DataFrame)
+        assert len(meta) == 3
+
+
+class TestBookHistory:
+    """Tests for ESTC book_history parsing functions."""
+
+    def test_standardize_format_octavo(self):
+        from lltk.corpus.estc.book_history import standardize_format
+        result = standardize_format('8⁰')
+        assert result['format_std'] == '8⁰'
+
+    def test_standardize_format_folio(self):
+        from lltk.corpus.estc.book_history import standardize_format
+        result = standardize_format('folio')
+        assert result['format_std'] == '2⁰'
+
+    def test_standardize_format_word_quarto(self):
+        from lltk.corpus.estc.book_history import standardize_format
+        result = standardize_format('4to')
+        assert result['format_std'] == '4⁰'
+
+    def test_standardize_format_with_cm(self):
+        from lltk.corpus.estc.book_history import standardize_format
+        result = standardize_format('34 x 21 cm')
+        assert result['format_cm'] == '34 cm'
+        assert result['format_std'] is not None
+
+    def test_standardize_format_modifier(self):
+        from lltk.corpus.estc.book_history import standardize_format
+        result = standardize_format('obl. 8⁰')
+        assert result['format_std'] == '8⁰'
+        assert 'obl' in result['format_modifier']
+
+    def test_standardize_format_none(self):
+        from lltk.corpus.estc.book_history import standardize_format
+        result = standardize_format(None)
+        assert result['format_std'] is None
+
+    def test_standardize_format_nan(self):
+        from lltk.corpus.estc.book_history import standardize_format
+        result = standardize_format(float('nan'))
+        assert result['format_std'] is None
+
+    def test_parse_extent_pages(self):
+        from lltk.corpus.estc.book_history import parse_extent
+        result = parse_extent('xi, [1], 216 p.')
+        assert result['num_pages'] == 228
+        assert result['extent_type'] == 'pages'
+
+    def test_parse_extent_simple(self):
+        from lltk.corpus.estc.book_history import parse_extent
+        result = parse_extent('8p.')
+        assert result['num_pages'] == 8
+
+    def test_parse_extent_volumes(self):
+        from lltk.corpus.estc.book_history import parse_extent
+        result = parse_extent('2v.')
+        assert result['num_volumes'] == 2
+        assert result['extent_type'] == 'volumes'
+
+    def test_parse_extent_sheet(self):
+        from lltk.corpus.estc.book_history import parse_extent
+        result = parse_extent('1 sheet ([1] p.)')
+        assert result['num_pages'] == 1
+        assert result['extent_type'] == 'sheet'
+
+    def test_parse_extent_plates(self):
+        from lltk.corpus.estc.book_history import parse_extent
+        result = parse_extent('216 p., plates')
+        assert result['has_plates'] is True
+
+    def test_parse_extent_none(self):
+        from lltk.corpus.estc.book_history import parse_extent
+        result = parse_extent(None)
+        assert result['num_pages'] is None
+
+    def test_is_fiction_true(self):
+        from lltk.corpus.estc.book_history import is_fiction
+        assert is_fiction('Fiction', '') is True
+        assert is_fiction('Novels', '') is True
+        assert is_fiction('', 'English fiction') is True
+
+    def test_is_fiction_false(self):
+        from lltk.corpus.estc.book_history import is_fiction
+        assert is_fiction('Sermons', '') is False
+        assert is_fiction('', 'English poetry') is False
+        assert is_fiction('', '') is False
+
+    def test_is_fiction_none(self):
+        from lltk.corpus.estc.book_history import is_fiction
+        assert is_fiction(None, None) is False
+
+    def test_is_fiction_pipe_separated(self):
+        from lltk.corpus.estc.book_history import is_fiction
+        assert is_fiction('Poems | Fiction', '') is True

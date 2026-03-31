@@ -163,6 +163,42 @@ class ESTC(BaseCorpus):
 	PATHS_REL_DATA = ['estc/_data_rels_estc/data.rel.reprintOf.exact-matches.ESTC.txt','estc/_data_rels_estc/data.rel.reprintOf.fuzzy-matches.ESTC.txt'] # ,'estc/_data_rels_estc/data.rel.reprintOf.ecco-text-matches.ESTC.txt'
 
 
+	def load_metadata(self):
+		from lltk.corpus.estc.book_history import standardize_format, parse_extent, is_fiction
+		import numpy as np
+
+		meta = super().load_metadata()
+		if not len(meta):
+			return meta
+
+		# Standardize book format from book_dimensions
+		if 'book_dimensions' in meta.columns:
+			fmt_dicts = meta['book_dimensions'].apply(standardize_format)
+			meta['format_std'] = fmt_dicts.apply(lambda x: x['format_std'])
+			meta['format_modifier'] = fmt_dicts.apply(lambda x: x['format_modifier'])
+			meta['format_note'] = fmt_dicts.apply(lambda x: x['format_note'])
+			meta['format_secondary'] = fmt_dicts.apply(lambda x: x['format_secondary'])
+			meta['format_cm'] = fmt_dicts.apply(lambda x: x['format_cm'])
+
+		# Parse extent from book_extent
+		if 'book_extent' in meta.columns:
+			ext_dicts = meta['book_extent'].apply(parse_extent)
+			meta['num_pages'] = ext_dicts.apply(lambda x: x['num_pages'])
+			meta['num_volumes'] = ext_dicts.apply(lambda x: x['num_volumes'])
+			meta['has_plates'] = ext_dicts.apply(lambda x: x['has_plates'])
+			meta['extent_type'] = ext_dicts.apply(lambda x: x['extent_type'])
+
+		# Classify fiction
+		meta['is_fiction'] = meta.apply(
+			lambda r: is_fiction(
+				r.get('form', ''),
+				r.get('subject_topic', '')
+			), axis=1
+		)
+
+		return meta
+
+
 	def save_metadata(self):
 		print('>> generating metadata...')
 		texts = self.texts()
