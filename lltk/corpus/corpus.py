@@ -59,6 +59,8 @@ class BaseCorpus(TextList):
         self._mfwd={}
         self._init=set()
         self._source=None
+        self._authors=None
+        self._gdb=None
         self.name=_name
 
         if log>1: log(f'{self.__class__.__name__}({get_imsg(id,**attrs)})')
@@ -91,8 +93,7 @@ class BaseCorpus(TextList):
     
     def __getattr__(self, name):
         if name.startswith('path_'): return self.get_path(name)
-        res = getattribute(self,name)
-        return res
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
     
     def __len__(self): return self.num_texts
     def __getitem__(self, id): return self.text(id)
@@ -120,8 +121,13 @@ class BaseCorpus(TextList):
 
 
     def get_path(self,name):
-        path = getattribute(self, name)
-        if path is None: path = getattribute(self, '_'+name)
+        if name.startswith('path_'): name_priv = '_'+name
+        else: name_priv = '_path_'+name
+        path = self.__dict__.get(name, self.__dict__.get(name_priv))
+        if path is None:
+            path = getattr(type(self), name, None)
+        if path is None:
+            path = getattr(type(self), name_priv, None)
         if path is not None and not os.path.isabs(path):
             if '~' in path:
                 path=path.split('~')[-1]
@@ -133,7 +139,7 @@ class BaseCorpus(TextList):
     
     @property
     def path(self):
-        res=getattribute(self,'_path')
+        res=getattr(self,'_path',None)
         if res is None: res=os.path.join(PATH_CORPUS,self.id)
         return os.path.expanduser(res)
     
@@ -1089,14 +1095,50 @@ class BaseCorpus(TextList):
 
     @property
     def path_mfw(self):
-        path_mfw=os.path.join(self.path_data,'mfw')
-        #if not os.path.exists(path_mfw): os.makedirs(path_mfw)
-        return path_mfw
+        return os.path.join(self.path_data,'mfw')
     @property
     def path_dtm(self):
-        path_dtm=os.path.join(self.path_data,'dtm')
-        #if not os.path.exists(path_dtm): os.makedirs(path_dtm)
-        return path_dtm
+        return os.path.join(self.path_data,'dtm')
+
+    def mfw(self, n=10000, texts=None, force=False):
+        cache_key = f'mfw_n{n}'
+        if not force and cache_key in self._mfwd:
+            return self._mfwd[cache_key]
+
+        total = Counter()
+        text_iter = texts if texts is not None else self.texts()
+        for t in get_tqdm(text_iter, desc=f'[{self.name}] Computing MFW'):
+            freqs = t.freqs()
+            if freqs:
+                total.update(freqs)
+
+        result = [w for w, c in total.most_common(n)]
+        self._mfwd[cache_key] = result
+        return result
+
+    def dtm(self, words=None, n=10000, texts=None, tf=False, tfidf=False, force=False):
+        if words is None:
+            words = self.mfw(n=n, texts=texts, force=force)
+
+        rows = {}
+        text_iter = texts if texts is not None else self.texts()
+        for t in get_tqdm(text_iter, desc=f'[{self.name}] Building DTM'):
+            freqs = t.freqs()
+            if freqs:
+                rows[t.id] = {w: freqs.get(w, 0) for w in words}
+
+        dtm = pd.DataFrame.from_dict(rows, orient='index', columns=words).fillna(0)
+
+        if tf:
+            row_sums = dtm.sum(axis=1)
+            dtm = dtm.div(row_sums, axis=0).fillna(0)
+        if tfidf:
+            from sklearn.feature_extraction.text import TfidfTransformer
+            transformer = TfidfTransformer()
+            tfidf_matrix = transformer.fit_transform(dtm)
+            dtm = pd.DataFrame(tfidf_matrix.toarray(), index=dtm.index, columns=dtm.columns)
+
+        return dtm
     @property
     def path_home(self):
         return os.path.join(PATH_CORPUS,self.id)

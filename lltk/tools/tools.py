@@ -630,11 +630,6 @@ def unescape_linebreaks(txt,sep='↵'):
     return txt.replace(sep,'\n').strip()
 
 
-def getattribute(obj,name):
-    try:
-        return obj.__getattribute__(name)
-    except AttributeError:
-        return None
 
 def snake2camel(x,sep='_'):
     return ''.join(
@@ -2159,15 +2154,17 @@ def print_config(corpus):
 
 
 def do_configs(rootdir):
-    import imp,os
+    import importlib.util,os
     done=set()
     for fldr in sorted(os.listdir(rootdir)):
         path=os.path.join(rootdir,fldr)
         if not os.path.isdir(path): continue
         for fn in sorted(os.listdir(path)):
             if fn.endswith('.py') and not fn.startswith('_'):
-
-                mod = imp.load_source(fn.replace('.py',''),os.path.join(path,fn))
+                modname = fn.replace('.py','')
+                spec = importlib.util.spec_from_file_location(modname, os.path.join(path,fn))
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
 
                 for obj in dir(mod):
                     if obj[0]==obj[0].upper() and not obj in ['Text','Corpus'] and not obj.startswith('Text'):

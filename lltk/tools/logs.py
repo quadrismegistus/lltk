@@ -106,10 +106,7 @@ class Logger():
                 # rmfn(self.fn)
 
     def __getattr__(self,name):
-        from lltk.tools.tools import getattribute
-        res = getattribute(self,name)
-        if res is None: res = getattribute(logger,name)
-        return res
+        return getattr(logger,name)
 
     def hidden(self,verbose=0):
         return log_hidden(verbose=verbose,log=self)

@@ -47,8 +47,15 @@ class BaseText(BaseObject):
         self._db=None
         self._init=set()
         self._cacheworthy=False
-        if _txt: self._txt=_txt
-        if _xml: self._xml=_xml
+        self._txt=_txt
+        self._xml=_xml
+        self._node=None
+        self._dom=None
+        self._freqs=None
+        self._minhash=None
+        self._characters=None
+        self._booknlp=None
+        self._txt_offsets=None
         self._source=_source
         self._sources={x for x in _sources} if _sources else set()
         if id is None:
@@ -161,9 +168,7 @@ class BaseText(BaseObject):
 
     @property
     def rels(self):
-        o=getattribute(self,'_rels')
-        if o: return o
-        return {}
+        return self._rels if self._rels else {}
 
     ####################################################################
     # GETTING ATTRIBUTES
@@ -174,13 +179,10 @@ class BaseText(BaseObject):
     def __getattr__(self, name):
         if name.startswith('path_'): return self.get_path(name)
 
-        res = getattribute(self, name)
-        if res is not None: return res
-
         res = self.get(name)
         if res is not None: return res
-        
-        return None
+
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
         
     def __setitem__(self, key, value): return self.update({key:value})
@@ -282,10 +284,10 @@ class BaseText(BaseObject):
         if not t.corpus: return ''
         partattr='path_'+part
         extattr='ext_'+part
-        res=getattr(t.corpus, partattr)
+        res=getattr(t.corpus, partattr, None)
         if res:
             o=os.path.join(res,t.id)
-            resext=getattr(t.corpus, extattr)
+            resext=getattr(t.corpus, extattr, None)
             if resext: o+=resext
             return o
 
@@ -1314,7 +1316,7 @@ def Text(
         _add=True,
         _init=False,
         _cache=False,
-        _use_db=USE_DB,
+        _use_db=True,
         # _col_id=COL_ID,
         **_params_or_meta):
     global TEXT_CACHE
