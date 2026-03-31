@@ -546,3 +546,44 @@ class TestNormalizeEstcId:
     def test_nan(self):
         from lltk.corpus.eebo_tcp.eebo_tcp import _normalize_estc_id
         assert _normalize_estc_id(float('nan')) == ''
+
+
+class TestFindDuplicates:
+    """Tests for within-corpus duplicate detection."""
+
+    @pytest.fixture
+    def base_texts(self, corpus):
+        return [t for t in corpus.texts() if t.id in {'blake_songs', 'austen_pride', 'shelley_frank'}]
+
+    def test_find_duplicates_returns_dataframe(self, corpus, base_texts):
+        result = corpus.find_duplicates(n=100, threshold=0.5, texts=base_texts)
+        assert isinstance(result, pd.DataFrame)
+        assert set(result.columns) == {'id_1', 'id_2', 'similarity'}
+
+    def test_find_duplicates_similarity_range(self, corpus, base_texts):
+        result = corpus.find_duplicates(n=100, threshold=0.0, texts=base_texts)
+        if len(result):
+            assert (result['similarity'] >= 0).all()
+            assert (result['similarity'] <= 1).all()
+
+    def test_find_duplicates_no_self_matches(self, corpus, base_texts):
+        result = corpus.find_duplicates(n=100, threshold=0.0, texts=base_texts)
+        if len(result):
+            assert (result['id_1'] != result['id_2']).all()
+
+    def test_find_duplicates_sorted_descending(self, corpus, base_texts):
+        result = corpus.find_duplicates(n=100, threshold=0.0, texts=base_texts)
+        if len(result) > 1:
+            sims = result['similarity'].tolist()
+            assert sims == sorted(sims, reverse=True)
+
+    def test_find_duplicates_high_threshold_fewer_results(self, corpus, base_texts):
+        low = corpus.find_duplicates(n=100, threshold=0.3, texts=base_texts)
+        high = corpus.find_duplicates(n=100, threshold=0.9, texts=base_texts)
+        assert len(high) <= len(low)
+
+    def test_find_duplicates_no_duplicate_pairs(self, corpus, base_texts):
+        result = corpus.find_duplicates(n=100, threshold=0.0, texts=base_texts)
+        if len(result):
+            pairs = set(zip(result['id_1'], result['id_2']))
+            assert len(pairs) == len(result)

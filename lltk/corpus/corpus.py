@@ -1213,6 +1213,50 @@ class BaseCorpus(TextList):
             dtm = pd.DataFrame(tfidf_matrix.toarray(), index=dtm.index, columns=dtm.columns)
 
         return dtm
+
+    def find_duplicates(self, n=5000, threshold=0.8, k=10, texts=None, tfidf=True):
+        """
+        Find near-duplicate texts within this corpus using cosine similarity
+        on TF-IDF word frequency vectors.
+
+        Returns a DataFrame of matched pairs sorted by similarity:
+            id_1, id_2, similarity
+        """
+        from sklearn.neighbors import NearestNeighbors
+        from scipy.sparse import csr_matrix
+
+        dtm = self.dtm(n=n, texts=texts, tfidf=tfidf)
+        if dtm is None or not len(dtm):
+            return pd.DataFrame(columns=['id_1', 'id_2', 'similarity'])
+
+        # Use sparse matrix for memory efficiency
+        sparse_dtm = csr_matrix(dtm.values)
+        ids = list(dtm.index)
+
+        # k+1 because each text is its own nearest neighbor
+        nn = NearestNeighbors(n_neighbors=min(k + 1, len(ids)), metric='cosine', algorithm='brute')
+        nn.fit(sparse_dtm)
+        distances, indices = nn.kneighbors(sparse_dtm)
+
+        # Build results: cosine distance → similarity
+        rows = []
+        seen = set()
+        for i in range(len(ids)):
+            for j_idx in range(1, distances.shape[1]):  # skip self (index 0)
+                j = indices[i, j_idx]
+                sim = 1.0 - distances[i, j_idx]
+                if sim < threshold:
+                    continue
+                pair = (min(ids[i], ids[j]), max(ids[i], ids[j]))
+                if pair not in seen:
+                    seen.add(pair)
+                    rows.append({'id_1': pair[0], 'id_2': pair[1], 'similarity': round(sim, 4)})
+
+        result = pd.DataFrame(rows)
+        if len(result):
+            result = result.sort_values('similarity', ascending=False).reset_index(drop=True)
+        return result
+
     @property
     def path_home(self):
         return os.path.join(PATH_CORPUS,self.id)
