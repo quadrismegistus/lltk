@@ -619,6 +619,7 @@ class TestBLBooks:
 
     def test_blbooks_join_authors(self):
         from lltk.corpus.blbooks.blbooks import _join_authors
-        assert _join_authors('Dickens, Charles', '') == 'Dickens, Charles'
-        assert _join_authors('', 'Publisher Co.') == 'Publisher Co.'
-        assert _join_authors('', '') == ''
+        assert _join_authors('Dickens, Charles', '', '') == 'Dickens, Charles'
+        assert _join_authors('', 'Dickens', '') == 'Dickens'
+        assert _join_authors('', '', 'Publisher Co.') == 'Publisher Co.'
+        assert _join_authors('', '', '') == ''

@@ -46,22 +46,24 @@ class BLBooks(BaseCorpus):
             if not records[rid]['meta']:
                 records[rid]['meta'] = {
                     'record_id': rid,
-                    'title': row.get('Title', ''),
+                    'title': row.get('title', ''),
                     'author': _join_authors(
-                        row.get('All_names', ''),
+                        row.get('all names', ''),
+                        row.get('name', ''),
                         row.get('Publisher', ''),
                     ),
-                    'year': _parse_year(row.get('Date of publication', '')),
-                    'date_raw': str(row.get('Date of publication', '')),
+                    'year': _parse_year(row.get('date', '')),
+                    'date_raw': str(row.get('raw_date', '')),
                     'publisher': row.get('Publisher', ''),
-                    'place': row.get('Place of publication', ''),
+                    'place': row.get('place', ''),
                     'language': row.get('Language_1', ''),
-                    'all_names': row.get('All_names', ''),
+                    'name': row.get('name', ''),
+                    'all_names': row.get('all names', ''),
+                    'country': row.get('Country of publication 1', ''),
                     'blrecord_id': rid,
                     'physical_description': row.get('Physical description', ''),
-                    'edition': row.get('Edition', ''),
-                    'issuance_type': row.get('Type of issuance', ''),
-                    'shelfmarks': row.get('Shelfmarks', ''),
+                    'mean_wc_ocr': row.get('mean_wc_ocr', ''),
+                    'std_wc_ocr': row.get('std_wc_ocr', ''),
                 }
 
         # Write txt files and collect metadata
@@ -112,10 +114,12 @@ def _parse_year(date_str):
     return int(m.group(1)) if m else ''
 
 
-def _join_authors(all_names, publisher):
-    """Extract author from All_names, falling back to publisher."""
+def _join_authors(all_names, name, publisher):
+    """Extract author from all names, falling back to name then publisher."""
     if all_names and str(all_names).strip():
         return str(all_names).strip()
+    if name and str(name).strip():
+        return str(name).strip()
     if publisher and str(publisher).strip():
         return str(publisher).strip()
     return ''
