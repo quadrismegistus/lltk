@@ -410,13 +410,6 @@ where = get
 find = search
 G = LLTK
 look = hunt = walk
-cdb=db=CDB
-try:
-	CDB()
-except:
-	pass
-# cdb = db = CDB()
-# cdb = lambda: CDB()
 T=Text
 C=Corpus
 # log.info('--' * 25)

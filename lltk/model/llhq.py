@@ -60,7 +60,6 @@ class BaseLLTK(TextList):
             text_iter = self.data_all
             if self.data_all:
                 _progress = False
-        if not text_iter: text_iter = self.mdb.get()
         if log: log('done')
 
         if _progress: text_iter = get_tqdm(text_iter,desc='[LLTK] Iterating over all texts')
@@ -78,8 +77,7 @@ class BaseLLTK(TextList):
     def get_iter(self,au=None,ti=None,**kwargs):
         if au: kwargs['author']=au
         if ti: kwargs['title']=ti
-        res = self.mdb.where(**kwargs)
-        yield from self.iter_texts(res,**kwargs)
+        yield from self.iter_texts(**kwargs)
     
     find = get_iter
     
@@ -98,14 +96,27 @@ class BaseLLTK(TextList):
         if log: log(f'<- {meta}')
         if len(meta)==1 and 'corpus' in meta: return Corpus(meta['corpus'])
 
-        future_id_ld,extra_conds=self.cdb.search(**meta)
-        # if log: log(f'got future: {future_id_ld}')
-        tl=TextList(future_id_ld,extra_conds=extra_conds)
+        # search across all corpora locally
+        results = []
+        for c in INIT_DB_WITH_CORPORA:
+            try:
+                corpus = Corpus(c)
+                df = corpus.meta
+                if df is None or not len(df): continue
+                mask = pd.Series(True, index=df.index)
+                for k, v in meta.items():
+                    if k in df.columns:
+                        mask &= df[k].astype(str).str.contains(str(v), case=False, na=False)
+                for _, row in df[mask].iterrows():
+                    results.append(row.to_dict())
+            except Exception as e:
+                if log: log.error(e)
+        tl = TextList(results)
         if log: log(f'-> finished in {round(time.time()-now,2)}s')
         return tl
-        
+
     def get(self,**kwargs):
-        return self.search(_keys_like=set(),**kwargs)
+        return self.search(**kwargs)
 
 
     def sync(self,corpus_list=INIT_DB_WITH_CORPORA,not_corpora=NOT_CORPORA,progress=True):

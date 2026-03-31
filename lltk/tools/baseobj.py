@@ -96,28 +96,3 @@ class BaseObject(object):
         # if log: log(f'-> {db} of {db.path}')
         return db
 
-    # def db(self,**kwargs):
-    #     from lltk.model.orm import CDB
-    #     return CDB(**kwargs)
-
-    @property
-    def cdb(self):
-        if self._cdb is None:
-            from lltk.model.orm import CDB
-            self._cdb = CDB()
-        return self._cdb
-    mdb = cdb
-
-
-    @property
-    def doctype(self):
-        from lltk.model.orm import TextDoc
-        return TextDoc
-    @property
-    def doctype_rels(self):
-        from lltk.model.orm import TextRels
-        return TextRels
-    @property
-    def doctype_minhash(self):
-        from lltk.model.orm import MinHashDoc
-        return MinHashDoc

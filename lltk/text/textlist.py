@@ -2,8 +2,6 @@ from lltk.imports import *
 from .utils import *
 from .text import *
 
-from cassandra.cluster import ResponseFuture
-
 class TextList(BaseObject, UserList):
     def __init__(self, l_or_promise_of_l=[], progress=False, unique=True,extra_conds={}):
         self.unique = unique
@@ -15,11 +13,6 @@ class TextList(BaseObject, UserList):
 
         if is_iterable(self._l):
             self._data_all = [x for x in self._l]
-        elif isinstance(self._l, ResponseFuture):
-            future = self._l
-            # if log: log(f'I am a future: {future}. Adding callbacks...')
-            def callback(*x,**y): self.data_all # init
-            future.add_callback(callback)
 
     
     @property
