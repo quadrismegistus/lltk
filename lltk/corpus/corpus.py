@@ -1278,6 +1278,110 @@ class SectionCorpus(BaseCorpus):
         return self._txt
 
 
+class ParagraphSectionCorpus(SectionCorpus):
+    SECTION_PREFIX = 'P'
+
+    def parse_sections(self, force=False, **kwargs):
+        source = self.source
+        if source is None: return
+
+        # try XML paragraphs first
+        xml = source.xml
+        if xml:
+            import bs4
+            dom = bs4.BeautifulSoup(xml, 'lxml')
+            paras = dom('p')
+            if paras:
+                for i, p in enumerate(paras):
+                    text = p.get_text().strip().replace('\n', ' ')
+                    while '  ' in text: text = text.replace('  ', ' ')
+                    if not text: continue
+                    section_id = f'{self.SECTION_PREFIX}{i+1:04}'
+                    words = text.split()
+                    self.init_text(
+                        id=section_id,
+                        _txt=text,
+                        word_start=0,
+                        word_end=len(words),
+                        num_words=len(words),
+                    )
+                if self._textd: self._init = True
+                return
+
+        # fall back to \n\n splitting on plain text
+        txt = source.txt
+        if not txt: return
+        blocks = [b.strip() for b in txt.split('\n\n') if b.strip()]
+        for i, block in enumerate(blocks):
+            section_id = f'{self.SECTION_PREFIX}{i+1:04}'
+            words = block.split()
+            self.init_text(
+                id=section_id,
+                _txt=block,
+                word_start=0,
+                word_end=len(words),
+                num_words=len(words),
+            )
+        if self._textd: self._init = True
+
+
+class PassageSectionCorpus(SectionCorpus):
+    SECTION_PREFIX = 'W'
+
+    def __init__(self, n=500, **kwargs):
+        self._passage_n = n
+        super().__init__(**kwargs)
+
+    def parse_sections(self, force=False, **kwargs):
+        source = self.source
+        if source is None: return
+        txt = source.txt
+        if not txt: return
+        n = self._passage_n
+
+        import nltk
+        sents = nltk.sent_tokenize(txt)
+
+        chunk_sents = []
+        chunk_word_count = 0
+        word_offset = 0
+        tokenizer = source.TOKENIZER.__func__
+
+        for sent in sents:
+            sent_words = tokenizer(sent)
+            sent_n = len(sent_words)
+            chunk_sents.append(sent)
+            chunk_word_count += sent_n
+
+            if chunk_word_count >= n:
+                chunk_txt = ' '.join(chunk_sents)
+                section_id = f'{self.SECTION_PREFIX}{word_offset:05}_{word_offset + chunk_word_count:05}'
+                self.init_text(
+                    id=section_id,
+                    _txt=chunk_txt,
+                    word_start=word_offset,
+                    word_end=word_offset + chunk_word_count,
+                    num_words=chunk_word_count,
+                )
+                word_offset += chunk_word_count
+                chunk_sents = []
+                chunk_word_count = 0
+
+        # emit final chunk
+        if chunk_sents:
+            chunk_txt = ' '.join(chunk_sents)
+            section_id = f'{self.SECTION_PREFIX}{word_offset:05}_{word_offset + chunk_word_count:05}'
+            self.init_text(
+                id=section_id,
+                _txt=chunk_txt,
+                word_start=word_offset,
+                word_end=word_offset + chunk_word_count,
+                num_words=chunk_word_count,
+            )
+
+        if self._textd: self._init = True
+
+
 CORPUS_CACHE={}
 
 def Corpus(corpus=None,force=False,init=False,clear=False,**kwargs):

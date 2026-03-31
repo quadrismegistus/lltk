@@ -228,3 +228,72 @@ class TestSections:
         # texts() should trigger init automatically
         sections = list(chaps.texts())
         assert len(sections) > 0
+
+
+class TestParagraphs:
+    @pytest.fixture
+    def austen(self, corpus):
+        for t in corpus.texts():
+            if t.id == 'austen_pride':
+                return t
+
+    def test_paragraphs_count(self, austen):
+        paras = list(austen.paragraphs.texts())
+        assert len(paras) == 3
+
+    def test_paragraph_has_text(self, austen):
+        paras = list(austen.paragraphs.texts())
+        for p in paras:
+            assert len(p.txt) > 0
+
+    def test_paragraph_ids_sequential(self, austen):
+        paras = list(austen.paragraphs.texts())
+        ids = [p.id for p in paras]
+        assert ids == ['P0001', 'P0002', 'P0003']
+
+    def test_paragraph_freqs(self, austen):
+        paras = list(austen.paragraphs.texts())
+        freqs = paras[0].freqs()
+        assert isinstance(freqs, Counter)
+        assert len(freqs) > 0
+
+
+class TestPassages:
+    @pytest.fixture
+    def austen(self, corpus):
+        for t in corpus.texts():
+            if t.id == 'austen_pride':
+                return t
+
+    def test_passages_returns_sections(self, austen):
+        passages = list(austen.passages(n=50).texts())
+        assert len(passages) > 0
+
+    def test_passages_at_least_n_words(self, austen):
+        n = 50
+        passages = list(austen.passages(n=n).texts())
+        # all except possibly the last should have >= n words
+        for p in passages[:-1]:
+            assert p.get('num_words') >= n
+
+    def test_passages_word_offset_ids(self, austen):
+        passages = list(austen.passages(n=50).texts())
+        for p in passages:
+            assert p.id.startswith('W')
+            assert '_' in p.id
+
+    def test_passages_cover_full_text(self, austen):
+        passages = list(austen.passages(n=50).texts())
+        total = sum(p.get('num_words', 0) for p in passages)
+        assert total > 0
+
+    def test_passages_freqs(self, austen):
+        passages = list(austen.passages(n=50).texts())
+        freqs = passages[0].freqs()
+        assert isinstance(freqs, Counter)
+        assert len(freqs) > 0
+
+    def test_passages_different_n(self, austen):
+        p100 = list(austen.passages(n=100).texts())
+        p50 = list(austen.passages(n=50).texts())
+        assert len(p50) >= len(p100)

@@ -1221,18 +1221,34 @@ with lltk.online: self.get_remote_sources()
     
 
 
-    # @property
     @property
     def letters(self): return self.sections(_id='letters')
     @property
     def chapters(self): return self.sections(_id='chapters')
 
+    @property
+    def paragraphs(self):
+        from lltk.corpus.corpus import ParagraphSectionCorpus
+        return self.sections(_id='paragraphs', section_corpus_class=ParagraphSectionCorpus)
+
+    def passages(self, n=500, force=False):
+        from lltk.corpus.corpus import PassageSectionCorpus
+        key = f'passages_n{n}'
+        if force or key not in self._sections:
+            self._sections[key] = PassageSectionCorpus(
+                n=n,
+                id=key,
+                _source=self,
+                _id_allows='_/',
+                _id=key
+            )
+        return self._sections[key]
+
     def sections(self,_id=None,section_class=None,section_corpus_class=None,force=False):
         if _id is None: _id=self.SECTION_DIR_NAME
         if force or _id not in self._sections:
-            SectionCorpusClass = self.get_section_corpus_class(section_corpus_class)
-            self._sections[_id]=SectionCorpusClass(
-                # id=os.path.join(self.id, _id),
+            SCC = section_corpus_class or self.get_section_corpus_class()
+            self._sections[_id]=SCC(
                 id=_id,
                 _source=self,
                 _id_allows='_/',
@@ -1304,9 +1320,12 @@ class TextSection(BaseText):
 
     @property
     def txt(self):
-        # try cached file first
+        # try in-memory text first
+        if self._txt: return self._txt
+        # try cached file
         if self.path_txt and os.path.exists(self.path_txt):
             with open(self.path_txt) as f: return f.read()
+        # try extracting from XML
         return self.txt_from_xml()
 
     def txt_from_xml(self):
