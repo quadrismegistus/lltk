@@ -423,3 +423,126 @@ class TestBookHistory:
     def test_is_fiction_pipe_separated(self):
         from lltk.corpus.estc.book_history import is_fiction
         assert is_fiction('Poems | Fiction', '') is True
+
+
+class TestLinkedMetadata:
+    """Tests for cross-corpus metadata linking."""
+
+    @pytest.fixture(scope='class')
+    def linked_corpus(self):
+        import lltk
+        c = lltk.load('test_fixture_linked')
+        assert c is not None
+        return c
+
+    def test_linked_corpus_loads(self, linked_corpus):
+        meta = linked_corpus.load_metadata()
+        assert isinstance(meta, pd.DataFrame)
+        assert len(meta) == 3
+
+    def test_linked_metadata_has_prefixed_columns(self, linked_corpus):
+        meta = linked_corpus.load_metadata()
+        # Should have test_fixture_ prefixed columns from the linked corpus
+        prefixed = [c for c in meta.columns if c.startswith('test_fixture_')]
+        assert len(prefixed) > 0
+        assert 'test_fixture_author' in meta.columns
+        assert 'test_fixture_title' in meta.columns
+
+    def test_linked_metadata_values(self, linked_corpus):
+        meta = linked_corpus.load_metadata()
+        austen_row = meta.loc['edition_austen']
+        assert austen_row['test_fixture_author'] == 'Jane Austen'
+        assert austen_row['test_fixture_title'] == 'Pride and Prejudice'
+
+    def test_linked_metadata_preserves_own_columns(self, linked_corpus):
+        meta = linked_corpus.load_metadata()
+        assert 'format' in meta.columns
+        assert 'pages' in meta.columns
+        austen_row = meta.loc['edition_austen']
+        assert austen_row['format'] == 'octavo'
+
+    def test_linked_meta_via_corpus_meta(self, linked_corpus):
+        # C.meta should also have linked columns since it uses load_metadata()
+        meta = linked_corpus.meta
+        assert 'test_fixture_author' in meta.columns
+
+    def test_no_links_returns_unchanged(self, corpus):
+        # test_fixture has LINKS but the linked corpus has no matching column issue
+        # Just verify load_metadata still works
+        meta = corpus.load_metadata()
+        assert isinstance(meta, pd.DataFrame)
+        assert len(meta) == 3
+
+
+class TestLinkedTexts:
+    """Tests for text.linked() traversal."""
+
+    @pytest.fixture(scope='class')
+    def linked_corpus(self):
+        import lltk
+        return lltk.load('test_fixture_linked')
+
+    def test_linked_one_to_one(self, linked_corpus):
+        # edition_austen links to austen_pride in test_fixture
+        t = linked_corpus.text('edition_austen')
+        linked = t.linked('test_fixture')
+        assert len(linked) == 1
+        assert linked[0].id == 'austen_pride'
+
+    def test_linked_returns_text_objects(self, linked_corpus):
+        t = linked_corpus.text('edition_austen')
+        linked = t.linked('test_fixture')
+        assert hasattr(linked[0], 'txt')
+        assert hasattr(linked[0], 'author')
+
+    def test_linked_reverse_one_to_many(self, corpus):
+        # shelley_frank should link to 2 editions in test_fixture_linked
+        t = corpus.text('shelley_frank')
+        linked = t.linked('test_fixture_linked')
+        assert len(linked) == 2
+        ids = {lt.id for lt in linked}
+        assert ids == {'edition_shelley_1', 'edition_shelley_2'}
+
+    def test_linked_reverse_one_to_one(self, corpus):
+        t = corpus.text('austen_pride')
+        linked = t.linked('test_fixture_linked')
+        assert len(linked) == 1
+        assert linked[0].id == 'edition_austen'
+
+    def test_linked_no_match(self, corpus):
+        t = corpus.text('blake_songs')
+        linked = t.linked('test_fixture_linked')
+        assert len(linked) == 0
+
+    def test_linked_invalid_corpus(self, corpus):
+        t = corpus.text('austen_pride')
+        linked = t.linked('nonexistent_corpus')
+        assert linked == []
+
+
+class TestNormalizeEstcId:
+    """Tests for EEBO ESTC ID normalization."""
+
+    def test_strip_prefix(self):
+        from lltk.corpus.eebo_tcp.eebo_tcp import _normalize_estc_id
+        assert _normalize_estc_id('ESTC S115782') == 'S115782'
+
+    def test_zero_pad(self):
+        from lltk.corpus.eebo_tcp.eebo_tcp import _normalize_estc_id
+        assert _normalize_estc_id('ESTC S2616') == 'S002616'
+
+    def test_already_padded(self):
+        from lltk.corpus.eebo_tcp.eebo_tcp import _normalize_estc_id
+        assert _normalize_estc_id('ESTC S115782') == 'S115782'
+
+    def test_no_prefix(self):
+        from lltk.corpus.eebo_tcp.eebo_tcp import _normalize_estc_id
+        assert _normalize_estc_id('T089174') == 'T089174'
+
+    def test_empty(self):
+        from lltk.corpus.eebo_tcp.eebo_tcp import _normalize_estc_id
+        assert _normalize_estc_id('') == ''
+
+    def test_nan(self):
+        from lltk.corpus.eebo_tcp.eebo_tcp import _normalize_estc_id
+        assert _normalize_estc_id(float('nan')) == ''

@@ -544,3 +544,10 @@ desc = Test fixture corpus for LLTK testing
 path_python = test_fixture/test_fixture.py
 class_name = TestFixture
 
+[TestFixtureLinked]
+id = test_fixture_linked
+name = TestFixtureLinked
+desc = Test fixture for cross-corpus linking
+path_python = test_fixture_linked/test_fixture_linked.py
+class_name = TestFixtureLinked
+

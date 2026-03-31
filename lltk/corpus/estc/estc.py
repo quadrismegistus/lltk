@@ -161,6 +161,10 @@ class ESTC(BaseCorpus):
 	PATH_METADATA = 'estc/corpus-metadata.ESTC.txt'
 	PATHS_TEXT_DATA = ['estc/_data_texts_estc/data.genre-predictions.ESTC.txt']
 	PATHS_REL_DATA = ['estc/_data_rels_estc/data.rel.reprintOf.exact-matches.ESTC.txt','estc/_data_rels_estc/data.rel.reprintOf.fuzzy-matches.ESTC.txt'] # ,'estc/_data_rels_estc/data.rel.reprintOf.ecco-text-matches.ESTC.txt'
+	LINKS = {
+		'ecco': ('id_estc', 'ESTCID'),
+		'eebo_tcp': ('id_estc', 'id_stc'),
+	}
 
 
 	def load_metadata(self):

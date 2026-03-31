@@ -27,6 +27,8 @@ class BaseCorpus(TextList):
     LANG='en'
     xml2txt = xml2txt_default
     REMOTE_SOURCES = REMOTE_SOURCES
+    LINKS = {}
+    LINK_TRANSFORMS = {}
 
 
 
@@ -312,7 +314,10 @@ class BaseCorpus(TextList):
                 yield from zip(o1,o2)
 
 
-    def load_metadata(self,clean=True,**kwargs):
+    def load_metadata(self,clean=True,force=False,**kwargs):
+        cache_key = ('load_metadata', clean)
+        if not force and cache_key in self._metadfd:
+            return self._metadfd[cache_key]
         if not os.path.exists(self.path_metadata): self.install_metadata()
         if not os.path.exists(self.path_metadata): return pd.DataFrame()
         df=read_df_anno(self.path_metadata,dtype=str)
@@ -322,9 +327,63 @@ class BaseCorpus(TextList):
         if clean:
             from lltk.corpus.utils import clean_meta
             df=clean_meta(df)
+        self._metadfd[cache_key] = df
         return df
 
 
+    def merge_linked_metadata(self, meta):
+        from lltk.corpus.utils import load
+        if not self.LINKS or meta is None or not len(meta):
+            return meta
+
+        for corpus_id, (my_col, their_col) in self.LINKS.items():
+            if my_col not in meta.columns:
+                continue
+
+            linked_corpus = load(corpus_id)
+            if linked_corpus is None:
+                continue
+            linked_meta = linked_corpus.load_metadata()
+            if linked_meta is None or not len(linked_meta):
+                continue
+
+            # Build join key, applying transform if needed
+            transform = self.LINK_TRANSFORMS.get(my_col)
+            if transform:
+                join_col = f'_link_{corpus_id}'
+                meta[join_col] = meta[my_col].apply(transform)
+            else:
+                join_col = my_col
+
+            # Move their_col from index to column for merge
+            if linked_meta.index.name == their_col or their_col not in linked_meta.columns:
+                linked_meta = linked_meta.reset_index()
+
+            # Prefix all linked columns
+            linked_meta = linked_meta.rename(
+                columns={c: f'{corpus_id}_{c}' for c in linked_meta.columns}
+            )
+            their_col_prefixed = f'{corpus_id}_{their_col}'
+
+            # Preserve original index
+            orig_index = meta.index
+            meta = meta.reset_index()
+            meta = meta.merge(
+                linked_meta,
+                left_on=join_col,
+                right_on=their_col_prefixed,
+                how='left',
+                suffixes=('', f'_{corpus_id}_dup')
+            )
+            # Restore index
+            if self.col_id in meta.columns:
+                meta = meta.set_index(self.col_id)
+
+            # Clean up temp join column
+            if f'_link_{corpus_id}' in meta.columns:
+                meta = meta.drop(columns=[f'_link_{corpus_id}'])
+
+        return meta
 
 
 
@@ -738,37 +797,41 @@ class BaseCorpus(TextList):
             sep=META_KEY_SEP,
             meta={},
             **kwargs):
-        
-        # self.init()
-        remote=is_logged_on()
-        #if log: log(f'<- remote = {remote}')
-        key=(lim,fillna,from_cache,from_sources,remote)
+
+        key=(lim,fillna,from_cache,from_sources)
         old_metadf=self._metadfd.get(key)
         if force or old_metadf is None:
-            new_metadf=pd.DataFrame(
-                t.metadata(
-                    from_cache=from_cache,
-                    from_sources=from_sources,
-                    remote=remote,
-                    cache=cache,
-                    sep=sep,
-                    meta=meta,
-                    **kwargs
+            # Fast path: load from metadata CSV via load_metadata()
+            new_metadf = self.load_metadata()
+            if new_metadf is not None and len(new_metadf):
+                if fillna is not None:
+                    new_metadf=new_metadf.fillna(fillna)
+            else:
+                # Slow path: build from per-text metadata
+                remote=is_logged_on()
+                new_metadf=pd.DataFrame(
+                    t.metadata(
+                        from_cache=from_cache,
+                        from_sources=from_sources,
+                        remote=remote,
+                        cache=cache,
+                        sep=sep,
+                        meta=meta,
+                        **kwargs
+                    )
+                    for ti,t in enumerate(self.texts(progress=progress))
+                    if t is not None
+                    and t.metadata is not None
+                    and not lim or ti<lim
                 )
-                for ti,t in enumerate(self.texts(progress=progress))
-                if t is not None
-                and t.metadata is not None
-                and not lim or ti<lim
-            )
-            if fillna is not None:
-                new_metadf=new_metadf.fillna(fillna)
-            if self.col_id in set(new_metadf.columns):
-                new_metadf=new_metadf.set_index(self.col_id)
+                if fillna is not None:
+                    new_metadf=new_metadf.fillna(fillna)
+                if self.col_id in set(new_metadf.columns):
+                    new_metadf=new_metadf.set_index(self.col_id)
+                close_dbs()
+
             self._metadfd[key]=new_metadf
             if self._metadf is None: self._metadf=new_metadf
-            # self.save_metadata(ometa=mdf,force=force_save)
-            # close dbs?
-            close_dbs()
 
         return self._metadfd.get(key,pd.DataFrame())
 

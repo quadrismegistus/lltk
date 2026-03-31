@@ -935,7 +935,60 @@ with lltk.online: self.get_remote_sources()
         #return [src for src in self.get_sources() if src in dneighbs]
         return {Text(addr) for addr in self.rels}
     
-    def linked(self,**kwargs):
+    _linked_cache = {}
+
+    def linked(self, target_corpus_id=None, **kwargs):
+        if target_corpus_id is not None:
+            from lltk.corpus.utils import load
+            if not hasattr(self.corpus, 'LINKS') or target_corpus_id not in self.corpus.LINKS:
+                return []
+            my_col, their_col = self.corpus.LINKS[target_corpus_id]
+
+            # Get this text's link value
+            my_val = self.get(my_col)
+            if my_val is None:
+                my_meta = self.corpus.load_metadata()
+                if my_meta is not None and len(my_meta) and self.id in my_meta.index:
+                    my_val = my_meta.at[self.id, my_col] if my_col in my_meta.columns else None
+            if my_val is None:
+                return []
+
+            transform = getattr(self.corpus, 'LINK_TRANSFORMS', {}).get(my_col)
+            if transform:
+                my_val = transform(my_val)
+
+            # Build/get cached lookup: link_value → [text_id, ...]
+            cache_key = (self.corpus.id, target_corpus_id)
+            if cache_key not in BaseText._linked_cache:
+                target_corpus = load(target_corpus_id)
+                if target_corpus is None:
+                    return []
+                target_meta = target_corpus.load_metadata()
+                if target_meta is None or not len(target_meta):
+                    return []
+                # Build reverse index
+                from collections import defaultdict
+                lookup = defaultdict(list)
+                if their_col == target_meta.index.name:
+                    for text_id in target_meta.index:
+                        lookup[text_id].append(text_id)
+                elif their_col in target_meta.columns:
+                    for text_id, val in zip(target_meta.index, target_meta[their_col]):
+                        if val and str(val).strip():
+                            lookup[val].append(text_id)
+                else:
+                    return []
+                BaseText._linked_cache[cache_key] = (target_corpus, target_meta, dict(lookup))
+
+            target_corpus, target_meta, lookup = BaseText._linked_cache[cache_key]
+            matched_ids = lookup.get(my_val, [])
+            results = []
+            for text_id in matched_ids:
+                meta = {}
+                if text_id in target_meta.index:
+                    meta = target_meta.loc[text_id].to_dict()
+                results.append(target_corpus.text(text_id, **meta))
+            return results
         return set(self.links(**kwargs).keys())
     def links(self,**kwargs):
         return self.gdb.get_links(self.addr)

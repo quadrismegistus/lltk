@@ -45,6 +45,8 @@ lltk/
 - **Path resolution:** `corpus.path_*` attributes resolved via `__getattr__` → `get_path()`, supporting relative and absolute paths
 - **Sections:** `t.chapters`, `t.paragraphs`, `t.passages(n=500)` return `SectionCorpus` objects with `TextSection` children. XML sections parsed in-memory, passages respect sentence boundaries.
 - **Manifest:** Corpora registered in `manifest.txt` (configparser format). Multiple manifest files merged from package dir, `~/lltk_data/`, and user config.
+- **Metadata loading:** `C.meta` uses `load_metadata()` (fast CSV read) rather than per-text iteration. Results are cached in `_metadfd`. Subclasses override `load_metadata()` to enrich columns (e.g., ESTC adds format/extent/fiction fields).
+- **Cross-corpus linking:** Corpora declare `LINKS = {target_corpus_id: (my_col, their_col)}` for shared-ID relationships. `merge_linked_metadata()` left-joins linked corpus metadata with prefixed columns (many-to-one). `t.linked(corpus_id)` traverses to linked text objects (one-to-many). Lookup dicts are built once and cached.
 
 ## Running tests
 
@@ -87,6 +89,15 @@ for p in t.paragraphs.texts():
 
 for p in t.passages(n=500).texts():
     print(p.id, p.get('num_words'), p.freqs())
+
+# Cross-corpus linking (ESTC ↔ ECCO/EEBO)
+ecco = lltk.load('ecco')
+ecco.meta                       # has estc_author, estc_format_std, etc.
+
+estc = lltk.load('estc')
+t = estc.text('some_id')
+t.linked('ecco')                # → [TextECCO(...), ...]
+t.linked('eebo_tcp')            # → [TextEEBO_TCP(...), ...]
 ```
 
 ## Corpus data location
@@ -103,3 +114,6 @@ for p in t.passages(n=500).texts():
 - The `_init` attribute on corpus objects tracks initialization state (set/bool, not consistent — be aware)
 - `SectionCorpus.parse_sections()` is the override hook for custom section parsing; `init()` handles caching
 - Corpus downloads use Dropbox URLs defined in manifest `url_*` fields
+- `load_metadata()` is cached via `_metadfd` with key `('load_metadata', clean)`. Subclass overrides (ESTC, ECCO, EEBO) are also cached.
+- `BaseText.linked()` has a class-level `_linked_cache` dict keyed by `(source_corpus_id, target_corpus_id)` storing `(target_corpus, target_meta, lookup_dict)`. The lookup dict maps link column values to lists of text IDs for O(1) traversal.
+- `BaseText.linked()` existed before as a graph DB wrapper; the new version adds an optional `target_corpus_id` positional arg and falls back to the old behavior when called without arguments.

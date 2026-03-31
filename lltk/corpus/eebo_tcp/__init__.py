@@ -1,1 +1,1 @@
-from .eebo import EEBO_TCP
+from .eebo_tcp import EEBO_TCP, _normalize_estc_id

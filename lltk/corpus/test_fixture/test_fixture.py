@@ -7,6 +7,7 @@ class TextTestFixture(BaseText):
 
 class TestFixture(BaseCorpus):
     TEXT_CLASS = TextTestFixture
+    LINKS = {'test_fixture_linked': ('id', 'ref_id')}
 
     def __init__(self, **kwargs):
         kwargs['_path'] = FIXTURE_PATH

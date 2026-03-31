@@ -197,6 +197,13 @@ class TextECCO(BaseText):
 class ECCO(BaseCorpus):
 	TEXT_CLASS=TextECCO
 	EXT_XML = '.xml.gz'
+	LINKS = {'estc': ('ESTCID', 'id_estc')}
+
+	def load_metadata(self):
+		meta = super().load_metadata()
+		if not len(meta):
+			return meta
+		return self.merge_linked_metadata(meta)
 
 	def match_estc(self):
 		from lltk.corpus.estc import ESTC
