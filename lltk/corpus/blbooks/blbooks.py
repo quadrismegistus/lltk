@@ -75,14 +75,18 @@ class BLBooks(BaseCorpus):
             if not full_text.strip():
                 continue
 
-            # Write text file
-            txt_path = os.path.join(self.path_txt, f'{rid}.txt')
+            # Write text file grouped by year
+            meta = data['meta']
+            year = meta.get('year', '')
+            year_dir = str(year) if year and str(year).isdigit() else 'unknown'
+            txt_dir = os.path.join(self.path_txt, year_dir)
+            os.makedirs(txt_dir, exist_ok=True)
+            txt_path = os.path.join(txt_dir, f'{rid}.txt')
             with open(txt_path, 'w', encoding='utf-8') as f:
                 f.write(full_text)
 
             # Collect metadata
-            meta = data['meta']
-            meta['id'] = rid
+            meta['id'] = f'{year_dir}/{rid}'
             meta['num_pages'] = len(pages)
             meta_rows.append(meta)
 
