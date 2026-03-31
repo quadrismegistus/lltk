@@ -44,27 +44,19 @@ class BLBooks(BaseCorpus):
             rid = str(row['record_id'])
             records[rid]['pages'].append((row.get('pg', 0), row.get('text', '')))
             if not records[rid]['meta']:
-                records[rid]['meta'] = {
-                    'record_id': rid,
-                    'title': row.get('title', ''),
-                    'author': _join_authors(
-                        row.get('all names', ''),
-                        row.get('name', ''),
-                        row.get('Publisher', ''),
-                    ),
-                    'year': _parse_year(row.get('date', '')),
-                    'date_raw': str(row.get('raw_date', '')),
-                    'publisher': row.get('Publisher', ''),
-                    'place': row.get('place', ''),
-                    'language': row.get('Language_1', ''),
-                    'name': row.get('name', ''),
-                    'all_names': row.get('all names', ''),
-                    'country': row.get('Country of publication 1', ''),
-                    'blrecord_id': rid,
-                    'physical_description': row.get('Physical description', ''),
-                    'mean_wc_ocr': row.get('mean_wc_ocr', ''),
-                    'std_wc_ocr': row.get('std_wc_ocr', ''),
-                }
+                # Grab all per-record fields (exclude per-page: text, pg, empty_pg)
+                meta = {k: v for k, v in row.items() if k not in {'text', 'pg', 'empty_pg'}}
+                # Normalize column names (spaces → underscores)
+                meta = {k.replace(' ', '_'): v for k, v in meta.items()}
+                # Add derived fields
+                meta['author'] = _join_authors(
+                    row.get('all names', ''),
+                    row.get('name', ''),
+                    row.get('Publisher', ''),
+                )
+                meta['year'] = _parse_year(row.get('date', ''))
+                meta['date_raw'] = str(row.get('raw_date', ''))
+                records[rid]['meta'] = meta
 
         # Write txt files and collect metadata
         if log: log(f'Writing {len(records)} texts...')
