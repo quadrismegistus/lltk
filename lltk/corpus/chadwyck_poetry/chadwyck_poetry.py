@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import
 from __future__ import print_function
-import six
-from six.moves import zip
+
 STONES = ['save_txt_from_xml'] # for slingshot
 
 META_KEYS = ['_path', 'a1', 'alias', 'aliasinv', 'anote', 'argument', 'attauth', 'attautid', 'attbytes', 'attdbase', 'attgend', 'attgenre', 'attidref', 'attnatn', 'attperi', 'attpoet', 'attpubl', 'attpubn1', 'attpubn2', 'attrhyme', 'attsize', 'attview', 'audclip', 'audio', 'authdtls', 'author', 'author_dob', 'author_dod', 'author_gender', 'bnote', 'bo', 'break', 'bytes', 'caesura', 'caption', 'cell', 'chid', 'collection', 'conclude', 'dedicat', 'engcorp2', 'epigraph', 'epilogue', 'figure', 'firstl', 'gap', 'greek', 'hi', 'hideinft', 'id', 'idref', 'img', 'it', 'item', 'l', 'label', 'lacuna', 'lb', 'litpack', 'mainhead', 'note', 'num_lines', 'p', 'pb', 'pbl', 'pndfig', 'poemcopy', 'posthumous', 'preface', 'prologue', 'publish', 'reflink', 'removed', 'signed', 'sl', 'somauth', 'sombiog', 'sompoet', 'speaker', 'stage', 'sub', 'subhead', 'sup', 't1', 't2', 't3', 'target', 'title', 'title_volume', 'trailer', 'ty', 'u', 'usonly', 'video', 'volhead', 'xref', 'y1', 'yeayear_new', 'year_old', 'idz']

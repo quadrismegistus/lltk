@@ -59,6 +59,8 @@ class BaseCorpus(TextList):
         self._mfwd={}
         self._init=set()
         self._source=None
+        self._authors=None
+        self._gdb=None
         self.name=_name
 
         if log>1: log(f'{self.__class__.__name__}({get_imsg(id,**attrs)})')
@@ -91,8 +93,7 @@ class BaseCorpus(TextList):
     
     def __getattr__(self, name):
         if name.startswith('path_'): return self.get_path(name)
-        res = getattribute(self,name)
-        return res
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
     
     def __len__(self): return self.num_texts
     def __getitem__(self, id): return self.text(id)
@@ -120,8 +121,13 @@ class BaseCorpus(TextList):
 
 
     def get_path(self,name):
-        path = getattribute(self, name)
-        if path is None: path = getattribute(self, '_'+name)
+        if name.startswith('path_'): name_priv = '_'+name
+        else: name_priv = '_path_'+name
+        path = self.__dict__.get(name, self.__dict__.get(name_priv))
+        if path is None:
+            path = getattr(type(self), name, None)
+        if path is None:
+            path = getattr(type(self), name_priv, None)
         if path is not None and not os.path.isabs(path):
             if '~' in path:
                 path=path.split('~')[-1]
@@ -133,7 +139,7 @@ class BaseCorpus(TextList):
     
     @property
     def path(self):
-        res=getattribute(self,'_path')
+        res=getattr(self,'_path',None)
         if res is None: res=os.path.join(PATH_CORPUS,self.id)
         return os.path.expanduser(res)
     
@@ -1089,14 +1095,50 @@ class BaseCorpus(TextList):
 
     @property
     def path_mfw(self):
-        path_mfw=os.path.join(self.path_data,'mfw')
-        #if not os.path.exists(path_mfw): os.makedirs(path_mfw)
-        return path_mfw
+        return os.path.join(self.path_data,'mfw')
     @property
     def path_dtm(self):
-        path_dtm=os.path.join(self.path_data,'dtm')
-        #if not os.path.exists(path_dtm): os.makedirs(path_dtm)
-        return path_dtm
+        return os.path.join(self.path_data,'dtm')
+
+    def mfw(self, n=10000, texts=None, force=False):
+        cache_key = f'mfw_n{n}'
+        if not force and cache_key in self._mfwd:
+            return self._mfwd[cache_key]
+
+        total = Counter()
+        text_iter = texts if texts is not None else self.texts()
+        for t in get_tqdm(text_iter, desc=f'[{self.name}] Computing MFW'):
+            freqs = t.freqs()
+            if freqs:
+                total.update(freqs)
+
+        result = [w for w, c in total.most_common(n)]
+        self._mfwd[cache_key] = result
+        return result
+
+    def dtm(self, words=None, n=10000, texts=None, tf=False, tfidf=False, force=False):
+        if words is None:
+            words = self.mfw(n=n, texts=texts, force=force)
+
+        rows = {}
+        text_iter = texts if texts is not None else self.texts()
+        for t in get_tqdm(text_iter, desc=f'[{self.name}] Building DTM'):
+            freqs = t.freqs()
+            if freqs:
+                rows[t.id] = {w: freqs.get(w, 0) for w in words}
+
+        dtm = pd.DataFrame.from_dict(rows, orient='index', columns=words).fillna(0)
+
+        if tf:
+            row_sums = dtm.sum(axis=1)
+            dtm = dtm.div(row_sums, axis=0).fillna(0)
+        if tfidf:
+            from sklearn.feature_extraction.text import TfidfTransformer
+            transformer = TfidfTransformer()
+            tfidf_matrix = transformer.fit_transform(dtm)
+            dtm = pd.DataFrame(tfidf_matrix.toarray(), index=dtm.index, columns=dtm.columns)
+
+        return dtm
     @property
     def path_home(self):
         return os.path.join(PATH_CORPUS,self.id)
@@ -1114,7 +1156,79 @@ class BaseCorpus(TextList):
 
 
 class SectionCorpus(BaseCorpus):
-    def init(self): pass ##@TODO ???
+    DIV_SECTION = None    # e.g. 'div3' — which div level holds sections
+    DIV_GROUP = None      # e.g. 'div2' — optional grouping level (volumes/books)
+    SECTION_PREFIX = 'S'  # prefix for generated section IDs
+
+    def init(self, force=False, **kwargs):
+        if not force and self._init: return
+        self.parse_sections(force=force, **kwargs)
+
+    def parse_sections(self, force=False, **kwargs):
+        source = self.source
+        if source is None: return
+        xml = source.xml
+        if not xml: return
+
+        import bs4
+        dom = bs4.BeautifulSoup(xml, 'lxml')
+
+        div_tag = self.DIV_SECTION or self._find_div_tag(dom)
+        if not div_tag: return
+
+        group_tag = self.DIV_GROUP
+        groups = dom(group_tag) if group_tag else [dom]
+        if not groups: groups = [dom]
+
+        section_i = 0
+        for group_i, group_dom in enumerate(groups):
+            divs = group_dom(div_tag)
+            if not divs: divs = [group_dom]
+
+            for div_dom in divs:
+                section_i += 1
+                section_id = f'{self.SECTION_PREFIX}{section_i:04}'
+                # extract title before stripping bad tags (head is in BAD_TAGS)
+                title = self._extract_title(div_dom)
+                idref = grab_tag_text(div_dom, 'idref', limit=1)
+                section_xml = clean_text(str(div_dom))
+                meta = dict(
+                    _xml=section_xml,
+                    title=title,
+                    id_orig=idref,
+                    group_i=group_i + 1,
+                    section_i=section_i,
+                )
+                self.init_text(id=section_id, **meta)
+
+        if section_i: self._init = True
+
+    def _find_div_tag(self, dom):
+        for tag in ['div5', 'div4', 'div3', 'div2', 'div1', 'div0']:
+            if dom(tag): return tag
+        return None
+
+    def _extract_title(self, div_dom):
+        for tag_name in ['comhd5','comhd4','comhd3','comhd2','comhd1','head','caption']:
+            tags = div_dom(tag_name, recursive=False) or div_dom(tag_name)
+            if tags:
+                raw = str(tags[0])
+                # extract title text between </collection> and <attbytes> if present
+                if '</collection>' in raw and '<attbytes>' in raw:
+                    title = raw.split('</collection>')[-1].split('<attbytes>')[0].strip()
+                else:
+                    title = tags[0].get_text().strip()
+                title = clean_text(unhtml(title))
+                if title: return title
+        # fallback: lxml strips <head> into bare text — check first text node
+        from bs4 import NavigableString
+        for child in div_dom.children:
+            if isinstance(child, NavigableString):
+                text = child.strip()
+                if text: return clean_text(text)
+            else:
+                break  # stop at first tag
+        return ''
 
     @property
     def source(self): return self._source
@@ -1128,19 +1242,18 @@ class SectionCorpus(BaseCorpus):
     def get_section_class(self,*x,**y): return self.source.get_section_class(*x,**y)
 
     def init_text(self,id=None,section_class=None,**meta):
-        # make id
         if id is None: id=get_idx(i=len(self._textd), prefstr='S', numposs=1000)
-        # id=os.path.join(self.id,id)
-        # check not duplicate
-        #assert id not in set(self._textd.keys())
         if id not in self._textd:
-            # gen obj
             section_class=self.get_section_class(section_class)
             sec = section_class(id, _source=self.source, _section_corpus=self, **meta)
             self._textd[id]=sec
         else:
             sec=self._textd[id]
         return sec
+
+    def texts(self, *args, **kwargs):
+        if not self._init: self.init()
+        return super().texts(*args, **kwargs)
 
     @property
     def txt(self): return self.get_txt()
@@ -1163,6 +1276,110 @@ class SectionCorpus(BaseCorpus):
             self._txt_offsets=offsets
             self._txt=otxt
         return self._txt
+
+
+class ParagraphSectionCorpus(SectionCorpus):
+    SECTION_PREFIX = 'P'
+
+    def parse_sections(self, force=False, **kwargs):
+        source = self.source
+        if source is None: return
+
+        # try XML paragraphs first
+        xml = source.xml
+        if xml:
+            import bs4
+            dom = bs4.BeautifulSoup(xml, 'lxml')
+            paras = dom('p')
+            if paras:
+                for i, p in enumerate(paras):
+                    text = p.get_text().strip().replace('\n', ' ')
+                    while '  ' in text: text = text.replace('  ', ' ')
+                    if not text: continue
+                    section_id = f'{self.SECTION_PREFIX}{i+1:04}'
+                    words = text.split()
+                    self.init_text(
+                        id=section_id,
+                        _txt=text,
+                        word_start=0,
+                        word_end=len(words),
+                        num_words=len(words),
+                    )
+                if self._textd: self._init = True
+                return
+
+        # fall back to \n\n splitting on plain text
+        txt = source.txt
+        if not txt: return
+        blocks = [b.strip() for b in txt.split('\n\n') if b.strip()]
+        for i, block in enumerate(blocks):
+            section_id = f'{self.SECTION_PREFIX}{i+1:04}'
+            words = block.split()
+            self.init_text(
+                id=section_id,
+                _txt=block,
+                word_start=0,
+                word_end=len(words),
+                num_words=len(words),
+            )
+        if self._textd: self._init = True
+
+
+class PassageSectionCorpus(SectionCorpus):
+    SECTION_PREFIX = 'W'
+
+    def __init__(self, n=500, **kwargs):
+        self._passage_n = n
+        super().__init__(**kwargs)
+
+    def parse_sections(self, force=False, **kwargs):
+        source = self.source
+        if source is None: return
+        txt = source.txt
+        if not txt: return
+        n = self._passage_n
+
+        import nltk
+        sents = nltk.sent_tokenize(txt)
+
+        chunk_sents = []
+        chunk_word_count = 0
+        word_offset = 0
+        tokenizer = source.TOKENIZER.__func__
+
+        for sent in sents:
+            sent_words = tokenizer(sent)
+            sent_n = len(sent_words)
+            chunk_sents.append(sent)
+            chunk_word_count += sent_n
+
+            if chunk_word_count >= n:
+                chunk_txt = ' '.join(chunk_sents)
+                section_id = f'{self.SECTION_PREFIX}{word_offset:05}_{word_offset + chunk_word_count:05}'
+                self.init_text(
+                    id=section_id,
+                    _txt=chunk_txt,
+                    word_start=word_offset,
+                    word_end=word_offset + chunk_word_count,
+                    num_words=chunk_word_count,
+                )
+                word_offset += chunk_word_count
+                chunk_sents = []
+                chunk_word_count = 0
+
+        # emit final chunk
+        if chunk_sents:
+            chunk_txt = ' '.join(chunk_sents)
+            section_id = f'{self.SECTION_PREFIX}{word_offset:05}_{word_offset + chunk_word_count:05}'
+            self.init_text(
+                id=section_id,
+                _txt=chunk_txt,
+                word_start=word_offset,
+                word_end=word_offset + chunk_word_count,
+                num_words=chunk_word_count,
+            )
+
+        if self._textd: self._init = True
 
 
 CORPUS_CACHE={}

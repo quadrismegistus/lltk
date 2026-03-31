@@ -12,9 +12,7 @@ from collections import defaultdict,Counter
 import codecs
 #from pathos.multiprocessing import ProcessingPool as Pool
 import multiprocessing as mp
-import six
-from six.moves import range
-from six.moves import zip
+
 
 TOP2000=dict(n=2000,only_pos=None,pos_regex=False,remove_stopwords=False,only_abstract=None)
 TOP5000=dict(n=5000,only_pos=None,pos_regex=False,remove_stopwords=False,only_abstract=None)
@@ -827,7 +825,7 @@ def do_meta_dist(xxx_todo_changeme1):
 import gensim
 
 def load_model(model_or_path):
-	if type(model_or_path) in {str,six.text_type}:
+	if type(model_or_path) is str:
 		return gensim.models.KeyedVectors.load_word2vec_format(fnfn)
 	else:
 		return model

@@ -33,6 +33,7 @@ mpi_slingshot.egg-info/
 lltk.egg-info/
 
 venv
+.venv
 .vscode
 
 

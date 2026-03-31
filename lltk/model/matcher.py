@@ -1,19 +1,14 @@
 from lltk.imports import *
-from lltk.text.textlist import hellofunc
 
 def run_match_by_title(*x,**y):
     print(f'run_match_by_title({x},{y})')
-    # from lltk.model.orm import CDB
-    # db=CDB(force=True)
-    bag = match_by_title(*x,**y)#db=db,
+    bag = match_by_title(*x,**y)
     return bag
-    #return [promise.result() for promise in bag]
 
 def match_by_title(df,
         yn='',
         rel=MATCHRELNAME,
         rel_type='title',
-        db=None,
         full=False,
         compare_by=DEFAULT_COMPAREBY,
         method_string='levenshtein',
@@ -47,35 +42,25 @@ def match_by_title(df,
     # display(osd.to_dict())
     # matchdf.to_csv(time.time()+'.csv')
 
-    return match_multiple(osd,db=db,**kwargs)
-    
+    return match_multiple(osd,**kwargs)
 
-def match_multiple(others_osd,yn='',rel=MATCHRELNAME,rel_type='',db=None,db_force=False,**kwargs):
+
+def match_multiple(others_osd,yn='',rel=MATCHRELNAME,rel_type='',**kwargs):
     log(pf(others_osd.to_dict()))
-    from lltk.model.orm import CDB
-    db = CDB(force=db_force) if db is None else db
-    o=[]
     alltexts=set()
     for id1 in others_osd:
         for id2,yn,rel,rel_rype in others_osd[id1]:
             if log:
                 log(f'{id1} --{rel}-> {id2}')
                 log(f'{id2} --{rel}-> {id1}')
-            
+
             t1,t2=Text(id1),Text(id2)
             relmeta=dict(yn=yn,rel=rel,rel_type=rel_type,**just_meta_no_id(kwargs))
             t1._rels[t2.addr]=relmeta
             t2._rels[t1.addr]=relmeta
             alltexts|={t1,t2}
-    
-    bag=[]
-    for t in alltexts:
-        promise = db.session.execute_async(
-            db.setfunc_match, [t.addr,serialize_map(t.rels)],
-            #callback=
-        )
-        bag.append(promise)
-    return bag
+
+    return list(alltexts)
 
 
 

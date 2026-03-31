@@ -630,11 +630,6 @@ def unescape_linebreaks(txt,sep='↵'):
     return txt.replace(sep,'\n').strip()
 
 
-def getattribute(obj,name):
-    try:
-        return obj.__getattribute__(name)
-    except AttributeError:
-        return None
 
 def snake2camel(x,sep='_'):
     return ''.join(
@@ -1187,7 +1182,7 @@ def iter_filename(fnfn,force=False,prefix=''):
 
 def measure_ocr_accuracy(txt_or_tokens,lang='en'):
     wordlist=get_wordlist(lang=lang)
-    if type(txt_or_tokens) in [str,six.text_type]:
+    if type(txt_or_tokens) is str:
         tokens=tokenize(txt_or_tokens)
     elif type(txt_or_tokens) in [tuple,list]:
         tokens=list(txt_or_tokens)
@@ -1598,12 +1593,12 @@ def xls2ld(fn,header=[],sheetname=True,keymap={},keymap_all=str):
                     #print '??',value,type(value),key
                     if keymap_all:
                         func=keymap_all
-                        if func in [str,six.text_type] and type(value) in [float]:
+                        if func is str and type(value) in [float]:
                             if value == int(value): value=int(value)
                         d[key]=keymap_all(value)
                     elif keymap and key in keymap:
                         func=keymap[key]
-                        if func in [str,six.text_type] and type(value) in [float]:
+                        if func is str and type(value) in [float]:
                             if value == int(value): value=int(value)
                         d[key]=keymap[key](value)
                     else:
@@ -1674,7 +1669,7 @@ def xlsx2ld(fn,header=[],numsheets=1):
                     value=float(value)/0
                 except:
                     value=value
-                    if not isinstance(value, six.text_type):
+                    if not isinstance(value, str):
                         value=str(value)
                 values.append(value)
             if not rownum and not len(header):
@@ -1799,7 +1794,7 @@ def tsv2ld(fn,tsep='\t',nsep='\n',u=True,header=[],keymap={},zero='',removeEmpti
                 except ValueError:
                     v=v
 
-            if type(v) in [str,six.text_type] and not v:
+            if type(v) is str and not v:
                 if zero=='' and removeEmpties:
                     continue
                 else:
@@ -1905,7 +1900,7 @@ def datatype(data,depth=0,v=False):
         except:
             print()
 
-    if type(data) in [str,six.text_type]:
+    if type(data) is str:
         echo('string')
         return 's'
     elif type(data) in [float,int]:
@@ -1971,16 +1966,12 @@ def d2str(d,uni=True):
     return ll2str(d2ll(d),uni=uni)
 
 def strmake(x,uni=True):
-    if uni and type(x) in [six.text_type]:
+    if uni and type(x) is str:
         return x
-    elif uni and type(x) in [str]:
-        return x.decode('utf-8',errors='replace')
     elif uni:
         return str(x)
-    elif not uni and type(x) in [str]:
+    elif not uni and type(x) is str:
         return x
-    elif not uni and type(x) in [six.text_type]:
-        return x.encode('utf-8',errors='replace')
 
     print([x],type(x))
     return str(x)
@@ -2159,15 +2150,17 @@ def print_config(corpus):
 
 
 def do_configs(rootdir):
-    import imp,os
+    import importlib.util,os
     done=set()
     for fldr in sorted(os.listdir(rootdir)):
         path=os.path.join(rootdir,fldr)
         if not os.path.isdir(path): continue
         for fn in sorted(os.listdir(path)):
             if fn.endswith('.py') and not fn.startswith('_'):
-
-                mod = imp.load_source(fn.replace('.py',''),os.path.join(path,fn))
+                modname = fn.replace('.py','')
+                spec = importlib.util.spec_from_file_location(modname, os.path.join(path,fn))
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
 
                 for obj in dir(mod):
                     if obj[0]==obj[0].upper() and not obj in ['Text','Corpus'] and not obj.startswith('Text'):
@@ -2213,7 +2206,7 @@ def tokenize_fast(line):
 
 ### multiprocessing
 def crunch(objects,function_or_methodname,ismethod=None,nprocs=8,args=[],kwargs={}):
-    import time,random,six
+    import time,random
     #ismethod=type(function_or_methodname) in [str,six.text_type] if ismethod is None else ismethod
     ismethod=type(function_or_methodname) in [str] if ismethod is None else ismethod
 
@@ -2230,7 +2223,7 @@ def crunch(objects,function_or_methodname,ismethod=None,nprocs=8,args=[],kwargs=
         print("[{2}] Finished working on {0} at {1}".format(text if False else 'ObjectX', now(), threadid))
         return x
 
-    import six.moves._thread,multiprocessing,os
+    import _thread,multiprocessing,os
     from multiprocessing import Process, Pipe
     #from itertools import zip
     izip=zip

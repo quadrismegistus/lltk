@@ -11,6 +11,7 @@ def xml2txt_chadwyck(path_xml):
 class TextChadwyck(BaseText):
     BODY_TAG=BODY_TAG
     BAD_TAGS=BAD
+    SECTION_DIR_NAME='chapters'
     
 
 

@@ -47,8 +47,15 @@ class BaseText(BaseObject):
         self._db=None
         self._init=set()
         self._cacheworthy=False
-        if _txt: self._txt=_txt
-        if _xml: self._xml=_xml
+        self._txt=_txt
+        self._xml=_xml
+        self._node=None
+        self._dom=None
+        self._freqs=None
+        self._minhash=None
+        self._characters=None
+        self._booknlp=None
+        self._txt_offsets=None
         self._source=_source
         self._sources={x for x in _sources} if _sources else set()
         if id is None:
@@ -67,14 +74,6 @@ class BaseText(BaseObject):
         ### asynchronous leap!
         # self.init(cache=_cache)
 
-    def init_remote(self,meta={},force=False,remote=None,cache=True,**kwargs):
-        if log: log('making asychronous leap!')
-        self._future = self.init_async(
-            meta=meta,force=force,remote=remote,cache=cache,
-            **kwargs
-        )
-        if log: log(f'here\'s my promise: {self._future}')    
-
     def init_local(self,meta={},force=False,remote=None,cache=True,**kwargs):
         if log: log('making synchronous moves')
         self._last_cache = dlocal = self.cachedb('meta').get(self.addr,{})
@@ -91,122 +90,8 @@ class BaseText(BaseObject):
         
 
     def init(self,**kwargs):
-        self.init_remote(**kwargs)
-        # self.init_local(**kwargs)
+        self.init_local(**kwargs)
         return self
-        
-
-    def init_async(self,callback=None,**kwargs):
-        # future = self.init_meta_async(callback=callback)
-        future = self.init_rels_async(callback=callback)
-        return future
-
-
-    def init_rels_async(self,callback=None,**kwargs):
-        if self._future_rels is not None: return self._future_rels
-
-        # qstr=f"SELECT * FROM textrels WHERE id = '{self.addr}'"
-        qfunc=self.cdb.getfuncs.get('rels_from_id')
-        if log: log(qfunc)
-        qvals=[self.addr]
-        now=time.time()
-
-        def handle_success_rels(rows):
-            if log>1: log('success!')
-            if len(rows)>1: log.error(f'Too many rows returned? {rows}')
-            if len(rows)==1:
-                tdocd = rows[0]
-                log(pf(tdocd))
-                if 'rels' in tdocd:
-                    cached_meta = deserialize_map(dict(tdocd.get('rels')))
-                    if log>1: log(f'cached meta = {cached_meta}')
-                    if 'rels' in cached_meta: del cached_meta['rels']
-                    
-                    self._rels={**self._rels, **safebool(cached_meta)}
-                    self._future_rels=None
-                    if log>1: log(f'self._rels now = {self._rels}')
-
-                    if log>1: log(f'{self} complete in {round(time.time()-now,2)} seconds')
-
-            ## On to next call back?
-            ### now get the meta?
-            self.init_meta_async(callback=callback)
-        
-        def handle_error_rels(exc):
-            if log: log.error(f"WHAT HAPPENED TO RELS? {exc}")
-            self._future_rels=None
-            ### now get the meta?
-            self.init_meta_async(callback=callback)
-
-
-        self._future_rels = future = self.cdb.execute_async(
-            qfunc,qvals,
-            callback=handle_success_rels,
-            callback_error=handle_error_rels
-        )
-
-        return future
-
-
-    @property
-    def init_meta_getfunc(self):
-        if not self._init_meta_getfunc:
-            self._init_meta_getfunc=self.cdb.db.prepare("SELECT * FROM texts WHERE id=?")
-        return self._init_meta_getfunc
-
-    def init_meta_async(self,callback=None,**kwargs):
-        if self._future_meta is not None: return self._future_meta
-        if log: log(self)
-        
-
-        qfunc=self.cdb.getfuncs.get('text_from_id')
-        qvals=[self.addr]
-        if log: log(f'{qfunc} -> {qvals}')
-        now = time.time()
-
-        def handle_success_meta(rows):
-            if log>1: log('success!')
-            
-            rows=list(rows)
-            if len(rows)>1: log.error(f'Too many rows returned? {rows}')
-            if len(rows)==1:
-                tdocd = rows[0]
-                if 'data' in tdocd:
-                    cached_meta = deserialize_map(dict(tdocd.get('data')))
-                    if log>1: log(f'cached meta = {cached_meta}')
-                    if 'data' in cached_meta: del cached_meta['data']
-                
-                    self._last_cache = self.ensure_id(safebool(cached_meta))
-                    self._meta=self.ensure_id({**self._last_cache, **self._meta})
-
-                    if log>1: log(f'self._meta = {self._meta}')
-                    self._future_meta=None
-                    if log>1: log(f'{self} complete in {round(time.time()-now,2)} seconds')
-
-            ### now get the rels!
-            # self.init_rels_async(callback=callback)
-            if callback: callback()
-
-
-        def handle_error_meta(exc):
-            STOPXXX
-            if log: log.error(f"WHAT HAPPENED? {exc}")
-            self._future_meta=None
-            ### now get the rels ?
-            # self.init_rels_async(callback=callback)
-            if callback: callback()
-
-
-        if log: log('? getting future...')        
-        self._future_meta = future = self.cdb.execute_async(
-            qfunc,qvals,
-            callback=handle_success_meta,
-            callback_error=handle_error_meta
-        )
-        # if log: log(f'? got future: {future}')        
-
-
-        return future
 
 
 
@@ -283,9 +168,7 @@ class BaseText(BaseObject):
 
     @property
     def rels(self):
-        o=getattribute(self,'_rels')
-        if o: return o
-        return {}
+        return self._rels if self._rels else {}
 
     ####################################################################
     # GETTING ATTRIBUTES
@@ -296,13 +179,10 @@ class BaseText(BaseObject):
     def __getattr__(self, name):
         if name.startswith('path_'): return self.get_path(name)
 
-        res = getattribute(self, name)
-        if res is not None: return res
-
         res = self.get(name)
         if res is not None: return res
-        
-        return None
+
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
         
     def __setitem__(self, key, value): return self.update({key:value})
@@ -326,7 +206,6 @@ class BaseText(BaseObject):
         if not ish:
             res=meta.get(key,default)
         else:
-            # log(f'? {key} in {pf(meta)}')
             vals = []
             hvals = set()
             for k in meta:
@@ -340,7 +219,8 @@ class BaseText(BaseObject):
             if vals:
                 o=(vals if ish_all else vals[0])
                 res=o if o is not None else default
-        res = default
+            else:
+                res = default
         self._gcache[key]=res
         return res
         
@@ -404,10 +284,10 @@ class BaseText(BaseObject):
         if not t.corpus: return ''
         partattr='path_'+part
         extattr='ext_'+part
-        res=getattr(t.corpus, partattr)
+        res=getattr(t.corpus, partattr, None)
         if res:
             o=os.path.join(res,t.id)
-            resext=getattr(t.corpus, extattr)
+            resext=getattr(t.corpus, extattr, None)
             if resext: o+=resext
             return o
 
@@ -525,35 +405,11 @@ class BaseText(BaseObject):
         if force or ometa != self._last_cache:
             if log: log(f'<<< {self}')
             self._last_cache = ometa
-            # store
-            year = self.year
-            dbd={}
-            dbd['id']=self.addr
-            dbd['corpus']=self.corpus.id
-            dbd['author']=self.author[:255]
-            dbd['title']=self.title[:255]
-            dbd['year']= year if safebool(year) else 0
             if 'data' in ometa: del ometa['data']
-            dbd['data']=serialize_map(just_meta_no_id(ometa))
-            if log: log(f'-> {dbd}')
-
-            
-            ## store in cache
 
             with self.cachedb('meta') as odb:
                 odb[self.addr]=ometa
                 if log: log(f'saved to local cache: {self.addr} --> {ometa}')
-
-
-            # ## and in db if possible
-            # qstr=self.cdb.setfunc_text
-            # qvals=[dbd['id'],dbd['corpus'],dbd['author'],dbd['title'],dbd['year'],dbd['data']]
-
-            # def callback(x): pass
-            #     # log.info(f'finished callback. res = {x}')
-
-            # res = self.cdb.execute_async(qstr, qvals, callback=callback)
-            # if log: log(f'cdb res = {res}')
 
         return res
         
@@ -943,8 +799,7 @@ class BaseText(BaseObject):
 
 
     def match(self,other,yn='',rel=MATCHRELNAME,rel_type='',cache=True,viceversa=True,**kwargs):
-        self.cdb # make sure active
-        if is_textish(other): 
+        if is_textish(other):
             other = Text(other)
             if self != other and self.id_is_valid() and other.id_is_valid():
                 if log: log(f'{self.addr} --> {other.addr} ?')
@@ -952,19 +807,14 @@ class BaseText(BaseObject):
                 self._rels[other.addr]=relmeta
                 other._rels[self.addr]=relmeta
 
-                # local
+                # cache locally
                 if log: log('caching local')
                 with self.cachedb('match') as odb:
                     odb[self.addr]=self.rels
                     odb[other.addr]=other.rels
 
-                # remote
-                if log: log('caching remote')
-                promise1 = self.cdb.execute_async(self.cdb.setfunc_match, [self.addr,serialize_map(self.rels)])
-                promise2 = self.cdb.execute_async(self.cdb.setfunc_match, [other.addr,serialize_map(other.rels)])
-
-                return (promise1,promise2)
-        return(None,None)
+                return True
+        return False
     
     add_source=match
 
@@ -981,29 +831,13 @@ class BaseText(BaseObject):
         self.gdb.add_edge(self.addr, other.addr, **meta)
 
 
-        ### CDB
-        
 
-    
+
     def get_matches(self,node=None,as_text=True,rel=MATCHRELNAME,depth=1,**kwargs):
         return set(self.get_matchgraph().nodes()) - {self.addr}
 
     def get_matchgraph(self,as_text=True,rel=MATCHRELNAME,depth=1,node_name='addr',**kwargs):
-        # g=nx.Graph()
-        # g.add_node(self.addr)
-        # opts=[f"'{other_addr}'" for other_addr in list(self.rels.keys()) + [self.addr]]
-        # optstr=','.join(opts)
-        # qstr=f'SELECT * FROM textrels WHERE id IN ({optstr});'
-        # if log: log(f'? {qstr}')
-        # resld=self.cdb.execute(qstr)
-        # for d1 in resld:
-        #     id1=d1['id']
-        #     g.add_node(id1)
-        #     for id2,d2 in d1['rels'].items():
-        #         g.add_edge(id1,id2,**ujson.loads(d2))
-
-        
-        g=self.cdb.ego_graph(self.addr)
+        g=nx.Graph()
         g.add_node(self.addr)
         for addr in self.rels:
             g.add_node(addr)
@@ -1012,7 +846,7 @@ class BaseText(BaseObject):
         for node in list(g.nodes()):
             if IDSEP_START+TMP_CORPUS_ID+IDSEP in node:
                 g.remove_node(node)
-        
+
         if node_name!='addr':
             labeld=dict((addr,Text(addr).node) for addr in g.nodes())
             nx.relabel_nodes(g,labeld,copy=False)
@@ -1387,18 +1221,34 @@ with lltk.online: self.get_remote_sources()
     
 
 
-    # @property
     @property
     def letters(self): return self.sections(_id='letters')
     @property
     def chapters(self): return self.sections(_id='chapters')
 
+    @property
+    def paragraphs(self):
+        from lltk.corpus.corpus import ParagraphSectionCorpus
+        return self.sections(_id='paragraphs', section_corpus_class=ParagraphSectionCorpus)
+
+    def passages(self, n=500, force=False):
+        from lltk.corpus.corpus import PassageSectionCorpus
+        key = f'passages_n{n}'
+        if force or key not in self._sections:
+            self._sections[key] = PassageSectionCorpus(
+                n=n,
+                id=key,
+                _source=self,
+                _id_allows='_/',
+                _id=key
+            )
+        return self._sections[key]
+
     def sections(self,_id=None,section_class=None,section_corpus_class=None,force=False):
         if _id is None: _id=self.SECTION_DIR_NAME
         if force or _id not in self._sections:
-            SectionCorpusClass = self.get_section_corpus_class(section_corpus_class)
-            self._sections[_id]=SectionCorpusClass(
-                # id=os.path.join(self.id, _id),
+            SCC = section_corpus_class or self.get_section_corpus_class()
+            self._sections[_id]=SCC(
                 id=_id,
                 _source=self,
                 _id_allows='_/',
@@ -1453,14 +1303,69 @@ with lltk.online: self.get_remote_sources()
 
 class TextSection(BaseText):
     _type='sections'
-    @property
-    def corpus(self): return self._section_corpus
+    PARA_TAG = 'p'
+    VERSE_TAG = 'l'
+
+    def __init__(self, id=None, _section_corpus=None, _source=None, **kwargs):
+        kwargs['_corpus'] = _source.corpus if _source else None
+        kwargs['_source'] = _source
+        kwargs['_section_corpus'] = _section_corpus
+        super().__init__(id=id, **kwargs)
+        # override corpus set by BaseText.__init__
+        self.corpus = _section_corpus
     @property
     def path_txt(self): return self.get_path_text('txt')
     @property
     def path_xml(self): return self.get_path_text('xml')
-    
-    
+
+    @property
+    def txt(self):
+        # try in-memory text first
+        if self._txt: return self._txt
+        # try cached file
+        if self.path_txt and os.path.exists(self.path_txt):
+            with open(self.path_txt) as f: return f.read()
+        # try extracting from XML
+        return self.txt_from_xml()
+
+    def txt_from_xml(self):
+        xml = self.xml
+        if not xml: return ''
+        import bs4
+        dom = bs4.BeautifulSoup(xml, 'lxml')
+        source = self._source or self
+        bad_tags = getattr(source, 'BAD_TAGS', BAD_TAGS)
+        dom = remove_bad_tags(dom, bad_tags)
+
+        # try paragraphs
+        paras = []
+        for p in dom(self.PARA_TAG):
+            text = p.get_text().strip().replace('\n', ' ')
+            while '  ' in text: text = text.replace('  ', ' ')
+            if text: paras.append(text)
+
+        if not paras:
+            # try verse lines
+            for l in dom(self.VERSE_TAG):
+                text = l.get_text().strip()
+                if text: paras.append(text)
+
+        if not paras:
+            # last resort
+            text = dom.get_text(separator='\n').strip()
+            return clean_text(text)
+
+        return clean_text('\n\n'.join(paras))
+
+    def freqs(self, lower=True, modernize_spelling=None):
+        if not self._freqs:
+            txt = self.txt
+            if not txt: return Counter()
+            tokenizer = self.TOKENIZER.__func__
+            tokens = tokenizer(txt.lower() if lower else txt)
+            self._freqs = Counter(tokens)
+        return filter_freqs(self._freqs, modernize=modernize_spelling, lower=lower)
+
 
 def get_addr_from_d(d,keys=['_id','_addr','id']):
     for k in keys:
@@ -1482,7 +1387,7 @@ def Text(
         _add=True,
         _init=False,
         _cache=False,
-        _use_db=USE_DB,
+        _use_db=True,
         # _col_id=COL_ID,
         **_params_or_meta):
     global TEXT_CACHE

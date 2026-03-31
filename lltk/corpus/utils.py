@@ -714,7 +714,10 @@ def load_corpus(id,manifestd={},load_meta=False,force=False,install_if_nec=True,
     if log>0: log(f'Importing corpus class "{class_name}" from {path_python}')
     
     try:
-        module = imp.load_source(id,path_python)
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(id, path_python)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
         class_class = getattr(module,class_name)
         C = class_class(**inpd)
         if log>0: log(f'-> {C}')
