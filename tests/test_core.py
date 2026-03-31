@@ -587,3 +587,38 @@ class TestFindDuplicates:
         if len(result):
             pairs = set(zip(result['id_1'], result['id_2']))
             assert len(pairs) == len(result)
+
+
+class TestBLBooks:
+    """Tests for BLBooks corpus (no download required)."""
+
+    def test_blbooks_loads(self):
+        import lltk
+        c = lltk.load('blbooks')
+        assert c is not None
+        assert 'blbooks' in c.id
+
+    def test_blbooks_has_compile(self):
+        import lltk
+        c = lltk.load('blbooks')
+        assert hasattr(c, 'compile')
+        assert callable(c.compile)
+
+    def test_blbooks_has_load_metadata(self):
+        import lltk
+        c = lltk.load('blbooks')
+        assert hasattr(c, 'load_metadata')
+
+    def test_blbooks_parse_year(self):
+        from lltk.corpus.blbooks.blbooks import _parse_year
+        assert _parse_year('1850') == 1850
+        assert _parse_year('1723-1725') == 1723
+        assert _parse_year('[1800?]') == 1800
+        assert _parse_year('') == ''
+        assert _parse_year(None) == ''
+
+    def test_blbooks_join_authors(self):
+        from lltk.corpus.blbooks.blbooks import _join_authors
+        assert _join_authors('Dickens, Charles', '') == 'Dickens, Charles'
+        assert _join_authors('', 'Publisher Co.') == 'Publisher Co.'
+        assert _join_authors('', '') == ''

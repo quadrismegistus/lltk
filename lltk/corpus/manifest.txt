@@ -7,12 +7,22 @@ public =
 private = metadata,freqs
 license_type = Academic
 
+[BLBooks]
+id = blbooks
+name = BLBooks
+desc = British Library digitised books (via HuggingFace)
+link = https://huggingface.co/datasets/TheBritishLibrary/blbooks
+path_python = blbooks/blbooks.py
+class_name = BLBooks
+public = metadata,txt
+license_type = Free
+
 [BPO]
 id = bpo
 name = BPO
 desc = British Periodicals Online
 link = https://proquest.libguides.com/britishperiodicals
-public = 
+public =
 private = raw,metadata
 license_type = Commercial
 
