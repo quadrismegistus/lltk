@@ -295,14 +295,12 @@ class BaseText(BaseObject):
     def get_path(self,part,**kwargs):
         try:
             if part.startswith('path_'): part=part[5:]
-            path_new = self.get_path_new(part,**kwargs)
             path_old = self.get_path_old(part,**kwargs)
-            if path_new:
-                if path_old and os.path.exists(path_old):
-                    return path_old
-                return path_new
-            elif path_old:
+            if path_old:
                 return path_old
+            path_new = self.get_path_new(part,**kwargs)
+            if path_new:
+                return path_new
         except Exception as e:
             log.error(e)
         return ''

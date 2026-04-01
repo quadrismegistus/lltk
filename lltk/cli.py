@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
 import os, sys, argparse
+
 
 def main():
 	import lltk
@@ -88,6 +88,7 @@ def main():
 		parts = [p.strip() for p in args.parts.split(',')]
 		for part in parts:
 			corpus.install(part=part)
+
 
 if __name__ == '__main__':
 	main()

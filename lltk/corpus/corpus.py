@@ -1102,13 +1102,14 @@ class BaseCorpus(TextList):
         return self.install(part='raw',unzip=unzip)
 
     def preprocess(self,parts=PREPROC_CMDS,verbose=True,force=False,num_proc=DEFAULT_NUM_PROC,**attrs):
+        import lltk.model.preprocess  # ensure preprocess_txt/freqs are attached
         if not parts: parts=PREPROC_CMDS
         if type(parts)==str: parts=[p.strip().lower() for p in parts.split(',')]
         for part in parts:
             fname='preprocess_'+part
-            if log>0: log(pf(part,fname,getattr(self,fname)))
             if not hasattr(self,fname): continue
             func=getattr(self,fname)
+            if log>0: log(f'Running {fname}...')
             try:
                 x=func(verbose=verbose,num_proc=int(num_proc),force=force, **attrs)
             except TypeError as e:

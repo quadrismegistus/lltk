@@ -81,7 +81,8 @@ def check_corpora(paths=['path_raw','path_xml','path_txt','path_freqs','path_met
     print('{:25s} {:32s} {:12s} {:12s} {:12s} {:12s} {:12s}'.format('[CORPUS]','[DESCRIPTION]',' [RAW?]',' [XML?]',' [TXT?]',' [FREQS?]',' [METADATA?]'))
     for cname,corpus in corpora(load=True,incl_meta_corpora=incl_meta_corpora):
         if corpus is None: continue
-        print('{:25s} {:30s}'.format(cname, corpus.desc[:25]),end=" ")
+        _desc = getattr(corpus, 'desc', '') or ''
+        print('{:25s} {:30s}'.format(cname, _desc[:25]),end=" ")
         for path in paths:
             pathtype=path.replace('path_','')
             pathval = getattr(corpus,path)
@@ -184,8 +185,12 @@ def status_corpora(parts=['metadata','freqs','txt','xml','raw'],link=True,public
     for cname,C in corpora(load=True,incl_meta_corpora=False):
         dx=defaultdict(str)
         dx['name']=cname
-        dx['desc']=C.desc.strip() if (not link or not C.link.strip()) else f'[{C.desc.strip()}]({C.link.strip()})'
-        dx['license']=C.license_type if (not link or not C.license) else f'[{C.license_type.strip()}]({C.license.strip()})'
+        _desc = getattr(C, 'desc', '') or ''
+        _link = getattr(C, 'link', '') or ''
+        _license_type = getattr(C, 'license_type', '') or ''
+        _license = getattr(C, 'license', '') or ''
+        dx['desc']=_desc.strip() if (not link or not _link.strip()) else f'[{_desc.strip()}]({_link.strip()})'
+        dx['license']=_license_type if (not link or not _license) else f'[{_license_type.strip()}]({_license.strip()})'
         if not C.public and not C.private: continue
         if is_public is True and not C.public: continue
         if is_public is False and C.public: continue

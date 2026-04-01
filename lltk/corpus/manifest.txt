@@ -150,6 +150,7 @@ link = https://www.gale.com/intl/primary-sources/eighteenth-century-collections-
 public = 
 private = raw,txt,xml,metadata,freqs
 license_type = Commercial
+ext_xml = .xml.gz
 
 [ECCO_TCP]
 id = ecco_tcp

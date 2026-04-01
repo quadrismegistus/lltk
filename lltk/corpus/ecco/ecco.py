@@ -3,7 +3,18 @@ from lltk.imports import *
 
 
 
+def ecco_xml2txt(path_xml):
+	"""Open a .xml.gz ECCO file and convert to plain text."""
+	import gzip, bs4
+	with gzip.open(path_xml, 'rb') as f:
+		raw = f.read()
+	dom = bs4.BeautifulSoup(raw, 'lxml')
+	return gale_xml2txt(dom)
+
+
 class TextECCO(BaseText):
+	XML2TXT = ecco_xml2txt
+
 	@property
 	def meta_by_file(self):
 		if not hasattr(self,'_meta'):
@@ -196,7 +207,6 @@ class TextECCO(BaseText):
 
 class ECCO(BaseCorpus):
 	TEXT_CLASS=TextECCO
-	EXT_XML = '.xml.gz'
 	LINKS = {'estc': ('ESTCID', 'id_estc')}
 
 	def load_metadata(self):
@@ -204,6 +214,57 @@ class ECCO(BaseCorpus):
 		if not len(meta):
 			return meta
 		return self.merge_linked_metadata(meta)
+
+	def compile(self, tar_path=None, **kwargs):
+		"""Extract xml/*.xml from ECCO tar, gzip, and save to path_xml.
+
+		Args:
+			tar_path: Full path to ecco.tar file.
+		"""
+		import tarfile, gzip
+
+		if not tar_path:
+			raise ValueError('tar_path is required (full path to ecco.tar)')
+		if not os.path.exists(tar_path):
+			raise FileNotFoundError(f'Tar file not found: {tar_path}')
+
+		xml_dir = self.path_xml
+		os.makedirs(xml_dir, exist_ok=True)
+
+		count = 0
+		skipped = 0
+		with tarfile.open(tar_path, 'r') as tar:
+			for member in get_tqdm(tar, total=219295, desc='Extracting ECCO XMLs'):
+				if not member.isfile():
+					continue
+				# match paths like .../ecco/<subcorpus>/<text_id>/xml/<text_id>.xml
+				parts = member.name.split('/')
+				try:
+					ecco_idx = parts.index('ecco')
+				except ValueError:
+					continue
+				tail = parts[ecco_idx + 1:]  # e.g. ['LitAndLang1', '0072502100', 'xml', '0072502100.xml']
+				if len(tail) != 4 or tail[2] != 'xml' or not tail[3].endswith('.xml'):
+					continue
+
+				subcorpus = tail[0]
+				text_id = tail[1]
+				out_dir = os.path.join(xml_dir, subcorpus)
+				out_path = os.path.join(out_dir, f'{text_id}.xml.gz')
+
+				if os.path.exists(out_path):
+					skipped += 1
+					continue
+
+				os.makedirs(out_dir, exist_ok=True)
+				f = tar.extractfile(member)
+				if f is None:
+					continue
+				with gzip.open(out_path, 'wb') as gz:
+					gz.write(f.read())
+				count += 1
+
+		if log: log(f'Done. Extracted {count} XML files, skipped {skipped} (already existed).')
 
 	def match_estc(self):
 		from lltk.corpus.estc import ESTC
@@ -311,6 +372,10 @@ def gale_xml2txt(dom, OK_word=['wd'], OK_page=['bodyPage'], remove_catchwords=Tr
 
 	# fix dangling hyphens
 	plain_text = fix_dangling_hyphens(plain_text,{'¬','-'})
+
+	# remove page numbers — lines that are just (N) in parens
+	import re
+	plain_text = re.sub(r'(?m)^\s*\(\d+\)\s*$', '', plain_text)
 
 	return plain_text
 

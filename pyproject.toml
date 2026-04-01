@@ -30,9 +30,11 @@ dependencies = {file = ["requirements.txt"]}
 [tool.setuptools.packages.find]
 include = ["lltk*"]
 
+[project.scripts]
+lltk = "lltk.cli:main"
+
 [tool.setuptools]
 include-package-data = true
-script-files = ["bin/lltk"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
