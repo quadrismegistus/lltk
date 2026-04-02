@@ -65,4 +65,8 @@ class ECCO_TCP(TCP):
             meta['genre_raw'] = meta['estc_genre_raw']
         else:
             meta['genre_raw'] = None
+        # Verse medium → Poetry
+        if 'medium' in meta.columns:
+            verse_mask = meta['medium'] == 'Verse'
+            meta.loc[verse_mask, 'genre'] = 'Poetry'
         return meta
