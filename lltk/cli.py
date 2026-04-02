@@ -44,6 +44,13 @@ def main():
 	p_install.add_argument('corpus')
 	p_install.add_argument('--parts', default='metadata', help='Comma-separated: metadata,txt,xml,freqs,raw')
 
+	# db rebuild
+	p_db_rebuild = subparsers.add_parser('db-rebuild', help='Rebuild the DuckDB metadata store')
+	p_db_rebuild.add_argument('corpora', nargs='*', help='Corpus IDs to rebuild (default: all)')
+
+	# db info
+	p_db_info = subparsers.add_parser('db-info', help='Show DuckDB metadata store info and genre breakdown')
+
 	if len(sys.argv) == 1:
 		parser.print_help(sys.stderr)
 		sys.exit(1)
@@ -88,6 +95,44 @@ def main():
 		parts = [p.strip() for p in args.parts.split(',')]
 		for part in parts:
 			corpus.install(part=part)
+
+	elif args.cmd == 'db-rebuild':
+		corpus_ids = args.corpora if args.corpora else None
+		lltk.db.drop()
+		results = lltk.db.rebuild(corpus_ids)
+		print(f'\nIngested {sum(v for v in results.values() if isinstance(v, int))} texts from {len(results)} corpora')
+
+	elif args.cmd == 'db-info':
+		import pandas as pd
+		pd.set_option('display.max_rows', 200)
+		pd.set_option('display.width', 200)
+
+		print(repr(lltk.db))
+		print()
+
+		# Genre × corpus crosstab
+		try:
+			df = lltk.db.query("""
+				SELECT corpus, genre, COUNT(*) as n
+				FROM texts
+				GROUP BY corpus, genre
+				ORDER BY corpus, genre
+			""")
+			pivot = df.pivot_table(index='corpus', columns='genre', values='n', fill_value=0, aggfunc='sum')
+			# Add totals
+			pivot['TOTAL'] = pivot.sum(axis=1)
+			# Reorder columns: TOTAL first, then None, then alphabetical
+			cols = ['TOTAL']
+			if None in pivot.columns:
+				cols.append(None)
+			cols += sorted(c for c in pivot.columns if c not in cols)
+			pivot = pivot[cols]
+			# Add row totals
+			pivot.loc['TOTAL'] = pivot.sum()
+			print(pivot.to_string())
+		except Exception as e:
+			print(f'Error: {e}')
+			print('Database may be empty. Run: lltk db-rebuild')
 
 
 if __name__ == '__main__':
