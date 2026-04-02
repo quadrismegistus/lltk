@@ -9,4 +9,7 @@ class GildedAge(BaseCorpus):
 		df = super().load_metadata(*x, **y)
 		df['genre_raw'] = 'Novel'
 		df['genre'] = 'Fiction'
+		# Normalize IDs: underscores → spaces to match freqs filenames
+		df.index = df.index.str.replace('_', ' ')
+		df.index.name = 'id'
 		return df
