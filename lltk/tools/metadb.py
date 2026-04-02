@@ -21,8 +21,10 @@ Usage:
 
 import json
 import os
+import re
 import time
 import duckdb
+import networkx as nx
 import numpy as np
 import pandas as pd
 from lltk.imports import PATH_LLTK_DATA, log
@@ -52,9 +54,121 @@ GENRE_VOCAB = {
 }
 
 # Core columns stored as real columns; everything else goes in meta JSON
-CORE_COLS = ['_id', 'corpus', 'id', 'title', 'author', 'year', 'genre', 'genre_raw']
+CORE_COLS = ['_id', 'corpus', 'id', 'title', 'author', 'year', 'genre', 'genre_raw', 'title_norm', 'author_norm']
 STANDARD_COLS = ['id', 'title', 'author', 'year', 'genre', 'genre_raw']
-TEXT_COLS = ['_id', 'corpus', 'id', 'title', 'author', 'genre', 'genre_raw']  # cols stored as TEXT
+TEXT_COLS = ['_id', 'corpus', 'id', 'title', 'author', 'genre', 'genre_raw', 'title_norm', 'author_norm']  # cols stored as TEXT
+
+# Corpus preference ranks for dedup (lower = preferred)
+CORPUS_SOURCE_RANKS = {
+    'chadwyck': 1, 'chadwyck_drama': 1, 'chadwyck_poetry': 1,
+    'canon_fiction': 2, 'markmark': 3, 'chicago': 4,
+    'gildedage': 5, 'ravengarside': 5,
+    'eebo_tcp': 6, 'ecco_tcp': 6, 'evans_tcp': 6,
+    'estc': 7, 'ecco': 8,
+    'hathi_englit': 9, 'hathi_novels': 9,
+    'hathi_bio': 10, 'hathi_essays': 10, 'hathi_letters': 10,
+    'hathi_sermons': 10, 'hathi_stories': 10, 'hathi_tales': 10,
+    'hathi_romances': 10, 'hathi_treatises': 10, 'hathi_almanacs': 10,
+    'hathi_proclamations': 10,
+    'blbooks': 11, 'internet_archive': 12,
+}
+
+_TITLE_NORM_PUNCS = re.compile(r'[;:.\(\[,!?]')
+_TITLE_END_PHRASES = sorted([
+    'edited by', 'written by', 'by the author', 'by mr', 'by mrs',
+    'by miss', 'by dr', 'a novel', 'a romance', 'a tale', 'a poem',
+    'a tragedy', 'a comedy', 'a farce', 'in two volumes', 'in three volumes',
+    'in four volumes', 'the second edition', 'the third edition',
+    'the fourth edition', 'a new edition', 'translated from',
+    'translated by', 'with a preface', 'with an introduction',
+], key=len, reverse=True)
+
+
+def normalize_title(title):
+    """Normalize a title for matching: lowercase, strip subtitle/edition info."""
+    if not title or not isinstance(title, str) or title == 'nan':
+        return None
+    t = title.strip().lower()
+    t = t.replace('\u2014', '--').replace('\u2013', '-')
+    # Strip after first punctuation
+    m = _TITLE_NORM_PUNCS.search(t)
+    if m:
+        t = t[:m.start()].strip()
+    else:
+        # Try title-end phrases
+        tl = t.lower()
+        for phrase in _TITLE_END_PHRASES:
+            idx = tl.find(phrase)
+            if idx > 3:
+                t = t[:idx].strip()
+                break
+    t = ' '.join(t.split())  # collapse whitespace
+    return t if len(t) > 1 else None
+
+
+def _jaro_winkler(s1, s2):
+    """Fast Jaro-Winkler similarity. Returns float 0-1."""
+    if s1 == s2:
+        return 1.0
+    if not s1 or not s2:
+        return 0.0
+    try:
+        from rapidfuzz.distance import JaroWinkler
+        return JaroWinkler.similarity(s1, s2)
+    except ImportError:
+        pass
+    # Fallback: simple Jaro
+    len1, len2 = len(s1), len(s2)
+    search_range = max(len1, len2) // 2 - 1
+    if search_range < 0:
+        search_range = 0
+    s1_matches = [False] * len1
+    s2_matches = [False] * len2
+    matches = 0
+    transpositions = 0
+    for i in range(len1):
+        lo = max(0, i - search_range)
+        hi = min(i + search_range + 1, len2)
+        for j in range(lo, hi):
+            if s2_matches[j] or s1[i] != s2[j]:
+                continue
+            s1_matches[i] = s2_matches[j] = True
+            matches += 1
+            break
+    if matches == 0:
+        return 0.0
+    k = 0
+    for i in range(len1):
+        if not s1_matches[i]:
+            continue
+        while not s2_matches[k]:
+            k += 1
+        if s1[i] != s2[k]:
+            transpositions += 1
+        k += 1
+    jaro = (matches / len1 + matches / len2 + (matches - transpositions / 2) / matches) / 3
+    # Winkler prefix bonus
+    prefix = 0
+    for i in range(min(4, len1, len2)):
+        if s1[i] == s2[i]:
+            prefix += 1
+        else:
+            break
+    return jaro + prefix * 0.1 * (1 - jaro)
+
+
+def normalize_author(author):
+    """Normalize an author name: lowercase last name before first comma."""
+    if not author or not isinstance(author, str) or author == 'nan':
+        return None
+    a = author.strip().lower()
+    # Take text before first comma (last name)
+    if ',' in a:
+        a = a.split(',')[0].strip()
+    # Remove trailing periods
+    a = a.rstrip('.')
+    a = ' '.join(a.split())
+    return a if len(a) > 1 else None
 
 
 def _parse_year(val):
@@ -117,20 +231,28 @@ class MetaDB:
     def _ensure_tables(self):
         self._conn.execute("""
             CREATE TABLE IF NOT EXISTS texts (
-                _id       TEXT PRIMARY KEY,
-                corpus    TEXT NOT NULL,
-                id        TEXT NOT NULL,
-                title     TEXT,
-                author    TEXT,
-                year      INTEGER,
-                genre     TEXT,
-                genre_raw TEXT,
-                meta      TEXT
+                _id         TEXT PRIMARY KEY,
+                corpus      TEXT NOT NULL,
+                id          TEXT NOT NULL,
+                title       TEXT,
+                author      TEXT,
+                year        INTEGER,
+                genre       TEXT,
+                genre_raw   TEXT,
+                title_norm  TEXT,
+                author_norm TEXT,
+                meta        TEXT
             )
         """)
-        self._conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_corpus ON texts(corpus)
-        """)
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_corpus ON texts(corpus)")
+        # Add columns if upgrading from older schema
+        for col in ('title_norm', 'author_norm'):
+            try:
+                self._conn.execute(f"ALTER TABLE texts ADD COLUMN {col} TEXT")
+            except Exception:
+                pass
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_title_norm ON texts(title_norm)")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_author_norm ON texts(author_norm)")
         self._conn.execute("""
             CREATE TABLE IF NOT EXISTS corpus_info (
                 corpus      TEXT PRIMARY KEY,
@@ -138,6 +260,25 @@ class MetaDB:
                 n_texts     INTEGER NOT NULL
             )
         """)
+        self._conn.execute("""
+            CREATE TABLE IF NOT EXISTS matches (
+                _id_a      TEXT NOT NULL,
+                _id_b      TEXT NOT NULL,
+                similarity FLOAT NOT NULL,
+                match_type TEXT NOT NULL,
+                PRIMARY KEY (_id_a, _id_b)
+            )
+        """)
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_matches_a ON matches(_id_a)")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_matches_b ON matches(_id_b)")
+        self._conn.execute("""
+            CREATE TABLE IF NOT EXISTS match_groups (
+                _id      TEXT PRIMARY KEY,
+                group_id INTEGER NOT NULL,
+                rank     INTEGER NOT NULL
+            )
+        """)
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_mg_gid ON match_groups(group_id)")
 
     def ingest(self, corpus_id, force=True):
         """Ingest a corpus's load_metadata() output into the DB."""
@@ -229,16 +370,22 @@ class MetaDB:
             if col not in df.columns:
                 df[col] = None
 
+        # Compute normalized title and author for matching
+        df['title_norm'] = df['title'].apply(normalize_title) if 'title' in df.columns else None
+        df['author_norm'] = df['author'].apply(normalize_author) if 'author' in df.columns else None
+
         # Select only core cols + meta for insert
-        insert_df = df[CORE_COLS + ['meta']].copy()
+        insert_cols = CORE_COLS + ['meta']
+        insert_df = df[insert_cols].copy()
 
         # Remove old data for this corpus
         if force:
             self.conn.execute("DELETE FROM texts WHERE corpus = ?", [corpus_id])
 
-        # Insert
+        # Insert with explicit column mapping
+        cols_str = ', '.join(f'"{c}"' for c in insert_cols)
         self.conn.execute(
-            "INSERT INTO texts SELECT * FROM insert_df",
+            f"INSERT INTO texts ({cols_str}) SELECT {cols_str} FROM insert_df",
         )
 
         count = self.conn.execute(
@@ -350,9 +497,15 @@ class MetaDB:
         if corpus_id:
             self.conn.execute("DELETE FROM texts WHERE corpus = ?", [corpus_id])
             self.conn.execute("DELETE FROM corpus_info WHERE corpus = ?", [corpus_id])
+            # Clean up matches involving this corpus
+            self.conn.execute("""
+                DELETE FROM matches WHERE _id_a LIKE ? OR _id_b LIKE ?
+            """, [f'_{corpus_id}/%', f'_{corpus_id}/%'])
         else:
             self.conn.execute("DROP TABLE IF EXISTS texts")
             self.conn.execute("DROP TABLE IF EXISTS corpus_info")
+            self.conn.execute("DROP TABLE IF EXISTS matches")
+            self.conn.execute("DROP TABLE IF EXISTS match_groups")
             self._conn = None  # force reconnect to recreate tables
         self._col_cache = None
 
@@ -416,6 +569,174 @@ class MetaDB:
                     (g, n, g in GENRE_VOCAB) for g, n in genres
                 ]
         return result
+
+    # ── Matching ────────────────────────────────────────────────────
+
+    def match(self, tiers=(1, 2), progress=True):
+        """
+        Run cross-corpus matching pipeline.
+
+        Tier 1: Exact normalized title + author (pure SQL, fast)
+        Tier 2: Fuzzy title within author blocks (jaro_winkler_similarity)
+        """
+        from lltk.tools.tools import get_tqdm
+
+        if 1 in tiers:
+            if log: log('Tier 1: exact normalized title + author matching...')
+            n = self.conn.execute("""
+                INSERT OR IGNORE INTO matches (_id_a, _id_b, similarity, match_type)
+                SELECT a._id, b._id, 1.0, 'exact_norm'
+                FROM texts a
+                JOIN texts b ON a.title_norm = b.title_norm
+                    AND a.corpus != b.corpus
+                    AND a._id < b._id
+                WHERE a.title_norm IS NOT NULL
+                  AND length(a.title_norm) > 3
+                  AND (
+                    a.author_norm = b.author_norm
+                    OR a.author_norm IS NULL
+                    OR b.author_norm IS NULL
+                  )
+                  AND (
+                    a.year IS NULL OR b.year IS NULL
+                    OR abs(a.year - b.year) <= 50
+                  )
+            """).fetchone()
+            count1 = self.conn.execute("SELECT COUNT(*) FROM matches WHERE match_type = 'exact_norm'").fetchone()[0]
+            if log: log(f'Tier 1: {count1} matches')
+
+        if 2 in tiers:
+            if log: log('Tier 2: fuzzy title matching within author blocks...')
+            # Get distinct author_norm values that appear in multiple corpora
+            authors = self.conn.execute("""
+                SELECT author_norm, COUNT(DISTINCT corpus) as nc
+                FROM texts
+                WHERE author_norm IS NOT NULL AND length(title_norm) > 3
+                GROUP BY author_norm
+                HAVING nc > 1
+            """).fetchall()
+
+            iterr = authors
+            if progress:
+                iterr = get_tqdm(authors, desc='[MetaDB] Fuzzy matching by author')
+
+            batch = []
+            for author_norm, _ in iterr:
+                rows = self.conn.execute("""
+                    SELECT _id, title_norm, corpus, year FROM texts
+                    WHERE author_norm = ? AND title_norm IS NOT NULL AND length(title_norm) > 3
+                """, [author_norm]).fetchall()
+
+                for i in range(len(rows)):
+                    for j in range(i + 1, len(rows)):
+                        a_id, a_title, a_corp, a_year = rows[i]
+                        b_id, b_title, b_corp, b_year = rows[j]
+                        if a_corp == b_corp:
+                            continue
+                        if a_year and b_year and abs(a_year - b_year) > 50:
+                            continue
+                        # Compute similarity in Python (faster than per-pair SQL)
+                        sim = _jaro_winkler(a_title, b_title)
+                        if sim > 0.85:
+                            pair = (a_id, b_id) if a_id < b_id else (b_id, a_id)
+                            batch.append((*pair, sim, 'fuzzy_title'))
+
+                if len(batch) >= 10000:
+                    self._insert_matches_batch(batch)
+                    batch = []
+
+            if batch:
+                self._insert_matches_batch(batch)
+
+            count2 = self.conn.execute("SELECT COUNT(*) FROM matches WHERE match_type = 'fuzzy_title'").fetchone()[0]
+            if log: log(f'Tier 2: {count2} matches')
+
+        # Compute match groups
+        self._compute_match_groups()
+        total = self.conn.execute("SELECT COUNT(*) FROM matches").fetchone()[0]
+        groups = self.conn.execute("SELECT COUNT(DISTINCT group_id) FROM match_groups").fetchone()[0]
+        if log: log(f'Total: {total} matches, {groups} match groups')
+
+    def _insert_matches_batch(self, batch):
+        """Insert a batch of match tuples, ignoring duplicates."""
+        if not batch:
+            return
+        df = pd.DataFrame(batch, columns=['_id_a', '_id_b', 'similarity', 'match_type'])
+        df = df.drop_duplicates(subset=['_id_a', '_id_b'])
+        self.conn.execute("""
+            INSERT OR IGNORE INTO matches (_id_a, _id_b, similarity, match_type)
+            SELECT * FROM df
+        """)
+
+    def _compute_match_groups(self):
+        """Build connected components from matches, store in match_groups."""
+        pairs = self.conn.execute("SELECT _id_a, _id_b FROM matches").fetchall()
+        if not pairs:
+            self.conn.execute("DELETE FROM match_groups")
+            return
+
+        G = nx.Graph()
+        G.add_edges_from(pairs)
+
+        rows = []
+        for gid, component in enumerate(nx.connected_components(G)):
+            ranked = sorted(component,
+                key=lambda x: CORPUS_SOURCE_RANKS.get(
+                    x.split('/')[0].lstrip('_'), 1000))
+            for rank, _id in enumerate(ranked):
+                rows.append((_id, gid, rank))
+
+        df = pd.DataFrame(rows, columns=['_id', 'group_id', 'rank'])
+        self.conn.execute("DELETE FROM match_groups")
+        self.conn.execute("INSERT INTO match_groups SELECT * FROM df")
+
+    def find_matches(self, query):
+        """Search for matches by title substring. Returns DataFrame with match groups."""
+        return self.conn.execute("""
+            SELECT t._id, t.corpus, t.title, t.author, t.year, t.genre,
+                   t.title_norm, mg.group_id, mg.rank
+            FROM texts t
+            JOIN match_groups mg ON t._id = mg._id
+            WHERE mg.group_id IN (
+                SELECT mg2.group_id FROM match_groups mg2
+                JOIN texts t2 ON mg2._id = t2._id
+                WHERE t2.title ILIKE ?
+            )
+            ORDER BY mg.group_id, mg.rank
+        """, [f'%{query}%']).fetchdf()
+
+    def get_group(self, _id):
+        """Get all texts in the same match group as the given _id."""
+        return self.conn.execute("""
+            SELECT t._id, t.corpus, t.title, t.author, t.year, t.genre,
+                   mg.group_id, mg.rank
+            FROM texts t
+            JOIN match_groups mg ON t._id = mg._id
+            WHERE mg.group_id = (
+                SELECT group_id FROM match_groups WHERE _id = ?
+            )
+            ORDER BY mg.rank
+        """, [_id]).fetchdf()
+
+    def match_stats(self):
+        """Summary statistics for matches."""
+        total = self.conn.execute("SELECT COUNT(*) FROM matches").fetchone()[0]
+        groups = self.conn.execute("SELECT COUNT(DISTINCT group_id) FROM match_groups").fetchone()[0]
+        by_type = self.conn.execute("""
+            SELECT match_type, COUNT(*) as n FROM matches GROUP BY match_type
+        """).fetchdf()
+        # Group size distribution
+        sizes = self.conn.execute("""
+            SELECT group_size, COUNT(*) as n_groups FROM (
+                SELECT group_id, COUNT(*) as group_size FROM match_groups GROUP BY group_id
+            ) GROUP BY group_size ORDER BY group_size
+        """).fetchdf()
+        return {
+            'total_matches': total,
+            'total_groups': groups,
+            'by_type': by_type,
+            'group_sizes': sizes,
+        }
 
     def close(self):
         if self._conn is not None:

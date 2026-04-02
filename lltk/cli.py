@@ -51,6 +51,17 @@ def main():
 	# db info
 	p_db_info = subparsers.add_parser('db-info', help='Show DuckDB metadata store info and genre breakdown')
 
+	# db match
+	p_db_match = subparsers.add_parser('db-match', help='Run cross-corpus title matching')
+	p_db_match.add_argument('--tiers', default='1,2', help='Matching tiers (default: 1,2)')
+
+	# db matches
+	p_db_matches = subparsers.add_parser('db-matches', help='Search for matches by title')
+	p_db_matches.add_argument('query', help='Title search string')
+
+	# db match-stats
+	p_db_match_stats = subparsers.add_parser('db-match-stats', help='Show matching statistics')
+
 	if len(sys.argv) == 1:
 		parser.print_help(sys.stderr)
 		sys.exit(1)
@@ -165,6 +176,30 @@ def main():
 		except Exception as e:
 			print(f'Error: {e}')
 			print('Database may be empty. Run: lltk db-rebuild')
+
+	elif args.cmd == 'db-match':
+		tiers = tuple(int(t.strip()) for t in args.tiers.split(','))
+		lltk.db.match(tiers=tiers)
+
+	elif args.cmd == 'db-matches':
+		import pandas as pd
+		pd.set_option('display.max_rows', 200)
+		pd.set_option('display.width', 200)
+		pd.set_option('display.max_colwidth', 80)
+		df = lltk.db.find_matches(args.query)
+		if len(df):
+			print(df.to_string(index=False))
+		else:
+			print(f'No matches found for "{args.query}"')
+
+	elif args.cmd == 'db-match-stats':
+		stats = lltk.db.match_stats()
+		print(f"Total matches: {stats['total_matches']}")
+		print(f"Total match groups: {stats['total_groups']}")
+		print(f"\nBy match type:")
+		print(stats['by_type'].to_string(index=False))
+		print(f"\nGroup size distribution:")
+		print(stats['group_sizes'].to_string(index=False))
 
 
 if __name__ == '__main__':
