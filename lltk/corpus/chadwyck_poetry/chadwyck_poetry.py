@@ -198,9 +198,16 @@ class ChadwyckPoetry(BaseCorpus):
 		meta=super().load_metadata()
 		meta['genre_raw']='Verse'
 		meta['genre']='Poetry'
-		meta['year']=meta.author_dob.apply(lambda x: int(x)+30 if x.isdigit() else np.nan)
-		# meta['year']=meta.apply(decide_year_from_dob_and_dod,1)
-		return meta#.query(f'{self.MIN_YEAR}<=year<{self.MAX_YEAR}')
+		# Publication year from attpubn1, falling back to year_orig
+		pub = pd.to_numeric(meta.get('attpubn1'), errors='coerce')
+		if 'year_orig' in meta.columns:
+			pub = pub.fillna(pd.to_numeric(meta['year_orig'], errors='coerce'))
+		dod = pd.to_numeric(meta.get('author_dod'), errors='coerce')
+		dob = pd.to_numeric(meta.get('author_dob'), errors='coerce')
+		# Cap at author's lifetime: min(pub, dod) or min(pub, dob+80)
+		cap = dod.fillna(dob + 80)
+		meta['year'] = pub.where(pub.isna() | cap.isna(), pub.clip(upper=cap))
+		return meta
 
 
 def decide_year_from_dob_and_dod(row,addby=25):
