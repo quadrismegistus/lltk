@@ -572,173 +572,52 @@ class MetaDB:
 
     # ── Dedup & Matching ─────────────────────────────────────────────
 
-    def dedup(self, corpus_id, fuzzy=False, progress=True):
+    def match(self, corpora=None, fuzzy=False, progress=True):
         """
-        Find reprints/duplicates within a single corpus.
-        Matches on author_norm + title_norm (exact), any year distance.
-        Stores in matches table with match_type='dedup'.
+        Find matching texts — both within and across corpora.
+        Single SQL join on author_norm + title_norm. Handles dedup and
+        cross-corpus matching in one pass.
 
         Args:
-            corpus_id: corpus to dedup
-            fuzzy: if True, also run fuzzy title matching (slow on large corpora)
-        """
-        from lltk.tools.tools import get_tqdm
-
-        print(f'Deduplicating {corpus_id}...')
-
-        # Exact title_norm + author_norm within corpus
-        self.conn.execute("""
-            INSERT OR IGNORE INTO matches (_id_a, _id_b, similarity, match_type)
-            SELECT a._id, b._id, 1.0, 'dedup'
-            FROM texts a
-            JOIN texts b ON a.title_norm = b.title_norm
-                AND a.author_norm = b.author_norm
-                AND a.corpus = b.corpus
-                AND a._id < b._id
-            WHERE a.corpus = ?
-              AND a.title_norm IS NOT NULL
-              AND a.author_norm IS NOT NULL
-              AND length(a.title_norm) > 5
-        """, [corpus_id])
-
-        count_exact = self.conn.execute(
-            "SELECT COUNT(*) FROM matches WHERE match_type = 'dedup' AND _id_a LIKE ?",
-            [f'_{corpus_id}/%']
-        ).fetchone()[0]
-        print(f'  Exact dedup: {count_exact} pairs')
-
-        if fuzzy:
-            # Fuzzy title within author blocks, same corpus
-            authors = self.conn.execute("""
-                SELECT author_norm, COUNT(*) as n
-                FROM texts
-                WHERE corpus = ? AND author_norm IS NOT NULL AND length(title_norm) > 3
-                GROUP BY author_norm
-                HAVING n > 1
-            """, [corpus_id]).fetchall()
-
-            iterr = authors
-            if progress:
-                iterr = get_tqdm(authors, desc=f'[MetaDB] Fuzzy dedup {corpus_id}')
-
-            batch = []
-            for author_norm, _ in iterr:
-                rows = self.conn.execute("""
-                    SELECT _id, title_norm, year FROM texts
-                    WHERE corpus = ? AND author_norm = ?
-                      AND title_norm IS NOT NULL AND length(title_norm) > 3
-                """, [corpus_id, author_norm]).fetchall()
-
-                for i in range(len(rows)):
-                    for j in range(i + 1, len(rows)):
-                        a_id, a_title, a_year = rows[i]
-                        b_id, b_title, b_year = rows[j]
-                        if a_title == b_title:
-                            continue  # already caught by exact
-                        sim = _jaro_winkler(a_title, b_title)
-                        if sim > 0.85:
-                            pair = (a_id, b_id) if a_id < b_id else (b_id, a_id)
-                            batch.append((*pair, sim, 'dedup'))
-
-                if len(batch) >= 10000:
-                    self._insert_matches_batch(batch)
-                    batch = []
-
-            if batch:
-                self._insert_matches_batch(batch)
-
-            count_total = self.conn.execute(
-                "SELECT COUNT(*) FROM matches WHERE match_type = 'dedup' AND _id_a LIKE ?",
-                [f'_{corpus_id}/%']
-            ).fetchone()[0]
-            print(f'  Total dedup (with fuzzy): {count_total} pairs')
-
-        # Recompute match groups
-        print('  Computing match groups...')
-        self._compute_match_groups()
-
-        # Report
-        n_texts = self.conn.execute(
-            "SELECT COUNT(*) FROM texts WHERE corpus = ?", [corpus_id]
-        ).fetchone()[0]
-        n_groups = self.conn.execute(f"""
-            SELECT COUNT(DISTINCT mg.group_id) FROM match_groups mg
-            JOIN texts t ON mg._id = t._id WHERE t.corpus = ?
-        """, [corpus_id]).fetchone()[0]
-        n_unique = self.conn.execute(f"""
-            SELECT COUNT(*) FROM texts t WHERE t.corpus = ?
-              AND t._id NOT IN (SELECT _id FROM match_groups WHERE rank > 0)
-        """, [corpus_id]).fetchone()[0]
-        print(f'  {corpus_id}: {n_texts} texts → {n_groups} dedup groups, ~{n_unique} unique works')
-
-    def match(self, corpora=None, tiers=(1, 2), deduped=True, progress=True):
-        """
-        Run cross-corpus matching pipeline.
-
-        Args:
-            corpora: list of corpus IDs to match (default: all).
-            tiers: tuple of tier numbers to run (1=exact, 2=fuzzy)
-            deduped: if True, only match dedup representatives (rank=0 or not in match_groups).
-                     Run dedup() on each corpus first for best results.
+            corpora: list of corpus IDs to include (default: all).
+            fuzzy: if True, also run fuzzy title matching within author blocks (slow).
         """
         from lltk.tools.tools import get_tqdm
 
         corpus_filter = ''
-        dedup_filter = ''
+        corpus_where = ''
         if corpora:
             corpus_list = ', '.join(f"'{c}'" for c in corpora)
             corpus_filter = f'AND a.corpus IN ({corpus_list}) AND b.corpus IN ({corpus_list})'
-            print(f'Matching across {len(corpora)} corpora: {", ".join(corpora)}')
-        if deduped:
-            # Only use texts that are either rank 0 in their group or not in any group
-            dedup_filter = """
-                AND a._id NOT IN (SELECT _id FROM match_groups WHERE rank > 0)
-                AND b._id NOT IN (SELECT _id FROM match_groups WHERE rank > 0)
-            """
-            n_excluded = self.conn.execute("SELECT COUNT(*) FROM match_groups WHERE rank > 0").fetchone()[0]
-            if n_excluded:
-                print(f'Using dedup representatives ({n_excluded} duplicates excluded)')
+            corpus_where = f'AND corpus IN ({corpus_list})'
+            print(f'Matching {len(corpora)} corpora: {", ".join(corpora)}')
 
-        if 1 in tiers:
-            print('Tier 1: exact normalized title + author matching...')
-            self.conn.execute(f"""
-                INSERT OR IGNORE INTO matches (_id_a, _id_b, similarity, match_type)
-                SELECT a._id, b._id, 1.0, 'exact_norm'
-                FROM texts a
-                JOIN texts b ON a.title_norm = b.title_norm
-                    AND a.author_norm = b.author_norm
-                    AND a.corpus != b.corpus
-                    AND a._id < b._id
-                WHERE a.title_norm IS NOT NULL
-                  AND a.author_norm IS NOT NULL
-                  AND length(a.title_norm) > 5
-                  AND (
-                    a.year IS NULL OR b.year IS NULL
-                    OR abs(a.year - b.year) <= 20
-                  )
-                  {corpus_filter}
-                  {dedup_filter}
-            """)
-            count1 = self.conn.execute("SELECT COUNT(*) FROM matches WHERE match_type = 'exact_norm'").fetchone()[0]
-            print(f'Tier 1: {count1} matches')
+        # Exact: same title_norm + author_norm, any corpus (within or across)
+        print('Exact title + author matching...')
+        self.conn.execute(f"""
+            INSERT OR IGNORE INTO matches (_id_a, _id_b, similarity, match_type)
+            SELECT a._id, b._id, 1.0, 'exact_norm'
+            FROM texts a
+            JOIN texts b ON a.title_norm = b.title_norm
+                AND a.author_norm = b.author_norm
+                AND a._id < b._id
+            WHERE a.title_norm IS NOT NULL
+              AND a.author_norm IS NOT NULL
+              AND length(a.title_norm) > 5
+              {corpus_filter}
+        """)
+        count_exact = self.conn.execute("SELECT COUNT(*) FROM matches WHERE match_type = 'exact_norm'").fetchone()[0]
+        print(f'  Exact: {count_exact} pairs')
 
-        if 2 in tiers:
-            print('Tier 2: fuzzy title matching within author blocks...')
-            corpus_where = ''
-            dedup_where = ''
-            if corpora:
-                corpus_list = ', '.join(f"'{c}'" for c in corpora)
-                corpus_where = f'AND corpus IN ({corpus_list})'
-            if deduped:
-                dedup_where = "AND _id NOT IN (SELECT _id FROM match_groups WHERE rank > 0)"
-            # Get distinct author_norm values that appear in multiple corpora
+        if fuzzy:
+            print('Fuzzy title matching within author blocks...')
             authors = self.conn.execute(f"""
-                SELECT author_norm, COUNT(DISTINCT corpus) as nc
+                SELECT author_norm, COUNT(*) as n
                 FROM texts
                 WHERE author_norm IS NOT NULL AND length(title_norm) > 3
-                {corpus_where} {dedup_where}
+                {corpus_where}
                 GROUP BY author_norm
-                HAVING nc > 1
+                HAVING n > 1
             """).fetchall()
 
             iterr = authors
@@ -750,7 +629,7 @@ class MetaDB:
                 rows = self.conn.execute(f"""
                     SELECT _id, title_norm, corpus, year FROM texts
                     WHERE author_norm = ? AND title_norm IS NOT NULL AND length(title_norm) > 3
-                    {corpus_where} {dedup_where}
+                    {corpus_where}
                 """, [author_norm]).fetchall()
 
                 for i in range(len(rows)):
@@ -774,15 +653,16 @@ class MetaDB:
             if batch:
                 self._insert_matches_batch(batch)
 
-            count2 = self.conn.execute("SELECT COUNT(*) FROM matches WHERE match_type = 'fuzzy_title'").fetchone()[0]
-            print(f'Tier 2: {count2} fuzzy matches')
+            count_fuzzy = self.conn.execute("SELECT COUNT(*) FROM matches WHERE match_type = 'fuzzy_title'").fetchone()[0]
+            print(f'  Fuzzy: {count_fuzzy} pairs')
 
         # Compute match groups
         print('Computing match groups...')
         self._compute_match_groups()
         total = self.conn.execute("SELECT COUNT(*) FROM matches").fetchone()[0]
         groups = self.conn.execute("SELECT COUNT(DISTINCT group_id) FROM match_groups").fetchone()[0]
-        print(f'Done: {total} total matches, {groups} match groups')
+        n_texts = self.conn.execute("SELECT COUNT(*) FROM match_groups").fetchone()[0]
+        print(f'Done: {total} match pairs, {n_texts} texts in {groups} groups')
 
     def _insert_matches_batch(self, batch):
         """Insert a batch of match tuples, ignoring duplicates."""
