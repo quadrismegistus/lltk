@@ -1,4 +1,5 @@
 from lltk.imports import *
+import re as _re
 
 HATHI_FULL_META_NUMLINES = 17430652
 HATHI_FULL_META_PATH=os.path.join(PATH_CORPUS,'hathi','metadata.csv.gz')
@@ -12,7 +13,85 @@ def htid2id(x):
     a,b=x.split('.',1)
     return a+'/'+b
 
-class TextHathi(BaseText):    
+
+def hathi_id_normalize(raw_id):
+    """Normalize a HathiTrust ID to canonical flat form: {library}/{volume_id}
+
+    Collapses 3-char directory splits and normalizes ark identifiers.
+
+    Handles all known variants:
+        mdp.39015009144422       → mdp/39015009144422       (dot separator)
+        mdp/390/15009144422      → mdp/39015009144422       (3-char dir split)
+        bc/ark/+=13960=t0bv7v96f → bc/ark+=13960=t0bv7v96f  (3-char split ark)
+        aeu/ark:/13960/t0000ds1j → aeu/ark+=13960=t0000ds1j (colon-slash ark)
+        uc2/ark+=13960=t0js9xc1p → uc2/ark+=13960=t0js9xc1p (already canonical)
+        hvd/hxjh5g               → hvd/hxjh5g               (short alphanumeric)
+
+    Idempotent: canonical IDs pass through unchanged.
+    """
+    s = str(raw_id).strip()
+
+    # Handle dot separator (htid format): mdp.39015... → mdp/39015...
+    m = _re.match(r'^([a-z][a-z0-9]*)\.(.*)', s, _re.IGNORECASE)
+    if m:
+        s = m.group(1) + '/' + m.group(2)
+
+    parts = s.split('/')
+    if len(parts) < 2:
+        return s
+
+    library = parts[0].lower()
+    rest = '/'.join(parts[1:])
+
+    # Normalize ark IDs to ark+=NNNNN=XXXXX
+    ark_match = _re.match(r'ark[:/]*\+?=?(\d+)[=/](.*)', rest)
+    if ark_match:
+        rest = f'ark+={"=".join(ark_match.groups())}'
+    elif '/' in rest:
+        # Collapse 3-char directory splits for non-ark IDs
+        subparts = rest.split('/')
+        if all(_re.match(r'^[\w$+]+$', p) for p in subparts):
+            rest = ''.join(subparts)
+
+    return f'{library}/{rest}'
+
+
+# Cache for freqs index: maps canonical_id → actual filepath
+_FREQS_INDEX_CACHE = {}
+
+def _build_freqs_index(freqs_dir):
+    """Walk a freqs directory and build a mapping: normalized_id → filepath."""
+    if freqs_dir in _FREQS_INDEX_CACHE:
+        return _FREQS_INDEX_CACHE[freqs_dir]
+
+    index = {}
+    if not os.path.exists(freqs_dir):
+        _FREQS_INDEX_CACHE[freqs_dir] = index
+        return index
+
+    for root, dirs, files in os.walk(freqs_dir):
+        for f in files:
+            if not f.endswith('.json'):
+                continue
+            path = os.path.join(root, f)
+            raw_id = os.path.relpath(path, freqs_dir).removesuffix('.json')
+            norm_id = hathi_id_normalize(raw_id)
+            index[norm_id] = path
+
+    _FREQS_INDEX_CACHE[freqs_dir] = index
+    if log: log(f'Built freqs index for {freqs_dir}: {len(index)} files')
+    return index
+
+class TextHathi(BaseText):
+    @property
+    def path_freqs(self):
+        """Resolve freqs path through the corpus's freqs index."""
+        path = self.corpus.freqs_path_for(self.id)
+        if path:
+            return path
+        # Fallback to default path construction
+        return super().get_path('freqs')
+
     def metadata(self,**kwargs):
         d=super().metadata(**kwargs)
         au=d.get('contributor')
@@ -172,7 +251,27 @@ class Hathi(BaseCorpus):
             df['year']=df['imprint'].apply(get_date)
         else:
             df['year']=np.nan
+        # Normalize IDs to canonical flat form
+        df.index = df.index.map(hathi_id_normalize)
+        df.index.name = 'id'
         return df
+
+    @property
+    def freqs_index(self):
+        """Mapping of canonical text ID → actual freqs filepath on disk."""
+        return _build_freqs_index(self.path_freqs)
+
+    def freqs_path_for(self, text_id):
+        """Resolve a canonical text ID to its actual freqs filepath."""
+        norm_id = hathi_id_normalize(text_id)
+        path = self.freqs_index.get(norm_id)
+        if path:
+            return path
+        # Fallback: try direct path (for corpora where filenames already match)
+        direct = os.path.join(self.path_freqs, norm_id + '.json')
+        if os.path.exists(direct):
+            return direct
+        return None
 
     def compile(self,**attrs):
         """

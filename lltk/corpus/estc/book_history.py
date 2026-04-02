@@ -671,6 +671,8 @@ FICTION_FORM_KEYWORDS = [
     # Substring matches for form field
     'fiction',
     'novel',
+    "romance",
+    'tale',
 ]
 
 FICTION_TOPIC_KEYWORDS = [

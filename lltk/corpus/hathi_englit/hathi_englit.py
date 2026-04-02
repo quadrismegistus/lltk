@@ -1,5 +1,6 @@
 from lltk.imports import *
 from lltk.corpus.hathi import htid2id
+from lltk.corpus.hathi.hathi import hathi_id_normalize, _build_freqs_index
 
 CORPUS_URL="https://wiki.htrc.illinois.edu/display/COM/Word+Frequencies+in+English-Language+Literature%2C+1700-1922"
 
@@ -55,7 +56,14 @@ PATH_HERE=os.path.abspath(__file__)
 PATH_HERE_DIRNAME=os.path.dirname(PATH_HERE)
 
 
-class TextHathiEngLit(BaseText): pass
+class TextHathiEngLit(BaseText):
+	@property
+	def path_freqs(self):
+		"""Resolve freqs path through the corpus's freqs index."""
+		path = self.corpus.freqs_path_for(self.id)
+		if path:
+			return path
+		return super().get_path('freqs')
 
 
 def freq_tsv2dict(freq_str):
@@ -178,7 +186,24 @@ class HathiEngLit(BaseCorpus):
 		import numpy as np
 		meta=super().load_metadata()
 		meta['year']=[int(x) if x.isdigit() else np.nan for x in meta['startdate']]
+		# Normalize IDs to canonical flat form
+		meta.index = meta.index.map(hathi_id_normalize)
+		meta.index.name = 'id'
 		return meta
+
+	@property
+	def freqs_index(self):
+		return _build_freqs_index(self.path_freqs)
+
+	def freqs_path_for(self, text_id):
+		norm_id = hathi_id_normalize(text_id)
+		path = self.freqs_index.get(norm_id)
+		if path:
+			return path
+		direct = os.path.join(self.path_freqs, norm_id + '.json')
+		if os.path.exists(direct):
+			return direct
+		return None
 
 
 

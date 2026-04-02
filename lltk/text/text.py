@@ -43,6 +43,7 @@ class BaseText(BaseObject):
         self.__meta={}
         self._reld={}
         self._meta={}
+        self._meta_hydrated=False
         self._gdb=None
         self._db=None
         self._init=set()
@@ -191,10 +192,46 @@ class BaseText(BaseObject):
     def __iter__(self): return iter(self.meta.items())
     def __len__(self): return self.num_words
 
+    def _corpus_meta_row(self):
+        """Look up this text's row. Tries MetaDB first, falls back to corpus DataFrame."""
+        # Fast path: DuckDB indexed lookup (returns dict with meta JSON unpacked)
+        try:
+            from lltk.tools.metadb import metadb
+            row = metadb.get(self.corpus.id, self.id)
+            if row:
+                return row
+        except Exception:
+            pass
+        # Fallback: corpus DataFrame
+        try:
+            df = self.corpus.load_metadata()
+            if df is not None and self.id in df.index:
+                row = df.loc[self.id]
+                return {k: v for k, v in row.items() if pd.notna(v)}
+        except Exception:
+            pass
+        return {}
+
+    def _hydrate_meta(self):
+        """Lazily populate _meta from corpus DataFrame on first access."""
+        if self._meta_hydrated:
+            return
+        self._meta_hydrated = True
+        crow = self._corpus_meta_row()
+        if crow:
+            # corpus row is base layer; existing _meta (local overrides) wins
+            self._meta = self.ensure_id(merge_dict(
+                TEXT_META_DEFAULT,
+                self.META,
+                crow,
+                self._meta,
+            ))
+
     def get(self,key,default=None,ish=True,ish_all=None,**kwargs):
         if self._gcache is None: self._gcache={}
         if key in self._gcache: return self._gcache[key]
-        
+        self._hydrate_meta()
+
         if log>1: log(f'? {key}')
         key=str(key)
         if key.startswith('_'): ish=False
@@ -221,6 +258,7 @@ class BaseText(BaseObject):
                 res=o if o is not None else default
             else:
                 res = default
+
         self._gcache[key]=res
         return res
         
@@ -588,7 +626,7 @@ class BaseText(BaseObject):
             ish=True,
             init=False,
             **kwargs):
-        
+        self._hydrate_meta()
         sources = set(self._sources if not init else self.sources) | {self}
         vals = set()
         o = []

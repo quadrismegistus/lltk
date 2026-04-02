@@ -632,7 +632,7 @@ class BaseCorpus(TextList):
     def iter_texts(self,texts=None,progress=False,shuffle=False,lim=None,verbose=False,**kwargs):
         if not texts: texts=list(self.textd.values())
         if not texts: return []
-        if texts: o=list(map(Text, texts))
+        o=list(texts)
         if shuffle: random.shuffle(o)
         if lim: o=o[:lim]
         if progress:
@@ -687,32 +687,27 @@ class BaseCorpus(TextList):
         #if log: log(f'<- remote = {remote}')
         remote=is_logged_on()
 
-        iterr=[{**d, **{'id':i}} for i,d in self.init_meta()]
-        if shuffle: random.shuffle(iterr)
-        iterr=iterr[:lim]
+        # Ensure corpus metadata is loaded (load_metadata caches itself)
+        df = self.load_metadata()
+        if df is None or not len(df):
+            return
 
-        if iterr:
-            if progress:
-                iterr=get_tqdm(
-                    iterr,
-                    desc=f'[{self.name}] Loading corpus'
-                )
+        ids = list(df.index)
+        if shuffle: random.shuffle(ids)
+        if lim: ids = ids[:lim]
 
-            for dx in iterr:
-                id=to_corpus_and_id(dx['id'])[1]
-                meta=just_meta_no_id(dx)
-                t = self.text(
-                    id, 
-                    _source=None,
-                    _add = True,
-                    _cache=False,
-                    _force = False,
-                    _new = False,
-                    _init = False,
-                    _remote = remote,
-                    **meta)
-                # if _init: t.init(cache=_cache,remote=remote,**kwargs)
-                yield t
+        if progress:
+            ids = get_tqdm(ids, desc=f'[{self.name}] Loading corpus')
+
+        for id in ids:
+            id = to_corpus_and_id(id)[1]
+            # Construct bare text shells — metadata looked up lazily from corpus DataFrame
+            if id in self._textd and self._textd[id] is not None:
+                t = self._textd[id]
+            else:
+                t = self.TEXT_CLASS(id=id, _corpus=self, _remote=remote)
+                self._textd[id] = t
+            yield t
 
     def init_(self,remote=REMOTE_REMOTE_DEFAULT,cache=True,progress=2,**kwargs):
         with log.silent:

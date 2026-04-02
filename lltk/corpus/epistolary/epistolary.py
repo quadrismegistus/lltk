@@ -418,6 +418,12 @@ class Epistolary(BaseCorpus):
     TEXT_CLASS=TextEpistolary
     CORPORA_TO_START_WITH = ['Chadwyck']
 
+    def load_metadata(self, *x, **y):
+        df = super().load_metadata(*x, **y)
+        df['genre_raw'] = 'Epistolary novel'
+        df['genre'] = 'Fiction'
+        return df
+
 
     def init_text(self,*args,**kwargs):
         t=super().init_text(*args,**kwargs)

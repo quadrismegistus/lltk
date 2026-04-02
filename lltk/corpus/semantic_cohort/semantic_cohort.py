@@ -17,10 +17,8 @@ class SemanticCohort(BaseCorpus):
         return self.install(parts=['metadata'])
 
     def load_metadata(self,*x,**y):
-        """
-        Magic attribute loading metadata, and doing any last minute customizing
-        """
         meta=super().load_metadata()
-        # ?
+        meta['genre_raw'] = 'Novel'
+        meta['genre'] = 'Fiction'
         return meta
 

@@ -42,4 +42,17 @@ class EEBO_TCP(TCP):
 		meta=super().load_metadata()
 		if not len(meta):
 			return meta
-		return self.merge_linked_metadata(meta)
+		meta = self.merge_linked_metadata(meta)
+		# EEBO's own 'genre' column is really a medium (Prose/Verse/Drama) — rename it
+		if 'genre' in meta.columns:
+			meta['medium'] = meta['genre']
+		# Genre comes from linked ESTC only
+		if 'estc_genre' in meta.columns:
+			meta['genre'] = meta['estc_genre']
+		else:
+			meta['genre'] = None
+		if 'estc_genre_raw' in meta.columns:
+			meta['genre_raw'] = meta['estc_genre_raw']
+		else:
+			meta['genre_raw'] = None
+		return meta

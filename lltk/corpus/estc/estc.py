@@ -168,7 +168,7 @@ class ESTC(BaseCorpus):
 
 
 	def load_metadata(self):
-		from lltk.corpus.estc.book_history import standardize_format, parse_extent, is_fiction
+		from lltk.corpus.estc.book_history import standardize_format, parse_extent
 		import numpy as np
 
 		meta = super().load_metadata()
@@ -192,13 +192,26 @@ class ESTC(BaseCorpus):
 			meta['has_plates'] = ext_dicts.apply(lambda x: x['has_plates'])
 			meta['extent_type'] = ext_dicts.apply(lambda x: x['extent_type'])
 
-		# Classify fiction
-		meta['is_fiction'] = meta.apply(
-			lambda r: is_fiction(
+		# Classify genres
+		genre_results = meta.apply(
+			lambda r: classify_genres(
 				r.get('form', ''),
-				r.get('subject_topic', '')
+				r.get('subject_topic', ''),
+				r.get('title', ''),
+				r.get('title_sub', ''),
 			), axis=1
 		)
+		meta['genres'] = genre_results.apply(lambda x: x['genres'])
+		meta['genre_source'] = genre_results.apply(lambda x: x['source'])
+		# Pick first genre as genre_raw; map to harmonized genre
+		meta['genre_raw'] = meta['genres'].apply(
+			lambda gs: ' | '.join(sorted(gs)) if gs else None
+		)
+		meta['genre'] = meta['genres'].apply(
+			lambda gs: _genres_to_harmonized(gs) if gs else None
+		)
+		# Keep is_fiction for backwards compat
+		meta['is_fiction'] = meta['genres'].apply(is_fiction)
 
 		return meta
 
@@ -270,3 +283,779 @@ class ESTC(BaseCorpus):
 
 		for code in code2freq:
 			tools.write2('code_freqs.%s.txt' % code, code2freq[code])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+"""
+Classify ESTC records into genres using three tiers:
+  1. form field (most reliable, cataloger-assigned)
+  2. subject_topic field (cataloger-assigned but noisier)
+  3. title + title_sub keywords (last resort fallback)
+
+Usage:
+    from classify_genre import classify_genres
+
+    result = classify_genres(
+        form='Sermons',
+        subject_topic='Funeral sermons',
+        title='A sermon preached before the King',
+        title_sub='on the occasion of ...'
+    )
+    # result = {'genres': {'Sermon'}, 'source': 'form'}
+
+    df['genres'] = df.apply(lambda r: classify_genres(
+        r['form'], r['subject_topic'], r['title'], r.get('title_sub', '')
+    )['genres'], axis=1)
+"""
+
+import re
+
+GENRE_RULES = {
+
+    # ── Fiction sub-genres (more specific first, then catch-all) ────
+    # These are all "fiction" but broken out for analysis.
+    # Aggregate to Fiction downstream if needed.
+
+    'Novel': {
+        'form_exact': {
+            'novels', 'novellas', 'gothic novels', 'gothic fiction',
+            'historical fiction', 'biographical fiction',
+            'mystery and detective fiction', 'comic histories',
+        },
+        'form_keywords': [],
+        'topic_exact': set(),
+        'topic_keywords': [],
+        'title_keywords': ['novel'],
+    },
+
+    'Romance': {
+        'form_exact': {'romances'},
+        'form_keywords': [],
+        'topic_exact': set(),
+        'topic_keywords': [],
+        'title_keywords': ['romance'],
+    },
+
+    'Tale': {
+        'form_exact': {
+            'fairy tales', 'folk tales', 'nursery stories',
+        },
+        'form_keywords': [],
+        'topic_exact': set(),
+        'topic_keywords': ["children's stories"],
+        'title_keywords': ['tale', 'tales'],
+    },
+
+    'Fable': {
+        'form_exact': {'fables', 'fabliaux'},
+        'form_keywords': [],
+        'topic_exact': {'fables'},
+        'topic_keywords': ['fables,'],
+        'title_keywords': ['fable', 'fables'],
+    },
+
+    'Picaresque': {
+        'form_exact': {'picaresque fiction'},
+        'form_keywords': ['picaresque'],
+        'topic_exact': set(),
+        'topic_keywords': [],
+        'title_keywords': [],
+    },
+
+    'Epistolary fiction': {
+        'form_exact': {'epistolary novels', 'epistolary fiction'},
+        'form_keywords': [],
+        'topic_exact': set(),
+        'topic_keywords': ['epistolary fiction'],
+        'title_keywords': [],
+    },
+
+    'Imaginary voyage': {
+        'form_exact': {
+            'imaginary voyages', 'imaginary conversations',
+            'robinsonades',
+        },
+        'form_keywords': [],
+        'topic_exact': set(),
+        'topic_keywords': ['voyages, imaginary'],
+        'title_keywords': [],
+    },
+
+    'Fiction': {
+        'form_exact': {
+            'fiction', 'chapbooks', 'adventure stories',
+            'utopian literature', 'utopian literature.',
+            'fantasy literature', 'harlequinades',
+            'short stories', 'sea stories', 'bible stories',
+            'comic books',
+        },
+        'form_keywords': [],
+        'topic_exact': {
+            'english fiction', 'french fiction', 'utopias',
+            'chapbooks', 'fiction',
+        },
+        'topic_keywords': [
+            'chapbooks,',
+        ],
+        'title_keywords': [],
+    },
+
+    'Poetry': {
+        'form_exact': {
+            'poems', 'broadside poems', 'odes', 'elegies', 'verse',
+            'lyric poems', 'occasional poems', 'pastoral poems',
+            'poetical miscellanies', 'epics', 'acrostics',
+            'epitaphs', 'epigrams', 'eclogues', 'sonnets',
+            'english poetry', 'american poetry', 'neo-latin poems',
+            'penny poems', 'begging poems', 'alphabet rhymes',
+            'carol books', 'epistolary poetry', 'poetry of places',
+        },
+        'form_keywords': ['poem', 'poetry', 'elegiac'],
+        'topic_exact': {
+            'english poetry', 'latin poetry', 'french poetry',
+            'greek poetry', 'italian poetry', 'poetry',
+        },
+        'topic_keywords': [
+            'poetry,', 'elegiac poetry', 'verse,',
+            'narrative poetry', 'love poetry', 'political poetry',
+            'christian poetry', 'pastoral poetry', 'religious poetry',
+            'occasional verse', 'epic poetry',
+        ],
+        'title_keywords': [
+            'poem', 'poems', 'ode', 'odes', 'elegy', 'elegies',
+            'verse', 'verses', 'sonnet', 'sonnets', 'eclogue',
+            'epitaph', 'epigram', 'epigrams', 'poetry', 'poetical',
+        ],
+    },
+
+    'Drama': {
+        'form_exact': {
+            'plays', 'plays.', 'comedies', 'tragedies',
+            'tradegies', 'farces', 'tragicomedies', 'drama', 'dramas',
+            'operas', 'operettas', 'libretti', 'masques',
+            'morality plays', 'heroic dramas', 'ballad operas',
+            'english drama (comedy', 'acting editions',
+            'promptbooks', 'scenarios',
+        },
+        'form_keywords': ['play', 'drama', 'comedi', 'tragedi', 'librett', 'opera'],
+        'topic_exact': {
+            'english drama', 'opera', 'operas', 'drama',
+            'french drama', 'italian drama', 'theater', 'theatres',
+        },
+        'topic_keywords': [
+            'english drama', 'ballad opera', 'english farce',
+        ],
+        'title_keywords': [
+            'comedy', 'tragedy', 'farce', 'opera',
+            'acted', 'dramatick', 'dramatic', 'theatrical',
+            'masque', 'interlude',
+        ],
+    },
+
+    'Sermon': {
+        'form_exact': {
+            'sermons', 'funeral sermons', 'ordination sermons',
+            'fast-day sermons', 'fast day sermons', 'thanksgiving sermons',
+            'election sermons', 'execution sermons', 'occasional sermons',
+            'artillery election sermons', 'dedication sermons',
+            'installation sermons', 'farewell sermons', 'visitation sermons',
+            "children's sermons", 'new year sermons', 'christmas sermons',
+            'fourth of july sermons', 'anniversary sermons',
+            'apocalyptic sermons', 'wedding sermons', 'century sermons',
+            'half century sermons', 'thanksgiving day sermons',
+        },
+        'form_keywords': ['sermon'],
+        'topic_exact': set(),
+        'topic_keywords': ['sermon'],
+        'title_keywords': ['sermon', 'sermons', 'preached', "preach'd"],
+    },
+
+    'Essay': {
+        'form_exact': {'essays', 'essays.', 'essaysy', 'english essays'},
+        'form_keywords': ['essay'],
+        'topic_exact': {'english essays'},
+        'topic_keywords': [],
+        'title_keywords': ['essay', 'essays'],
+    },
+
+    'Letter': {
+        'form_exact': {'letters'},
+        'form_keywords': [],
+        'topic_exact': {'english letters'},
+        'topic_keywords': ['letter writing'],
+        'title_keywords': ['letter', 'letters', 'epistle', 'epistles'],
+    },
+
+    'Almanac': {
+        'form_exact': {'almanacs', 'alamancs', 'ephemerides'},
+        'form_keywords': ['almanac'],
+        'topic_exact': {'almanacs', 'ephemerides'},
+        'topic_keywords': ['almanac'],
+        'title_keywords': ['almanack', 'almanac', 'ephemeris', 'prognostication'],
+    },
+
+    'Ballad/Song': {
+        'form_exact': {
+            'ballads', 'songs', 'songsters', 'national songs',
+            'song sheets', 'broadside ballads', 'carol books',
+        },
+        'form_keywords': ['ballad', 'songster'],
+        'topic_exact': set(),
+        'topic_keywords': ['ballads,', 'songs,', "children's songs"],
+        'title_keywords': ['ballad', 'ballads', 'song', 'songs', 'garland'],
+    },
+
+    'Satire': {
+        'form_exact': {
+            'satires', 'satire', 'burlesques', 'lampoons',
+            'lampoons test', 'parodies', 'facetiae', 'jestbooks',
+            'caricatures',
+        },
+        'form_keywords': ['satir', 'lampoon', 'burlesque'],
+        'topic_exact': set(),
+        'topic_keywords': [
+            'satire,', 'political satire', 'verse satire',
+            'wit and humor', 'english wit',
+        ],
+        'title_keywords': ['satire', 'satyr', 'burlesque'],
+    },
+
+    'Catechism': {
+        'form_exact': {'catechisms'},
+        'form_keywords': ['catechism'],
+        'topic_exact': {'catechisms'},
+        'topic_keywords': ['catechism'],
+        'title_keywords': ['catechism', 'catechisme', 'catechismus'],
+    },
+
+    'Devotional': {
+        'form_exact': {
+            'devotional literature', 'devoltional literature',
+            'devotional works', 'prayer books', 'prayer books.',
+            'prayers', 'hymnals', 'psalters', 'liturgical books',
+            'books of hours', 'book of hours', 'breviaries', 'brevaries',
+            'service books', 'missals', 'devotional calendars',
+            'gospel books', 'evangeliaries',
+            'primers (devotional books',
+        },
+        'form_keywords': ['devotional', 'prayer book', 'hymnal', 'psalter'],
+        'topic_exact': {
+            'devotional literature', 'devotional exercises',
+            'meditations', 'prayers', 'prayer', 'psalmody',
+            'psalters', 'worship', 'public worship',
+        },
+        'topic_keywords': [
+            'devotional literature', 'devotional exercise',
+            'hymns,', 'primers (prayer',
+        ],
+        'title_keywords': [
+            'prayer', 'prayers', 'devotion', 'devotions',
+            'meditation', 'meditations', 'liturgy', 'psalter',
+        ],
+    },
+
+    'Hymn': {
+        'form_exact': {'hymns', 'hymnals'},
+        'form_keywords': ['hymn'],
+        'topic_exact': set(),
+        'topic_keywords': ['hymns,'],
+        'title_keywords': ['hymn', 'hymns', 'psalm', 'psalms'],
+    },
+
+    'Periodical': {
+        'form_exact': {
+            'newspapers', 'periodicals', 'periocials', 'periiodicals',
+            'newsbooks', 'newsletters',
+        },
+        'form_keywords': ['periodical', 'newspaper', 'newsbook', 'newsletter'],
+        'topic_exact': set(),
+        'topic_keywords': [],
+        'title_keywords': [
+            'gazette', 'mercury', 'courant', 'intelligencer',
+            'advertiser', 'magazine',
+        ],
+    },
+
+    'Catalogue': {
+        'form_exact': {
+            'catalogs', 'catalogues', "booksellers' catalogs",
+            "booksellers' catalogues", 'library catalogs',
+            'auction catalogs', 'auction catalogues',
+            'sales catalogs', 'sales catalogues', 'college catalogs',
+            'trade catalogs', 'exhibition catalogs', "publishers' catalogs",
+            'book auction catalogs', 'museum catalogs', 'university catalogs',
+        },
+        'form_keywords': ['catalog'],
+        'topic_exact': set(),
+        'topic_keywords': ['catalogs,', 'book auction', 'estate sales'],
+        'title_keywords': ['catalogue', 'catalog'],
+    },
+
+    'Biography': {
+        'form_exact': {
+            'biographies', 'biogarphies', 'biography', 'memoirs',
+            'autobiographies', 'diaries',
+        },
+        'form_keywords': ['biograph'],
+        'topic_exact': {'biography', 'christian biography'},
+        'topic_keywords': ['biograph'],
+        'title_keywords': ['life', 'lives', 'memoir', 'memoirs'],
+    },
+
+    'History': {
+        'form_exact': {
+            'chronicles', 'historical works', 'military histories',
+            'local histories', 'family histories', 'military unit histories',
+            'annals',
+        },
+        'form_keywords': ['histor'],
+        'topic_exact': {'history', 'world history', 'church history'},
+        'topic_keywords': ['history,', 'constitutional history'],
+        'title_keywords': ['chronicle', 'annals'],  # not 'history' — too many novels use it
+    },
+
+    'Travel': {
+        'form_exact': {
+            'travel literature', 'exploration literature',
+            'discovery narratives', 'maritime journals', 'roadbooks',
+        },
+        'form_keywords': ['travel'],
+        'topic_exact': {'voyages and travels'},
+        'topic_keywords': ['voyages and travel', 'voyages around', 'shipwreck'],
+        'title_keywords': ['voyage', 'voyages', 'travels', 'tour'],
+    },
+
+    'Legal': {
+        'form_exact': {
+            'laws', 'bills', 'biils', 'legal works', 'session laws',
+            'legal formularies', 'legal instruments', 'legal petitions',
+            'legal proceedings', 'charters', 'constitutions', 'treaties',
+            'trial proceedings', 'trials', 'indentures', 'deeds',
+            'bonds (legal records', 'oaths',
+        },
+        'form_keywords': ['legal'],
+        'topic_exact': {'law'},
+        'topic_keywords': [
+            'law report', 'criminal justice', 'courts',
+            'ecclesiastical law', 'maritime law', 'criminal law',
+            'civil procedure', 'pleading', 'canon law',
+            'equity pleading', 'conveyancing',
+        ],
+        'title_keywords': ['act', 'statute', 'ordinance', 'trial', 'tryal', 'indictment'],
+    },
+
+    'Proclamation': {
+        'form_exact': {
+            'proclamations', 'thanksgiving day proclamations',
+            'fast day proclamations', 'orders in council',
+            'royal ordinances', 'regulations',
+            'administrative regulations',
+            'military regulations', 'military orders',
+        },
+        'form_keywords': ['proclamation'],
+        'topic_exact': {'proclamations'},
+        'topic_keywords': [],
+        'title_keywords': ['proclamation'],
+    },
+
+    'Petition/Address': {
+        'form_exact': {
+            'petitions', 'petition', 'petitoins',
+            'addresses', 'addresses.', 'funeral addresses',
+            'fourth of july addresses', 'legislative addresses',
+            "carriers' addresses", 'new year addresses',
+            'thanksgiving day addresses', 'congressional addresses',
+            'parliamentary addresses', 'occasional addresses',
+            'academic addresses', 'parliamentary petitions',
+            'royal petitions', 'fast day addresses',
+        },
+        'form_keywords': ['petition'],
+        'topic_exact': set(),
+        'topic_keywords': [],
+        'title_keywords': ['petition', 'address', 'remonstrance'],
+    },
+
+    'Speech': {
+        'form_exact': {
+            'speeches', 'gallows speeches', 'gallows speeches y 1723',
+        },
+        'form_keywords': [],
+        'topic_exact': set(),
+        'topic_keywords': ['speeches, addresses'],
+        'title_keywords': ['speech', 'oration'],
+    },
+
+    'Dialogue': {
+        'form_exact': {'dialogues', 'questions and answers',
+                       'question and answers', 'ouestion and answers'},
+        'form_keywords': ['dialogue'],
+        'topic_exact': set(),
+        'topic_keywords': ['dialogues,', 'questions and answers'],
+        'title_keywords': ['dialogue', 'dialogues'],
+    },
+
+    'Treatise': {
+        'form_exact': {'treatises', 'discursive works'},
+        'form_keywords': ['treatise'],
+        'topic_exact': set(),
+        'topic_keywords': [],
+        'title_keywords': ['treatise', 'discourse', 'dissertation'],
+    },
+
+    'Grammar/Textbook': {
+        'form_exact': {
+            'grammars', 'grammar', 'textbooks', 'text books',
+            'spellers', 'readers', 'alphabet books',
+            'primers (instructional books', 'writing books',
+            'instruction books', 'drawing books', 'copy books (penmanship',
+            'exercise books (penmanship', 'penmanship manuals',
+            'penmanship specimen books', 'phrase books', 'hornbooks',
+            'instructional works',
+        },
+        'form_keywords': ['grammar', 'textbook', 'speller'],
+        'topic_exact': {
+            'latin language', 'english language', 'french language',
+            'greek language', 'hebrew language', 'italian language',
+            'rhetoric', 'elocution', 'shorthand', 'penmanship',
+            'bookkeeping',
+        },
+        'topic_keywords': ['language and language'],
+        'title_keywords': ['grammar', 'arithmetic', 'spelling'],
+    },
+
+    'Dictionary': {
+        'form_exact': {
+            'dictionaries', 'etymological dictionaries',
+            'glossaries', 'thesauri', 'concordances',
+            'encyclopedias', 'bibliographies', 'indexes',
+            'gazetteers', 'gazetters',
+        },
+        'form_keywords': ['dictionar', 'encycloped'],
+        'topic_exact': {'encyclopedias and dictionaries'},
+        'topic_keywords': [],
+        'title_keywords': ['dictionary', 'lexicon', 'glossary', 'thesaurus'],
+    },
+
+    'Narrative': {
+        'form_exact': {
+            'narratives', 'captivity narratives',
+            'conversion narratives', "survivors' narratives",
+            'miracle narratives',
+        },
+        'form_keywords': ['narrative'],
+        'topic_exact': set(),
+        'topic_keywords': ['indian captivities'],
+        'title_keywords': ['narrative', 'account', 'relation'],
+    },
+
+    'Cookery': {
+        'form_exact': {'cookbooks', 'cookery books'},
+        'form_keywords': ['cookbook', 'cookery'],
+        'topic_exact': {'cookery'},
+        'topic_keywords': ['cookery,'],
+        'title_keywords': ['cookery'],
+    },
+
+    'Medical': {
+        'form_exact': {'medical formularies', 'pharmacopoeias', 'herbals'},
+        'form_keywords': ['pharmacopoeia'],
+        'topic_exact': {'medicine', 'surgery', 'obstetrics', 'pharmacy'},
+        'topic_keywords': [
+            'medicine,', 'materia medica', 'dispensatories',
+            'veterinary', 'pharmacopoeia',
+        ],
+        'title_keywords': ['physick', 'pharmacopoeia', 'dispensatory', 'surgery', 'anatomy'],
+    },
+
+    'Map': {
+        'form_exact': {
+            'maps', 'atlases', 'atlases (geographic',
+            'atlases (scientific', 'celestial atlases', 'pilot guides',
+        },
+        'form_keywords': ['atlas'],
+        'topic_exact': set(),
+        'topic_keywords': ['pilot guide'],
+        'title_keywords': ['atlas'],
+    },
+
+    'Lecture': {
+        'form_exact': {'lectures', 'lecture notes'},
+        'form_keywords': ['lecture'],
+        'topic_exact': {'oratory'},
+        'topic_keywords': [],
+        'title_keywords': ['lecture', 'lectures'],
+    },
+
+    'Advertisement': {
+        'form_exact': {
+            'advertisements', 'advertisements.', 'advertisments',
+            'adverisements', 'advertisement',
+            "booksellers' advertisements", "booksellers advertisements",
+            "booksellers' asvertisements", "bookseller's advertisements",
+            "publishers' advertisements", "publishers' advertisement",
+            "publisher's advertisements", "printers' advertisements",
+            'prospectuses', 'prospectus', 'book prospectuses',
+            'company prospectuses',
+        },
+        'form_keywords': ['advertisement', 'prospectus'],
+        'topic_exact': set(),
+        'topic_keywords': [],
+        'title_keywords': [],
+    },
+
+    'Juvenile': {
+        'form_exact': {'juvenile literature', 'juvenilia'},
+        'form_keywords': ['juvenile'],
+        'topic_exact': set(),
+        'topic_keywords': [],
+        'title_keywords': [],
+    },
+
+    'Genealogy': {
+        'form_exact': {'genealogies', 'genalogies', 'family trees', 'armorials'},
+        'form_keywords': ['genealog'],
+        'topic_exact': {'heraldry'},
+        'topic_keywords': ['genealog'],
+        'title_keywords': ['genealogy', 'pedigree'],
+    },
+
+    'Music': {
+        'form_exact': {'musical works', 'scores', 'part books'},
+        'form_keywords': ['musical'],
+        'topic_exact': {'music', 'church music', 'concert programs'},
+        'topic_keywords': ['oratorio'],
+        'title_keywords': ['cantata', 'oratorio', 'sonata', 'concerto'],
+    },
+
+    'Allegory': {
+        'form_exact': {
+            'allegories', 'emblem books', 'parables',
+            'doomsday literature',
+        },
+        'form_keywords': ['allegor'],
+        'topic_exact': set(),
+        'topic_keywords': ['allegory', 'emblem'],
+        'title_keywords': ['allegory', 'parable'],
+    },
+}
+
+
+def classify_genres(form=None, subject_topic=None, title=None, title_sub=None):
+    """
+    Classify an ESTC record into genre(s).
+
+    Returns dict:
+      'genres': set of genre labels (may be empty)
+      'source': 'form' | 'topic' | 'title' | None
+                which tier produced the first match
+    
+    Tiers 1 (form) and 2 (topic) both contribute.
+    Tier 3 (title keywords) only fires if tiers 1+2 found nothing.
+    """
+    genres = set()
+    source = None
+
+    if form and not (isinstance(form, float) and form != form):
+        form_genres = _match_field(str(form), 'form')
+        if form_genres:
+            genres.update(form_genres)
+            source = 'form'
+
+    if subject_topic and not (isinstance(subject_topic, float) and subject_topic != subject_topic):
+        topic_genres = _match_field(str(subject_topic), 'topic')
+        if topic_genres:
+            genres.update(topic_genres)
+            if source is None:
+                source = 'topic'
+
+    if not genres:
+        title_text = ''
+        if title and not (isinstance(title, float) and title != title):
+            title_text = str(title)
+        if title_sub and not (isinstance(title_sub, float) and title_sub != title_sub):
+            title_text = title_text + ' ' + str(title_sub)
+        if title_text.strip():
+            title_genres = _match_title(title_text)
+            if title_genres:
+                genres.update(title_genres)
+                source = 'title'
+
+    return {'genres': genres, 'source': source}
+
+
+def _match_field(value, field_type):
+    genres = set()
+    segments = [seg.strip().lower() for seg in value.split('|')]
+    for genre_name, rules in GENRE_RULES.items():
+        exact_set = rules.get(f'{field_type}_exact', set())
+        keywords = rules.get(f'{field_type}_keywords', [])
+        for seg in segments:
+            if not seg:
+                continue
+            if seg in exact_set:
+                genres.add(genre_name)
+                break
+            for kw in keywords:
+                if kw in seg:
+                    genres.add(genre_name)
+                    break
+    return genres
+
+
+def _match_title(title_text):
+    genres = set()
+    words = set(re.findall(r"[a-z']+", title_text.lower()))
+    for genre_name, rules in GENRE_RULES.items():
+        for kw in rules.get('title_keywords', []):
+            if kw in words:
+                genres.add(genre_name)
+                break
+    return genres
+
+
+def get_all_genre_names():
+    return sorted(GENRE_RULES.keys())
+
+# All fiction sub-genres for easy aggregation
+FICTION_GENRES = {
+    'Fiction', 'Novel', 'Romance', 'Tale', 'Fable',
+    'Picaresque', 'Epistolary fiction', 'Imaginary voyage',
+}
+
+def is_fiction(genres):
+    """Check if a set of genres contains any fiction sub-genre."""
+    return bool(genres & FICTION_GENRES)
+
+# Map fine-grained ESTC genres to GENRE_VOCAB broad categories
+_GENRE_TO_HARMONIZED = {
+    # Fiction family
+    'Fiction': 'Fiction', 'Novel': 'Fiction', 'Romance': 'Fiction',
+    'Tale': 'Fiction', 'Fable': 'Fiction', 'Picaresque': 'Fiction',
+    'Epistolary fiction': 'Fiction', 'Imaginary voyage': 'Fiction',
+    # Direct mappings
+    'Poetry': 'Poetry', 'Drama': 'Drama', 'Sermon': 'Sermon',
+    'Essay': 'Essay', 'Letter': 'Letters', 'Almanac': 'Almanac',
+    'Biography': 'Biography', 'Legal': 'Legal', 'Speech': 'Speech',
+    'Periodical': 'Periodical', 'Treatise': 'Treatise',
+    # ESTC-specific → broad
+    'Ballad/Song': 'Poetry', 'Hymn': 'Poetry',
+    'Satire': None,  # cross-cutting mode; genre depends on co-occurring labels
+    'Catechism': 'Nonfiction', 'Devotional': 'Nonfiction',
+    'Catalogue': 'Reference', 'Dictionary': 'Reference',
+    'Grammar/Textbook': 'Reference', 'Map': 'Reference',
+    'History': 'History', 'Travel': 'Nonfiction',
+    'Narrative': 'Nonfiction', 'Cookery': 'Nonfiction',
+    'Medical': 'Nonfiction', 'Lecture': 'Nonfiction',
+    'Advertisement': 'Nonfiction', 'Juvenile': 'Fiction',
+    'Genealogy': 'Reference', 'Music': 'Nonfiction',
+    'Allegory': 'Fiction', 'Dialogue': 'Nonfiction',
+    'Proclamation': 'Legal',
+    'Petition/Address': 'Nonfiction',
+}
+
+# Priority order for picking a single harmonized genre when multiple match
+_HARMONIZED_PRIORITY = [
+    'Fiction', 'Poetry', 'Drama', 'Periodical', 'Sermon',
+    'Essay', 'Letters', 'Biography', 'History', 'Legal', 'Speech',
+    'Treatise', 'Almanac', 'Reference', 'Nonfiction',
+]
+
+def _genres_to_harmonized(genres):
+    """Map a set of fine-grained genres to a single harmonized GENRE_VOCAB label."""
+    harmonized = set()
+    for g in genres:
+        h = _GENRE_TO_HARMONIZED.get(g)
+        if h:
+            harmonized.add(h)
+    if not harmonized:
+        return None
+    # Pick by priority
+    for h in _HARMONIZED_PRIORITY:
+        if h in harmonized:
+            return h
+    return harmonized.pop()
+
+
+# if __name__ == '__main__':
+#     tests = [
+#         ('Fiction', '', '', '', {'Fiction'}, 'form'),
+#         ('Novels', '', '', '', {'Novel'}, 'form'),
+#         ('Sermons', '', '', '', {'Sermon'}, 'form'),
+#         ('Plays', '', '', '', {'Drama'}, 'form'),
+#         ('Poems', '', '', '', {'Poetry'}, 'form'),
+#         ('Satires', '', '', '', {'Satire'}, 'form'),
+#         ('Ballads', '', '', '', {'Ballad/Song'}, 'form'),
+#         ('Essays', '', '', '', {'Essay'}, 'form'),
+#         ('Almanacs', '', '', '', {'Almanac'}, 'form'),
+#         ('Catechisms', '', '', '', {'Catechism'}, 'form'),
+#         ('Grammars', '', '', '', {'Grammar/Textbook'}, 'form'),
+#         ('Letters', '', '', '', {'Letter'}, 'form'),
+#         ('Newspapers', '', '', '', {'Periodical'}, 'form'),
+#         ('Catalogs', '', '', '', {'Catalogue'}, 'form'),
+#         ('Biographies', '', '', '', {'Biography'}, 'form'),
+#         ('Maps', '', '', '', {'Map'}, 'form'),
+#         # Fiction sub-genres
+#         ('Chapbooks', '', '', '', {'Fiction'}, 'form'),
+#         ('Fiction', '', '', '', {'Fiction'}, 'form'),
+#         ('Epistolary novels', '', '', '', {'Epistolary fiction'}, 'form'),
+#         ('Epistolary Novels', '', '', '', {'Epistolary fiction'}, 'form'),
+#         ('Gothic novels', '', '', '', {'Novel'}, 'form'),
+#         ('Fables', '', '', '', {'Fable'}, 'form'),
+#         ('Romances', '', '', '', {'Romance'}, 'form'),
+#         ('Fairy tales', '', '', '', {'Tale'}, 'form'),
+#         ('Picaresque fiction', '', '', '', {'Picaresque'}, 'form'),
+#         ('Imaginary voyages', '', '', '', {'Imaginary voyage'}, 'form'),
+#         ('Adventure stories', '', '', '', {'Fiction'}, 'form'),
+#         # Topics
+#         ('', 'English fiction', '', '', {'Fiction'}, 'topic'),
+#         ('', 'Epistolary fiction, English', '', '', {'Epistolary fiction'}, 'topic'),
+#         ('', 'Fables, English', '', '', {'Fable'}, 'topic'),
+#         ('', 'Voyages, Imaginary', '', '', {'Imaginary voyage'}, 'topic'),
+#         ('', 'English drama', '', '', {'Drama'}, 'topic'),
+#         ('', 'English poetry', '', '', {'Poetry'}, 'topic'),
+#         ('', 'Funeral sermons', '', '', {'Sermon'}, 'topic'),
+#         # Both tiers
+#         ('Sermons', 'English poetry', '', '', {'Sermon', 'Poetry'}, 'form'),
+#         # Title fallback
+#         ('', '', 'A sermon preached before the King', '', {'Sermon'}, 'title'),
+#         ('', '', 'An essay concerning humane understanding', '', {'Essay'}, 'title'),
+#         ('', '', 'A voyage to the South Seas', '', {'Travel'}, 'title'),
+#         ('', '', 'A tragedy called Hamlet', '', {'Drama'}, 'title'),
+#         ('', '', 'The novel adventures of Tom Jones', '', {'Novel'}, 'title'),
+#         ('', '', 'A romance of the forest', '', {'Romance'}, 'title'),
+#         ('', '', 'A pleasant tale of two lovers', '', {'Tale'}, 'title'),
+#         ('', '', 'Fables of Aesop', '', {'Fable'}, 'title'),
+#         # Title should NOT fire if form/topic matched
+#         ('Sermons', '', 'poems and essays', '', {'Sermon'}, 'form'),
+#         # Empty
+#         ('', '', '', '', set(), None),
+#         (None, None, None, None, set(), None),
+#         # Pipe-separated
+#         ('Poems | Fiction', '', '', '', {'Poetry', 'Fiction'}, 'form'),
+#         ('Poems | Novels', '', '', '', {'Poetry', 'Novel'}, 'form'),
+#     ]
+#     failures = 0
+#     for form, topic, title, title_sub, exp_genres, exp_source in tests:
+#         result = classify_genres(form, topic, title, title_sub)
+#         ok = result['genres'] == exp_genres and result['source'] == exp_source
+#         if not ok:
+#             failures += 1
+#             print(f"FAIL: form={form!r} topic={topic!r} title={title!r}")
+#             print(f"  expected genres={exp_genres} source={exp_source}")
+#             print(f"  got      genres={result['genres']} source={result['source']}")
+#     if failures:
+#         print(f"\n{failures}/{len(tests)} FAILED")
+#     else:
+#         print(f"All {len(tests)} tests passed")

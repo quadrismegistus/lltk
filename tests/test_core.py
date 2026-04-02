@@ -405,24 +405,24 @@ class TestBookHistory:
         assert result['num_pages'] is None
 
     def test_is_fiction_true(self):
-        from lltk.corpus.estc.book_history import is_fiction
-        assert is_fiction('Fiction', '') is True
-        assert is_fiction('Novels', '') is True
-        assert is_fiction('', 'English fiction') is True
+        from lltk.corpus.estc.estc import classify_genres, is_fiction
+        assert is_fiction(classify_genres('Fiction', '')['genres']) is True
+        assert is_fiction(classify_genres('Novels', '')['genres']) is True
+        assert is_fiction(classify_genres('', 'English fiction')['genres']) is True
 
     def test_is_fiction_false(self):
-        from lltk.corpus.estc.book_history import is_fiction
-        assert is_fiction('Sermons', '') is False
-        assert is_fiction('', 'English poetry') is False
-        assert is_fiction('', '') is False
+        from lltk.corpus.estc.estc import classify_genres, is_fiction
+        assert is_fiction(classify_genres('Sermons', '')['genres']) is False
+        assert is_fiction(classify_genres('', 'English poetry')['genres']) is False
+        assert is_fiction(classify_genres('', '')['genres']) is False
 
     def test_is_fiction_none(self):
-        from lltk.corpus.estc.book_history import is_fiction
-        assert is_fiction(None, None) is False
+        from lltk.corpus.estc.estc import classify_genres, is_fiction
+        assert is_fiction(classify_genres(None, None)['genres']) is False
 
     def test_is_fiction_pipe_separated(self):
-        from lltk.corpus.estc.book_history import is_fiction
-        assert is_fiction('Poems | Fiction', '') is True
+        from lltk.corpus.estc.estc import classify_genres, is_fiction
+        assert is_fiction(classify_genres('Poems | Fiction', '')['genres']) is True
 
 
 class TestLinkedMetadata:

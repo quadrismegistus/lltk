@@ -113,6 +113,8 @@ class InternetArchive(BaseCorpus):
 		meta=super().load_metadata()
 		meta['year']=[int(str(x)[:4]) if str(x)[:4].isdigit() else np.nan for x in meta['date']]
 		meta['author']=meta['creator']
+		meta['genre_raw'] = 'Novel'
+		meta['genre'] = 'Fiction'
 		return meta
 
 

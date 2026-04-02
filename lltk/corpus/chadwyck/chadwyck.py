@@ -154,6 +154,12 @@ class Chadwyck(BaseCorpus):
     ext_xml='.xml'
     ext_raw='.new'
 
+    def load_metadata(self, *x, **y):
+        df = super().load_metadata(*x, **y)
+        df['genre_raw'] = 'Fiction'
+        df['genre'] = 'Fiction'
+        return df
+
     # compile from raw
     # This is your custom installation function
     # compile from raw

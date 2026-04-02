@@ -9,6 +9,12 @@ class TextChicago(BaseText):
 
 class Chicago(BaseCorpus):
 	TEXT_CLASS=TextChicago
+
+	def load_metadata(self, *x, **y):
+		df = super().load_metadata(*x, **y)
+		df['genre_raw'] = 'Novel'
+		df['genre'] = 'Fiction'
+		return df
 	
 	RAW_FN_METADATA_CSV_AUTHORS = 'AUTHORS_METADATA.csv'
 	RAW_FN_METADATA_CSV_TEXTS = 'NOVELS_METADATA.csv'

@@ -213,7 +213,13 @@ class ECCO(BaseCorpus):
 		meta = super().load_metadata()
 		if not len(meta):
 			return meta
-		return self.merge_linked_metadata(meta)
+		meta = self.merge_linked_metadata(meta)
+		# Inherit genre from linked ESTC
+		if 'estc_genre' in meta.columns:
+			meta['genre'] = meta['estc_genre']
+		if 'estc_genre_raw' in meta.columns:
+			meta['genre_raw'] = meta['estc_genre_raw']
+		return meta
 
 	def compile(self, tar_path=None, **kwargs):
 		"""Extract xml/*.xml from ECCO tar, gzip, and save to path_xml.

@@ -54,5 +54,19 @@ class TextEnglishDialogues(BaseText):
 
 
 
+DIALOGUES_GENRE_MAP = {
+	'Fiction': 'Fiction',
+	'Drama comedy': 'Drama',
+	'Trial proceedings': 'Legal',
+	'Witness deposition': 'Legal',
+}
+
 class EnglishDialogues(BaseCorpus):
 	TEXT_CLASS=TextEnglishDialogues
+
+	def load_metadata(self, *x, **y):
+		df = super().load_metadata(*x, **y)
+		if 'texttype' in df.columns:
+			df['genre_raw'] = df['texttype']
+			df['genre'] = df['texttype'].map(DIALOGUES_GENRE_MAP)  # unmapped → None
+		return df

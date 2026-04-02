@@ -1,6 +1,7 @@
 import os
 from lltk.text.text import BaseText
 from lltk.corpus.corpus import BaseCorpus
+from lltk.corpus.hathi.hathi import hathi_id_normalize, _build_freqs_index
 from tqdm import tqdm
 from lltk import tools
 import gzip,tarfile,sys
@@ -25,7 +26,13 @@ PATH_HERE_DIRNAME=os.path.dirname(PATH_HERE)
 ########################################################################################################################
 
 class TextHathiBio(BaseText):
-	pass
+	@property
+	def path_freqs(self):
+		"""Resolve freqs path through the corpus's freqs index."""
+		path = self.corpus.freqs_path_for(self.id)
+		if path:
+			return path
+		return super().get_path('freqs')
 
 
 
@@ -172,7 +179,24 @@ class HathiBio(BaseCorpus):
 	def load_metadata(self,*x,**y):
 		meta=super().load_metadata()
 		meta['genre']='Biography'
-		return meta#.query(f'{self.MIN_YEAR}<=year<{self.MAX_YEAR}')	
+		# Normalize IDs to canonical flat form
+		meta.index = meta.index.map(hathi_id_normalize)
+		meta.index.name = 'id'
+		return meta
+
+	@property
+	def freqs_index(self):
+		return _build_freqs_index(self.path_freqs)
+
+	def freqs_path_for(self, text_id):
+		norm_id = hathi_id_normalize(text_id)
+		path = self.freqs_index.get(norm_id)
+		if path:
+			return path
+		direct = os.path.join(self.path_freqs, norm_id + '.json')
+		if os.path.exists(direct):
+			return direct
+		return None	
 
 
 

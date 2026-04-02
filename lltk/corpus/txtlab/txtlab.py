@@ -93,6 +93,8 @@ class TxtLab(BaseCorpus):
 		if 'date' in meta.columns and not 'year' in meta.columns:
 			meta['year']=meta['date']
 			meta=clean_meta(meta)
+		meta['genre_raw'] = 'Novel'
+		meta['genre'] = 'Fiction'
 		return meta
 
 

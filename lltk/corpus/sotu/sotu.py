@@ -1,6 +1,12 @@
 from lltk.imports import *
 
 class SOTU(BaseCorpus):
+	def load_metadata(self, *x, **y):
+		df = super().load_metadata(*x, **y)
+		df['genre_raw'] = 'Political speech'
+		df['genre'] = 'Speech'
+		return df
+
 	def compile(self):
 		ld=[]
 		for fn in os.listdir(self.path_txt):
