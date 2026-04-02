@@ -611,13 +611,15 @@ class MetaDB:
 
         if fuzzy:
             print('Fuzzy title matching within author blocks...')
+            # Cap at 200 texts per block — larger blocks are surname collisions
+            # (different Smiths, Wards, etc.) not worth fuzzy matching
             authors = self.conn.execute(f"""
                 SELECT author_norm, COUNT(*) as n
                 FROM texts
                 WHERE author_norm IS NOT NULL AND length(title_norm) > 3
                 {corpus_where}
                 GROUP BY author_norm
-                HAVING n > 1
+                HAVING n > 1 AND n <= 200
             """).fetchall()
 
             iterr = authors
