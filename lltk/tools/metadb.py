@@ -572,17 +572,21 @@ class MetaDB:
 
     # ── Dedup & Matching ─────────────────────────────────────────────
 
-    def dedup(self, corpus_id, progress=True):
+    def dedup(self, corpus_id, fuzzy=False, progress=True):
         """
         Find reprints/duplicates within a single corpus.
         Matches on author_norm + title_norm (exact), any year distance.
         Stores in matches table with match_type='dedup'.
+
+        Args:
+            corpus_id: corpus to dedup
+            fuzzy: if True, also run fuzzy title matching (slow on large corpora)
         """
         from lltk.tools.tools import get_tqdm
 
         print(f'Deduplicating {corpus_id}...')
 
-        # Tier 1: exact title_norm + author_norm within corpus
+        # Exact title_norm + author_norm within corpus
         self.conn.execute("""
             INSERT OR IGNORE INTO matches (_id_a, _id_b, similarity, match_type)
             SELECT a._id, b._id, 1.0, 'dedup'
@@ -603,52 +607,54 @@ class MetaDB:
         ).fetchone()[0]
         print(f'  Exact dedup: {count_exact} pairs')
 
-        # Tier 2: fuzzy title within author blocks, same corpus
-        authors = self.conn.execute("""
-            SELECT author_norm, COUNT(*) as n
-            FROM texts
-            WHERE corpus = ? AND author_norm IS NOT NULL AND length(title_norm) > 3
-            GROUP BY author_norm
-            HAVING n > 1
-        """, [corpus_id]).fetchall()
+        if fuzzy:
+            # Fuzzy title within author blocks, same corpus
+            authors = self.conn.execute("""
+                SELECT author_norm, COUNT(*) as n
+                FROM texts
+                WHERE corpus = ? AND author_norm IS NOT NULL AND length(title_norm) > 3
+                GROUP BY author_norm
+                HAVING n > 1
+            """, [corpus_id]).fetchall()
 
-        iterr = authors
-        if progress:
-            iterr = get_tqdm(authors, desc=f'[MetaDB] Fuzzy dedup {corpus_id}')
+            iterr = authors
+            if progress:
+                iterr = get_tqdm(authors, desc=f'[MetaDB] Fuzzy dedup {corpus_id}')
 
-        batch = []
-        for author_norm, _ in iterr:
-            rows = self.conn.execute("""
-                SELECT _id, title_norm, year FROM texts
-                WHERE corpus = ? AND author_norm = ?
-                  AND title_norm IS NOT NULL AND length(title_norm) > 3
-            """, [corpus_id, author_norm]).fetchall()
+            batch = []
+            for author_norm, _ in iterr:
+                rows = self.conn.execute("""
+                    SELECT _id, title_norm, year FROM texts
+                    WHERE corpus = ? AND author_norm = ?
+                      AND title_norm IS NOT NULL AND length(title_norm) > 3
+                """, [corpus_id, author_norm]).fetchall()
 
-            for i in range(len(rows)):
-                for j in range(i + 1, len(rows)):
-                    a_id, a_title, a_year = rows[i]
-                    b_id, b_title, b_year = rows[j]
-                    if a_title == b_title:
-                        continue  # already caught by exact
-                    sim = _jaro_winkler(a_title, b_title)
-                    if sim > 0.85:
-                        pair = (a_id, b_id) if a_id < b_id else (b_id, a_id)
-                        batch.append((*pair, sim, 'dedup'))
+                for i in range(len(rows)):
+                    for j in range(i + 1, len(rows)):
+                        a_id, a_title, a_year = rows[i]
+                        b_id, b_title, b_year = rows[j]
+                        if a_title == b_title:
+                            continue  # already caught by exact
+                        sim = _jaro_winkler(a_title, b_title)
+                        if sim > 0.85:
+                            pair = (a_id, b_id) if a_id < b_id else (b_id, a_id)
+                            batch.append((*pair, sim, 'dedup'))
 
-            if len(batch) >= 10000:
+                if len(batch) >= 10000:
+                    self._insert_matches_batch(batch)
+                    batch = []
+
+            if batch:
                 self._insert_matches_batch(batch)
-                batch = []
 
-        if batch:
-            self._insert_matches_batch(batch)
-
-        count_total = self.conn.execute(
-            "SELECT COUNT(*) FROM matches WHERE match_type = 'dedup' AND _id_a LIKE ?",
-            [f'_{corpus_id}/%']
-        ).fetchone()[0]
-        print(f'  Total dedup: {count_total} pairs')
+            count_total = self.conn.execute(
+                "SELECT COUNT(*) FROM matches WHERE match_type = 'dedup' AND _id_a LIKE ?",
+                [f'_{corpus_id}/%']
+            ).fetchone()[0]
+            print(f'  Total dedup (with fuzzy): {count_total} pairs')
 
         # Recompute match groups
+        print('  Computing match groups...')
         self._compute_match_groups()
 
         # Report
