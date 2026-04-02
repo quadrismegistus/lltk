@@ -747,6 +747,140 @@ class MetaDB:
             'group_sizes': sizes,
         }
 
+    # ── Query API ──────────────────────────────────────────────────
+
+    def _build_where(self, where=None, genre=None, year_min=None, year_max=None, corpora=None, sources=None):
+        """Build a WHERE clause from keyword filters. Returns (sql_fragment, params).
+        Uses string interpolation (not ?) for values since the clause gets reused in subqueries."""
+        clauses = []
+
+        if where:
+            clauses.append(f'({where})')
+
+        if genre:
+            clauses.append(f"t.genre = '{genre}'")
+
+        if year_min is not None:
+            clauses.append(f't.year >= {int(year_min)}')
+
+        if year_max is not None:
+            clauses.append(f't.year <= {int(year_max)}')
+
+        if corpora:
+            corpus_list = ', '.join(f"'{c}'" for c in corpora)
+            clauses.append(f't.corpus IN ({corpus_list})')
+
+        if sources:
+            source_clauses = []
+            for corpus_id, filters in sources.items():
+                parts = [f"t.corpus = '{corpus_id}'"]
+                for k, v in filters.items():
+                    parts.append(f"t.{k} = '{v}'")
+                source_clauses.append('(' + ' AND '.join(parts) + ')')
+            clauses.append('(' + ' OR '.join(source_clauses) + ')')
+
+        sql = ' AND '.join(clauses) if clauses else '1=1'
+        return sql
+
+    def _dedup_sql(self, where_sql, dedup_by='rank'):
+        """Return SQL fragment that keeps only one representative per match group."""
+        if dedup_by == 'oldest':
+            return f"""
+                AND (
+                    mg._id IS NULL
+                    OR t.year = (
+                        SELECT MIN(t2.year) FROM match_groups mg2
+                        JOIN texts t2 ON mg2._id = t2._id
+                        WHERE mg2.group_id = mg.group_id AND t2.year IS NOT NULL
+                          AND {where_sql.replace('t.', 't2.')}
+                    )
+                )
+            """
+        else:  # rank
+            return f"""
+                AND (
+                    mg._id IS NULL
+                    OR mg.rank = (
+                        SELECT MIN(mg2.rank) FROM match_groups mg2
+                        JOIN texts t2 ON mg2._id = t2._id
+                        WHERE mg2.group_id = mg.group_id
+                          AND {where_sql.replace('t.', 't2.')}
+                    )
+                )
+            """
+
+    def texts(self, where=None, *, genre=None, year_min=None, year_max=None,
+              corpora=None, sources=None, dedup=True, dedup_by='rank', progress=False):
+        """
+        Query texts and return real text objects.
+
+        Args:
+            where: raw SQL WHERE clause fragment
+            genre, year_min, year_max, corpora: convenience filters
+            sources: dict of {corpus_id: {filter_key: value}} for SyntheticCorpus
+            dedup: if True, keep one representative per match group
+            dedup_by: 'rank' (CORPUS_SOURCE_RANKS) or 'oldest' (earliest year)
+            progress: show progress bar
+
+        Yields:
+            BaseText objects with their original corpus for file access
+        """
+        from lltk.corpus.corpus import Corpus
+        from lltk.tools.tools import get_tqdm
+
+        where_sql = self._build_where(
+            where=where, genre=genre, year_min=year_min, year_max=year_max,
+            corpora=corpora, sources=sources
+        )
+
+        dedup_sql = ''
+        if dedup:
+            dedup_sql = self._dedup_sql(where_sql, dedup_by)
+
+        sql = f"""
+            SELECT t.corpus, t.id FROM texts t
+            LEFT JOIN match_groups mg ON t._id = mg._id
+            WHERE {where_sql} {dedup_sql}
+            ORDER BY t.year, t.corpus, t.id
+        """
+
+        rows = self.conn.execute(sql).fetchall()
+        iterr = rows
+        if progress:
+            iterr = get_tqdm(rows, desc='[MetaDB] Loading texts')
+
+        for corpus_id, text_id in iterr:
+            try:
+                corpus_obj = Corpus(corpus_id)
+                t = corpus_obj.text(text_id)
+                yield t
+            except Exception:
+                continue
+
+    def texts_df(self, where=None, *, genre=None, year_min=None, year_max=None,
+                 corpora=None, sources=None, dedup=True, dedup_by='rank'):
+        """Like texts() but returns a DataFrame instead of text objects."""
+        where_sql = self._build_where(
+            where=where, genre=genre, year_min=year_min, year_max=year_max,
+            corpora=corpora, sources=sources
+        )
+        dedup_sql = ''
+        if dedup:
+            dedup_sql = self._dedup_sql(where_sql, dedup_by)
+
+        sql = f"""
+            SELECT t.* FROM texts t
+            LEFT JOIN match_groups mg ON t._id = mg._id
+            WHERE {where_sql} {dedup_sql}
+            ORDER BY t.year, t.corpus, t.id
+        """
+        return self.conn.execute(sql).fetchdf()
+
+    def corpus(self, where=None, id='_query', **kwargs):
+        """Return a SyntheticCorpus from a MetaDB query."""
+        from lltk.corpus.synthetic import SyntheticCorpus
+        return SyntheticCorpus(id=id, _query_kwargs={'where': where, **kwargs})
+
     def close(self):
         if self._conn is not None:
             self._conn.close()
