@@ -65,7 +65,19 @@ class CanonFiction(BaseCorpus):
 		if 'corpus' in header: header.remove('corpus')
 		df[header].to_csv(meta_fn,index=False)
 
+	CANON_GENRE_MAP = {
+		'Verse': 'Poetry',
+		'Epic': 'Poetry',
+		'Drama': 'Drama',
+		'History': 'History',
+	}
+
 	def load_metadata(self):
 		meta=super().load_metadata()
-		meta['genre']='Fiction'
+		if 'major_genre' in meta.columns:
+			meta['genre_raw'] = meta['major_genre']
+			meta['genre'] = meta['major_genre'].map(self.CANON_GENRE_MAP).fillna('Fiction')
+		else:
+			meta['genre_raw'] = 'Fiction'
+			meta['genre'] = 'Fiction'
 		return meta
