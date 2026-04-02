@@ -572,18 +572,26 @@ class MetaDB:
 
     # ── Matching ────────────────────────────────────────────────────
 
-    def match(self, tiers=(1, 2), progress=True):
+    def match(self, corpora=None, tiers=(1, 2), progress=True):
         """
         Run cross-corpus matching pipeline.
 
-        Tier 1: Exact normalized title + author (pure SQL, fast)
-        Tier 2: Fuzzy title within author blocks (jaro_winkler_similarity)
+        Args:
+            corpora: list of corpus IDs to match (default: all). Only texts
+                     in these corpora will be matched against each other.
+            tiers: tuple of tier numbers to run (1=exact, 2=fuzzy)
         """
         from lltk.tools.tools import get_tqdm
 
+        corpus_filter = ''
+        if corpora:
+            corpus_list = ', '.join(f"'{c}'" for c in corpora)
+            corpus_filter = f'AND a.corpus IN ({corpus_list}) AND b.corpus IN ({corpus_list})'
+            print(f'Matching across {len(corpora)} corpora: {", ".join(corpora)}')
+
         if 1 in tiers:
             print('Tier 1: exact normalized title + author matching...')
-            n = self.conn.execute("""
+            self.conn.execute(f"""
                 INSERT OR IGNORE INTO matches (_id_a, _id_b, similarity, match_type)
                 SELECT a._id, b._id, 1.0, 'exact_norm'
                 FROM texts a
@@ -598,17 +606,23 @@ class MetaDB:
                     a.year IS NULL OR b.year IS NULL
                     OR abs(a.year - b.year) <= 20
                   )
-            """).fetchone()
+                  {corpus_filter}
+            """)
             count1 = self.conn.execute("SELECT COUNT(*) FROM matches WHERE match_type = 'exact_norm'").fetchone()[0]
             print(f'Tier 1: {count1} matches')
 
         if 2 in tiers:
             print('Tier 2: fuzzy title matching within author blocks...')
+            corpus_where = ''
+            if corpora:
+                corpus_list = ', '.join(f"'{c}'" for c in corpora)
+                corpus_where = f'AND corpus IN ({corpus_list})'
             # Get distinct author_norm values that appear in multiple corpora
-            authors = self.conn.execute("""
+            authors = self.conn.execute(f"""
                 SELECT author_norm, COUNT(DISTINCT corpus) as nc
                 FROM texts
                 WHERE author_norm IS NOT NULL AND length(title_norm) > 3
+                {corpus_where}
                 GROUP BY author_norm
                 HAVING nc > 1
             """).fetchall()
@@ -619,9 +633,10 @@ class MetaDB:
 
             batch = []
             for author_norm, _ in iterr:
-                rows = self.conn.execute("""
+                rows = self.conn.execute(f"""
                     SELECT _id, title_norm, corpus, year FROM texts
                     WHERE author_norm = ? AND title_norm IS NOT NULL AND length(title_norm) > 3
+                    {corpus_where}
                 """, [author_norm]).fetchall()
 
                 for i in range(len(rows)):
