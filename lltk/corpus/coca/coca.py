@@ -31,9 +31,23 @@ class TextCOCA(BaseText):
 # (2) Corpus Class
 ########################################################################################################################
 
+COCA_GENRE_MAP = {
+	'FIC': 'Fiction',
+	'MAG': 'Periodical',
+	'NEWS': 'Periodical',
+	'ACAD': 'Academic',
+	'SPOK': 'Spoken',
+}
+
 class COCA(BaseCorpus):
 	TEXT_CLASS=TextCOCA
 
+	def load_metadata(self, *x, **y):
+		meta = super().load_metadata(*x, **y)
+		if 'genre' in meta.columns:
+			meta['genre_raw'] = meta['genre']
+			meta['genre'] = meta['genre_raw'].map(COCA_GENRE_MAP)
+		return meta
 
 	####################################################################################################################
 	# (2.1) Installation methods

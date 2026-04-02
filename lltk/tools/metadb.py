@@ -43,8 +43,10 @@ GENRE_VOCAB = {
     'Nonfiction',
     'Legal',
     'Speech',
+    'Spoken',
     'History',
     'Criticism',
+    'Academic',
     'Almanac',
     'Reference',
 }

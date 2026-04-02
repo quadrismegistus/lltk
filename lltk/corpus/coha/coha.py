@@ -8,8 +8,25 @@ class TextCOHA(BaseText):
 
 
 
+COHA_GENRE_MAP = {
+	'Fiction': 'Fiction',
+	'Magazine': 'Periodical',
+	'News': 'Periodical',
+	'Non-Fiction': 'Nonfiction',
+	'Drama': 'Drama',
+	'Film': 'Drama',
+}
+
 class COHA(BaseCorpus):
 	TEXT_CLASS=TextCOHA
+
+	def load_metadata(self, *x, **y):
+		meta = super().load_metadata(*x, **y)
+		if 'genre' in meta.columns:
+			meta['genre_raw'] = meta['genre']
+			meta['genre'] = meta['genre_raw'].map(COHA_GENRE_MAP)
+		return meta
+
 	def update_metadata(self):
 		super(COHA,self).save_metadata(num_words=True,ocr_accuracy=True)
 	def save_metadata(self):

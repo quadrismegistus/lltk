@@ -132,7 +132,8 @@ class PMLA(JstorDFR):
 		meta=super().load_metadata()
 		meta['title']=meta['article-title']
 		meta['author']=meta['surname']
-		meta['genre']='Journal'
+		meta['genre_raw']='Journal'
+		meta['genre']='Academic'
 		# meta=meta[meta['journal-title']=='PMLA']
 		# meta['year']=[int(x) if x.isdigit() else np.nan for x in meta['year']]
 		meta=meta[meta['rootcat']=='journal'].query('1881<=year<=2020') # length of PMLA (so far)

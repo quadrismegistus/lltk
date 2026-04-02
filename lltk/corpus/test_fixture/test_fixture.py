@@ -9,6 +9,13 @@ class TestFixture(BaseCorpus):
     TEXT_CLASS = TextTestFixture
     LINKS = {'test_fixture_linked': ('id', 'ref_id')}
 
+    def load_metadata(self, *x, **y):
+        meta = super().load_metadata(*x, **y)
+        if 'genre' in meta.columns:
+            meta['genre_raw'] = meta['genre']
+            meta['genre'] = meta['genre'].str.title()  # fiction → Fiction
+        return meta
+
     def __init__(self, **kwargs):
         kwargs['_path'] = FIXTURE_PATH
         super().__init__(**kwargs)
