@@ -89,12 +89,46 @@ class BLBooks(BaseCorpus):
         df.to_csv(self.path_metadata, index=False)
         if log: log(f'Saved {len(df)} records to {self.path_metadata}')
 
+    # Conservative title keywords for BL Books (19th century)
+    BLBOOKS_GENRE_KEYWORDS = {
+        'Fiction': {
+            'novel': 'Novel', 'tale': 'Tale', 'tales': 'Tale',
+            'romance': 'Romance',
+        },
+        'Poetry': {
+            'poem': 'Poem', 'poems': 'Poems', 'verse': 'Verse',
+            'verses': 'Verses', 'poetical': 'Poetical',
+            'poetry': 'Poetry', 'ode': 'Ode', 'odes': 'Odes',
+            'sonnet': 'Sonnet', 'sonnets': 'Sonnets',
+        },
+        'Drama': {
+            'comedy': 'Comedy', 'tragedy': 'Tragedy', 'farce': 'Farce',
+            'opera': 'Opera', 'dramatic': 'Dramatic', 'acted': 'Acted',
+        },
+    }
+
     def load_metadata(self):
+        import re as _re
         meta = super().load_metadata()
         if not len(meta):
             return meta
         if 'year' in meta.columns:
             meta['year'] = pd.to_numeric(meta['year'], errors='coerce')
+
+        # Genre from title keywords (conservative — only Novel/Tale/Romance, Poetry, Drama)
+        def _classify_title(title):
+            if not title or str(title) == 'nan':
+                return None, None
+            words = set(_re.findall(r"[a-z']+", str(title).lower()))
+            for genre, kw_map in self.BLBOOKS_GENRE_KEYWORDS.items():
+                for kw, raw in kw_map.items():
+                    if kw in words:
+                        return genre, raw
+            return None, None
+
+        classified = meta['title'].apply(_classify_title)
+        meta['genre'] = classified.apply(lambda x: x[0])
+        meta['genre_raw'] = classified.apply(lambda x: x[1])
         return meta
 
 

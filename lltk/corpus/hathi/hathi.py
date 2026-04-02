@@ -403,8 +403,13 @@ def get_date(imprint):
     return np.nan
 
 class HathiSubcorpus(Hathi):
+    # Subclasses set genre_raw (fine-grained) and genre (harmonized GENRE_VOCAB)
+    genre_raw = None
+    genre = None
+
     def load_metadata(self,*x,**y):
         meta=super().load_metadata()
+        meta['genre_raw']=self.genre_raw
         meta['genre']=self.genre
         return meta
 
@@ -413,6 +418,7 @@ class HathiSermons(HathiSubcorpus):
     id='hathi_sermons'
     name='HathiSermons'
     searchwords={'sermon','sermons'}
+    genre_raw='Sermon'
     genre='Sermon'
 
 
@@ -420,13 +426,15 @@ class HathiProclamations(HathiSubcorpus):
     id='hathi_proclamations'
     name='HathiProclamations'
     searchwords={'proclamation','proclamation'}
-    genre='Proclamation'
+    genre_raw='Proclamation'
+    genre='Legal'
 
 
 class HathiEssays(HathiSubcorpus):
     id='hathi_essays'
     name='HathiEssays'
     searchwords={'essay','essays'}
+    genre_raw='Essay'
     genre='Essay'
 
 
@@ -434,12 +442,14 @@ class HathiLetters(HathiSubcorpus):
     id='hathi_letters'
     name='HathiLetters'
     searchwords={'letter','letters'}
+    genre_raw='Letters'
     genre='Letters'
 
 class HathiTreatises(HathiSubcorpus):
     id='hathi_treatises'
     name='HathiTreatises'
     searchwords={'treatise','treatises'}
+    genre_raw='Treatise'
     genre='Treatise'
 
 
@@ -447,31 +457,36 @@ class HathiTales(HathiSubcorpus):
     id='hathi_tales'
     name='HathiTales'
     searchwords={'tale','tales'}
-    genre='Tale'
+    genre_raw='Tale'
+    genre='Fiction'
 
 class HathiNovels(HathiSubcorpus):
     id='hathi_novels'
     name='HathiNovels'
     searchwords={'novel','novels'}
-    genre='Novel'
+    genre_raw='Novel'
+    genre='Fiction'
 
 class HathiStories(HathiSubcorpus):
     id='hathi_stories'
     name='HathiStories'
     searchwords={'story','stories'}
-    genre='Story'
+    genre_raw='Story'
+    genre='Fiction'
 
 class HathiAlmanacs(HathiSubcorpus):
     id='hathi_almanacs'
     name='HathiAlmanacs'
     searchwords={'almanac','almanack','almanach'}
+    genre_raw='Almanac'
     genre='Almanac'
 
 class HathiRomances(HathiSubcorpus):
     id='hathi_romances'
     name='HathiRomances'
     searchwords={'romance','romances'}
-    genre='Romance'
+    genre_raw='Romance'
+    genre='Fiction'
 
 
 

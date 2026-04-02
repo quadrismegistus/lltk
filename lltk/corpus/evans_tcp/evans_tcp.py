@@ -57,11 +57,22 @@ class EvansTCP(TCP):
         return super().preprocess_txt(*args,**attrs)
 
     def load_metadata(self,*args,**attrs):
-        """
-        Magic attribute loading metadata, and doing any last minute customizing
-        """
-        # This will save to `self.path_metadata`, set in the manifest path_metadata
+        from lltk.corpus.estc.estc import classify_genres, _genres_to_harmonized
         meta=super().load_metadata(*args,**attrs)
-        # ?
+        # Classify genre using ESTC title-keyword logic (early modern titles)
+        genre_results = meta.apply(
+            lambda r: classify_genres(
+                None, None,
+                r.get('title', ''),
+                None,
+            ), axis=1
+        )
+        meta['genres'] = genre_results.apply(lambda x: x['genres'])
+        meta['genre_raw'] = meta['genres'].apply(
+            lambda gs: ' | '.join(sorted(gs)) if gs else None
+        )
+        meta['genre'] = meta['genres'].apply(
+            lambda gs: _genres_to_harmonized(gs) if gs else None
+        )
         return meta
 
