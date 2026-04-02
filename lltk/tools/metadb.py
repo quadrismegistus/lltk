@@ -588,18 +588,15 @@ class MetaDB:
                 SELECT a._id, b._id, 1.0, 'exact_norm'
                 FROM texts a
                 JOIN texts b ON a.title_norm = b.title_norm
+                    AND a.author_norm = b.author_norm
                     AND a.corpus != b.corpus
                     AND a._id < b._id
                 WHERE a.title_norm IS NOT NULL
-                  AND length(a.title_norm) > 3
-                  AND (
-                    a.author_norm = b.author_norm
-                    OR a.author_norm IS NULL
-                    OR b.author_norm IS NULL
-                  )
+                  AND a.author_norm IS NOT NULL
+                  AND length(a.title_norm) > 5
                   AND (
                     a.year IS NULL OR b.year IS NULL
-                    OR abs(a.year - b.year) <= 50
+                    OR abs(a.year - b.year) <= 20
                   )
             """).fetchone()
             count1 = self.conn.execute("SELECT COUNT(*) FROM matches WHERE match_type = 'exact_norm'").fetchone()[0]
@@ -633,7 +630,7 @@ class MetaDB:
                         b_id, b_title, b_corp, b_year = rows[j]
                         if a_corp == b_corp:
                             continue
-                        if a_year and b_year and abs(a_year - b_year) > 50:
+                        if a_year and b_year and abs(a_year - b_year) > 20:
                             continue
                         # Compute similarity in Python (faster than per-pair SQL)
                         sim = _jaro_winkler(a_title, b_title)
