@@ -98,7 +98,8 @@ def main():
 
 	elif args.cmd == 'db-rebuild':
 		corpus_ids = args.corpora if args.corpora else None
-		lltk.db.drop()
+		if not corpus_ids:
+			lltk.db.drop()  # full rebuild: drop everything
 		results = lltk.db.rebuild(corpus_ids)
 		print(f'\nIngested {sum(v for v in results.values() if isinstance(v, int))} texts from {len(results)} corpora')
 
