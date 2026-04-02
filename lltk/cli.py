@@ -51,10 +51,15 @@ def main():
 	# db info
 	p_db_info = subparsers.add_parser('db-info', help='Show DuckDB metadata store info and genre breakdown')
 
+	# db dedup
+	p_db_dedup = subparsers.add_parser('db-dedup', help='Find duplicates within a corpus')
+	p_db_dedup.add_argument('corpora', nargs='+', help='Corpus IDs to dedup')
+
 	# db match
 	p_db_match = subparsers.add_parser('db-match', help='Run cross-corpus title matching')
 	p_db_match.add_argument('corpora', nargs='*', help='Corpus IDs to match (default: all)')
 	p_db_match.add_argument('--tiers', default='1,2', help='Matching tiers (default: 1,2)')
+	p_db_match.add_argument('--no-dedup', action='store_true', help='Include all texts, not just dedup representatives')
 
 	# db matches
 	p_db_matches = subparsers.add_parser('db-matches', help='Search for matches by title')
@@ -178,10 +183,14 @@ def main():
 			print(f'Error: {e}')
 			print('Database may be empty. Run: lltk db-rebuild')
 
+	elif args.cmd == 'db-dedup':
+		for corpus_id in args.corpora:
+			lltk.db.dedup(corpus_id)
+
 	elif args.cmd == 'db-match':
 		tiers = tuple(int(t.strip()) for t in args.tiers.split(','))
 		corpora = args.corpora if args.corpora else None
-		lltk.db.match(corpora=corpora, tiers=tiers)
+		lltk.db.match(corpora=corpora, tiers=tiers, deduped=not args.no_dedup)
 
 	elif args.cmd == 'db-matches':
 		import pandas as pd
