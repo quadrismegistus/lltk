@@ -8,7 +8,7 @@ TEDJDH_GENRE_MAP = {
 	'Non-Fiction': 'Nonfiction',
 	'Oratory': 'Speech',
 	'Letters': 'Letters',
-	'Juvenilia': 'Fiction',
+	# Juvenilia: too mixed to assign
 }
 
 class TedJDH(BaseCorpus):
