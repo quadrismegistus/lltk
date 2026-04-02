@@ -78,15 +78,15 @@ A `corpus_info` table tracks ingest timestamps (`corpus TEXT PK, ingested_at DOU
 
 Every corpus's `load_metadata()` should return a DataFrame with at least: `id` (index), `title`, `author`, `year`, `genre`, `genre_raw`. Genre normalization is corpus-specific — each corpus's `load_metadata()` is responsible for setting `genre_raw` (whatever the source says) and `genre` (harmonized to `GENRE_VOCAB`). The standard genre vocabulary is defined in `lltk.tools.metadb.GENRE_VOCAB`:
 
-Fiction, Poetry, Drama, Periodical, Essay, Treatise, Letters, Sermon, Biography, History, Nonfiction, Legal, Speech, Criticism, Almanac, Reference.
+Fiction, Poetry, Drama, Periodical, Essay, Treatise, Letters, Sermon, Biography, History, Nonfiction, Legal, Speech, Spoken, Criticism, Academic, Almanac, Reference.
 
 `genre` = broad harmonized category from this vocabulary. `genre_raw` = the most specific true label (e.g. `Novel`, `Epistolary fiction`, `Ballad/Song`). `validate_genres()` flags `genre` values not in this set. `year` should be an integer; the DB ingest parses ranges/circa dates via `_parse_year()`. Use `lltk.db.validate()` to check coverage.
 
 ### CLI
 
 ```bash
-lltk db-rebuild                          # rebuild all corpora
-lltk db-rebuild estc ecco                # rebuild specific corpora
+lltk db-rebuild                          # drop all + rebuild all corpora
+lltk db-rebuild estc ecco                # re-ingest specific corpora (rest untouched)
 lltk db-info                             # genre × corpus crosstab with totals
 ```
 
@@ -166,14 +166,30 @@ These inherit genre from ESTC via `merge_linked_metadata()`:
 - **EEBO_TCP**: links via `id_stc` → `id_estc` (with zero-padding normalization). EEBO's own `genre` column (Prose/Verse/Drama) is renamed to `medium`. Genre comes only from linked ESTC.
 - **ECCO_TCP**: links via `id_ESTC` → `id_estc` (with zero-padding normalization). Same pattern as EEBO.
 
-### Simple corpora
+### Simple corpora (all one genre)
 
-Corpora that are entirely one genre set it directly: `df['genre'] = 'Fiction'`, `df['genre_raw'] = 'Novel'`. Examples: gildedage, chicago, ravengarside, txtlab, internet_archive, semantic_cohort, canon_fiction, sotu, epistolary.
+Corpora that are entirely one genre set it directly: `df['genre'] = 'Fiction'`, `df['genre_raw'] = 'Novel'`. Examples: gildedage, chicago, ravengarside, txtlab, internet_archive, semantic_cohort, canon_fiction, epistolary, hathi_novels, hathi_stories, hathi_tales, hathi_romances (all Fiction); chadwyck_poetry (Poetry); sotu (Speech); oldbailey (Legal); hathi_sermons (Sermon); hathi_proclamations (Legal); hathi_almanacs (Almanac); hathi_essays (Essay); hathi_letters (Letters); hathi_treatises (Treatise); hathi_bio (Biography); fanfic (Fiction).
+
+### Mapping corpora (raw genre → harmonized)
+
+Corpora with their own genre column that needs mapping:
+- **COCA**: FIC→Fiction, MAG/NEWS→Periodical, ACAD→Academic, SPOK→Spoken
+- **COHA**: Magazine/News→Periodical, Non-Fiction→Nonfiction, Film→Drama
+- **BPO**: Fiction→Fiction, Poem→Poetry, Correspondence→Letters, Review→Criticism, News→Periodical. Structural sections (Back/Front Matter, Advertisement, etc.)→None.
+- **PMLA**: Journal→Academic
+- **sellers/tedjdh**: Non-Fiction→Nonfiction, Oratory→Speech, Miscellany→None
+- **litlab**: fine-grained novel subgenres (Gothic, Courtship, etc.) preserved in `genre_raw`, all→Fiction
+- **dialnarr**: Fictional Dialogue/Narration→Fiction
+- **dialogues**: texttype field mapped — Fiction→Fiction, Drama comedy→Drama, Trial/Witness→Legal, others→None
 
 ### Title-keyword corpora
 
 - **Evans TCP**: uses full ESTC `classify_genres()` title-keyword logic (early modern titles).
 - **BL Books**: conservative title keywords only — Fiction (novel/tale/romance), Poetry, Drama. Other genres not assigned from titles.
+
+### Not yet harmonized
+
+- **dta** (Deutsches Textarchiv, 3K) — German corpus, genre set to `Other`
 
 ## Hathi ID normalization
 
