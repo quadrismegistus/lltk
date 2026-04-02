@@ -1108,7 +1108,7 @@ class BaseCorpus(TextList):
             try:
                 x=func(verbose=verbose,num_proc=int(num_proc),force=force, **attrs)
             except TypeError as e:
-                self.log(f'!! ERROR: {e}')
+                if log: log(f'!! ERROR in {fname}: {e}')
                 pass
 
     def preprocess_misc(self): pass

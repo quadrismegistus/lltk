@@ -75,7 +75,6 @@ def preprocess_freqs(
         pmap(
             save_freqs_json,
             objs,
-            kwargs=kwargs,
             num_proc=num_proc if num_proc else get_ideal_cpu_count(),
             desc=f'[{self.name}] Saving word freqs as jsons',
         )
