@@ -110,26 +110,57 @@ def main():
 		print(repr(lltk.db))
 		print()
 
-		# Genre × corpus crosstab
 		try:
+			from lltk.tools.metadb import GENRE_VOCAB
+
+			# Genre × corpus crosstab (harmonized genres only + None + Other)
 			df = lltk.db.query("""
 				SELECT corpus, genre, COUNT(*) as n
 				FROM texts
 				GROUP BY corpus, genre
 				ORDER BY corpus, genre
 			""")
-			pivot = df.pivot_table(index='corpus', columns='genre', values='n', fill_value=0, aggfunc='sum')
-			# Add totals
+
+			# Map non-standard genres to 'Other'
+			standard = GENRE_VOCAB | {None}
+			df['genre_display'] = df['genre'].apply(
+				lambda g: g if g in standard else 'Other'
+			)
+			df_grouped = df.groupby(['corpus', 'genre_display'])['n'].sum().reset_index()
+
+			pivot = df_grouped.pivot_table(
+				index='corpus', columns='genre_display', values='n',
+				fill_value=0, aggfunc='sum'
+			)
+
+			# Add totals column
 			pivot['TOTAL'] = pivot.sum(axis=1)
-			# Reorder columns: TOTAL first, then None, then alphabetical
+
+			# Reorder: TOTAL, None, then standard genres alphabetically, then Other
 			cols = ['TOTAL']
 			if None in pivot.columns:
 				cols.append(None)
-			cols += sorted(c for c in pivot.columns if c not in cols)
-			pivot = pivot[cols]
+			cols += sorted(c for c in pivot.columns if c in GENRE_VOCAB)
+			if 'Other' in pivot.columns:
+				cols.append('Other')
+			pivot = pivot[[c for c in cols if c in pivot.columns]]
+
+			# Rename None column for display
+			pivot = pivot.rename(columns={None: '(none)'})
+
 			# Add row totals
 			pivot.loc['TOTAL'] = pivot.sum()
+			pivot = pivot.astype(int)
+
 			print(pivot.to_string())
+
+			# Show non-standard genre values if any
+			non_standard = df[df['genre_display'] == 'Other']
+			if len(non_standard):
+				print(f'\nNon-standard genre values (mapped to "Other" above):')
+				for _, row in non_standard.sort_values('n', ascending=False).head(20).iterrows():
+					print(f'  {row["corpus"]:25s} {row["genre"]:40s} {row["n"]:>6d}')
+
 		except Exception as e:
 			print(f'Error: {e}')
 			print('Database may be empty. Run: lltk db-rebuild')
