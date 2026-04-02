@@ -582,7 +582,7 @@ class MetaDB:
         from lltk.tools.tools import get_tqdm
 
         if 1 in tiers:
-            if log: log('Tier 1: exact normalized title + author matching...')
+            print('Tier 1: exact normalized title + author matching...')
             n = self.conn.execute("""
                 INSERT OR IGNORE INTO matches (_id_a, _id_b, similarity, match_type)
                 SELECT a._id, b._id, 1.0, 'exact_norm'
@@ -603,10 +603,10 @@ class MetaDB:
                   )
             """).fetchone()
             count1 = self.conn.execute("SELECT COUNT(*) FROM matches WHERE match_type = 'exact_norm'").fetchone()[0]
-            if log: log(f'Tier 1: {count1} matches')
+            print(f'Tier 1: {count1} matches')
 
         if 2 in tiers:
-            if log: log('Tier 2: fuzzy title matching within author blocks...')
+            print('Tier 2: fuzzy title matching within author blocks...')
             # Get distinct author_norm values that appear in multiple corpora
             authors = self.conn.execute("""
                 SELECT author_norm, COUNT(DISTINCT corpus) as nc
@@ -649,13 +649,14 @@ class MetaDB:
                 self._insert_matches_batch(batch)
 
             count2 = self.conn.execute("SELECT COUNT(*) FROM matches WHERE match_type = 'fuzzy_title'").fetchone()[0]
-            if log: log(f'Tier 2: {count2} matches')
+            print(f'Tier 2: {count2} fuzzy matches')
 
         # Compute match groups
+        print('Computing match groups...')
         self._compute_match_groups()
         total = self.conn.execute("SELECT COUNT(*) FROM matches").fetchone()[0]
         groups = self.conn.execute("SELECT COUNT(DISTINCT group_id) FROM match_groups").fetchone()[0]
-        if log: log(f'Total: {total} matches, {groups} match groups')
+        print(f'Done: {total} total matches, {groups} match groups')
 
     def _insert_matches_batch(self, batch):
         """Insert a batch of match tuples, ignoring duplicates."""
