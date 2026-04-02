@@ -196,7 +196,8 @@ class ChadwyckPoetry(BaseCorpus):
 	def load_metadata(self,*x,**y):
 		import numpy as np
 		meta=super().load_metadata()
-		meta['genre']='Verse'
+		meta['genre_raw']='Verse'
+		meta['genre']='Poetry'
 		meta['year']=meta.author_dob.apply(lambda x: int(x)+30 if x.isdigit() else np.nan)
 		# meta['year']=meta.apply(decide_year_from_dob_and_dod,1)
 		return meta#.query(f'{self.MIN_YEAR}<=year<{self.MAX_YEAR}')

@@ -25,7 +25,8 @@ class FanFic(BaseCorpus):
 		Magic attribute loading metadata, and doing any last minute customizing
 		"""
 		meta=super().load_metadata()
-		meta['genre']='FanFiction'
+		meta['genre_raw']='FanFiction'
+		meta['genre']='Fiction'
 		if 'published' in meta.columns:
 			meta['year']=meta['published'].apply(lambda x: x.split('/')[-1])
 			meta['year']=meta['year'].apply(lambda y: int('20'+str(y)) if int(str(y)[0])<5 else int('19'+str(y)))

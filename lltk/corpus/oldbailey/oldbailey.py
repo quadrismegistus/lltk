@@ -52,6 +52,7 @@ class OldBailey(BaseCorpus):
 
 	def load_metadata(self):
 		meta=super().load_metadata()
-		meta['genre']='Trial'
+		meta['genre_raw']='Trial'
+		meta['genre']='Legal'
 		meta['title']=''
 		return meta

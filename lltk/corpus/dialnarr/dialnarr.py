@@ -30,3 +30,10 @@ class TextDialNarr(BaseText):
 
 class DialNarr(BaseCorpus):
 	TEXT_CLASS=TextDialNarr
+
+	def load_metadata(self, *x, **y):
+		meta = super().load_metadata(*x, **y)
+		if 'genre' in meta.columns:
+			meta['genre_raw'] = meta['genre']
+		meta['genre'] = 'Fiction'
+		return meta
