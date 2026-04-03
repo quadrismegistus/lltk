@@ -69,4 +69,6 @@ class ECCO_TCP(TCP):
         if 'medium' in meta.columns:
             meta.loc[meta['medium'] == 'Verse', 'genre'] = 'Poetry'
             meta.loc[meta['medium'] == 'Drama', 'genre'] = 'Drama'
+        if 'estc_is_translated' in meta.columns:
+            meta['is_translated'] = meta['estc_is_translated']
         return meta

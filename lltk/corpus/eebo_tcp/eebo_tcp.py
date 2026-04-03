@@ -55,8 +55,14 @@ class EEBO_TCP(TCP):
 			meta['genre_raw'] = meta['estc_genre_raw']
 		else:
 			meta['genre_raw'] = None
+		if 'estc_title' in meta.columns:
+			meta['title_raw'] = meta.get('title','')
+			meta['title'] = meta['estc_title']
+			
 		# Medium overrides genre
 		if 'medium' in meta.columns:
 			meta.loc[meta['medium'] == 'Verse', 'genre'] = 'Poetry'
 			meta.loc[meta['medium'] == 'Drama', 'genre'] = 'Drama'
+		if 'estc_is_translated' in meta.columns:
+			meta['is_translated'] = meta['estc_is_translated']
 		return meta

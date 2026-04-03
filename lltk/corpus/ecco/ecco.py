@@ -219,6 +219,19 @@ class ECCO(BaseCorpus):
 			meta['genre'] = meta['estc_genre']
 		if 'estc_genre_raw' in meta.columns:
 			meta['genre_raw'] = meta['estc_genre_raw']
+		if 'estc_title' in meta.columns:
+			meta['title'] = meta['estc_title']
+		else:
+			meta['title'] = meta['fullTitle']
+		
+		if 'estc_author' in meta.columns:
+			meta['author'] = meta['estc_author']
+		else:
+			meta['author'] = meta['marcName']
+
+		if 'estc_is_translated' in meta.columns:
+			meta['is_translated'] = meta['estc_is_translated']
+
 		return meta
 
 	def compile(self, tar_path=None, **kwargs):
