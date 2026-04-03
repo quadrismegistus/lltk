@@ -785,14 +785,17 @@ class MetaDB:
     def _dedup_sql(self, where_sql, dedup_by='rank'):
         """Return SQL fragment that keeps only one representative per match group."""
         if dedup_by == 'oldest':
+            # Pick the text with earliest year in the group; break ties by rank
             return f"""
                 AND (
                     mg._id IS NULL
-                    OR t.year = (
-                        SELECT MIN(t2.year) FROM match_groups mg2
+                    OR t._id = (
+                        SELECT mg2._id FROM match_groups mg2
                         JOIN texts t2 ON mg2._id = t2._id
-                        WHERE mg2.group_id = mg.group_id AND t2.year IS NOT NULL
+                        WHERE mg2.group_id = mg.group_id
                           AND {where_sql.replace('t.', 't2.')}
+                        ORDER BY t2.year NULLS LAST, mg2.rank
+                        LIMIT 1
                     )
                 )
             """
