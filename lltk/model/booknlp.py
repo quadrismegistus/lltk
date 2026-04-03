@@ -485,7 +485,7 @@ def parse_booknlp(
     # get output path
     if odir is None:
         odir = get_booknlp_text_path(path_txt,language=language,model=model)
-    ensure_dir_exists(odir)
+    os.makedirs(odir, exist_ok=True)
     num_files=len([x for x in os.listdir(odir) if x.startswith('text.')])
     if force or num_files<6:
         if booknlp is None:
