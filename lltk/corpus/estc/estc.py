@@ -1000,18 +1000,20 @@ _GENRE_TO_HARMONIZED = {
     'History': 'History', 'Travel': 'Nonfiction',
     'Narrative': 'Nonfiction', 'Cookery': 'Nonfiction',
     'Medical': 'Nonfiction', 'Lecture': 'Nonfiction',
-    'Advertisement': 'Nonfiction', 'Juvenile': 'Fiction',
+    'Advertisement': 'Nonfiction', 'Juvenile': None,
     'Genealogy': 'Reference', 'Music': 'Nonfiction',
-    'Allegory': 'Fiction', 'Dialogue': 'Nonfiction',
+    'Allegory': None, 'Dialogue': 'Nonfiction',
     'Proclamation': 'Legal',
     'Petition/Address': 'Nonfiction',
 }
 
 # Priority order for picking a single harmonized genre when multiple match
+# Specific genres first; Fiction/Poetry/Drama last (they're catch-alls)
 _HARMONIZED_PRIORITY = [
-    'Fiction', 'Poetry', 'Drama', 'Periodical', 'Sermon',
-    'Essay', 'Letters', 'Biography', 'History', 'Legal', 'Speech',
-    'Treatise', 'Almanac', 'Reference', 'Nonfiction',
+    'Sermon', 'Legal', 'Periodical', 'Almanac', 'Speech',
+    'Essay', 'Letters', 'Treatise', 'Biography', 'History',
+    'Reference', 'Nonfiction',
+    'Drama', 'Poetry', 'Fiction',
 ]
 
 def _genres_to_harmonized(genres):
