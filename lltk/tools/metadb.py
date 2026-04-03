@@ -306,10 +306,14 @@ class MetaDB:
             if log: log(f'Skipping {corpus_id} (in DB_BLACKLIST)')
             return None
         from lltk.corpus.utils import load
+        from lltk.corpus.synthetic import SyntheticCorpus
         try:
             corpus = load(corpus_id)
         except Exception as e:
             if log: log(f'Could not load corpus {corpus_id}: {e}')
+            return None
+        if isinstance(corpus, SyntheticCorpus):
+            if log: log(f'Skipping {corpus_id} (SyntheticCorpus)')
             return None
 
         try:
