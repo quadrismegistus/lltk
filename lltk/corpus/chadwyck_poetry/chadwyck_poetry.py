@@ -193,6 +193,8 @@ class ChadwyckPoetry(BaseCorpus):
 	def word2vec_by_period(self,year_min=1500,year_max=2000,**attrs):
 		return super(ChadwyckPoetry,self).word2vec_by_period(year_min=year_min,year_max=year_max,**attrs)
 
+	CORPUS_BUILT = 1992  # approximate year Chadwyck-Healey poetry corpus was constructed
+
 	def load_metadata(self,*x,**y):
 		import numpy as np
 		meta=super().load_metadata()
@@ -202,11 +204,26 @@ class ChadwyckPoetry(BaseCorpus):
 		pub = pd.to_numeric(meta.get('attpubn1'), errors='coerce')
 		if 'year_orig' in meta.columns:
 			pub = pub.fillna(pd.to_numeric(meta['year_orig'], errors='coerce'))
+		meta['year_pub'] = pub  # preserve original pub year
 		dod = pd.to_numeric(meta.get('author_dod'), errors='coerce')
 		dob = pd.to_numeric(meta.get('author_dob'), errors='coerce')
-		# Cap at author's lifetime: min(pub, dod) or min(pub, dob+80)
-		cap = dod.fillna(dob + 80)
-		meta['year'] = pub.where(pub.isna() | cap.isna(), pub.clip(upper=cap))
+		# Year = when the poem was likely written, not when this edition was published
+		# - If pub is between dob and dod: use pub (published in author's lifetime)
+		# - If pub is after dod: use dod (posthumous edition, poem written before death)
+		# - If pub is before dob: null (impossible, data error)
+		# - If no dod and pub is within 80 years of corpus build: use pub (contemporary)
+		# - If no dod and pub is old: null (can't determine)
+		year = pub.copy()
+		# Cap at death year for posthumous editions
+		posthumous = pub.notna() & dod.notna() & (pub > dod)
+		year[posthumous] = dod[posthumous]
+		# Null out impossible dates (pub before birth)
+		impossible = pub.notna() & dob.notna() & (pub < dob)
+		year[impossible] = np.nan
+		# For authors with no death year: only keep if recent (contemporary poet)
+		no_dod_old = dod.isna() & dob.notna() & pub.notna() & (pub < self.CORPUS_BUILT - 80)
+		year[no_dod_old] = np.nan
+		meta['year'] = year
 		return meta
 
 
