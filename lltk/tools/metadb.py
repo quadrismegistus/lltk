@@ -593,6 +593,7 @@ class MetaDB:
             print(f'Matching {len(corpora)} corpora: {", ".join(corpora)}')
 
         # Exact: same title_norm + author_norm, any corpus (within or across)
+        # Cap: skip title+author combos with >500 texts (serial publications)
         print('Exact title + author matching...')
         self.conn.execute(f"""
             INSERT OR IGNORE INTO matches (_id_a, _id_b, similarity, match_type)
@@ -604,6 +605,11 @@ class MetaDB:
             WHERE a.title_norm IS NOT NULL
               AND a.author_norm IS NOT NULL
               AND length(a.title_norm) > 5
+              AND (a.title_norm, a.author_norm) NOT IN (
+                  SELECT title_norm, author_norm FROM texts
+                  WHERE title_norm IS NOT NULL AND author_norm IS NOT NULL
+                  GROUP BY title_norm, author_norm HAVING COUNT(*) > 500
+              )
               {corpus_filter}
         """)
         count_exact = self.conn.execute("SELECT COUNT(*) FROM matches WHERE match_type = 'exact_norm'").fetchone()[0]

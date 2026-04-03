@@ -244,16 +244,18 @@ url_freqs = https://www.dropbox.com/s/i5zjhil743rm907/gildedage_freqs.zip?dl=1
 public = metadata,txt,freqs
 license_type = Academic
 
-[Hathi]
-id = hathi
-name = Hathi
-desc = Hathi Trust Research Center
-link = https://www.hathitrust.org/
-path_metadata = metadata.csv.gz
-url_full_metadata = https://www.hathitrust.org/filebrowser/download/297178
-url_metadata = https://www.dropbox.com/s/0bj4oxko6s6zaos/hathi_metadata.zip?dl=1
-public = metadata
-license_type = Academic
+# Hathi parent corpus disabled — 17M texts, use subcorpora instead
+# (hathi_englit, hathi_novels, hathi_essays, etc.)
+# [Hathi]
+# id = hathi
+# name = Hathi
+# desc = Hathi Trust Research Center
+# link = https://www.hathitrust.org/
+# path_metadata = metadata.csv.gz
+# url_full_metadata = https://www.hathitrust.org/filebrowser/download/297178
+# url_metadata = https://www.dropbox.com/s/0bj4oxko6s6zaos/hathi_metadata.zip?dl=1
+# public = metadata
+# license_type = Academic
 
 [HathiAlmanacs]
 id = hathi_almanacs
