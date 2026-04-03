@@ -176,6 +176,7 @@ let currentSort = 'year';
 let currentSortDir = 'asc';
 let selectedIds = new Set();
 let currentTexts = [];
+let knownCustomKeys = [];  // custom annotation keys discovered across all texts
 
 // Init
 async function init() {
@@ -189,6 +190,13 @@ async function init() {
   GENRE_VOCAB.forEach(g => { const o = document.createElement('option'); o.value = g; o.textContent = g; gSel.appendChild(o); });
   loadTexts();
   loadStats();
+  loadAnnotationKeys();
+}
+
+async function loadAnnotationKeys() {
+  const resp = await fetch('/api/annotation-keys');
+  const data = await resp.json();
+  knownCustomKeys = data.custom || [];
 }
 
 async function loadStats() {
@@ -316,25 +324,52 @@ function renderDetail(id, data) {
   const matches = data.match_group || [];
 
   document.getElementById('detailTitle').textContent = meta.title || id;
+  // Store current detail id for save
+  document.getElementById('detailPanel').dataset.currentId = id;
 
   let html = '';
 
-  // Annotation form
+  // Annotation form — fixed fields
   html += `<div class="detail-section">
     <h3>Annotation</h3>
     <div class="annotation-form">
-      <label>Genre</label>
+      <label>genre</label>
       <select id="annGenre">
         <option value="">(no override)</option>
         ${GENRE_VOCAB.map(g => `<option value="${g}" ${ann.genre===g?'selected':''}>${g}</option>`).join('')}
       </select>
-      <label><input type="checkbox" id="annExclude" ${ann.exclude?'checked':''}> Exclude</label>
-      <label><input type="checkbox" id="annTranslated" ${ann.is_translated?'checked':''}> Is translated</label>
-      <label>Notes</label>
-      <textarea id="annNotes">${ann.notes || ''}</textarea>
-      <div class="save-row">
-        <button class="primary" onclick="saveAnnotation('${id}')">Save</button>
-        <button class="danger" onclick="clearAnnotation('${id}')">Clear</button>
+      <label>genre_raw</label>
+      <input type="text" id="annGenreRaw" value="${ann.genre_raw || ''}" placeholder="e.g. Novel, Epistolary fiction, Tale...">
+      <label><input type="checkbox" id="annExclude" ${ann.exclude?'checked':''}> exclude</label>
+      <label><input type="checkbox" id="annTranslated" ${ann.is_translated?'checked':''}> is_translated</label>
+      <label>notes</label>
+      <textarea id="annNotes">${ann.notes || ''}</textarea>`;
+
+  // Custom fields — show all known keys + any from this text's annotation
+  const allCustom = new Set([...knownCustomKeys]);
+  for (const k of Object.keys(ann)) {
+    if (!['genre','genre_raw','exclude','is_translated','notes'].includes(k)) allCustom.add(k);
+  }
+  if (allCustom.size > 0) {
+    html += `<div style="margin-top:8px; border-top:1px solid #e2e8f0; padding-top:8px;">`;
+    for (const key of [...allCustom].sort()) {
+      const val = ann[key] || '';
+      html += `<label>${key}</label>
+        <input type="text" class="custom-ann" data-key="${key}" value="${String(val).replace(/"/g,'&quot;')}">`;
+    }
+    html += `</div>`;
+  }
+
+  // Add new field
+  html += `<div style="margin-top:8px; display:flex; gap:4px; align-items:end;">
+      <div style="flex:1"><label>Add field</label>
+        <input type="text" id="newFieldName" placeholder="field name"></div>
+      <button onclick="addCustomField()">Add</button>
+    </div>`;
+
+  html += `<div class="save-row">
+        <button class="primary" onclick="saveAnnotation()">Save</button>
+        <button class="danger" onclick="clearAnnotation()">Clear</button>
       </div>
     </div>
   </div>`;
@@ -379,31 +414,55 @@ function renderDetail(id, data) {
   document.getElementById('detailBody').innerHTML = html;
 }
 
-async function saveAnnotation(id) {
+function addCustomField() {
+  const nameInput = document.getElementById('newFieldName');
+  const name = nameInput.value.trim().toLowerCase().replace(/\s+/g, '_');
+  if (!name) return;
+  if (!knownCustomKeys.includes(name)) knownCustomKeys.push(name);
+  nameInput.value = '';
+  // Re-render with the new field
+  const id = document.getElementById('detailPanel').dataset.currentId;
+  openDetail(id);
+}
+
+async function saveAnnotation() {
+  const id = document.getElementById('detailPanel').dataset.currentId;
   const ann = {};
+
+  // Fixed fields
   const genre = document.getElementById('annGenre').value;
   if (genre) ann.genre = genre;
+  const genreRaw = document.getElementById('annGenreRaw').value.trim();
+  if (genreRaw) ann.genre_raw = genreRaw;
   if (document.getElementById('annExclude').checked) ann.exclude = true;
   if (document.getElementById('annTranslated').checked) ann.is_translated = true;
   const notes = document.getElementById('annNotes').value.trim();
   if (notes) ann.notes = notes;
+
+  // Custom fields
+  document.querySelectorAll('.custom-ann').forEach(el => {
+    const key = el.dataset.key;
+    const val = el.value.trim();
+    if (val) ann[key] = val;
+  });
 
   await fetch('/api/text/' + id + '/annotate', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(ann)
   });
-  loadTexts(); loadStats();
+  loadTexts(); loadStats(); loadAnnotationKeys();
 }
 
-async function clearAnnotation(id) {
+async function clearAnnotation() {
+  const id = document.getElementById('detailPanel').dataset.currentId;
   if (!confirm('Clear all annotations for this text?')) return;
   await fetch('/api/text/' + id + '/annotate', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({})
   });
-  loadTexts(); loadStats();
+  loadTexts(); loadStats(); loadAnnotationKeys();
   openDetail(id);
 }
 

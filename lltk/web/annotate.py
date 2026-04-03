@@ -276,6 +276,16 @@ def create_app(corpus_id: str):
     async def get_genres():
         return {'genres': sorted(GENRE_VOCAB)}
 
+    @app.get('/api/annotation-keys')
+    async def get_annotation_keys():
+        """Return all custom annotation keys used across all annotations."""
+        fixed = {'genre', 'genre_raw', 'is_translated', 'exclude', 'notes'}
+        custom = set()
+        for ann in annotations.values():
+            custom.update(ann.keys())
+        custom -= fixed
+        return {'fixed': sorted(fixed), 'custom': sorted(custom)}
+
     return app
 
 
