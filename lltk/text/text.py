@@ -200,10 +200,18 @@ class BaseText(BaseObject):
             row = metadb.get(self.corpus.id, self.id)
             if row:
                 return row
-        except Exception:
+        except Exception as e:
             pass
-        # Fallback: corpus DataFrame
+        # Fallback: corpus load_metadata() — can be slow for large corpora with enrichment
+        # Only use if DB lookup failed (no DB, text not in DB, etc.)
         try:
+            cache_key = ('load_metadata', True)
+            # Check if already cached — avoid triggering expensive enrichment
+            cached = self.corpus._metadfd.get(cache_key)
+            if cached is not None and self.id in cached.index:
+                row = cached.loc[self.id]
+                return {k: v for k, v in row.items() if pd.notna(v)}
+            # Not cached — load (will cache for subsequent texts)
             df = self.corpus.load_metadata()
             if df is not None and self.id in df.index:
                 row = df.loc[self.id]

@@ -223,34 +223,28 @@ class MetaDB:
         self.path = path or PATH_METADB
         self.match_path = match_path or PATH_MATCHDB
         self._conn = None
-        self._match_conn = None
         self._col_cache = None
 
     @property
     def conn(self):
+        """Single connection to texts DB, with matches DB attached as match_db."""
         if self._conn is None:
             os.makedirs(os.path.dirname(self.path), exist_ok=True)
             self._conn = duckdb.connect(self.path)
             self._ensure_text_tables()
+            # Attach matches DB
+            try:
+                os.makedirs(os.path.dirname(self.match_path), exist_ok=True)
+                self._conn.execute(f"ATTACH '{self.match_path}' AS match_db")
+            except Exception:
+                pass  # already attached
+            self._ensure_match_tables()
         return self._conn
 
     @property
     def match_conn(self):
-        """Connection for matches DB. Attaches texts DB as texts_db for cross-DB queries."""
-        if self._match_conn is None:
-            os.makedirs(os.path.dirname(self.match_path), exist_ok=True)
-            self._match_conn = duckdb.connect(self.match_path)
-            self._ensure_match_tables()
-            try:
-                self._match_conn.execute(f"ATTACH '{self.path}' AS texts_db (READ_ONLY)")
-            except Exception as e:
-                if log: log(f'Could not attach texts DB to match_conn: {e}')
-        # Verify texts_db is accessible
-        try:
-            self._match_conn.execute("SELECT 1 FROM texts_db.texts LIMIT 0")
-        except Exception:
-            if log: log('texts_db not available in match_conn — dedup queries will not work')
-        return self._match_conn
+        """Alias for conn — matches are in attached match_db."""
+        return self.conn
 
     def _ensure_text_tables(self):
         self._conn.execute("""
@@ -286,8 +280,8 @@ class MetaDB:
         """)
 
     def _ensure_match_tables(self):
-        self._match_conn.execute("""
-            CREATE TABLE IF NOT EXISTS matches (
+        self._conn.execute("""
+            CREATE TABLE IF NOT EXISTS match_db.matches (
                 _id_a      TEXT NOT NULL,
                 _id_b      TEXT NOT NULL,
                 similarity FLOAT NOT NULL,
@@ -295,16 +289,16 @@ class MetaDB:
                 PRIMARY KEY (_id_a, _id_b)
             )
         """)
-        self._match_conn.execute("CREATE INDEX IF NOT EXISTS idx_matches_a ON matches(_id_a)")
-        self._match_conn.execute("CREATE INDEX IF NOT EXISTS idx_matches_b ON matches(_id_b)")
-        self._match_conn.execute("""
-            CREATE TABLE IF NOT EXISTS match_groups (
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_matches_a ON match_db.matches(_id_a)")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_matches_b ON match_db.matches(_id_b)")
+        self._conn.execute("""
+            CREATE TABLE IF NOT EXISTS match_db.match_groups (
                 _id      TEXT PRIMARY KEY,
                 group_id INTEGER NOT NULL,
                 rank     INTEGER NOT NULL
             )
         """)
-        self._match_conn.execute("CREATE INDEX IF NOT EXISTS idx_mg_gid ON match_groups(group_id)")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_mg_gid ON match_db.match_groups(group_id)")
 
     def ingest(self, corpus_id, force=True):
         """Ingest a corpus's load_metadata() output into the DB."""
@@ -529,27 +523,26 @@ class MetaDB:
             # Clean up matches involving this corpus
             try:
                 self.match_conn.execute("""
-                    DELETE FROM matches WHERE _id_a LIKE ? OR _id_b LIKE ?
+                    DELETE FROM match_db.matches WHERE _id_a LIKE ? OR _id_b LIKE ?
                 """, [f'_{corpus_id}/%', f'_{corpus_id}/%'])
             except Exception:
                 pass
         else:
             self.conn.execute("DROP TABLE IF EXISTS texts")
             self.conn.execute("DROP TABLE IF EXISTS corpus_info")
-            self._conn = None
             try:
-                self.match_conn.execute("DROP TABLE IF EXISTS matches")
-                self.match_conn.execute("DROP TABLE IF EXISTS match_groups")
-                self._match_conn = None
+                self.conn.execute("DROP TABLE IF EXISTS match_db.matches")
+                self.conn.execute("DROP TABLE IF EXISTS match_db.match_groups")
             except Exception:
-                self._match_conn = None
+                pass
+            self._conn = None
         self._col_cache = None
 
     def drop_matches(self):
         """Drop all matches and match groups (leaves texts intact)."""
         try:
-            self.match_conn.execute("DELETE FROM matches")
-            self.match_conn.execute("DELETE FROM match_groups")
+            self.match_conn.execute("DELETE FROM match_db.matches")
+            self.match_conn.execute("DELETE FROM match_db.match_groups")
         except Exception:
             pass
 
@@ -637,20 +630,25 @@ class MetaDB:
             print(f'Matching {len(corpora)} corpora: {", ".join(corpora)}')
 
         # Exact: same title_norm + author_norm, any corpus (within or across)
+        # Uses chain linking (each text → next in sorted order) instead of all-pairs
+        # to avoid quadratic explosion on multi-volume works (N-1 edges, not N*(N-1)/2)
         print('Exact title + author matching...')
         self.match_conn.execute(f"""
-            INSERT OR IGNORE INTO matches (_id_a, _id_b, similarity, match_type)
+            INSERT OR IGNORE INTO match_db.matches (_id_a, _id_b, similarity, match_type)
             SELECT a._id, b._id, 1.0, 'exact_norm'
-            FROM texts_db.texts a
-            JOIN texts_db.texts b ON a.title_norm = b.title_norm
-                AND a.author_norm = b.author_norm
-                AND a._id < b._id
-            WHERE a.title_norm IS NOT NULL
-              AND a.author_norm IS NOT NULL
-              AND length(a.title_norm) > 5
+            FROM (
+                SELECT _id, title_norm, author_norm,
+                       LEAD(_id) OVER (PARTITION BY title_norm, author_norm ORDER BY _id) as next_id
+                FROM texts
+                WHERE title_norm IS NOT NULL
+                  AND author_norm IS NOT NULL
+                  AND length(title_norm) > 5
+            ) a
+            JOIN texts b ON a.next_id = b._id
+            WHERE a.next_id IS NOT NULL
               {corpus_filter}
         """)
-        count_exact = self.match_conn.execute("SELECT COUNT(*) FROM matches WHERE match_type = 'exact_norm'").fetchone()[0]
+        count_exact = self.match_conn.execute("SELECT COUNT(*) FROM match_db.matches WHERE match_type = 'exact_norm'").fetchone()[0]
         print(f'  Exact: {count_exact} pairs')
 
         if fuzzy:
@@ -659,7 +657,7 @@ class MetaDB:
             # (different Smiths, Wards, etc.) not worth fuzzy matching
             authors = self.match_conn.execute(f"""
                 SELECT author_norm, COUNT(*) as n
-                FROM texts_db.texts
+                FROM texts
                 WHERE author_norm IS NOT NULL AND length(title_norm) > 3
                 {corpus_where}
                 GROUP BY author_norm
@@ -673,7 +671,7 @@ class MetaDB:
             batch = []
             for author_norm, _ in iterr:
                 rows = self.match_conn.execute(f"""
-                    SELECT _id, title_norm, corpus, year FROM texts_db.texts
+                    SELECT _id, title_norm, corpus, year FROM texts
                     WHERE author_norm = ? AND title_norm IS NOT NULL AND length(title_norm) > 3
                     {corpus_where}
                 """, [author_norm]).fetchall()
@@ -699,15 +697,15 @@ class MetaDB:
             if batch:
                 self._insert_matches_batch(batch)
 
-            count_fuzzy = self.match_conn.execute("SELECT COUNT(*) FROM matches WHERE match_type = 'fuzzy_title'").fetchone()[0]
+            count_fuzzy = self.match_conn.execute("SELECT COUNT(*) FROM match_db.matches WHERE match_type = 'fuzzy_title'").fetchone()[0]
             print(f'  Fuzzy: {count_fuzzy} pairs')
 
         # Compute match groups
         print('Computing match groups...')
         self._compute_match_groups()
-        total = self.match_conn.execute("SELECT COUNT(*) FROM matches").fetchone()[0]
-        groups = self.match_conn.execute("SELECT COUNT(DISTINCT group_id) FROM match_groups").fetchone()[0]
-        n_texts = self.match_conn.execute("SELECT COUNT(*) FROM match_groups").fetchone()[0]
+        total = self.match_conn.execute("SELECT COUNT(*) FROM match_db.matches").fetchone()[0]
+        groups = self.match_conn.execute("SELECT COUNT(DISTINCT group_id) FROM match_db.match_groups").fetchone()[0]
+        n_texts = self.match_conn.execute("SELECT COUNT(*) FROM match_db.match_groups").fetchone()[0]
         print(f'Done: {total} match pairs, {n_texts} texts in {groups} groups')
 
     def _insert_matches_batch(self, batch):
@@ -717,15 +715,15 @@ class MetaDB:
         df = pd.DataFrame(batch, columns=['_id_a', '_id_b', 'similarity', 'match_type'])
         df = df.drop_duplicates(subset=['_id_a', '_id_b'])
         self.match_conn.execute("""
-            INSERT OR IGNORE INTO matches (_id_a, _id_b, similarity, match_type)
+            INSERT OR IGNORE INTO match_db.matches (_id_a, _id_b, similarity, match_type)
             SELECT * FROM df
         """)
 
     def _compute_match_groups(self):
         """Build connected components from matches, store in match_groups."""
-        pairs = self.match_conn.execute("SELECT _id_a, _id_b FROM matches").fetchall()
+        pairs = self.match_conn.execute("SELECT _id_a, _id_b FROM match_db.matches").fetchall()
         if not pairs:
-            self.match_conn.execute("DELETE FROM match_groups")
+            self.match_conn.execute("DELETE FROM match_db.match_groups")
             return
 
         G = nx.Graph()
@@ -740,19 +738,19 @@ class MetaDB:
                 rows.append((_id, gid, rank))
 
         df = pd.DataFrame(rows, columns=['_id', 'group_id', 'rank'])
-        self.match_conn.execute("DELETE FROM match_groups")
-        self.match_conn.execute("INSERT INTO match_groups SELECT * FROM df")
+        self.match_conn.execute("DELETE FROM match_db.match_groups")
+        self.match_conn.execute("INSERT INTO match_db.match_groups SELECT * FROM df")
 
     def find_matches(self, query):
         """Search for matches by title substring. Returns DataFrame with match groups."""
         return self.match_conn.execute("""
             SELECT t._id, t.corpus, t.title, t.author, t.year, t.genre,
                    t.title_norm, mg.group_id, mg.rank
-            FROM texts_db.texts t
-            JOIN match_groups mg ON t._id = mg._id
+            FROM texts t
+            JOIN match_db.match_groups mg ON t._id = mg._id
             WHERE mg.group_id IN (
-                SELECT mg2.group_id FROM match_groups mg2
-                JOIN texts_db.texts t2 ON mg2._id = t2._id
+                SELECT mg2.group_id FROM match_db.match_groups mg2
+                JOIN texts t2 ON mg2._id = t2._id
                 WHERE t2.title ILIKE ?
             )
             ORDER BY mg.group_id, mg.rank
@@ -763,25 +761,25 @@ class MetaDB:
         return self.match_conn.execute("""
             SELECT t._id, t.corpus, t.title, t.author, t.year, t.genre,
                    mg.group_id, mg.rank
-            FROM texts_db.texts t
-            JOIN match_groups mg ON t._id = mg._id
+            FROM texts t
+            JOIN match_db.match_groups mg ON t._id = mg._id
             WHERE mg.group_id = (
-                SELECT group_id FROM match_groups WHERE _id = ?
+                SELECT group_id FROM match_db.match_groups WHERE _id = ?
             )
             ORDER BY mg.rank
         """, [_id]).fetchdf()
 
     def match_stats(self):
         """Summary statistics for matches."""
-        total = self.match_conn.execute("SELECT COUNT(*) FROM matches").fetchone()[0]
-        groups = self.match_conn.execute("SELECT COUNT(DISTINCT group_id) FROM match_groups").fetchone()[0]
+        total = self.match_conn.execute("SELECT COUNT(*) FROM match_db.matches").fetchone()[0]
+        groups = self.match_conn.execute("SELECT COUNT(DISTINCT group_id) FROM match_db.match_groups").fetchone()[0]
         by_type = self.match_conn.execute("""
-            SELECT match_type, COUNT(*) as n FROM matches GROUP BY match_type
+            SELECT match_type, COUNT(*) as n FROM match_db.matches GROUP BY match_type
         """).fetchdf()
         # Group size distribution
         sizes = self.match_conn.execute("""
             SELECT group_size, COUNT(*) as n_groups FROM (
-                SELECT group_id, COUNT(*) as group_size FROM match_groups GROUP BY group_id
+                SELECT group_id, COUNT(*) as group_size FROM match_db.match_groups GROUP BY group_id
             ) GROUP BY group_size ORDER BY group_size
         """).fetchdf()
         return {
@@ -833,7 +831,7 @@ class MetaDB:
                 AND (
                     mg._id IS NULL
                     OR t._id = (
-                        SELECT mg2._id FROM match_groups mg2
+                        SELECT mg2._id FROM match_db.match_groups mg2
                         JOIN {texts_table} t2 ON mg2._id = t2._id
                         WHERE mg2.group_id = mg.group_id
                           AND {where_sql.replace('t.', 't2.')}
@@ -847,7 +845,7 @@ class MetaDB:
                 AND (
                     mg._id IS NULL
                     OR mg.rank = (
-                        SELECT MIN(mg2.rank) FROM match_groups mg2
+                        SELECT MIN(mg2.rank) FROM match_db.match_groups mg2
                         JOIN {texts_table} t2 ON mg2._id = t2._id
                         WHERE mg2.group_id = mg.group_id
                           AND {where_sql.replace('t.', 't2.')}
@@ -881,14 +879,14 @@ class MetaDB:
 
         if dedup:
             # Query through match_conn (has match_groups + attached texts_db)
-            dedup_sql = self._dedup_sql(where_sql, dedup_by, texts_table='texts_db.texts')
+            dedup_sql = self._dedup_sql(where_sql, dedup_by, texts_table='texts')
             sql = f"""
-                SELECT t.corpus, t.id FROM texts_db.texts t
-                LEFT JOIN match_groups mg ON t._id = mg._id
+                SELECT t.corpus, t.id FROM texts t
+                LEFT JOIN match_db.match_groups mg ON t._id = mg._id
                 WHERE {where_sql} {dedup_sql}
                 ORDER BY t.year, t.corpus, t.id
             """
-            rows = self.match_conn.execute(sql).fetchall()
+            rows = self.conn.execute(sql).fetchall()
         else:
             sql = f"""
                 SELECT t.corpus, t.id FROM texts t
@@ -917,10 +915,10 @@ class MetaDB:
             corpora=corpora, sources=sources
         )
         if dedup:
-            dedup_sql = self._dedup_sql(where_sql, dedup_by, texts_table='texts_db.texts')
+            dedup_sql = self._dedup_sql(where_sql, dedup_by, texts_table='texts')
             sql = f"""
-                SELECT t.* FROM texts_db.texts t
-                LEFT JOIN match_groups mg ON t._id = mg._id
+                SELECT t.* FROM texts t
+                LEFT JOIN match_db.match_groups mg ON t._id = mg._id
                 WHERE {where_sql} {dedup_sql}
                 ORDER BY t.year, t.corpus, t.id
             """
@@ -939,9 +937,6 @@ class MetaDB:
         return SyntheticCorpus(id=id, _query_kwargs={'where': where, **kwargs})
 
     def close(self):
-        if self._match_conn is not None:
-            self._match_conn.close()
-            self._match_conn = None
         if self._conn is not None:
             self._conn.close()
             self._conn = None
