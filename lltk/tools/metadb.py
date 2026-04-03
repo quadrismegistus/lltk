@@ -53,6 +53,9 @@ GENRE_VOCAB = {
     'Reference',
 }
 
+# Corpora excluded from DB ingest (too large, not useful as standalone)
+DB_BLACKLIST = {'hathi', 'bighist'}
+
 # Core columns stored as real columns; everything else goes in meta JSON
 CORE_COLS = ['_id', 'corpus', 'id', 'title', 'author', 'year', 'genre', 'genre_raw', 'title_norm', 'author_norm']
 STANDARD_COLS = ['id', 'title', 'author', 'year', 'genre', 'genre_raw']
@@ -282,6 +285,9 @@ class MetaDB:
 
     def ingest(self, corpus_id, force=True):
         """Ingest a corpus's load_metadata() output into the DB."""
+        if corpus_id in DB_BLACKLIST:
+            if log: log(f'Skipping {corpus_id} (in DB_BLACKLIST)')
+            return None
         from lltk.corpus.utils import load
         try:
             corpus = load(corpus_id)
