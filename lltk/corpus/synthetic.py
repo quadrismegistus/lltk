@@ -132,11 +132,11 @@ class CuratedCorpus(SyntheticCorpus):
 
     @property
     def path_curated(self):
-        return os.path.join(PATH_CORPUS, self.id, 'metadata.xlsx')
+        return os.path.join(os.path.expanduser(PATH_CORPUS), self.id, 'metadata.xlsx')
 
     @property
     def path_curated_cache(self):
-        return os.path.join(PATH_CORPUS, self.id, 'metadata_cache.pkl')
+        return os.path.join(os.path.expanduser(PATH_CORPUS), self.id, 'metadata_cache.pkl')
 
     @property
     def is_curated(self):
