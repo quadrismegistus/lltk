@@ -21,7 +21,8 @@ lltk/
 │   ├── textlist.py     # TextList collection class
 │   └── utils.py        # Tokenization, XML parsing, text utilities
 ├── corpus/
-│   ├── corpus.py       # BaseCorpus, SectionCorpus, ParagraphSectionCorpus, PassageSectionCorpus, Corpus() factory
+│   ├── corpus.py       # BaseCorpus, SectionCorpus, Corpus() factory
+│   ├── synthetic.py    # SyntheticCorpus — virtual corpora from DuckDB queries
 │   ├── utils.py        # load_corpus(), manifest loading, corpus discovery
 │   ├── manifest.txt    # Corpus registry (configparser format)
 │   ├── test_fixture/   # Test corpus checked into repo (3 texts + XML)
@@ -43,20 +44,32 @@ lltk/
 - **Inheritance:** BaseObject → TextList → BaseCorpus → specific corpus classes
 - **Text factory:** `Text(id)` returns cached text objects; `Corpus(id)` returns cached corpus objects
 - **Lazy loading:** Metadata loaded on first access, texts created on demand
-- **Lazy text hydration:** `C.texts()` constructs bare text shells (just `id` + `_corpus` ref). Metadata is hydrated lazily on first attribute access (`t.author`, `t.year`, `t.get(key)`) via `_hydrate_meta()`, which tries a DuckDB indexed lookup first (`lltk.db.get()`), then falls back to `corpus.load_metadata().loc[id]`. Hydration runs once per text (guarded by `_meta_hydrated` flag) and populates `_meta` with corpus DataFrame values as the base layer, with any local overrides winning.
+- **Lazy text hydration:** `C.texts()` constructs bare text shells (just `id` + `_corpus` ref). Metadata is hydrated lazily on first attribute access (`t.author`, `t.year`, `t.get(key)`) via `_hydrate_meta()`, which tries a DuckDB indexed lookup first (`lltk.db.get()`), then falls back to `corpus.load_metadata().loc[id]`. Hydration runs once per text (guarded by `_meta_hydrated` flag).
 - **Path resolution:** `corpus.path_*` attributes resolved via `__getattr__` → `get_path()`, supporting relative and absolute paths
-- **Sections:** `t.chapters`, `t.paragraphs`, `t.passages(n=500)` return `SectionCorpus` objects with `TextSection` children. XML sections parsed in-memory, passages respect sentence boundaries.
 - **Manifest:** Corpora registered in `manifest.txt` (configparser format). Multiple manifest files merged from package dir, `~/lltk_data/`, and user config.
-- **Metadata loading:** `C.meta` uses `load_metadata()` (fast CSV read) rather than per-text iteration. Results are cached in `_metadfd`. Subclasses override `load_metadata()` to enrich columns (e.g., ESTC adds format/extent/fiction fields).
-- **Cross-corpus linking:** Corpora declare `LINKS = {target_corpus_id: (my_col, their_col)}` for shared-ID relationships. `merge_linked_metadata()` left-joins linked corpus metadata with prefixed columns (many-to-one). `t.linked(corpus_id)` traverses to linked text objects (one-to-many). Lookup dicts are built once and cached.
+- **Metadata loading:** `C.meta` uses `load_metadata()` (fast CSV read) rather than per-text iteration. Results are cached in `_metadfd`. Subclasses override `load_metadata()` to enrich columns.
+- **Cross-corpus linking:** Corpora declare `LINKS = {target_corpus_id: (my_col, their_col)}` for shared-ID relationships. `merge_linked_metadata()` left-joins linked corpus metadata with prefixed columns.
 
 ## MetaDB (centralized DuckDB metadata store)
 
-`lltk.db` is a DuckDB-backed metadata cache for fast single-row lookups and cross-corpus queries. CSV files and `load_metadata()` remain the source of truth; the DB is a read cache that must be explicitly rebuilt when source data or enrichment logic changes.
+`lltk.db` is a DuckDB-backed metadata cache for fast single-row lookups, cross-corpus queries, dedup, and virtual corpus construction. CSV files and `load_metadata()` remain the source of truth; the DB is a read cache that must be explicitly rebuilt when source data or enrichment logic changes.
+
+### Database files
+
+Two separate DuckDB files connected via ATTACH:
+
+| File | Contents | Size |
+|------|----------|------|
+| `~/lltk_data/data/metadb.duckdb` | `texts` table, `corpus_info` table | ~300MB |
+| `~/lltk_data/data/metadb_matches.duckdb` | `matches` table, `match_groups` table | ~165MB |
+
+Single DuckDB connection opens `metadb.duckdb` and ATTACHes `metadb_matches.duckdb` as `match_db`. All queries go through one connection. Match tables are prefixed `match_db.matches`, `match_db.match_groups` in SQL. Texts table is plain `texts`.
+
+The split means matches can be deleted/rebuilt independently without touching the texts metadata. Delete `metadb_matches.duckdb` and re-run `lltk db-match` to rebuild matches only.
 
 ### Schema
 
-Single `texts` table with `_id` (e.g. `_estc/T012345`) as primary key, `corpus` indexed. Core columns stored as real columns:
+**`texts` table** (in `metadb.duckdb`):
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -68,26 +81,60 @@ Single `texts` table with `_id` (e.g. `_estc/T012345`) as primary key, `corpus` 
 | `year` | INTEGER | parsed to int at ingest (handles ranges, circa dates) |
 | `genre` | TEXT | harmonized to `GENRE_VOCAB` standard vocabulary |
 | `genre_raw` | TEXT | raw genre value from corpus metadata |
+| `title_norm` | TEXT | normalized title for matching (indexed) |
+| `author_norm` | TEXT | normalized author last name (indexed) |
 | `meta` | TEXT (JSON) | all other corpus-specific fields |
 
-All other corpus-specific metadata is packed into the `meta` JSON column. This keeps the table at 9 columns regardless of how many corpora are ingested, avoids column name collisions, and means re-ingesting one corpus can't affect the schema. DuckDB JSON functions can query into the blob: `meta->>'is_fiction'`, `json_extract(meta, '$.format_std')`.
+**`corpus_info` table** (in `metadb.duckdb`): `corpus TEXT PK, ingested_at DOUBLE, n_texts INTEGER`
 
-A `corpus_info` table tracks ingest timestamps (`corpus TEXT PK, ingested_at DOUBLE, n_texts INTEGER`). Use `lltk.db.corpus_info()` to check when each corpus was last ingested.
+**`matches` table** (in `metadb_matches.duckdb`, accessed as `match_db.matches`):
+`_id_a TEXT, _id_b TEXT, similarity FLOAT, match_type TEXT, PRIMARY KEY (_id_a, _id_b)`
+
+**`match_groups` table** (in `metadb_matches.duckdb`, accessed as `match_db.match_groups`):
+`_id TEXT PK, group_id INTEGER, rank INTEGER`
+
+### Title and author normalization
+
+Computed at ingest time, stored as indexed columns for fast matching:
+
+**`normalize_title(title)`**: lowercase, strip subtitle after first `:;.([,!?`, collapse whitespace. E.g. `"Incognita: or, Love and duty reconcil'd. A novel."` → `"incognita"`. Also strips title-end phrases ("a novel", "by the author", "edited by", etc.).
+
+**`normalize_author(author)`**: lowercase, take text before first comma. E.g. `"Congreve, William, 1670-1729."` → `"congreve"`.
+
+### Blacklist
+
+`DB_BLACKLIST = {'hathi', 'bighist'}` — corpora excluded from DB ingest. `hathi` parent corpus has 17M texts (government documents, serial publications) that cause matching explosions. Use subcorpora instead (hathi_englit, hathi_novels, etc.). `bighist` is a composite.
 
 ### Standard metadata contract
 
-Every corpus's `load_metadata()` should return a DataFrame with at least: `id` (index), `title`, `author`, `year`, `genre`, `genre_raw`. Genre normalization is corpus-specific — each corpus's `load_metadata()` is responsible for setting `genre_raw` (whatever the source says) and `genre` (harmonized to `GENRE_VOCAB`). The standard genre vocabulary is defined in `lltk.tools.metadb.GENRE_VOCAB`:
+Every corpus's `load_metadata()` should return a DataFrame with at least: `id` (index), `title`, `author`, `year`, `genre`, `genre_raw`.
 
-Fiction, Poetry, Drama, Periodical, Essay, Treatise, Letters, Sermon, Biography, History, Nonfiction, Legal, Speech, Spoken, Criticism, Academic, Almanac, Reference.
+**`GENRE_VOCAB`**: Fiction, Poetry, Drama, Periodical, Essay, Treatise, Letters, Sermon, Biography, History, Nonfiction, Legal, Speech, Spoken, Criticism, Academic, Almanac, Reference.
 
-`genre` = broad harmonized category from this vocabulary. `genre_raw` = the most specific true label (e.g. `Novel`, `Epistolary fiction`, `Ballad/Song`). `validate_genres()` flags `genre` values not in this set. `year` should be an integer; the DB ingest parses ranges/circa dates via `_parse_year()`. Use `lltk.db.validate()` to check coverage.
+`genre` = broad harmonized category. `genre_raw` = most specific true label (e.g. `Novel`, `Epistolary fiction`, `Ballad/Song`).
+
+### Cross-corpus matching and dedup
+
+Matching finds duplicate/reprint texts both within and across corpora using `title_norm` + `author_norm`.
+
+**Algorithm**: Chain linking via SQL `LEAD()` window function. For N texts with the same title+author, stores N-1 edges (a chain) instead of N*(N-1)/2 (all pairs). Connected components via NetworkX produce identical groups with 94% fewer stored pairs.
+
+**Match groups**: Each text in a match group gets a `rank` based on `CORPUS_SOURCE_RANKS` (chadwyck=1, canon_fiction=2, ... hathi_englit=9, internet_archive=12). Rank 0 = preferred representative.
+
+**Dedup modes**: `dedup_by='rank'` picks preferred corpus source. `dedup_by='oldest'` picks earliest year, breaking ties by rank.
+
+**Scale**: ~2M texts across 50 corpora → 489K match pairs, 170K groups, runs in ~5 seconds.
 
 ### CLI
 
 ```bash
-lltk db-rebuild                          # drop all + rebuild all corpora
+lltk db-rebuild                          # drop all + rebuild all corpora (~4 min)
 lltk db-rebuild estc ecco                # re-ingest specific corpora (rest untouched)
 lltk db-info                             # genre × corpus crosstab with totals
+lltk db-match                            # run exact title+author matching (~5 sec)
+lltk db-match --fuzzy                    # also run fuzzy matching (~15 sec)
+lltk db-matches "Incognita"              # search matches by title
+lltk db-match-stats                      # show matching statistics
 ```
 
 ### Python API
@@ -95,50 +142,133 @@ lltk db-info                             # genre × corpus crosstab with totals
 ```python
 import lltk
 
-# Ingest
+# ── Ingest ──
 lltk.db.ingest('estc')                   # one corpus
 lltk.db.rebuild()                         # all corpora from manifest
 lltk.db.rebuild(['estc', 'ecco'])         # specific list
 
-# Query
-lltk.db.get('_estc/T012345')             # single-row lookup by _id
-lltk.db.get('estc', 'T012345')           # single-row lookup by corpus + id
-lltk.db.query("SELECT * FROM texts WHERE year < 1700 AND genre = 'fiction'")
+# ── Metadata queries ──
+lltk.db.get('_estc/T012345')             # single-row lookup by _id → dict
+lltk.db.get('estc', 'T012345')           # single-row lookup by corpus + id → dict
+lltk.db.query("SELECT * FROM texts WHERE year < 1700 AND genre = 'Fiction'")
 lltk.db.query("SELECT corpus, COUNT(*) as n FROM texts GROUP BY corpus")
 
-# Cross-corpus queries
-lltk.db.query("""
-    SELECT a._id, b._id, a.corpus, b.corpus
-    FROM texts a JOIN texts b ON a.title = b.title AND a.corpus != b.corpus
-""")
+# ── Matching ──
+lltk.db.match()                           # exact title+author matching
+lltk.db.match(fuzzy=True)                # + fuzzy matching
+lltk.db.match(corpora=['estc', 'ecco'])  # match specific corpora only
+lltk.db.find_matches('Incognita')        # search match groups by title
+lltk.db.get_group('_estc/T012345')       # all texts in same match group
+lltk.db.match_stats()                    # summary statistics
+lltk.db.drop_matches()                   # clear all matches (keeps texts)
 
-# Validate metadata coverage
-lltk.db.validate()                        # shows % non-null for standard cols per corpus
-lltk.db.validate('estc')                  # one corpus
-lltk.db.validate_genres()                 # distinct genre values per corpus, flags non-standard
+# ── Virtual corpus queries (returns real text objects) ──
+for t in lltk.db.texts(genre='Fiction', dedup=True, dedup_by='oldest'):
+    print(t.corpus.id, t.title, t.year)
+    print(t.txt[:100])     # works — resolves through source corpus
+    print(t.freqs())       # works — resolves through source corpus
 
-# Manage
+# With filters
+for t in lltk.db.texts(genre='Poetry', year_min=1600, year_max=1800):
+    print(t.title)
+
+# As DataFrame (no text objects)
+df = lltk.db.texts_df(genre='Fiction', dedup=True)
+
+# As corpus object (for .mfw, .dtm, .meta)
+fiction = lltk.db.corpus(genre='Fiction', dedup=True)
+fiction.meta
+
+# ── Validation ──
+lltk.db.validate()                        # % non-null for standard cols per corpus
+lltk.db.validate_genres()                 # distinct genre values per corpus
 lltk.db.corpora()                         # list ingested corpora with row counts
 lltk.db.corpus_info()                     # ingest timestamps per corpus
-lltk.db.drop('estc')                      # clear one corpus
-lltk.db.drop()                            # clear everything
 ```
 
-### Invalidation
+### SyntheticCorpus (virtual corpora from DB queries)
 
-The DB does not auto-detect changes to `metadata.csv` or `load_metadata()` enrichment logic. After modifying source data or corpus Python code (e.g. genre classification functions), explicitly rebuild:
+Declarative corpus class backed by DuckDB queries. Pulls texts from multiple source corpora, deduplicated. Text objects retain their original corpus for file access.
 
 ```python
-lltk.db.rebuild(['estc'])    # re-ingest affected corpora
+from lltk.corpus.synthetic import SyntheticCorpus
+
+class BigFiction(SyntheticCorpus):
+    ID = 'big_fiction'
+    NAME = 'BigFiction'
+    SOURCES = {
+        'canon_fiction': {'genre': 'Fiction'},
+        'chadwyck': {'genre': 'Fiction'},
+        'gildedage': {},
+        'hathi_englit': {'genre': 'Fiction'},
+        'estc': {'genre': 'Fiction'},
+    }
+    DEDUP = True
+    DEDUP_BY = 'oldest'   # or 'rank'
+
+C = BigFiction()
+C.meta                    # DataFrame — all fiction, deduplicated
+for t in C.texts():
+    t.corpus.id           # 'chadwyck' (original source, not 'big_fiction')
+    t.txt[:100]           # works — resolves through source corpus paths
 ```
 
-### How text hydration uses the DB
+### How text objects work across corpora
 
-When `t.author`, `t.year`, `t.get('genre')`, etc. are accessed on a text object, `_hydrate_meta()` fires once and populates `_meta`. It tries `lltk.db.get(corpus_id, text_id)` first (fast indexed DuckDB lookup, returns core cols + unpacked meta JSON, no DataFrame in memory), falling back to `corpus.load_metadata().loc[id]` if the corpus hasn't been ingested into the DB. This means enriched fields from `load_metadata()` overrides (e.g. ESTC linked fields on EEBO_TCP texts) are available on individual text objects.
+Text objects created by `lltk.db.texts()` or `SyntheticCorpus.texts()` keep their original `corpus` reference. This means:
 
-### DB location
+- `t.corpus.id` → the real source corpus (e.g. `'chadwyck'`)
+- `t.path_txt` → resolves through the source corpus's path configuration
+- `t.path_freqs` → resolves through the source corpus (including Hathi freqs index)
+- `t.txt` → reads from the source corpus's txt directory
+- `t.freqs()` → reads from the source corpus's freqs directory
 
-`~/lltk_data/data/metadb.duckdb`
+The virtual/synthetic corpus is just a view — it selects which texts to include, the text objects handle their own file access.
+
+### Data flow summary
+
+```
+metadata.csv → load_metadata() → DataFrame (cached in _metadfd)
+                                      ↓
+                                  lltk.db.ingest() → metadb.duckdb (texts table)
+                                                          ↓
+                                  lltk.db.match()  → metadb_matches.duckdb (matches, match_groups)
+                                                          ↓
+                                  lltk.db.texts()  → text objects (from source corpora)
+```
+
+`load_metadata()` is the source of truth. The DB caches its output. Matching operates on the DB. Virtual corpus queries return real text objects that delegate file access to their source corpus.
+
+### For the abstraction project
+
+The abstraction project can:
+
+1. **Query LLTK's DuckDB directly** for metadata, genre, year, dedup:
+   ```python
+   df = lltk.db.texts_df(genre='Fiction', dedup=True, dedup_by='oldest')
+   ```
+
+2. **Get text objects with working `.freqs()`** for scoring:
+   ```python
+   for t in lltk.db.texts(genre='Fiction', dedup=True):
+       freqs = t.freqs()  # works — resolves through source corpus
+   ```
+
+3. **Write scores to a separate DuckDB file** (not LLTK's):
+   ```python
+   import duckdb
+   scores_conn = duckdb.connect('abstraction_scores.duckdb')
+   scores_conn.execute("ATTACH '~/lltk_data/data/metadb.duckdb' AS lltk (READ_ONLY)")
+   scores_conn.execute("""
+       SELECT t.*, s.* FROM lltk.texts t
+       JOIN scores s ON t._id = s._id
+       WHERE t.genre = 'Fiction'
+   """)
+   ```
+
+4. **Use `_id` as the join key** between LLTK metadata and abstraction scores. The `_id` format is `_{corpus}/{text_id}` (e.g. `_chadwyck/Early_English_Prose_Fiction/ee28010.01`). This matches what LLTK uses internally. For freqs-based scoring, the `text_id` part of `_id` should match the freqs filename (this is what the Hathi ID normalization ensures).
+
+5. **Check staleness** via `lltk.db.corpus_info()` which shows `ingested_at` timestamps per corpus.
 
 ## Genre classification
 
@@ -151,49 +281,39 @@ Genre assignment happens in each corpus's `load_metadata()`. The approach varies
 2. **subject_topic** field (MARC 650_a, cataloger-assigned but noisier)
 3. **title keywords** (last resort fallback, only fires if tiers 1+2 found nothing)
 
-Returns a set of fine-grained genre labels from `GENRE_RULES` (40+ genres: Novel, Romance, Tale, Fable, Poetry, Drama, Sermon, Essay, Ballad/Song, Satire, etc.). These are mapped to broad `GENRE_VOCAB` labels via `_genres_to_harmonized()` using `_GENRE_TO_HARMONIZED` dict and `_HARMONIZED_PRIORITY` list.
+Returns a set of fine-grained genre labels from `GENRE_RULES` (40+ genres). Mapped to broad `GENRE_VOCAB` via `_genres_to_harmonized()`.
 
 Key design decisions:
-- `history` removed from title keywords — too many novels use "History of..." in their title
-- Satire maps to `None` (not Fiction) — it's a cross-cutting mode, not a genre. When Satire co-occurs with Poetry/Drama/Fiction, those win by priority.
-- `FICTION_GENRES` set defines which fine-grained genres aggregate to Fiction (Novel, Romance, Tale, Fable, Picaresque, Epistolary fiction, Imaginary voyage).
-- `is_fiction(genres)` checks if a genre set intersects `FICTION_GENRES`.
+- `history` removed from title keywords — too many novels use "History of..."
+- Satire maps to `None` — cross-cutting mode, not a genre. When co-occurring with Poetry/Drama/Fiction, those win.
+- `FICTION_GENRES` = {Fiction, Novel, Romance, Tale, Fable, Picaresque, Epistolary fiction, Imaginary voyage}
 
 ### Linked corpora (ECCO, EEBO_TCP, ECCO_TCP)
 
-These inherit genre from ESTC via `merge_linked_metadata()`:
+Inherit genre from ESTC via `merge_linked_metadata()`:
 - **ECCO**: links via `ESTCID` → `id_estc`. Copies `estc_genre` → `genre`.
-- **EEBO_TCP**: links via `id_stc` → `id_estc` (with zero-padding normalization). EEBO's own `genre` column (Prose/Verse/Drama) is renamed to `medium`. Genre comes only from linked ESTC.
-- **ECCO_TCP**: links via `id_ESTC` → `id_estc` (with zero-padding normalization). Same pattern as EEBO.
+- **EEBO_TCP**: links via `id_stc` → `id_estc` (zero-padding). Own `genre` renamed to `medium`. If medium=Verse → genre=Poetry. If medium=Drama → genre=Drama.
+- **ECCO_TCP**: same pattern as EEBO.
 
 ### Simple corpora (all one genre)
 
-Corpora that are entirely one genre set it directly: `df['genre'] = 'Fiction'`, `df['genre_raw'] = 'Novel'`. Examples: gildedage, chicago, ravengarside, txtlab, internet_archive, semantic_cohort, canon_fiction, epistolary, hathi_novels, hathi_stories, hathi_tales, hathi_romances (all Fiction); chadwyck_poetry (Poetry); sotu (Speech); oldbailey (Legal); hathi_sermons (Sermon); hathi_proclamations (Legal); hathi_almanacs (Almanac); hathi_essays (Essay); hathi_letters (Letters); hathi_treatises (Treatise); hathi_bio (Biography); fanfic (Fiction).
+Examples: gildedage, chicago, ravengarside, txtlab (Fiction); chadwyck_poetry (Poetry); sotu (Speech); oldbailey (Legal); hathi_novels/stories/tales/romances (Fiction).
 
-### Mapping corpora (raw genre → harmonized)
+### Mapping corpora
 
-Corpora with their own genre column that needs mapping:
 - **COCA**: FIC→Fiction, MAG/NEWS→Periodical, ACAD→Academic, SPOK→Spoken
 - **COHA**: Magazine/News→Periodical, Non-Fiction→Nonfiction, Film→Drama
-- **BPO**: Fiction→Fiction, Poem→Poetry, Correspondence→Letters, Review→Criticism, News→Periodical. Structural sections (Back/Front Matter, Advertisement, etc.)→None.
-- **PMLA**: Journal→Academic
-- **sellers/tedjdh**: Non-Fiction→Nonfiction, Oratory→Speech, Miscellany→None
-- **litlab**: fine-grained novel subgenres (Gothic, Courtship, etc.) preserved in `genre_raw`, all→Fiction
-- **dialnarr**: Fictional Dialogue/Narration→Fiction
-- **dialogues**: texttype field mapped — Fiction→Fiction, Drama comedy→Drama, Trial/Witness→Legal, others→None
-
-### Title-keyword corpora
-
-- **Evans TCP**: uses full ESTC `classify_genres()` title-keyword logic (early modern titles).
-- **BL Books**: conservative title keywords only — Fiction (novel/tale/romance), Poetry, Drama. Other genres not assigned from titles.
+- **BPO**: Fiction, Poem→Poetry, Correspondence→Letters, Review→Criticism, News→Periodical
+- **canon_fiction**: major_genre Verse/Epic→Poetry, Drama→Drama, History→History, rest→Fiction
+- **litlab**: fine-grained subgenres→Fiction (raw preserved in genre_raw)
 
 ### Not yet harmonized
 
-- **dta** (Deutsches Textarchiv, 3K) — German corpus, genre set to `Other`
+- **dta** (Deutsches Textarchiv, 3K) — German corpus
 
 ## Hathi ID normalization
 
-HathiTrust text IDs appear in different formats across metadata and freqs files. `hathi_id_normalize()` in `hathi.py` collapses all variants to canonical flat form `{library}/{volume_id}`:
+`hathi_id_normalize()` collapses all HathiTrust ID variants to canonical flat form `{library}/{volume_id}`:
 
 ```
 mdp/390/15009144422      → mdp/39015009144422       (3-char dir split)
@@ -201,7 +321,7 @@ bc/ark/+=13960=t0bv7v96f → bc/ark+=13960=t0bv7v96f  (3-char split ark)
 aeu/ark:/13960/t0000ds1j → aeu/ark+=13960=t0000ds1j (colon-slash ark)
 ```
 
-Applied in `load_metadata()` for all Hathi corpora (Hathi, HathiBio, HathiEngLit). The freqs index (`_build_freqs_index()`) walks the freqs directory, normalizes every filename, and builds a `canonical_id → filepath` mapping. Text objects resolve freqs paths through this index via `corpus.freqs_path_for(text_id)`. Hathi subcorpora share a freqs pool at `~/lltk_data/corpora/hathi/freqs` via manifest `path_freqs = ../hathi/freqs`.
+Applied in `load_metadata()` for all Hathi corpora. Freqs index (`_build_freqs_index()`) maps `canonical_id → filepath` on disk. Hathi subcorpora share a freqs pool at `~/lltk_data/corpora/hathi/freqs` via manifest `path_freqs = ../hathi/freqs`.
 
 ## Running tests
 
@@ -211,68 +331,21 @@ python -m pytest tests/ -v
 
 Tests use the `test_fixture` corpus (3 texts: Blake, Austen, Shelley) checked into the repo — no external data needed.
 
-## Common operations
-
-```python
-import lltk
-
-# Load a corpus
-c = lltk.load('canon_fiction')
-
-# Access metadata
-c.meta                          # pandas DataFrame
-c.meta.query('1700 < year < 1800')
-
-# Iterate texts
-for t in c.texts():
-    print(t.id, t.author, t.title, t.year)
-    print(t.txt[:100])          # plain text
-    print(t.freqs())            # word frequencies (Counter)
-
-# Corpus-level analysis
-c.mfw(n=10000)                  # most frequent words
-c.dtm(n=10000)                  # document-term matrix
-c.dtm(n=10000, tfidf=True)     # TF-IDF weighted
-
-# Sections (chapters from XML)
-for ch in t.chapters.texts():
-    print(ch.get('title'), ch.txt[:100])
-
-# Paragraphs and passages
-for p in t.paragraphs.texts():
-    print(p.id, p.txt[:50])
-
-for p in t.passages(n=500).texts():
-    print(p.id, p.get('num_words'), p.freqs())
-
-# Cross-corpus linking (ESTC ↔ ECCO/EEBO)
-ecco = lltk.load('ecco')
-ecco.meta                       # has estc_author, estc_format_std, etc.
-
-estc = lltk.load('estc')
-t = estc.text('some_id')
-t.linked('ecco')                # → [TextECCO(...), ...]
-t.linked('eebo_tcp')            # → [TextEEBO_TCP(...), ...]
-```
-
 ## Corpus data location
 
 - Corpora live at `~/lltk_data/corpora/<corpus_id>/`
 - Each corpus has: `metadata.csv`, `txt/`, optionally `xml/`, `freqs/`
 - Text files: `txt/<text_id>.txt` (flat) or `texts/<text_id>/text.txt` (per-text dirs)
 - Manifest files searched in: package `corpus/manifest.txt`, `~/lltk_data/manifest.txt`, and others
-- Centralized DB: `~/lltk_data/data/metadb.duckdb`
+- Text metadata DB: `~/lltk_data/data/metadb.duckdb`
+- Match/dedup DB: `~/lltk_data/data/metadb_matches.duckdb`
 
 ## Development notes
 
-- `__getattr__` on BaseCorpus handles `path_*` attributes; raises `AttributeError` for everything else (not silently returning None)
-- `BaseText.get(key)` does fuzzy metadata lookup (`ish=True`): searches for keys starting with `key`, handles corpus-prefixed metadata keys. Calls `_hydrate_meta()` to ensure corpus-level metadata is loaded before searching.
-- `BaseText.meta_()` also calls `_hydrate_meta()` — this is the path used by `t.year`, `t.years`, etc.
-- The `_init` attribute on corpus objects tracks initialization state (set/bool, not consistent — be aware)
-- `iter_init()` uses `load_metadata()` to get the ID list and constructs bare `TEXT_CLASS` shells with no metadata kwargs — metadata is hydrated lazily via `_hydrate_meta()` on first access
-- `iter_texts()` no longer wraps text objects through the `Text()` factory — objects from `_textd` are used directly
-- `SectionCorpus.parse_sections()` is the override hook for custom section parsing; `init()` handles caching
-- Corpus downloads use Dropbox URLs defined in manifest `url_*` fields
-- `load_metadata()` is cached via `_metadfd` with key `('load_metadata', clean)`. Subclass overrides (ESTC, ECCO, EEBO) are also cached.
-- `BaseText.linked()` has a class-level `_linked_cache` dict keyed by `(source_corpus_id, target_corpus_id)` storing `(target_corpus, target_meta, lookup_dict)`. The lookup dict maps link column values to lists of text IDs for O(1) traversal.
-- `BaseText.linked()` existed before as a graph DB wrapper; the new version adds an optional `target_corpus_id` positional arg and falls back to the old behavior when called without arguments.
+- `__getattr__` on BaseCorpus handles `path_*` attributes; raises `AttributeError` for everything else
+- `BaseText.get(key)` does fuzzy metadata lookup (`ish=True`): searches for keys starting with `key`. Calls `_hydrate_meta()` first.
+- `_corpus_meta_row()` tries DB lookup, then checks cached `_metadfd` before triggering expensive `load_metadata()` (avoids re-running ESTC genre classification on 482K rows)
+- `iter_init()` constructs bare `TEXT_CLASS` shells — metadata hydrated lazily via `_hydrate_meta()`
+- `iter_texts()` uses objects from `_textd` directly (no `Text()` factory wrapping)
+- `load_metadata()` cached via `_metadfd` with key `('load_metadata', clean)`. Subclass overrides also cached.
+- `CORPUS_SOURCE_RANKS` in `metadb.py` defines preference order for dedup: chadwyck(1) > canon_fiction(2) > chicago(4) > eebo_tcp(6) > estc(7) > ecco(8) > hathi_englit(9) > internet_archive(12)
