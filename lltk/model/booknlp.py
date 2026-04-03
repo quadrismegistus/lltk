@@ -64,12 +64,18 @@ class ModelBookNLP(CharacterSystem):
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
     def iter_models(self,section_type=None,progress=True):
-        if not self.prefer_sections or self.text is None or issubclass(self.text.__class__, TextSection) or self.text.sections(section_type) is None:
+        if not self.prefer_sections or self.text is None or issubclass(self.text.__class__, TextSection):
             yield self
-        else:
-            oiterr=self.text.sections(section_type).texts()
-            for tx in get_tqdm(oiterr):
-                yield ModelBookNLP(tx)
+            return
+        sections = self.text.sections(section_type)
+        if sections is not None:
+            section_texts = list(sections.texts())
+            if section_texts:
+                for tx in get_tqdm(section_texts) if progress else section_texts:
+                    yield ModelBookNLP(tx)
+                return
+        # Fallback: no sections or empty sections — use the text itself
+        yield self
 
     def models(self,**kwargs):
         return list(self.iter_models(**kwargs))
