@@ -58,23 +58,26 @@ GENRE_VOCAB = {
 DB_BLACKLIST = {'hathi', 'bighist'}
 
 # Core columns stored as real columns; everything else goes in meta JSON
-CORE_COLS = ['_id', 'corpus', 'id', 'title', 'author', 'year', 'genre', 'genre_raw', 'title_norm', 'author_norm']
+CORE_COLS = ['_id', 'corpus', 'id', 'title', 'author', 'year', 'genre', 'genre_raw', 'is_translated', 'title_norm', 'author_norm']
 STANDARD_COLS = ['id', 'title', 'author', 'year', 'genre', 'genre_raw']
-TEXT_COLS = ['_id', 'corpus', 'id', 'title', 'author', 'genre', 'genre_raw', 'title_norm', 'author_norm']  # cols stored as TEXT
+TEXT_COLS = ['_id', 'corpus', 'id', 'title', 'author', 'genre', 'genre_raw', 'title_norm', 'author_norm']  # cols stored as TEXT (not is_translated — that's BOOLEAN)
 
 # Corpus preference ranks for dedup (lower = preferred)
 CORPUS_SOURCE_RANKS = {
     'chadwyck': 1, 'chadwyck_drama': 1, 'chadwyck_poetry': 1,
-    'canon_fiction': 2, 'markmark': 3, 'chicago': 4,
-    'gildedage': 5, 'ravengarside': 5,
-    'eebo_tcp': 6, 'ecco_tcp': 6, 'evans_tcp': 6,
-    'estc': 7, 'ecco': 8,
-    'hathi_englit': 9, 'hathi_novels': 9,
-    'hathi_bio': 10, 'hathi_essays': 10, 'hathi_letters': 10,
-    'hathi_sermons': 10, 'hathi_stories': 10, 'hathi_tales': 10,
-    'hathi_romances': 10, 'hathi_treatises': 10, 'hathi_almanacs': 10,
-    'hathi_proclamations': 10,
-    'blbooks': 11, 'internet_archive': 12,
+    'eebo_tcp': 2, 'ecco_tcp': 2, 'evans_tcp': 2,
+    'markmark': 3, 'chicago': 3, 'clmet': 3,
+    'gildedage': 4, 'coca': 4, 'coha': 4, 'sellers': 4, 'new_yorker': 4, 'spectator': 4, 
+    'tedjdh': 5, 'long_arc_prestige': 5,
+    'hathi_englit': 5, 'hathi_novels': 5, 'hathi_romances': 5, 'hathi_treatises': 5, 'hathi_almanacs': 5, 'hathi_essays': 5, 'hathi_letters': 5, 'hathi_sermons': 5, 'hathi_stories': 5, 'hathi_tales': 5, 'hathi_proclamations': 5, 'hathi_bio': 5,
+    'ecco': 6, 'bpo': 6, 'litlab': 6, 'pmla': 6, 'sotu': 6, 'gale_amfic': 6,
+    'internet_archive': 7,
+    'blbooks': 8,
+    'canon_fiction': 9, 'dialogues':9, 'fanfic':9,
+    'ravengarside': 9, 'estc': 10, 'semantic_cohort': 10,
+    'dta': 11, 'dialnarr': 11, 'txtlab': 11, 'hathi':11, 'oldbailey':11, 'epistolary':11,
+    'test_fixture': 100, 'test_fixture_linked': 100,
+    'arc_fiction': 101, 'arc_poetry': 101, 'arc_periodical': 101, 'tmp':101,
 }
 
 _TITLE_NORM_PUNCS = re.compile(r'[;:.\(\[,!?]')
@@ -257,6 +260,7 @@ class MetaDB:
                 year        INTEGER,
                 genre       TEXT,
                 genre_raw   TEXT,
+                is_translated BOOLEAN,
                 title_norm  TEXT,
                 author_norm TEXT,
                 meta        TEXT
@@ -264,9 +268,9 @@ class MetaDB:
         """)
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_corpus ON texts(corpus)")
         # Add columns if upgrading from older schema
-        for col in ('title_norm', 'author_norm'):
+        for col, dtype in [('title_norm', 'TEXT'), ('author_norm', 'TEXT'), ('is_translated', 'BOOLEAN')]:
             try:
-                self._conn.execute(f"ALTER TABLE texts ADD COLUMN {col} TEXT")
+                self._conn.execute(f"ALTER TABLE texts ADD COLUMN {col} {dtype}")
             except Exception:
                 pass
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_title_norm ON texts(title_norm)")
@@ -392,10 +396,14 @@ class MetaDB:
             else:
                 df[col] = None
 
-        # Ensure genre/genre_raw columns exist
+        # Ensure genre/genre_raw/is_translated columns exist
         for col in ('genre', 'genre_raw'):
             if col not in df.columns:
                 df[col] = None
+        if 'is_translated' not in df.columns:
+            df['is_translated'] = None
+        else:
+            df['is_translated'] = df['is_translated'].astype('boolean')
 
         # Compute normalized title and author for matching
         df['title_norm'] = df['title'].apply(normalize_title) if 'title' in df.columns else None
@@ -510,6 +518,8 @@ class MetaDB:
 
         results = {}
         for cid in iterr:
+            if progress:
+                iterr.set_description(f'[MetaDB] Ingesting {cid}')
             try:
                 n = self.ingest(cid, force=True)
                 if n is not None:
