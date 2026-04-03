@@ -63,6 +63,11 @@ def main():
 	# db match-stats
 	p_db_match_stats = subparsers.add_parser('db-match-stats', help='Show matching statistics')
 
+	# annotate
+	p_annotate = subparsers.add_parser('annotate', help='Launch annotation web app for a corpus')
+	p_annotate.add_argument('corpus', help='Corpus ID (e.g. arc_fiction)')
+	p_annotate.add_argument('--port', type=int, default=8989, help='Port (default: 8989)')
+
 	if len(sys.argv) == 1:
 		parser.print_help(sys.stderr)
 		sys.exit(1)
@@ -201,6 +206,11 @@ def main():
 		print(stats['by_type'].to_string(index=False))
 		print(f"\nGroup size distribution:")
 		print(stats['group_sizes'].to_string(index=False))
+
+
+	elif args.cmd == 'annotate':
+		from lltk.web.annotate import run_annotate
+		run_annotate(args.corpus, port=args.port)
 
 
 if __name__ == '__main__':

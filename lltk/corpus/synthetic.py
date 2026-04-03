@@ -131,101 +131,53 @@ class CuratedCorpus(SyntheticCorpus):
                      'is_translated', 'exclude']
 
     @property
-    def path_curated(self):
-        return os.path.join(os.path.expanduser(PATH_CORPUS), self.id, 'metadata.xlsx')
-
-    @property
-    def path_curated_cache(self):
-        return os.path.join(os.path.expanduser(PATH_CORPUS), self.id, 'metadata_cache.pkl')
+    def path_annotations(self):
+        return os.path.join(os.path.expanduser(PATH_CORPUS), self.id, 'annotations.json')
 
     @property
     def is_curated(self):
-        return os.path.exists(self.path_curated)
+        return os.path.exists(self.path_annotations)
 
-    def _build_curate_df(self):
-        """Build the full DataFrame for curation: DB query + unpacked meta JSON."""
-        from lltk.tools.metadb import metadb
+    def _load_annotations(self):
+        """Load annotations from JSON file."""
+        if os.path.exists(self.path_annotations):
+            with open(self.path_annotations) as f:
+                return json.load(f)
+        return {}
 
-        qkw = self._get_query_kwargs()
-        df = metadb.texts_df(**qkw)
-        if df is None or not len(df):
-            return None
-
-        # Unpack meta JSON into real columns
-        if 'meta' in df.columns:
-            meta_dicts = df['meta'].apply(
-                lambda x: json.loads(x) if x and x != 'None' else {}
-            )
-            meta_df = pd.json_normalize(meta_dicts)
-            meta_df.index = df.index
-            meta_df = meta_df.drop(columns=[c for c in meta_df.columns if c in df.columns], errors='ignore')
-            meta_df = meta_df.dropna(axis=1, how='all')
-            df = pd.concat([df.drop(columns=['meta']), meta_df], axis=1)
-
-        # Convert DuckDB nullable types
-        for col in df.columns:
-            if hasattr(df[col], 'dtype') and 'Int' in str(df[col].dtype):
-                df[col] = pd.to_numeric(df[col], errors='coerce')
-
-        # Add exclude column
-        if 'exclude' not in df.columns:
-            df['exclude'] = ''
-
-        # Reorder columns
-        priority = [c for c in self.PRIORITY_COLS if c in df.columns]
-        rest = sorted(c for c in df.columns if c not in priority)
-        df = df[priority + rest]
-
-        # Sort by year
-        if 'year' in df.columns:
-            df = df.sort_values('year', na_position='last')
-
-        return df
-
-    def curate(self):
-        """Write metadata to XLSX for editing. Never overwrites existing file."""
-        if self.is_curated:
-            print(f'Already curated: {self.path_curated}')
-            print(f'Edit the existing file. Use curate_additions() to add new texts.')
-            return self.path_curated
-
-        df = self._build_curate_df()
-        if df is None or not len(df):
-            print('No texts found for this query.')
-            return None
-
-        os.makedirs(os.path.dirname(self.path_curated), exist_ok=True)
-        # Strip illegal XML/XLSX characters from string columns
-        import re
-        _illegal_xml_re = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]')
-        for col in df.columns:
-            if df[col].dtype == 'object':
-                df[col] = df[col].apply(lambda x: _illegal_xml_re.sub('', str(x)) if isinstance(x, str) else x)
-        df.to_excel(self.path_curated, index=False, freeze_panes=(1, 3))
-        df.to_pickle(self.path_curated_cache)
-
-        print(f'Wrote {len(df)} texts to {self.path_curated}')
-        print(f'Edit in Excel, then reload with lltk.load("{self.id}")')
-        return self.path_curated
+    def annotate(self, port=8989):
+        """Launch the annotation web app for this corpus."""
+        from lltk.web.annotate import run_annotate
+        run_annotate(self.id, port=port)
 
     def load_metadata(self, **kwargs):
-        """Read from curated XLSX if it exists, otherwise from DB."""
-        if not self.is_curated:
-            return super().load_metadata(**kwargs)
+        """Load from DB, merge annotation overrides from JSON."""
+        df = super().load_metadata(**kwargs)
+        if not self.is_curated or df is None or not len(df):
+            return df
 
-        # Fast path: read from pkl cache if newer than XLSX
-        if os.path.exists(self.path_curated_cache):
-            xlsx_mtime = os.path.getmtime(self.path_curated)
-            cache_mtime = os.path.getmtime(self.path_curated_cache)
-            if cache_mtime >= xlsx_mtime:
-                df = pd.read_pickle(self.path_curated_cache)
-                return self._filter_excluded(df)
+        annotations = self._load_annotations()
+        if not annotations:
+            return df
 
-        # Read XLSX
-        df = pd.read_excel(self.path_curated)
+        # Ensure _id is accessible as a column
+        has_id_col = '_id' in df.columns
+        if not has_id_col and df.index.name == 'id':
+            # _id might not be in columns if index was set
+            pass
 
-        # Update pkl cache
-        df.to_pickle(self.path_curated_cache)
+        # Apply overrides
+        for _id, overrides in annotations.items():
+            if has_id_col:
+                mask = df['_id'] == _id
+            else:
+                continue
+            if not mask.any():
+                continue
+            for col, val in overrides.items():
+                if col not in df.columns:
+                    df[col] = None
+                df.loc[mask, col] = val
 
         return self._filter_excluded(df)
 
@@ -237,74 +189,26 @@ class CuratedCorpus(SyntheticCorpus):
             df = df[mask]
         return df
 
-    def texts(self, progress=False, include_excluded=False, **kwargs):
-        """Iterate text objects. Uses curated metadata if available."""
-        from lltk.corpus.corpus import Corpus
-
-        df = self.load_metadata() if not include_excluded else self._load_unfiltered()
-
-        if '_id' not in df.columns:
-            # _id might be lost if id is the index
-            if df.index.name == 'id':
-                df = df.reset_index()
-
-        for _, row in df.iterrows():
-            _id = row.get('_id', '')
-            if not _id:
-                continue
-            parts = _id.lstrip('_').split('/', 1)
-            if len(parts) != 2:
-                continue
-            corpus_id, text_id = parts
-            try:
-                t = Corpus(corpus_id).text(text_id)
-                yield t
-            except Exception:
-                continue
-
-    def _load_unfiltered(self):
-        """Load metadata without filtering excluded texts."""
-        if not self.is_curated:
-            return super().load_metadata()
-        if os.path.exists(self.path_curated_cache):
-            return pd.read_pickle(self.path_curated_cache)
-        return pd.read_excel(self.path_curated)
-
-    def curate_additions(self):
-        """Append new texts from DB that aren't already in the curated XLSX."""
-        if not self.is_curated:
-            print('Not yet curated. Run curate() first.')
-            return None
-
-        # Load existing curated data
-        old_df = pd.read_excel(self.path_curated)
-        existing_ids = set(old_df.index)
-
-        # Get fresh DB data
-        fresh_df = self._build_curate_df()
-        if fresh_df is None or not len(fresh_df):
-            print('No texts in DB query.')
-            return None
-
-        # Find new texts not in existing XLSX
-        new_ids = set(fresh_df.index) - existing_ids
-        if not new_ids:
-            print('No new texts to add.')
-            return None
-
-        new_df = fresh_df.loc[list(new_ids)]
-        # Ensure same columns as existing (add missing cols, fill with '')
-        for col in old_df.columns:
-            if col not in new_df.columns:
-                new_df[col] = ''
-        new_df = new_df[old_df.columns]
-
-        # Append
-        combined = pd.concat([old_df, new_df])
-        combined.to_excel(self.path_curated, index=True, freeze_panes=(1, 3))
-        combined.to_pickle(self.path_curated_cache)
-        # Clear metadata cache
-        self._metadfd = {}
-
-        print(f'Added {len(new_ids)} new texts ({len(existing_ids)} existing, {len(combined)} total)')
-        return self.path_curated
+    def texts(self, progress=False, **kwargs):
+        """Iterate text objects, respecting annotations (exclusions)."""
+        if self.is_curated:
+            from lltk.corpus.corpus import Corpus
+            df = self.load_metadata()
+            if '_id' not in df.columns:
+                yield from super().texts(progress=progress, **kwargs)
+                return
+            for _, row in df.iterrows():
+                _id = row.get('_id', '')
+                if not _id:
+                    continue
+                parts = _id.lstrip('_').split('/', 1)
+                if len(parts) != 2:
+                    continue
+                corpus_id, text_id = parts
+                try:
+                    t = Corpus(corpus_id).text(text_id)
+                    yield t
+                except Exception:
+                    continue
+        else:
+            yield from super().texts(progress=progress, **kwargs)

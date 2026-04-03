@@ -36,3 +36,5 @@ rispy
 cryptography
 python-dotenv
 duckdb
+fastapi
+uvicorn[standard]

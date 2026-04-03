@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LLTK Annotate: {{CORPUS_ID}}</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; color: #333; }
+a { color: #2563eb; text-decoration: none; }
+a:hover { text-decoration: underline; }
+button { cursor: pointer; padding: 4px 12px; border: 1px solid #ccc; border-radius: 4px; background: #f9f9f9; font-size: 13px; }
+button:hover { background: #eee; }
+button.primary { background: #2563eb; color: white; border-color: #2563eb; }
+button.primary:hover { background: #1d4ed8; }
+button.danger { background: #dc2626; color: white; border-color: #dc2626; }
+input, select, textarea { padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+select { background: white; }
+
+/* Layout */
+.header { padding: 10px 20px; background: #1e293b; color: white; display: flex; align-items: center; gap: 20px; }
+.header h1 { font-size: 18px; font-weight: 600; }
+.header .stats { font-size: 12px; color: #94a3b8; }
+.container { display: flex; height: calc(100vh - 44px); }
+
+/* Filters sidebar */
+.filters { width: 220px; padding: 12px; background: #f8fafc; border-right: 1px solid #e2e8f0; overflow-y: auto; flex-shrink: 0; }
+.filters label { display: block; font-size: 11px; font-weight: 600; color: #64748b; margin: 8px 0 2px; text-transform: uppercase; }
+.filters select, .filters input { width: 100%; }
+.filters .filter-group { margin-bottom: 4px; }
+
+/* Table */
+.table-container { flex: 1; overflow: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead { position: sticky; top: 0; background: #f1f5f9; z-index: 1; }
+th { padding: 6px 8px; text-align: left; font-weight: 600; font-size: 11px; text-transform: uppercase; color: #64748b; border-bottom: 2px solid #e2e8f0; cursor: pointer; white-space: nowrap; }
+th:hover { color: #1e293b; }
+td { padding: 5px 8px; border-bottom: 1px solid #f1f5f9; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+tr:hover { background: #f8fafc; }
+tr.excluded { opacity: 0.4; text-decoration: line-through; }
+tr.annotated { background: #fefce8; }
+tr.selected { background: #dbeafe; }
+td.clickable { cursor: pointer; }
+
+/* Pagination */
+.pagination { padding: 8px 12px; display: flex; align-items: center; gap: 10px; border-top: 1px solid #e2e8f0; font-size: 13px; }
+.pagination button { font-size: 12px; }
+
+/* Detail panel */
+.detail-panel { width: 450px; border-left: 1px solid #e2e8f0; overflow-y: auto; display: none; flex-shrink: 0; }
+.detail-panel.open { display: block; }
+.detail-header { padding: 10px 12px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
+.detail-header h2 { font-size: 14px; }
+.detail-body { padding: 12px; }
+.detail-section { margin-bottom: 16px; }
+.detail-section h3 { font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; margin-bottom: 6px; }
+.meta-grid { display: grid; grid-template-columns: 120px 1fr; gap: 2px 8px; font-size: 12px; }
+.meta-grid dt { color: #64748b; font-weight: 500; }
+.meta-grid dd { word-break: break-word; }
+.txt-preview { font-family: 'Georgia', serif; font-size: 13px; line-height: 1.6; max-height: 300px; overflow-y: auto; padding: 8px; background: #fafaf9; border: 1px solid #e7e5e4; border-radius: 4px; white-space: pre-wrap; }
+.match-list { font-size: 12px; }
+.match-list .match-item { padding: 4px 0; border-bottom: 1px solid #f1f5f9; }
+.match-item .rank { color: #64748b; font-size: 11px; }
+.annotation-form label { display: block; font-size: 12px; font-weight: 500; margin: 6px 0 2px; }
+.annotation-form select, .annotation-form input, .annotation-form textarea { width: 100%; }
+.annotation-form textarea { height: 60px; resize: vertical; }
+.annotation-form .save-row { margin-top: 10px; display: flex; gap: 8px; }
+
+/* Bulk bar */
+.bulk-bar { padding: 6px 12px; background: #dbeafe; display: none; align-items: center; gap: 10px; font-size: 13px; }
+.bulk-bar.visible { display: flex; }
+
+/* Checkbox */
+input[type="checkbox"] { width: 14px; height: 14px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>LLTK Annotate: {{CORPUS_ID}}</h1>
+  <div class="stats" id="stats"></div>
+</div>
+
+<div class="bulk-bar" id="bulkBar">
+  <span><strong id="selectedCount">0</strong> selected</span>
+  <button onclick="bulkExclude()">Exclude</button>
+  <button onclick="bulkSetGenre()">Set Genre</button>
+  <button onclick="clearSelection()">Clear</button>
+</div>
+
+<div class="container">
+  <div class="filters">
+    <div class="filter-group">
+      <label>Search</label>
+      <input type="text" id="fSearch" placeholder="Title or author..." onkeyup="if(event.key==='Enter')loadTexts()">
+    </div>
+    <div class="filter-group">
+      <label>Corpus</label>
+      <select id="fCorpus" onchange="loadTexts()"><option value="">All</option></select>
+    </div>
+    <div class="filter-group">
+      <label>Genre</label>
+      <select id="fGenre" onchange="loadTexts()"><option value="">All</option></select>
+    </div>
+    <div class="filter-group">
+      <label>Year min</label>
+      <input type="number" id="fYearMin" placeholder="e.g. 1600" onchange="loadTexts()">
+    </div>
+    <div class="filter-group">
+      <label>Year max</label>
+      <input type="number" id="fYearMax" placeholder="e.g. 1900" onchange="loadTexts()">
+    </div>
+    <div class="filter-group">
+      <label>Translated</label>
+      <select id="fTranslated" onchange="loadTexts()">
+        <option value="">All</option>
+        <option value="true">Yes</option>
+        <option value="false">No</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>Annotated</label>
+      <select id="fAnnotated" onchange="loadTexts()">
+        <option value="">All</option>
+        <option value="true">Annotated only</option>
+        <option value="false">Unannotated only</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label><input type="checkbox" id="fShowExcluded" onchange="loadTexts()"> Show excluded</label>
+    </div>
+    <div class="filter-group" style="margin-top: 12px;">
+      <button onclick="loadTexts()" class="primary" style="width:100%">Apply Filters</button>
+    </div>
+  </div>
+
+  <div style="flex:1; display:flex; flex-direction:column;">
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:30px"><input type="checkbox" id="selectAll" onclick="toggleSelectAll()"></th>
+            <th onclick="sortBy('corpus')">Corpus</th>
+            <th onclick="sortBy('title')">Title</th>
+            <th onclick="sortBy('author')">Author</th>
+            <th onclick="sortBy('year')">Year</th>
+            <th onclick="sortBy('genre')">Genre</th>
+            <th>Trans.</th>
+            <th>Excl.</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+    <div class="pagination">
+      <button onclick="prevPage()">&laquo; Prev</button>
+      <span id="pageInfo"></span>
+      <button onclick="nextPage()">Next &raquo;</button>
+    </div>
+  </div>
+
+  <div class="detail-panel" id="detailPanel">
+    <div class="detail-header">
+      <h2 id="detailTitle">Text Detail</h2>
+      <button onclick="closeDetail()">Close</button>
+    </div>
+    <div class="detail-body" id="detailBody"></div>
+  </div>
+</div>
+
+<script>
+const CORPUS_ID = '{{CORPUS_ID}}';
+const GENRE_VOCAB = {{GENRE_VOCAB}};
+let currentPage = 1;
+let currentSort = 'year';
+let currentSortDir = 'asc';
+let selectedIds = new Set();
+let currentTexts = [];
+
+// Init
+async function init() {
+  // Load corpora list
+  const resp = await fetch('/api/corpora');
+  const data = await resp.json();
+  const sel = document.getElementById('fCorpus');
+  data.corpora.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; sel.appendChild(o); });
+  // Load genre list
+  const gSel = document.getElementById('fGenre');
+  GENRE_VOCAB.forEach(g => { const o = document.createElement('option'); o.value = g; o.textContent = g; gSel.appendChild(o); });
+  loadTexts();
+  loadStats();
+}
+
+async function loadStats() {
+  const resp = await fetch('/api/stats');
+  const data = await resp.json();
+  document.getElementById('stats').textContent =
+    `${data.total_annotated} annotated | ${data.total_excluded} excluded`;
+}
+
+async function loadTexts() {
+  const params = new URLSearchParams();
+  params.set('page', currentPage);
+  params.set('per_page', 100);
+  params.set('sort_by', currentSort);
+  params.set('sort_dir', currentSortDir);
+  const search = document.getElementById('fSearch').value;
+  if (search) params.set('search', search);
+  const corpus = document.getElementById('fCorpus').value;
+  if (corpus) params.set('corpus_filter', corpus);
+  const genre = document.getElementById('fGenre').value;
+  if (genre) params.set('genre', genre);
+  const ymin = document.getElementById('fYearMin').value;
+  if (ymin) params.set('year_min', ymin);
+  const ymax = document.getElementById('fYearMax').value;
+  if (ymax) params.set('year_max', ymax);
+  const trans = document.getElementById('fTranslated').value;
+  if (trans) params.set('is_translated', trans);
+  const ann = document.getElementById('fAnnotated').value;
+  if (ann) params.set('show_annotated', ann);
+  if (document.getElementById('fShowExcluded').checked) params.set('show_excluded', 'true');
+
+  const resp = await fetch('/api/texts?' + params.toString());
+  const data = await resp.json();
+  currentTexts = data.texts;
+  renderTable(data.texts);
+  document.getElementById('pageInfo').textContent =
+    `Page ${data.page} of ${data.total_pages} (${data.total} texts)`;
+}
+
+function renderTable(texts) {
+  const tbody = document.getElementById('tableBody');
+  tbody.innerHTML = '';
+  texts.forEach(t => {
+    const tr = document.createElement('tr');
+    if (t.exclude) tr.classList.add('excluded');
+    if (t.is_annotated) tr.classList.add('annotated');
+    if (selectedIds.has(t._id)) tr.classList.add('selected');
+    tr.innerHTML = `
+      <td><input type="checkbox" ${selectedIds.has(t._id)?'checked':''} onchange="toggleSelect('${t._id}', this.checked)"></td>
+      <td>${t.corpus || ''}</td>
+      <td class="clickable" onclick="openDetail('${t._id}')" title="${(t.title||'').replace(/"/g,'&quot;')}">${t.title || ''}</td>
+      <td>${t.author || ''}</td>
+      <td>${t.year || ''}</td>
+      <td>${t.genre || ''}</td>
+      <td>${t.is_translated ? 'Y' : ''}</td>
+      <td>${t.exclude ? 'X' : ''}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function sortBy(col) {
+  if (currentSort === col) currentSortDir = currentSortDir === 'asc' ? 'desc' : 'asc';
+  else { currentSort = col; currentSortDir = 'asc'; }
+  loadTexts();
+}
+function prevPage() { if (currentPage > 1) { currentPage--; loadTexts(); } }
+function nextPage() { currentPage++; loadTexts(); }
+
+// Selection
+function toggleSelect(id, checked) {
+  if (checked) selectedIds.add(id); else selectedIds.delete(id);
+  updateBulkBar();
+}
+function toggleSelectAll() {
+  const checked = document.getElementById('selectAll').checked;
+  currentTexts.forEach(t => { if (checked) selectedIds.add(t._id); else selectedIds.delete(t._id); });
+  updateBulkBar();
+  loadTexts();
+}
+function clearSelection() { selectedIds.clear(); updateBulkBar(); loadTexts(); }
+function updateBulkBar() {
+  const bar = document.getElementById('bulkBar');
+  document.getElementById('selectedCount').textContent = selectedIds.size;
+  bar.classList.toggle('visible', selectedIds.size > 0);
+}
+
+// Bulk actions
+async function bulkExclude() {
+  if (!confirm(`Exclude ${selectedIds.size} texts?`)) return;
+  await fetch('/api/texts/bulk-annotate', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ids: [...selectedIds], updates: {exclude: true}})
+  });
+  clearSelection(); loadTexts(); loadStats();
+}
+async function bulkSetGenre() {
+  const genre = prompt('Set genre to:', 'Fiction');
+  if (!genre) return;
+  await fetch('/api/texts/bulk-annotate', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ids: [...selectedIds], updates: {genre: genre}})
+  });
+  clearSelection(); loadTexts(); loadStats();
+}
+
+// Detail panel
+async function openDetail(id) {
+  const panel = document.getElementById('detailPanel');
+  panel.classList.add('open');
+  const resp = await fetch('/api/text/' + id);
+  const data = await resp.json();
+  renderDetail(id, data);
+}
+function closeDetail() {
+  document.getElementById('detailPanel').classList.remove('open');
+}
+
+function renderDetail(id, data) {
+  const meta = data.metadata || {};
+  const ann = data.annotations || {};
+  const txt = data.txt_preview || '';
+  const matches = data.match_group || [];
+
+  document.getElementById('detailTitle').textContent = meta.title || id;
+
+  let html = '';
+
+  // Annotation form
+  html += `<div class="detail-section">
+    <h3>Annotation</h3>
+    <div class="annotation-form">
+      <label>Genre</label>
+      <select id="annGenre">
+        <option value="">(no override)</option>
+        ${GENRE_VOCAB.map(g => `<option value="${g}" ${ann.genre===g?'selected':''}>${g}</option>`).join('')}
+      </select>
+      <label><input type="checkbox" id="annExclude" ${ann.exclude?'checked':''}> Exclude</label>
+      <label><input type="checkbox" id="annTranslated" ${ann.is_translated?'checked':''}> Is translated</label>
+      <label>Notes</label>
+      <textarea id="annNotes">${ann.notes || ''}</textarea>
+      <div class="save-row">
+        <button class="primary" onclick="saveAnnotation('${id}')">Save</button>
+        <button class="danger" onclick="clearAnnotation('${id}')">Clear</button>
+      </div>
+    </div>
+  </div>`;
+
+  // Metadata
+  html += `<div class="detail-section"><h3>Metadata</h3><dl class="meta-grid">`;
+  const priority = ['_id','corpus','title','author','year','genre','genre_raw','is_translated'];
+  const shown = new Set();
+  for (const k of priority) {
+    if (meta[k] !== undefined && meta[k] !== null) {
+      html += `<dt>${k}</dt><dd>${meta[k]}</dd>`;
+      shown.add(k);
+    }
+  }
+  for (const [k, v] of Object.entries(meta).sort()) {
+    if (!shown.has(k) && v !== null && v !== '' && v !== undefined) {
+      html += `<dt>${k}</dt><dd>${v}</dd>`;
+    }
+  }
+  html += `</dl></div>`;
+
+  // Text preview
+  if (txt) {
+    html += `<div class="detail-section"><h3>Text Preview</h3>
+      <div class="txt-preview">${txt.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div></div>`;
+  }
+
+  // Match group
+  if (matches.length > 1) {
+    html += `<div class="detail-section"><h3>Match Group (${matches.length} texts)</h3><div class="match-list">`;
+    matches.forEach(m => {
+      const isCurrent = m._id === id;
+      html += `<div class="match-item" ${isCurrent?'style="font-weight:bold"':''}>
+        <span class="rank">#${m.rank}</span>
+        <a href="#" onclick="openDetail('${m._id}'); return false;">${m.corpus}: ${m.title || m._id}</a>
+        (${m.year || '?'})
+      </div>`;
+    });
+    html += `</div></div>`;
+  }
+
+  document.getElementById('detailBody').innerHTML = html;
+}
+
+async function saveAnnotation(id) {
+  const ann = {};
+  const genre = document.getElementById('annGenre').value;
+  if (genre) ann.genre = genre;
+  if (document.getElementById('annExclude').checked) ann.exclude = true;
+  if (document.getElementById('annTranslated').checked) ann.is_translated = true;
+  const notes = document.getElementById('annNotes').value.trim();
+  if (notes) ann.notes = notes;
+
+  await fetch('/api/text/' + id + '/annotate', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(ann)
+  });
+  loadTexts(); loadStats();
+}
+
+async function clearAnnotation(id) {
+  if (!confirm('Clear all annotations for this text?')) return;
+  await fetch('/api/text/' + id + '/annotate', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({})
+  });
+  loadTexts(); loadStats();
+  openDetail(id);
+}
+
+init();
+</script>
+</body>
+</html>
