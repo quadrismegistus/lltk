@@ -87,6 +87,7 @@ private = raw,txt,xml
 license_type = Mixed
 url_freqs = https://www.dropbox.com/s/syluxyz1mcx5495/chadwyck_freqs.zip?dl=1
 url_metadata = https://www.dropbox.com/s/byqbi8sik255469/chadwyck_metadata.zip?dl=1
+is_ocr = 0
 
 [ChadwyckDrama]
 id = chadwyck_drama
@@ -547,6 +548,27 @@ url_freqs = https://www.dropbox.com/s/56azeswx0omjum2/txtlab_freqs.zip?dl=1
 url_metadata = https://www.dropbox.com/s/eh33qy6bcm7rvcp/txtlab_metadata.zip?dl=1
 public = metadata,freqs,txt,raw
 license_type = Free
+
+[ArcFiction]
+id = arc_fiction
+name = ArcFiction
+desc = Synthetic corpus: all fiction across LLTK, deduplicated
+path_python = arc_corpora/arc_corpora.py
+class_name = ArcFiction
+
+[ArcPoetry]
+id = arc_poetry
+name = ArcPoetry
+desc = Synthetic corpus: all poetry across LLTK, deduplicated
+path_python = arc_corpora/arc_corpora.py
+class_name = ArcPoetry
+
+[ArcPeriodical]
+id = arc_periodical
+name = ArcPeriodical
+desc = Synthetic corpus: periodical texts across LLTK, deduplicated
+path_python = arc_corpora/arc_corpora.py
+class_name = ArcPeriodical
 
 [TestFixture]
 id = test_fixture
