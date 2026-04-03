@@ -8,7 +8,7 @@ class ModelBookNLP(CharacterSystem):
 
     def __init__(self,
             text=None,
-            prefer_sections=True,
+            prefer_sections=False,
             language=BOOKNLP_DEFAULT_LANGUAGE,
             pipeline=BOOKNLP_DEFAULT_PIPELINE,
             model=BOOKNLP_DEFAULT_MODEL):
