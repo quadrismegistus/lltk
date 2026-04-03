@@ -201,7 +201,7 @@ class CuratedCorpus(SyntheticCorpus):
         for col in df.columns:
             if df[col].dtype == 'object':
                 df[col] = df[col].apply(lambda x: _illegal_xml_re.sub('', str(x)) if isinstance(x, str) else x)
-        df.to_excel(self.path_curated, index=True, freeze_panes=(1, 3))
+        df.to_excel(self.path_curated, index=False, freeze_panes=(1, 3))
         df.to_pickle(self.path_curated_cache)
 
         print(f'Wrote {len(df)} texts to {self.path_curated}')
@@ -222,7 +222,7 @@ class CuratedCorpus(SyntheticCorpus):
                 return self._filter_excluded(df)
 
         # Read XLSX
-        df = pd.read_excel(self.path_curated, index_col=0)
+        df = pd.read_excel(self.path_curated)
 
         # Update pkl cache
         df.to_pickle(self.path_curated_cache)
@@ -268,7 +268,7 @@ class CuratedCorpus(SyntheticCorpus):
             return super().load_metadata()
         if os.path.exists(self.path_curated_cache):
             return pd.read_pickle(self.path_curated_cache)
-        return pd.read_excel(self.path_curated, index_col=0)
+        return pd.read_excel(self.path_curated)
 
     def curate_additions(self):
         """Append new texts from DB that aren't already in the curated XLSX."""
@@ -277,7 +277,7 @@ class CuratedCorpus(SyntheticCorpus):
             return None
 
         # Load existing curated data
-        old_df = pd.read_excel(self.path_curated, index_col=0)
+        old_df = pd.read_excel(self.path_curated)
         existing_ids = set(old_df.index)
 
         # Get fresh DB data
