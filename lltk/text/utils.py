@@ -120,23 +120,22 @@ def get_idx_from_int(i=None,numzero=5,prefstr='T'):
 def get_idx(
         id=None,
         i=None,
-        allow='_/.-:,=',
+        allow='_/.-:,= ',
         prefstr='T',
         numzero=5,
         use_meta=True,
         force_meta=True,
         **meta):
-    
+
     if is_text_obj(id): return id.id
     id1=id
     if log>1: log(f'<- id = {id}, i = {i}')
     # already given?
     if safebool(id):
         if type(id)==str:
-            id = ensure_snake(
-                str(id),
+            id = zeropunc(
+                str(id).strip(),
                 allow=allow,
-                lower=False
             )
             if log>2:
                 if log: log(f'id set via `id` str: {id1} -> {id}')
