@@ -336,12 +336,12 @@ function renderDetail(id, data) {
       <label>genre</label>
       <select id="annGenre">
         <option value="">(no override)</option>
-        ${GENRE_VOCAB.map(g => `<option value="${g}" ${ann.genre===g?'selected':''}>${g}</option>`).join('')}
+        ${GENRE_VOCAB.map(g => `<option value="${g}" ${(ann.genre||meta.genre)===g?'selected':''}>${g}</option>`).join('')}
       </select>
       <label>genre_raw</label>
-      <input type="text" id="annGenreRaw" value="${ann.genre_raw || ''}" placeholder="e.g. Novel, Epistolary fiction, Tale...">
+      <input type="text" id="annGenreRaw" value="${ann.genre_raw || meta.genre_raw || ''}" placeholder="e.g. Novel, Epistolary fiction, Tale...">
       <label><input type="checkbox" id="annExclude" ${ann.exclude?'checked':''}> exclude</label>
-      <label><input type="checkbox" id="annTranslated" ${ann.is_translated?'checked':''}> is_translated</label>
+      <label><input type="checkbox" id="annTranslated" ${(ann.is_translated !== undefined ? ann.is_translated : meta.is_translated)?'checked':''}> is_translated</label>
       <label>notes</label>
       <textarea id="annNotes">${ann.notes || ''}</textarea>`;
 
