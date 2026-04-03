@@ -66,12 +66,21 @@ class SyntheticCorpus(BaseCorpus):
             # Drop the meta JSON column for clean display
             if 'meta' in df.columns:
                 df = df.drop(columns=['meta'])
-            # Convert DuckDB nullable Int32 to float (avoids fillna('') TypeError)
-            if 'year' in df.columns:
-                df['year'] = pd.to_numeric(df['year'], errors='coerce')
+            # Convert all DuckDB nullable types to standard pandas types
+            # (avoids fillna('') TypeError on Int32, etc.)
+            for col in df.columns:
+                if hasattr(df[col], 'dtype') and 'Int' in str(df[col].dtype):
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
             if '_id' in df.columns and 'id' in df.columns:
                 df = df.set_index('id') if 'id' in df.columns else df
         return df if df is not None else pd.DataFrame()
+
+    def metadata(self, **kwargs):
+        """Override to skip fillna('') which chokes on DuckDB nullable int types."""
+        cache_key = ('load_metadata', True)
+        if cache_key not in self._metadfd:
+            self._metadfd[cache_key] = self.load_metadata(**kwargs)
+        return self._metadfd[cache_key]
 
     def init(self, force=False):
         if not force and self._init:
