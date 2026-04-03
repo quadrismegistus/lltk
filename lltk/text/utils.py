@@ -120,7 +120,7 @@ def get_idx_from_int(i=None,numzero=5,prefstr='T'):
 def get_idx(
         id=None,
         i=None,
-        allow='_/.-:,= ',
+        allow='_/.-:,=+$ ',
         prefstr='T',
         numzero=5,
         use_meta=True,
