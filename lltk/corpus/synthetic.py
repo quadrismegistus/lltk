@@ -142,20 +142,13 @@ class CuratedCorpus(SyntheticCorpus):
     def is_curated(self):
         return os.path.exists(self.path_curated)
 
-    def curate(self, force=False):
-        """Write metadata to XLSX for editing. Unpacks meta JSON into real columns."""
+    def _build_curate_df(self):
+        """Build the full DataFrame for curation: DB query + unpacked meta JSON."""
         from lltk.tools.metadb import metadb
 
-        if self.is_curated and not force:
-            print(f'Already curated: {self.path_curated}')
-            print(f'Use curate(force=True) to overwrite, or edit the existing file.')
-            return self.path_curated
-
-        # Get full data from DB including meta JSON
         qkw = self._get_query_kwargs()
         df = metadb.texts_df(**qkw)
         if df is None or not len(df):
-            print('No texts found for this query.')
             return None
 
         # Unpack meta JSON into real columns
@@ -165,9 +158,7 @@ class CuratedCorpus(SyntheticCorpus):
             )
             meta_df = pd.json_normalize(meta_dicts)
             meta_df.index = df.index
-            # Drop columns that already exist as core columns
             meta_df = meta_df.drop(columns=[c for c in meta_df.columns if c in df.columns], errors='ignore')
-            # Drop columns that are all null
             meta_df = meta_df.dropna(axis=1, how='all')
             df = pd.concat([df.drop(columns=['meta']), meta_df], axis=1)
 
@@ -176,11 +167,11 @@ class CuratedCorpus(SyntheticCorpus):
             if hasattr(df[col], 'dtype') and 'Int' in str(df[col].dtype):
                 df[col] = pd.to_numeric(df[col], errors='coerce')
 
-        # Add exclude column if not present
+        # Add exclude column
         if 'exclude' not in df.columns:
             df['exclude'] = ''
 
-        # Reorder columns: priority first, then rest alphabetically
+        # Reorder columns
         priority = [c for c in self.PRIORITY_COLS if c in df.columns]
         rest = sorted(c for c in df.columns if c not in priority)
         df = df[priority + rest]
@@ -189,16 +180,25 @@ class CuratedCorpus(SyntheticCorpus):
         if 'year' in df.columns:
             df = df.sort_values('year', na_position='last')
 
-        # Ensure output directory exists
-        os.makedirs(os.path.dirname(self.path_curated), exist_ok=True)
+        return df
 
-        # Write XLSX
+    def curate(self):
+        """Write metadata to XLSX for editing. Never overwrites existing file."""
+        if self.is_curated:
+            print(f'Already curated: {self.path_curated}')
+            print(f'Edit the existing file. Use curate_additions() to add new texts.')
+            return self.path_curated
+
+        df = self._build_curate_df()
+        if df is None or not len(df):
+            print('No texts found for this query.')
+            return None
+
+        os.makedirs(os.path.dirname(self.path_curated), exist_ok=True)
         df.to_excel(self.path_curated, index=True, freeze_panes=(1, 3))
-        # Also write pkl cache for fast loading
         df.to_pickle(self.path_curated_cache)
 
-        n = len(df)
-        print(f'Wrote {n} texts to {self.path_curated}')
+        print(f'Wrote {len(df)} texts to {self.path_curated}')
         print(f'Edit in Excel, then reload with lltk.load("{self.id}")')
         return self.path_curated
 
@@ -264,28 +264,41 @@ class CuratedCorpus(SyntheticCorpus):
             return pd.read_pickle(self.path_curated_cache)
         return pd.read_excel(self.path_curated, index_col=0)
 
-    def refresh(self):
-        """Re-generate XLSX from DB, merging with existing manual edits."""
+    def curate_additions(self):
+        """Append new texts from DB that aren't already in the curated XLSX."""
         if not self.is_curated:
-            return self.curate()
+            print('Not yet curated. Run curate() first.')
+            return None
 
-        # Load current edits
+        # Load existing curated data
         old_df = pd.read_excel(self.path_curated, index_col=0)
-        # Track which columns were manually added (not in DB)
-        db_df = super().load_metadata()
-        manual_cols = [c for c in old_df.columns if c not in db_df.columns and c != 'exclude']
+        existing_ids = set(old_df.index)
 
         # Get fresh DB data
-        fresh_path = self.curate(force=True)
+        fresh_df = self._build_curate_df()
+        if fresh_df is None or not len(fresh_df):
+            print('No texts in DB query.')
+            return None
 
-        if manual_cols:
-            # Merge manual columns back
-            fresh_df = pd.read_excel(fresh_path, index_col=0)
-            for col in manual_cols + ['exclude']:
-                if col in old_df.columns:
-                    fresh_df[col] = old_df[col]
-            fresh_df.to_excel(self.path_curated, index=True, freeze_panes=(1, 3))
-            fresh_df.to_pickle(self.path_curated_cache)
-            print(f'Merged manual columns: {manual_cols + ["exclude"]}')
+        # Find new texts not in existing XLSX
+        new_ids = set(fresh_df.index) - existing_ids
+        if not new_ids:
+            print('No new texts to add.')
+            return None
 
-        return fresh_path
+        new_df = fresh_df.loc[list(new_ids)]
+        # Ensure same columns as existing (add missing cols, fill with '')
+        for col in old_df.columns:
+            if col not in new_df.columns:
+                new_df[col] = ''
+        new_df = new_df[old_df.columns]
+
+        # Append
+        combined = pd.concat([old_df, new_df])
+        combined.to_excel(self.path_curated, index=True, freeze_panes=(1, 3))
+        combined.to_pickle(self.path_curated_cache)
+        # Clear metadata cache
+        self._metadfd = {}
+
+        print(f'Added {len(new_ids)} new texts ({len(existing_ids)} existing, {len(combined)} total)')
+        return self.path_curated
