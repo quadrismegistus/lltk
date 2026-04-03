@@ -281,7 +281,7 @@ class ModelBookNLP(CharacterSystem):
             if not os.path.exists(model.path_tokens): model.init()
             if not os.path.exists(model.path_tokens): continue
 
-            mdf=pd.read_csv(model.path_tokens,sep='\t')
+            mdf=pd.read_csv(model.path_tokens,sep='\t',quoting=3,on_bad_lines='skip')
             mdf.columns=[BOOKNLP_RENAME_COLS.get(colx,colx) for colx in mdf.columns]
             mdf['text_id']=model.text.id
             i2d=defaultdict(dict)

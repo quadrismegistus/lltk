@@ -1077,7 +1077,7 @@ def save_df(df,ofn,move_prev=False,index=None,key='',log=print,verbose=False,**k
         # try again as csv?
         ofn=os.path.splitext(ofn)[0]+'.csv'
         df.to_csv(ofn)
-    if log>0: print('Saved:',ofn)
+    if log and log>0: print('Saved:',ofn)
 
 
 def read_df(ifn,key='',fmt='',on_bad_lines='skip',**attrs):
@@ -1092,7 +1092,7 @@ def read_df(ifn,key='',fmt='',on_bad_lines='skip',**attrs):
         if fmt=='csv' or ext=='csv':
             return pd.read_csv(ifn,on_bad_lines=on_bad_lines,**attrs)
         elif fmt=='tsv' or ext=='tsv':
-            return pd.read_csv(ifn,sep='\t',error_bad_lines=error_bad_lines,**attrs)
+            return pd.read_csv(ifn,sep='\t',on_bad_lines=on_bad_lines,**attrs)
         elif ext in {'xls','xlsx'}:
             return pd.read_excel(ifn,**attrs)
         elif ext in {'txt','tsv'}:
