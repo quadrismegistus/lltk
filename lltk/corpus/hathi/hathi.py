@@ -329,12 +329,11 @@ class Hathi(BaseCorpus):
     def get_text_id(self,text,**kwargs):
         if log>0: log(f'<- {get_imsg(text,**kwargs)}')
         if is_addr_str(text): text=to_corpus_and_id(text)[1]
-        if type(text)==str and text.split('/')[0] in {'htrn','htid'}: return text
-
-        ids = self.query_for_ids(text)
-        o=f'htrn/{ids[0]}' if ids else ERROR
-        if log>0: log(f'-> {o}')
-        return o
+        if type(text)==str:
+            # Known ID formats: htrn/NNN, htid/lib.vol, or lib/vol (e.g. mdp/39015...)
+            if text.split('/')[0] in {'htrn','htid'}: return text
+            if '/' in text: return text  # already a volume ID
+        return super().get_text_id(text, **kwargs)
 
     def query_db(self,fn='query_for_ids'):
         return DB(os.path.join(self.path,'data',fn), engine='sqlite')
