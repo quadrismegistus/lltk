@@ -195,6 +195,12 @@ class CuratedCorpus(SyntheticCorpus):
             return None
 
         os.makedirs(os.path.dirname(self.path_curated), exist_ok=True)
+        # Strip illegal XML/XLSX characters from string columns
+        import re
+        _illegal_xml_re = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]')
+        for col in df.columns:
+            if df[col].dtype == 'object':
+                df[col] = df[col].apply(lambda x: _illegal_xml_re.sub('', str(x)) if isinstance(x, str) else x)
         df.to_excel(self.path_curated, index=True, freeze_panes=(1, 3))
         df.to_pickle(self.path_curated_cache)
 
