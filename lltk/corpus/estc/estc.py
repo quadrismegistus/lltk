@@ -213,6 +213,9 @@ class ESTC(BaseCorpus):
 		# Keep is_fiction for backwards compat
 		meta['is_fiction'] = meta['genres'].apply(is_fiction)
 
+		# Detect translations
+		meta['is_translated'] = meta.apply(_is_translated, axis=1)
+
 		return meta
 
 
@@ -927,6 +930,45 @@ def _match_title(title_text):
 
 def get_all_genre_names():
     return sorted(GENRE_RULES.keys())
+
+
+# ── Translation detection ────────────────────────────────────────
+
+_TRANSLATION_PHRASES = [
+    'translated', 'translation', 'translator',
+    'rendered into', 'rendred into', "render'd into", "rendr'd into",
+    'done into english', 'turn\'d into english', 'put into english',
+    'englished', 'made english',
+]
+
+_TRANSLATION_LANGUAGES = {
+    'french', 'italian', 'german', 'spanish', 'dutch', 'portuguese',
+    'latin', 'greek', 'hebrew', 'arabic', 'persian', 'turkish',
+    'swedish', 'danish', 'polish', 'russian', 'chinese', 'japanese',
+    'gaelic', 'irish', 'welsh', 'scottish gaelic',
+}
+
+def _is_translated(row):
+    """Detect if an ESTC record is a translation based on metadata fields."""
+    # Check title, title_sub, notes, form for translation phrases
+    for col in ('title', 'title_sub', 'notes', 'form'):
+        val = row.get(col, '')
+        if not val or (isinstance(val, float) and val != val):
+            continue
+        s = str(val).lower()
+        for phrase in _TRANSLATION_PHRASES:
+            if phrase in s:
+                return True
+
+    # Check subject_topic for foreign language indicators
+    subj = row.get('subject_topic', '')
+    if subj and not (isinstance(subj, float) and subj != subj):
+        s = str(subj).lower()
+        for lang in _TRANSLATION_LANGUAGES:
+            if lang in s:
+                return True
+
+    return False
 
 # All fiction sub-genres for easy aggregation
 FICTION_GENRES = {
