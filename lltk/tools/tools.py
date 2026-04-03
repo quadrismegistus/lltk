@@ -1077,7 +1077,7 @@ def save_df(df,ofn,move_prev=False,index=None,key='',log=print,verbose=False,**k
         # try again as csv?
         ofn=os.path.splitext(ofn)[0]+'.csv'
         df.to_csv(ofn)
-    if log and log>0: print('Saved:',ofn)
+    if verbose and log: log(f'Saved: {ofn}')
 
 
 def read_df(ifn,key='',fmt='',on_bad_lines='skip',**attrs):
