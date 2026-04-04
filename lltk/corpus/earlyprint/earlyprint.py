@@ -45,7 +45,7 @@ class EarlyPrint(TCP):
     XML2TXT = xml2txt_tcp
 
     LINKS = {
-        'estc': ('id_stc', 'id_estc'),
+        'estc': ('id_estc', 'id_estc'),
     }
 
     @property
