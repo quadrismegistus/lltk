@@ -184,7 +184,7 @@ def create_app(corpus_id: str):
                 t = Corpus(parts[0]).text(parts[1])
                 txt = t.txt
                 if txt:
-                    txt_preview = txt[:3000]
+                    txt_preview = txt[:50000]  # ~10K words
         except Exception:
             pass
 
