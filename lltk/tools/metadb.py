@@ -749,7 +749,10 @@ class MetaDB:
                 corpus = load_corpus(corpus_id)
             except Exception:
                 continue
-            links = getattr(corpus, 'LINKS', None)
+            # Combine LINKS and MATCH_LINKS for matching
+            links = dict(getattr(corpus, 'LINKS', None) or {})
+            match_links = getattr(corpus, 'MATCH_LINKS', None) or {}
+            links.update(match_links)
             if not links:
                 continue
 

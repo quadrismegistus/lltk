@@ -66,6 +66,11 @@ class EarlyPrint(TCP):
     LINKS = {
         'estc': ('id_estc', 'id_estc'),
     }
+    MATCH_LINKS = {
+        'eebo_tcp': ('id_tcp', 'id'),
+        'ecco_tcp': ('id_tcp', 'id_TCP'),
+        'evans_tcp': ('id_tcp', 'id'),
+    }
 
     @property
     def path_repos(self):
