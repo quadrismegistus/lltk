@@ -167,7 +167,23 @@ class ESTC(BaseCorpus):
 	}
 
 
-	def load_metadata(self):
+	@property
+	def path_metadata_enriched(self):
+		return os.path.join(self.path, 'metadata_enriched.parquet')
+
+	def load_metadata(self, force=False, **kwargs):
+		# Fast path: read enriched parquet cache if newer than CSV
+		enriched_path = self.path_metadata_enriched
+		if not force and os.path.exists(enriched_path) and os.path.exists(self.path_metadata):
+			if os.path.getmtime(enriched_path) >= os.path.getmtime(self.path_metadata):
+				try:
+					meta = pd.read_parquet(enriched_path)
+					if self.col_id in meta.columns:
+						meta = meta.set_index(self.col_id)
+					return meta
+				except Exception:
+					pass
+
 		from lltk.corpus.estc.book_history import standardize_format, parse_extent
 		import numpy as np
 
@@ -215,6 +231,12 @@ class ESTC(BaseCorpus):
 
 		# Detect translations
 		meta['is_translated'] = meta.apply(_is_translated, axis=1)
+
+		# Cache enriched result
+		try:
+			meta.to_parquet(self.path_metadata_enriched)
+		except Exception:
+			pass
 
 		return meta
 

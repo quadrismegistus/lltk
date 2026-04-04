@@ -209,7 +209,23 @@ class ECCO(BaseCorpus):
 	TEXT_CLASS=TextECCO
 	LINKS = {'estc': ('ESTCID', 'id_estc')}
 
-	def load_metadata(self):
+	@property
+	def path_metadata_enriched(self):
+		return os.path.join(self.path, 'metadata_enriched.parquet')
+
+	def load_metadata(self, force=False, **kwargs):
+		# Fast path: enriched parquet cache
+		enriched_path = self.path_metadata_enriched
+		if not force and os.path.exists(enriched_path) and os.path.exists(self.path_metadata):
+			if os.path.getmtime(enriched_path) >= os.path.getmtime(self.path_metadata):
+				try:
+					meta = pd.read_parquet(enriched_path)
+					if self.col_id in meta.columns:
+						meta = meta.set_index(self.col_id)
+					return meta
+				except Exception:
+					pass
+
 		meta = super().load_metadata()
 		if not len(meta):
 			return meta
@@ -223,7 +239,7 @@ class ECCO(BaseCorpus):
 			meta['title'] = meta['estc_title']
 		else:
 			meta['title'] = meta['fullTitle']
-		
+
 		if 'estc_author' in meta.columns:
 			meta['author'] = meta['estc_author']
 		else:
@@ -231,6 +247,11 @@ class ECCO(BaseCorpus):
 
 		if 'estc_is_translated' in meta.columns:
 			meta['is_translated'] = meta['estc_is_translated']
+
+		try:
+			meta.to_parquet(enriched_path)
+		except Exception:
+			pass
 
 		return meta
 

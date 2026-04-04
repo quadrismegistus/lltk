@@ -48,15 +48,30 @@ class ECCO_TCP(TCP):
         self.compile_texts(fn_startswith='K',exts={'hdr','xml'})
         self.compile_metadata(path_meta=self.path_hdr,exts={'hdr'})
 
+    @property
+    def path_metadata_enriched(self):
+        return os.path.join(self.path, 'metadata_enriched.parquet')
+
     def load_metadata(self,*x,**y):
+        # Fast path: enriched parquet cache
+        enriched_path = self.path_metadata_enriched
+        force = y.get('force', False)
+        if not force and os.path.exists(enriched_path) and os.path.exists(self.path_metadata):
+            if os.path.getmtime(enriched_path) >= os.path.getmtime(self.path_metadata):
+                try:
+                    meta = pd.read_parquet(enriched_path)
+                    if self.col_id in meta.columns:
+                        meta = meta.set_index(self.col_id)
+                    return meta
+                except Exception:
+                    pass
+
         meta=super().load_metadata(*x,**y)
         if 'pubplace' in meta.columns:
             meta['pubcity']=meta.pubplace.apply(lambda x: zeropunc(x).strip().split()[0])
         meta = self.merge_linked_metadata(meta)
-        # ECCO_TCP's own 'genre' column is really a medium — rename it
         if 'genre' in meta.columns:
             meta['medium'] = meta['genre']
-        # Genre comes from linked ESTC only
         if 'estc_genre' in meta.columns:
             meta['genre'] = meta['estc_genre']
         else:
@@ -65,10 +80,15 @@ class ECCO_TCP(TCP):
             meta['genre_raw'] = meta['estc_genre_raw']
         else:
             meta['genre_raw'] = None
-        # Medium overrides genre
         if 'medium' in meta.columns:
             meta.loc[meta['medium'] == 'Verse', 'genre'] = 'Poetry'
             meta.loc[meta['medium'] == 'Drama', 'genre'] = 'Drama'
         if 'estc_is_translated' in meta.columns:
             meta['is_translated'] = meta['estc_is_translated']
+
+        try:
+            meta.to_parquet(enriched_path)
+        except Exception:
+            pass
+
         return meta
