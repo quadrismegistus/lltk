@@ -535,6 +535,7 @@ class BaseText(BaseObject):
             sep=META_KEY_SEP,
             **kwargs):
         if log>1: log(self)
+        self._hydrate_meta()
         imeta=merge_dict(TEXT_META_DEFAULT, self.META, self.__meta, self._meta, meta)
         ometa=self.ensure_id({k:v for k,v in imeta.items() if k not in bad_keys},allow_sep=False)
         self._meta={k:v for k,v in ometa.items() if not sep in k}
