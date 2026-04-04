@@ -907,6 +907,16 @@ class BaseText(BaseObject):
 
     @property
     def matches(self): return self.get_matches()
+
+    @property
+    def match_group(self):
+        """Get all texts in this text's match group from the DuckDB matches DB."""
+        try:
+            from lltk.tools.metadb import metadb
+            df = metadb.get_group(self.addr)
+            return df if df is not None and len(df) else None
+        except Exception:
+            return None
     
 
 
