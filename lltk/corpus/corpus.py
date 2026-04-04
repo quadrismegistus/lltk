@@ -314,12 +314,34 @@ class BaseCorpus(TextList):
                 yield from zip(o1,o2)
 
 
+    @property
+    def path_metadata_parquet(self):
+        base = os.path.splitext(self.path_metadata)[0]
+        return base + '.parquet'
+
     def load_metadata(self,clean=True,force=False,**kwargs):
         cache_key = ('load_metadata', clean)
         if not force and cache_key in self._metadfd:
             return self._metadfd[cache_key]
         if not os.path.exists(self.path_metadata): self.install_metadata()
         if not os.path.exists(self.path_metadata): return pd.DataFrame()
+
+        # Fast path: read from parquet cache if newer than CSV
+        pq_path = self.path_metadata_parquet
+        if not force and os.path.exists(pq_path):
+            try:
+                csv_mtime = os.path.getmtime(self.path_metadata)
+                pq_mtime = os.path.getmtime(pq_path)
+                if pq_mtime >= csv_mtime:
+                    df = pd.read_parquet(pq_path)
+                    if self.col_id in set(df.columns):
+                        df = df.set_index(self.col_id)
+                    self._metadfd[cache_key] = df
+                    return df
+            except Exception:
+                pass  # fall through to CSV
+
+        # Slow path: read CSV
         df=read_df_anno(self.path_metadata,dtype=str)
         if df is None or not len(df): return pd.DataFrame()
         if self.col_id in set(df.columns):
@@ -327,6 +349,13 @@ class BaseCorpus(TextList):
         if clean:
             from lltk.corpus.utils import clean_meta
             df=clean_meta(df)
+
+        # Cache as parquet for next time
+        try:
+            df.to_parquet(pq_path)
+        except Exception:
+            pass  # parquet write failed, no big deal
+
         self._metadfd[cache_key] = df
         return df
 
