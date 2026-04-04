@@ -643,6 +643,12 @@ class MetaDB:
             corpus_where = f'AND corpus IN ({corpus_list})'
             print(f'Matching {len(corpora)} corpora: {", ".join(corpora)}')
 
+        # Tier 0: ID-based matching from corpus LINKS declarations
+        # e.g. earlyprint.id_tcp = eebo_tcp.id, ecco.ESTCID = estc.id_estc
+        print('ID-based linking from corpus LINKS...')
+        tier0_count = self._match_by_links(corpora)
+        print(f'  ID links: {tier0_count} pairs')
+
         # Exact: same title_norm + author_norm, any corpus (within or across)
         # Uses chain linking (each text → next in sorted order) instead of all-pairs
         # to avoid quadratic explosion on multi-volume works (N-1 edges, not N*(N-1)/2)
@@ -721,6 +727,60 @@ class MetaDB:
         groups = self.match_conn.execute("SELECT COUNT(DISTINCT group_id) FROM match_db.match_groups").fetchone()[0]
         n_texts = self.match_conn.execute("SELECT COUNT(*) FROM match_db.match_groups").fetchone()[0]
         print(f'Done: {total} match pairs, {n_texts} texts in {groups} groups')
+
+    def _match_by_links(self, corpora=None):
+        """Tier 0: match texts across corpora using LINKS declarations (shared IDs).
+
+        For each corpus with LINKS, joins on the declared ID columns via the
+        meta JSON blob. Only matches across different corpora.
+        """
+        from lltk.corpus.utils import load_manifest, load_corpus
+
+        manifest = load_manifest()
+        corpus_ids = set(corpora or [d.get('id', name) for name, d in manifest.items()])
+        count_before = self.match_conn.execute(
+            "SELECT COUNT(*) FROM match_db.matches"
+        ).fetchone()[0]
+
+        for corpus_id in corpus_ids:
+            if corpus_id in DB_BLACKLIST:
+                continue
+            try:
+                corpus = load_corpus(corpus_id)
+            except Exception:
+                continue
+            links = getattr(corpus, 'LINKS', None)
+            if not links:
+                continue
+
+            for target_corpus_id, (my_col, their_col) in links.items():
+                if corpora and target_corpus_id not in corpus_ids:
+                    continue
+
+                # Try joining via meta JSON extraction for both columns
+                # DuckDB syntax: meta->>'$.column_name'
+                try:
+                    self.match_conn.execute(f"""
+                        INSERT OR IGNORE INTO match_db.matches (_id_a, _id_b, similarity, match_type)
+                        SELECT CASE WHEN a._id < b._id THEN a._id ELSE b._id END,
+                               CASE WHEN a._id < b._id THEN b._id ELSE a._id END,
+                               1.0, 'id_link'
+                        FROM texts a
+                        JOIN texts b ON (
+                            COALESCE(a.meta->>'$.{my_col}', '') != ''
+                            AND COALESCE(a.meta->>'$.{my_col}', '') = COALESCE(b.meta->>'$.{their_col}', '')
+                        )
+                        WHERE a.corpus = '{corpus_id}'
+                          AND b.corpus = '{target_corpus_id}'
+                          AND a._id != b._id
+                    """)
+                except Exception as e:
+                    if log: log(f'ID link {corpus_id}.{my_col} → {target_corpus_id}.{their_col}: {e}')
+
+        count_after = self.match_conn.execute(
+            "SELECT COUNT(*) FROM match_db.matches"
+        ).fetchone()[0]
+        return count_after - count_before
 
     def _insert_matches_batch(self, batch):
         """Insert a batch of match tuples, ignoring duplicates."""
