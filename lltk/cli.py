@@ -29,6 +29,7 @@ def main():
 	p_compile = subparsers.add_parser('compile', help='Compile corpus from sources')
 	p_compile.add_argument('corpus')
 	p_compile.add_argument('--tar-path', help='Path to tar file (for corpora that need it)')
+	p_compile.add_argument('--repos', help='Comma-separated repo names (for earlyprint: eebotcp,eccotcp,evanstcp)')
 	p_compile.add_argument('--force', action='store_true')
 
 	# preprocess
@@ -100,6 +101,8 @@ def main():
 		kwargs = {}
 		if args.tar_path:
 			kwargs['tar_path'] = args.tar_path
+		if args.repos:
+			kwargs['repos'] = [r.strip() for r in args.repos.split(',')]
 		corpus.compile(**kwargs)
 
 	elif args.cmd == 'preprocess':

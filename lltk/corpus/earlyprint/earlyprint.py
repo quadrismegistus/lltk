@@ -81,28 +81,28 @@ class EarlyPrint(TCP):
         self._build_metadata()
 
     def _clone_repo(self, name, url):
-        """Clone a single EarlyPrint repo with submodules."""
+        """Clone a single EarlyPrint repo with shallow submodules. Resumable."""
         repo_dir = os.path.join(self.path_repos, name)
-        if os.path.exists(repo_dir):
-            print(f'  {name}: already cloned at {repo_dir}')
-            return
-
-        print(f'  {name}: cloning {url}...')
         os.makedirs(self.path_repos, exist_ok=True)
-        ret = os.system(f'git clone {url} {repo_dir}')
-        if ret != 0:
-            print(f'  {name}: clone failed')
-            return
 
-        print(f'  {name}: initializing submodules...')
-        os.system(f'cd {repo_dir} && git submodule init')
-        # Convert SSH URLs to HTTPS for public access
-        os.system(
-            f"cd {repo_dir} && perl -pi -e "
-            f"'s|git\\@bitbucket.org:|https://bitbucket.org/|' .git/config"
-        )
-        print(f'  {name}: updating submodules (this may take a while)...')
-        os.system(f'cd {repo_dir} && git submodule update')
+        if not os.path.exists(os.path.join(repo_dir, '.git')):
+            print(f'  {name}: cloning {url} (shallow)...')
+            ret = os.system(f'git clone --depth 1 {url} {repo_dir}')
+            if ret != 0:
+                print(f'  {name}: clone failed')
+                return
+            print(f'  {name}: initializing submodules...')
+            os.system(f'cd {repo_dir} && git submodule init')
+            # Convert SSH URLs to HTTPS for public access
+            os.system(
+                f"cd {repo_dir} && perl -pi -e "
+                f"'s|git\\@bitbucket.org:|https://bitbucket.org/|' .git/config"
+            )
+        else:
+            print(f'  {name}: repo exists, resuming submodule update...')
+
+        print(f'  {name}: updating submodules (shallow, resumable)...')
+        os.system(f'cd {repo_dir} && git submodule update --depth 1')
         print(f'  {name}: done')
 
     def _symlink_xmls(self, repos=None):
