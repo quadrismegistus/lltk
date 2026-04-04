@@ -738,7 +738,8 @@ class BaseCorpus(TextList):
             else:
                 # Pass row metadata directly — avoids lazy hydration overhead
                 row_meta = records.get(id, {})
-                row_meta = {k: v for k, v in row_meta.items() if pd.notna(v) and str(v) != 'nan'}
+                row_meta = {k: v for k, v in row_meta.items()
+                            if v is not None and not (isinstance(v, float) and v != v) and str(v) != 'nan'}
                 t = self.TEXT_CLASS(id=id, _corpus=self, _remote=remote, **row_meta)
                 t._meta_hydrated = True  # skip DB lookup — we already have the data
                 self._textd[id] = t
