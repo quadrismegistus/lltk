@@ -28,6 +28,7 @@ class ArcFiction(CuratedCorpus):
         'ecco': {'genre': 'Fiction'},
         'ecco_tcp': {'genre': 'Fiction'},
         'eebo_tcp': {'genre': 'Fiction'},
+        'earlyprint': {'genre': 'Fiction'},
         'evans_tcp': {'genre': 'Fiction'},
         'coha': {'genre': 'Fiction'},
         'clmet': {'genre': 'Fiction'},
