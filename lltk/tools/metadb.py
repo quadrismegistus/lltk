@@ -58,14 +58,15 @@ GENRE_VOCAB = {
 DB_BLACKLIST = {'hathi', 'bighist'}
 
 # Core columns stored as real columns; everything else goes in meta JSON
-CORE_COLS = ['_id', 'corpus', 'id', 'title', 'author', 'year', 'genre', 'genre_raw', 'is_translated', 'title_norm', 'author_norm']
+CORE_COLS = ['_id', 'corpus', 'id', 'title', 'author', 'year', 'genre', 'genre_raw', 'is_translated', 'title_norm', 'author_norm', 'path_freqs']
 STANDARD_COLS = ['id', 'title', 'author', 'year', 'genre', 'genre_raw']
-TEXT_COLS = ['_id', 'corpus', 'id', 'title', 'author', 'genre', 'genre_raw', 'title_norm', 'author_norm']  # cols stored as TEXT (not is_translated — that's BOOLEAN)
+TEXT_COLS = ['_id', 'corpus', 'id', 'title', 'author', 'genre', 'genre_raw', 'title_norm', 'author_norm', 'path_freqs']  # cols stored as TEXT (not is_translated — that's BOOLEAN)
 
 # Corpus preference ranks for dedup (lower = preferred)
 CORPUS_SOURCE_RANKS = {
     'chadwyck': 1, 'chadwyck_drama': 1, 'chadwyck_poetry': 1,
-    'eebo_tcp': 2, 'ecco_tcp': 2, 'evans_tcp': 2,
+    'earlyprint': 2,
+    'eebo_tcp': 3, 'ecco_tcp': 3, 'evans_tcp': 3,
     'markmark': 3, 'chicago': 3, 'clmet': 3,
     'gildedage': 4, 'coca': 4, 'coha': 4, 'sellers': 4, 'new_yorker': 4, 'spectator': 4, 
     'tedjdh': 5, 'long_arc_prestige': 5,
@@ -268,7 +269,7 @@ class MetaDB:
         """)
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_corpus ON texts(corpus)")
         # Add columns if upgrading from older schema
-        for col, dtype in [('title_norm', 'TEXT'), ('author_norm', 'TEXT'), ('is_translated', 'BOOLEAN')]:
+        for col, dtype in [('title_norm', 'TEXT'), ('author_norm', 'TEXT'), ('is_translated', 'BOOLEAN'), ('path_freqs', 'TEXT')]:
             try:
                 self._conn.execute(f"ALTER TABLE texts ADD COLUMN {col} {dtype}")
             except Exception:
@@ -330,7 +331,56 @@ class MetaDB:
             if log: log(f'No metadata for {corpus_id}')
             return None
 
+        # Resolve freqs paths (relative to PATH_CORPUS)
+        df = self._resolve_freqs_paths(df, corpus)
+
         return self.ingest_df(df, corpus_id, force=force)
+
+    def _resolve_freqs_paths(self, df, corpus):
+        """Add path_freqs column with paths relative to PATH_CORPUS."""
+        from lltk.imports import PATH_CORPUS
+        corpus_root = os.path.expanduser(PATH_CORPUS)
+
+        # Get the corpus's freqs directory
+        freqs_dir = getattr(corpus, 'path_freqs', None)
+        if not freqs_dir or not os.path.isdir(freqs_dir):
+            df['path_freqs'] = None
+            return df
+
+        # Check for corpus-specific freqs_path_for method (e.g. Hathi)
+        has_custom = hasattr(corpus, 'freqs_path_for')
+
+        if has_custom:
+            # Use corpus's own resolution (handles ID normalization, nested dirs)
+            ids = df.index if df.index.name == 'id' else df.get('id', pd.Series())
+            paths = []
+            for text_id in ids:
+                try:
+                    abs_path = corpus.freqs_path_for(str(text_id))
+                    if abs_path and os.path.exists(abs_path):
+                        paths.append(os.path.relpath(abs_path, corpus_root))
+                    else:
+                        paths.append(None)
+                except Exception:
+                    paths.append(None)
+            df['path_freqs'] = paths
+        else:
+            # Standard pattern: {freqs_dir}/{text_id}.json
+            ext = getattr(corpus, 'EXT_FREQS', getattr(corpus, 'ext_freqs', '.json'))
+            ids = df.index if df.index.name == 'id' else df.get('id', pd.Series())
+            paths = []
+            for text_id in ids:
+                abs_path = os.path.join(freqs_dir, str(text_id) + ext)
+                if os.path.exists(abs_path):
+                    paths.append(os.path.relpath(abs_path, corpus_root))
+                else:
+                    paths.append(None)
+            df['path_freqs'] = paths
+
+        n_found = df['path_freqs'].notna().sum()
+        if log and n_found:
+            log(f'  {n_found}/{len(df)} texts have freqs')
+        return df
 
     def ingest_df(self, df, corpus_id, force=True):
         """Ingest a DataFrame into the DB for a given corpus."""
@@ -377,7 +427,12 @@ class MetaDB:
             d = {}
             for col in extra_cols:
                 v = row[col]
-                if pd.notna(v) and str(v) not in ('', 'nan', 'None'):
+                try:
+                    is_valid = pd.notna(v) and str(v) not in ('', 'nan', 'None', '[]')
+                except ValueError:
+                    # v is array-like (e.g. numpy array) — convert to string if non-empty
+                    is_valid = len(v) > 0
+                if is_valid:
                     d[col] = str(v)
             return json.dumps(d) if d else None
 
@@ -403,7 +458,14 @@ class MetaDB:
         if 'is_translated' not in df.columns:
             df['is_translated'] = None
         else:
-            df['is_translated'] = df['is_translated'].astype('boolean')
+            # Handle string booleans from CSVs and Python bools in object columns
+            col = df['is_translated']
+            if col.dtype == object:
+                col = col.map({
+                    'True': True, 'False': False, 'true': True, 'false': False,
+                    True: True, False: False,
+                })
+            df['is_translated'] = col.astype('boolean')
 
         # Compute normalized title and author for matching
         df['title_norm'] = df['title'].apply(normalize_title) if 'title' in df.columns else None
@@ -646,8 +708,11 @@ class MetaDB:
         # Tier 0: ID-based matching from corpus LINKS declarations
         # e.g. earlyprint.id_tcp = eebo_tcp.id, ecco.ESTCID = estc.id_estc
         print('ID-based linking from corpus LINKS...')
-        tier0_count = self._match_by_links(corpora)
-        print(f'  ID links: {tier0_count} pairs')
+        self._match_by_links(corpora)
+        id_link_total = self.match_conn.execute(
+            "SELECT COUNT(*) FROM match_db.matches WHERE match_type = 'id_link'"
+        ).fetchone()[0]
+        print(f'  ID links: {id_link_total} pairs')
 
         # Exact: same title_norm + author_norm, any corpus (within or across)
         # Uses chain linking (each text → next in sorted order) instead of all-pairs
@@ -756,12 +821,19 @@ class MetaDB:
             if not links:
                 continue
 
+            # Top-level columns in texts table (not in meta JSON)
+            top_level_cols = {'_id', 'corpus', 'id', 'title', 'author', 'year',
+                              'genre', 'genre_raw', 'is_translated',
+                              'title_norm', 'author_norm', 'path_freqs'}
+
             for target_corpus_id, (my_col, their_col) in links.items():
                 if corpora and target_corpus_id not in corpus_ids:
                     continue
 
-                # Try joining via meta JSON extraction for both columns
-                # DuckDB syntax: meta->>'$.column_name'
+                # Use top-level column directly if it exists, otherwise extract from meta JSON
+                my_expr = f"a.{my_col}" if my_col in top_level_cols else f"json_extract_string(a.meta, '$.{my_col}')"
+                their_expr = f"b.{their_col}" if their_col in top_level_cols else f"json_extract_string(b.meta, '$.{their_col}')"
+
                 try:
                     self.match_conn.execute(f"""
                         INSERT OR IGNORE INTO match_db.matches (_id_a, _id_b, similarity, match_type)
@@ -770,8 +842,8 @@ class MetaDB:
                                1.0, 'id_link'
                         FROM texts a
                         JOIN texts b ON (
-                            COALESCE(a.meta->>'$.{my_col}', '') != ''
-                            AND COALESCE(a.meta->>'$.{my_col}', '') = COALESCE(b.meta->>'$.{their_col}', '')
+                            COALESCE({my_expr}, '') != ''
+                            AND COALESCE({my_expr}, '') = COALESCE({their_expr}, '')
                         )
                         WHERE a.corpus = '{corpus_id}'
                           AND b.corpus = '{target_corpus_id}'
