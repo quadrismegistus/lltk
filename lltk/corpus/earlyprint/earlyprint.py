@@ -154,7 +154,7 @@ class EarlyPrint(TCP):
                     objs.append(os.path.join(root, fn))
 
         print(f'  Parsing {len(objs)} XML files...')
-        ld = pmap(_parse_earlyprint_meta, objs, num_proc=DEFAULT_NUM_PROC,
+        ld = pmap(_parse_earlyprint_meta, objs, num_proc=1,
                   desc='[EarlyPrint] Parsing metadata')
 
         df = pd.DataFrame([d for d in ld if d])
