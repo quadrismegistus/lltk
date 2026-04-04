@@ -12,20 +12,43 @@ Linguistically tagged TCP texts from the [EarlyPrint Project](https://earlyprint
 lltk compile earlyprint
 ```
 
-This clones three BitBucket repos, initializes git submodules, symlinks XMLs, and builds metadata.csv. Takes 20-30 minutes (mostly submodule downloads).
+This clones three BitBucket repos (shallow, ~15GB total), initializes git submodules, gzip-copies XMLs (~10x compression), and builds metadata.csv.
+
+Compile one repo at a time:
+
+```bash
+lltk compile earlyprint --repos eccotcp     # ~2K texts, quick
+lltk compile earlyprint --repos evanstcp    # ~4K texts, quick
+lltk compile earlyprint --repos eebotcp     # ~60K texts, slow (~30 min)
+```
+
+Resumable — re-running skips already downloaded repos and already compressed files.
+
+## Updating
+
+Pull latest text corrections from EarlyPrint:
+
+```python
+import lltk
+c = lltk.load('earlyprint')
+c.update()                      # update all cloned repos
+c.update(repos=['eccotcp'])     # update just one
+```
+
+This runs `git pull` + `git submodule update`, gzip-copies any new/changed files, and rebuilds metadata.csv.
 
 ## Directory structure
 
 ```
 ~/lltk_data/corpora/earlyprint/
   repos/
-    eebotcp/texts/A00/A00001.xml   (git repos with actual files)
-    eccotcp/texts/K00/K00001.xml
-    evanstcp/texts/N00/N00001.xml
+    eebotcp/texts/A00/A00001.xml   (git repos, original files)
+    eccotcp/texts/C00/C00980.xml
+    evanstcp/texts/N00/N00346.xml
   xml/
-    eebotcp/A00/A00001.xml → symlink to repos
-    eccotcp/K00/K00001.xml → symlink to repos
-    evanstcp/N00/N00001.xml → symlink to repos
+    eebotcp/A00/A00001.xml.gz      (gzip-compressed copies, ~10x smaller)
+    eccotcp/C00/C00980.xml.gz
+    evanstcp/N00/N00346.xml.gz
   metadata.csv
 ```
 
