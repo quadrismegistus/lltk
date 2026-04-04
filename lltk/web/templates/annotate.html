@@ -345,7 +345,8 @@ function renderDetail(id, data) {
     <div class="annotation-form">
       <label>genre</label>
       <select id="annGenre">
-        <option value="">(no override)</option>
+        <option value="">(no override — keeps DB value: ${meta.genre || 'none'})</option>
+        <option value="__none__" ${ann.genre==='__none__'?'selected':''}>(clear — set to none)</option>
         ${GENRE_VOCAB.map(g => `<option value="${g}" ${(ann.genre||meta.genre)===g?'selected':''}>${g}</option>`).join('')}
       </select>
       <label>genre_raw</label>
@@ -456,7 +457,8 @@ async function saveAnnotation() {
 
   // Fixed fields
   const genre = document.getElementById('annGenre').value;
-  if (genre) ann.genre = genre;
+  if (genre === '__none__') ann.genre = '__none__';
+  else if (genre) ann.genre = genre;
   const genreRaw = document.getElementById('annGenreRaw').value.trim();
   if (genreRaw) ann.genre_raw = genreRaw;
   if (document.getElementById('annExclude').checked) ann.exclude = true;

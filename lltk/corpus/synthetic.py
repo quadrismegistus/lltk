@@ -177,7 +177,11 @@ class CuratedCorpus(SyntheticCorpus):
             for col, val in overrides.items():
                 if col not in df.columns:
                     df[col] = None
-                df.loc[mask, col] = val
+                # __none__ means explicitly set to null
+                if val == '__none__':
+                    df.loc[mask, col] = None
+                else:
+                    df.loc[mask, col] = val
 
         # Propagate annotations across match groups:
         # if any member of a match group is annotated, apply to the representative
