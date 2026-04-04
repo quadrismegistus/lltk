@@ -99,6 +99,25 @@ class EarlyPrint(TCP):
         # Step 4: Build metadata
         self._build_metadata()
 
+    def update(self, repos=None, **kwargs):
+        """Pull latest changes from EarlyPrint repos, re-gzip new files, rebuild metadata."""
+        if repos is None:
+            repos = [r for r in EARLYPRINT_REPOS if os.path.exists(os.path.join(self.path_repos, r, '.git'))]
+        if not repos:
+            print('No repos found. Run compile first.')
+            return
+
+        for repo_name in repos:
+            repo_dir = os.path.join(self.path_repos, repo_name)
+            print(f'  {repo_name}: pulling updates...')
+            os.system(f'cd {repo_dir} && git pull')
+            os.system(f'cd {repo_dir} && git submodule update --depth 1')
+
+        # Re-gzip any new/changed files
+        self._gzip_copy_xmls(repos)
+        # Rebuild metadata
+        self._build_metadata()
+
     def _clone_repo(self, name, url):
         """Clone a single EarlyPrint repo with shallow submodules. Resumable."""
         repo_dir = os.path.join(self.path_repos, name)
