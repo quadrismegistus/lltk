@@ -244,6 +244,11 @@ class EarlyPrint(TCP):
         if 'estc_is_translated' in meta.columns:
             meta['is_translated'] = meta['estc_is_translated']
 
+        # Medium overrides genre (Verse→Poetry, Drama→Drama)
+        if 'medium' in meta.columns:
+            meta.loc[meta['medium'] == 'Verse', 'genre'] = 'Poetry'
+            meta.loc[meta['medium'] == 'Drama', 'genre'] = 'Drama'
+
         # Determine source collection from TCP ID prefix
         if meta.index.name == 'id' or 'id' in meta.columns:
             ids = meta.index if meta.index.name == 'id' else meta['id']
@@ -261,12 +266,11 @@ def _parse_earlyprint_meta(fnfn):
         import gzip as _gzip
         opener = _gzip.open if fnfn.endswith('.gz') else open
         with opener(fnfn, 'rt', encoding='utf-8', errors='ignore') as f:
-            # Read only the header to save time
-            header_txt = ''
-            for line in f:
-                header_txt += line
-                if '</teiHeader>' in line or '</teiheader>' in line:
-                    break
+            full_txt = f.read()
+
+        # Split header for metadata parsing
+        header_end = full_txt.lower().find('</teiheader>')
+        header_txt = full_txt[:header_end + 12] if header_end > 0 else full_txt[:10000]
 
         dom = bs4.BeautifulSoup(header_txt, 'lxml')
         meta = {}
@@ -382,6 +386,18 @@ def _parse_earlyprint_meta(fnfn):
                     meta[key] = int(meta[key])
                 except (ValueError, TypeError):
                     pass
+
+        # ── Detect medium (Prose/Verse/Drama) from body tag counts ──
+        txt_lower = full_txt.lower()
+        n_speaker = txt_lower.count('</speaker>')
+        n_l = txt_lower.count('</l>')
+        n_p = txt_lower.count('</p>')
+        if n_speaker > 100:
+            meta['medium'] = 'Drama'
+        elif n_l > n_p:
+            meta['medium'] = 'Verse'
+        else:
+            meta['medium'] = 'Prose'
 
         # ── Track source repo ──
         parts = fnfn.split(os.sep)
