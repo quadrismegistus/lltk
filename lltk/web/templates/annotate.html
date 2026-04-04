@@ -400,8 +400,9 @@ function renderDetail(id, data) {
   }
 
   // Match group
+  html += `<div class="detail-section"><h3>Match Group${matches.length > 1 ? ` (${matches.length} texts)` : ''}</h3>`;
   if (matches.length > 1) {
-    html += `<div class="detail-section"><h3>Match Group (${matches.length} texts)</h3><div class="match-list">`;
+    html += `<div class="match-list">`;
     matches.forEach(m => {
       const isCurrent = m._id === id;
       html += `<div class="match-item" ${isCurrent?'style="font-weight:bold"':''}>
@@ -410,8 +411,19 @@ function renderDetail(id, data) {
         (${m.year || '?'})
       </div>`;
     });
-    html += `</div></div>`;
+    html += `</div>`;
+  } else {
+    html += `<div style="font-size:12px; color:#64748b; margin-bottom:6px;">No matches found.</div>`;
   }
+  // Link to duplicate
+  html += `<div style="margin-top:8px; border-top:1px solid #e2e8f0; padding-top:8px;">
+    <label style="font-size:11px; font-weight:600; color:#64748b; text-transform:uppercase;">Link to duplicate</label>
+    <div style="display:flex; gap:4px;">
+      <input type="text" id="linkSearch" placeholder="Search by title..." style="flex:1;" onkeyup="searchForLink(this.value)">
+    </div>
+    <div id="linkResults" style="font-size:12px; max-height:150px; overflow-y:auto;"></div>
+  </div>`;
+  html += `</div>`;
 
   document.getElementById('detailBody').innerHTML = html;
 }
@@ -466,6 +478,48 @@ async function clearAnnotation() {
   });
   loadTexts(); loadStats(); loadAnnotationKeys();
   openDetail(id);
+}
+
+// Link/unlink duplicates
+let linkSearchTimeout;
+function searchForLink(q) {
+  clearTimeout(linkSearchTimeout);
+  linkSearchTimeout = setTimeout(async () => {
+    if (q.length < 2) { document.getElementById('linkResults').innerHTML = ''; return; }
+    const resp = await fetch('/api/search-texts?q=' + encodeURIComponent(q));
+    const data = await resp.json();
+    const currentId = document.getElementById('detailPanel').dataset.currentId;
+    const resultsDiv = document.getElementById('linkResults');
+    resultsDiv.innerHTML = '';
+    data.results.forEach(r => {
+      if (r._id === currentId) return;
+      const div = document.createElement('div');
+      div.style.cssText = 'padding:3px 0; border-bottom:1px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center;';
+      div.innerHTML = `
+        <span>${r.corpus}: ${r.title || r._id} (${r.year || '?'})</span>
+        <button onclick="linkDuplicate('${currentId}', '${r._id}')" style="font-size:11px;">Link</button>
+      `;
+      resultsDiv.appendChild(div);
+    });
+  }, 300);
+}
+
+async function linkDuplicate(idA, idB) {
+  if (!confirm(`Link these as duplicates?\n${idA}\n${idB}`)) return;
+  const resp = await fetch('/api/match/link', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({id_a: idA, id_b: idB})
+  });
+  const data = await resp.json();
+  if (data.ok) {
+    document.getElementById('linkSearch').value = '';
+    document.getElementById('linkResults').innerHTML = '';
+    openDetail(idA);
+    loadTexts();
+  } else {
+    alert('Error: ' + (data.error || 'unknown'));
+  }
 }
 
 init();

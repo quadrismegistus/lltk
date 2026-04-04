@@ -281,6 +281,66 @@ def create_app(corpus_id: str):
     async def get_genres():
         return {'genres': sorted(GENRE_VOCAB)}
 
+    @app.post('/api/match/link')
+    async def link_texts(request: Request):
+        """Manually link two texts as duplicates. Recomputes match groups."""
+        body = await request.json()
+        id_a = body.get('id_a', '')
+        id_b = body.get('id_b', '')
+        if not id_a or not id_b or id_a == id_b:
+            return JSONResponse({'error': 'Need two different _id values'}, status_code=400)
+
+        # Ensure canonical order
+        if id_a > id_b:
+            id_a, id_b = id_b, id_a
+
+        # Insert into matches table
+        try:
+            lltk.db.conn.execute("""
+                INSERT OR IGNORE INTO match_db.matches (_id_a, _id_b, similarity, match_type)
+                VALUES (?, ?, 1.0, 'manual')
+            """, [id_a, id_b])
+        except Exception as e:
+            return JSONResponse({'error': str(e)}, status_code=500)
+
+        # Recompute match groups
+        lltk.db._compute_match_groups()
+
+        return {'ok': True, 'id_a': id_a, 'id_b': id_b}
+
+    @app.post('/api/match/unlink')
+    async def unlink_texts(request: Request):
+        """Remove a manual match between two texts. Recomputes match groups."""
+        body = await request.json()
+        id_a = body.get('id_a', '')
+        id_b = body.get('id_b', '')
+        if not id_a or not id_b:
+            return JSONResponse({'error': 'Need two _id values'}, status_code=400)
+
+        # Delete both orderings
+        lltk.db.conn.execute("""
+            DELETE FROM match_db.matches
+            WHERE (_id_a = ? AND _id_b = ?) OR (_id_a = ? AND _id_b = ?)
+        """, [id_a, id_b, id_b, id_a])
+
+        lltk.db._compute_match_groups()
+        return {'ok': True}
+
+    @app.get('/api/search-texts')
+    async def search_texts(q: str = ''):
+        """Quick search for linking — returns top 10 matches by title."""
+        if not q or len(q) < 2:
+            return {'results': []}
+        safe = q.replace("'", "''")
+        rows = lltk.db.conn.execute(f"""
+            SELECT _id, corpus, title, author, year
+            FROM texts
+            WHERE title ILIKE '%{safe}%' OR author ILIKE '%{safe}%'
+            ORDER BY year
+            LIMIT 10
+        """).fetchdf()
+        return {'results': rows.to_dict('records')}
+
     @app.get('/api/annotation-keys')
     async def get_annotation_keys():
         """Return all custom annotation keys used across all annotations."""
