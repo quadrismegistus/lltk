@@ -370,10 +370,26 @@ def create_app(corpus_id: str):
     return app
 
 
-def run_annotate(corpus_id: str, port: int = 8989, host: str = '0.0.0.0'):
+def run_annotate(corpus_id: str, port: int = 8989, host: str = '0.0.0.0', reload: bool = True):
     """Run the annotation server."""
     import uvicorn
-    app = create_app(corpus_id)
     print(f'\n  LLTK Annotate: {corpus_id}')
     print(f'  http://{host}:{port}\n')
-    uvicorn.run(app, host=host, port=port, log_level='warning')
+    if reload:
+        # uvicorn reload needs an import string, not an app object
+        # Store corpus_id in env so create_app can read it
+        os.environ['LLTK_ANNOTATE_CORPUS'] = corpus_id
+        uvicorn.run(
+            'lltk.web.annotate:app_from_env',
+            host=host, port=port, log_level='warning', reload=True,
+            reload_dirs=[str(Path(__file__).parent)],
+        )
+    else:
+        app = create_app(corpus_id)
+        uvicorn.run(app, host=host, port=port, log_level='warning')
+
+
+def app_from_env():
+    """Factory for uvicorn reload mode — reads corpus_id from env."""
+    corpus_id = os.environ.get('LLTK_ANNOTATE_CORPUS', 'arc_fiction')
+    return create_app(corpus_id)
