@@ -1,5 +1,54 @@
 from lltk.imports import *
 import time
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+
+
+def pmap(func, objs, args=(), kwargs=None, num_proc=1, use_threads=False,
+         progress=True, desc='', **_ignored):
+    """
+    Parallel map with progress bar. Replaces yapmap.pmap.
+
+    Args:
+        func: function to apply to each object
+        objs: iterable of objects
+        args: extra positional args passed to func
+        kwargs: extra keyword args passed to func
+        num_proc: number of workers (1 = sequential)
+        use_threads: use threads instead of processes (good for I/O-bound work)
+        progress: show tqdm progress bar
+        desc: progress bar description
+    """
+    if kwargs is None:
+        kwargs = {}
+    objs = list(objs)
+    if not objs:
+        return []
+
+    def _call(obj):
+        return func(obj, *args, **kwargs)
+
+    if num_proc <= 1:
+        # Sequential
+        iterr = get_tqdm(objs, desc=desc) if progress else objs
+        return [_call(obj) for obj in iterr]
+
+    # Parallel
+    Executor = ThreadPoolExecutor if use_threads else ProcessPoolExecutor
+    results = []
+    with Executor(max_workers=num_proc) as pool:
+        futures = pool.map(_call, objs)
+        if progress:
+            from tqdm import tqdm
+            futures = tqdm(futures, total=len(objs), desc=desc)
+        results = list(futures)
+    return results
+
+
+def pmap_iter(func, objs, args=(), kwargs=None, num_proc=1, use_threads=False,
+              progress=True, desc='', **_ignored):
+    """Iterator version of pmap."""
+    return iter(pmap(func, objs, args=args, kwargs=kwargs, num_proc=num_proc,
+                     use_threads=use_threads, progress=progress, desc=desc))
 
 
 def getweeknum(): 

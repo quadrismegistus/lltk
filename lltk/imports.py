@@ -281,7 +281,6 @@ spellingd={}
 CORPUS_FUNCS={}
 
 ### EXTERNAL MODULES
-from yapmap import *
 import numpy as np,pandas as pd
 import networkx as nx
 from xopen import xopen
