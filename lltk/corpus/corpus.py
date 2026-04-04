@@ -737,9 +737,23 @@ class BaseCorpus(TextList):
                 t = self._textd[id]
             else:
                 # Pass row metadata directly — avoids lazy hydration overhead
-                row_meta = records.get(id, {})
-                row_meta = {k: v for k, v in row_meta.items()
-                            if v is not None and not (isinstance(v, float) and v != v) and str(v) != 'nan'}
+                row_meta = {}
+                for k, v in records.get(id, {}).items():
+                    if v is None or (isinstance(v, float) and v != v):
+                        continue
+                    s = str(v)
+                    if s == 'nan' or s == '':
+                        continue
+                    # Convert non-scalar values to strings
+                    if isinstance(v, (list, tuple, set)):
+                        v = ' | '.join(str(x) for x in v)
+                    try:
+                        import numpy as np
+                        if isinstance(v, np.ndarray):
+                            v = ' | '.join(str(x) for x in v)
+                    except ImportError:
+                        pass
+                    row_meta[k] = v
                 t = self.TEXT_CLASS(id=id, _corpus=self, _remote=remote, **row_meta)
                 t._meta_hydrated = True  # skip DB lookup — we already have the data
                 self._textd[id] = t
