@@ -370,7 +370,7 @@ def create_app(corpus_id: str):
     return app
 
 
-def run_annotate(corpus_id: str, port: int = 8989, host: str = '127.0.0.1'):
+def run_annotate(corpus_id: str, port: int = 8989, host: str = '0.0.0.0'):
     """Run the annotation server."""
     import uvicorn
     app = create_app(corpus_id)
