@@ -166,7 +166,7 @@ class CuratedCorpus(SyntheticCorpus):
             # _id might not be in columns if index was set
             pass
 
-        # Apply overrides
+        # Apply direct overrides
         for _id, overrides in annotations.items():
             if has_id_col:
                 mask = df['_id'] == _id
@@ -178,6 +178,46 @@ class CuratedCorpus(SyntheticCorpus):
                 if col not in df.columns:
                     df[col] = None
                 df.loc[mask, col] = val
+
+        # Propagate annotations across match groups:
+        # if any member of a match group is annotated, apply to the representative
+        if has_id_col:
+            try:
+                import lltk
+                # Build lookup: _id → annotations (including propagated)
+                annotated_ids = set(annotations.keys())
+                if annotated_ids:
+                    # Get match groups for annotated texts
+                    mg = lltk.db.match_conn.execute(
+                        "SELECT _id, group_id FROM match_db.match_groups"
+                    ).fetchdf()
+                    if len(mg):
+                        # Map group_id → list of annotated _ids in that group
+                        id_to_group = dict(zip(mg['_id'], mg['group_id']))
+                        group_to_annotated = {}
+                        for _id, ann in annotations.items():
+                            gid = id_to_group.get(_id)
+                            if gid is not None:
+                                group_to_annotated[gid] = ann
+
+                        # For each row in df, if its group has an annotation but it doesn't, propagate
+                        df_ids = set(df['_id'])
+                        for _, row in mg.iterrows():
+                            _id = row['_id']
+                            gid = row['group_id']
+                            if _id in df_ids and _id not in annotated_ids and gid in group_to_annotated:
+                                # Propagate — direct annotations already applied above take priority
+                                propagated = group_to_annotated[gid]
+                                mask = df['_id'] == _id
+                                for col, val in propagated.items():
+                                    if col not in df.columns:
+                                        df[col] = None
+                                    # Only set if not already set by a direct annotation
+                                    current = df.loc[mask, col].iloc[0] if mask.any() else None
+                                    if pd.isna(current) or current == '' or current is None:
+                                        df.loc[mask, col] = val
+            except Exception:
+                pass  # match DB not available, skip propagation
 
         return self._filter_excluded(df)
 
