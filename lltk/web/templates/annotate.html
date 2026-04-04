@@ -178,6 +178,7 @@ let currentSortDir = 'asc';
 let selectedIds = new Set();
 let currentTexts = [];
 let knownCustomKeys = [];  // custom annotation keys discovered across all texts
+let genreRawValues = [];   // all known genre_raw values for autocomplete
 
 // Init
 async function init() {
@@ -192,12 +193,19 @@ async function init() {
   loadTexts();
   loadStats();
   loadAnnotationKeys();
+  loadGenreRawValues();
 }
 
 async function loadAnnotationKeys() {
   const resp = await fetch('/api/annotation-keys');
   const data = await resp.json();
   knownCustomKeys = data.custom || [];
+}
+
+async function loadGenreRawValues() {
+  const resp = await fetch('/api/genre-raw-values');
+  const data = await resp.json();
+  genreRawValues = data.values || [];
 }
 
 async function loadStats() {
@@ -341,7 +349,10 @@ function renderDetail(id, data) {
         ${GENRE_VOCAB.map(g => `<option value="${g}" ${(ann.genre||meta.genre)===g?'selected':''}>${g}</option>`).join('')}
       </select>
       <label>genre_raw</label>
-      <input type="text" id="annGenreRaw" value="${ann.genre_raw || meta.genre_raw || ''}" placeholder="e.g. Novel, Epistolary fiction, Tale...">
+      <input type="text" id="annGenreRaw" list="genreRawList" value="${ann.genre_raw || meta.genre_raw || ''}" placeholder="e.g. Romance, chivalric">
+      <datalist id="genreRawList">
+        ${genreRawValues.map(v => `<option value="${v}">`).join('')}
+      </datalist>
       <label><input type="checkbox" id="annExclude" ${ann.exclude?'checked':''}> exclude</label>
       <label><input type="checkbox" id="annTranslated" ${(ann.is_translated !== undefined ? ann.is_translated : meta.is_translated)?'checked':''}> is_translated</label>
       <label>notes</label>
@@ -465,7 +476,7 @@ async function saveAnnotation() {
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(ann)
   });
-  loadTexts(); loadStats(); loadAnnotationKeys();
+  loadTexts(); loadStats(); loadAnnotationKeys(); loadGenreRawValues();
 }
 
 async function clearAnnotation() {

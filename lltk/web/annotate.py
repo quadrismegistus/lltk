@@ -351,6 +351,22 @@ def create_app(corpus_id: str):
         custom -= fixed
         return {'fixed': sorted(fixed), 'custom': sorted(custom)}
 
+    @app.get('/api/genre-raw-values')
+    async def get_genre_raw_values():
+        """Return all distinct genre_raw values from DB + annotations."""
+        # From DB
+        try:
+            rows = lltk.db.conn.execute(
+                "SELECT DISTINCT genre_raw FROM texts WHERE genre_raw IS NOT NULL ORDER BY genre_raw"
+            ).fetchall()
+            db_values = {r[0] for r in rows if r[0]}
+        except Exception:
+            db_values = set()
+        # From annotations
+        ann_values = {a.get('genre_raw') for a in annotations.values() if a.get('genre_raw')}
+        all_values = sorted(db_values | ann_values)
+        return {'values': all_values}
+
     return app
 
 
