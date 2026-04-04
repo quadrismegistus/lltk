@@ -114,8 +114,12 @@ def create_app(corpus_id: str):
             sort_by = 'year'
         order = f't.{sort_by} {"ASC" if sort_dir == "asc" else "DESC"} NULLS LAST'
 
+        # Dedup: keep only best representative per match group
+        dedup_sql = lltk.db._dedup_sql(where, 'rank', texts_table='texts')
+        dedup_join = "LEFT JOIN match_db.match_groups mg ON t._id = mg._id"
+
         # Count
-        count_sql = f"SELECT COUNT(*) FROM texts t WHERE {where}"
+        count_sql = f"SELECT COUNT(*) FROM texts t {dedup_join} WHERE {where} {dedup_sql}"
         total = lltk.db.conn.execute(count_sql).fetchone()[0]
 
         # Fetch page
@@ -124,7 +128,8 @@ def create_app(corpus_id: str):
             SELECT t._id, t.corpus, t.id, t.title, t.author, t.year,
                    t.genre, t.genre_raw, t.is_translated, t.title_norm, t.author_norm
             FROM texts t
-            WHERE {where}
+            {dedup_join}
+            WHERE {where} {dedup_sql}
             ORDER BY {order}
             LIMIT {per_page} OFFSET {offset}
         """
