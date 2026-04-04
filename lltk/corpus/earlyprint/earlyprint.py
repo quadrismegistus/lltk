@@ -36,13 +36,32 @@ TCP_PREFIX_TO_SOURCE = {
 }
 
 
+def xml2txt_earlyprint(xmlfn, OK=['p', 'l'], BAD=[], body_tag='text'):
+    """Like xml2txt_tcp but handles .xml.gz files."""
+    import bs4
+    import gzip as _gzip
+    opener = _gzip.open if xmlfn.endswith('.gz') else open
+    with opener(xmlfn, 'rt', encoding='utf-8', errors='ignore') as f:
+        xml = f.read()
+    dom = bs4.BeautifulSoup(xml, 'lxml')
+    for tag in BAD:
+        [x.extract() for x in dom.findAll(tag)]
+    txt = []
+    for doc in dom.find_all(body_tag):
+        for tag in doc.find_all():
+            if tag.name in OK:
+                txt.append(clean_text(tag.text))
+    return '\n\n'.join(txt).replace('\u2223', '')
+
+
 class TextEarlyPrint(TextTCP):
     pass
 
 
 class EarlyPrint(TCP):
     TEXT_CLASS = TextEarlyPrint
-    XML2TXT = xml2txt_tcp
+    XML2TXT = xml2txt_earlyprint
+    EXT_XML = '.xml.gz'
 
     LINKS = {
         'estc': ('id_estc', 'id_estc'),
@@ -74,8 +93,8 @@ class EarlyPrint(TCP):
                 continue
             self._clone_repo(repo_name, url)
 
-        # Step 3: Symlink XMLs
-        self._symlink_xmls(repos)
+        # Step 3: Gzip-copy XMLs (10x compression)
+        self._gzip_copy_xmls(repos)
 
         # Step 4: Build metadata
         self._build_metadata()
@@ -105,8 +124,11 @@ class EarlyPrint(TCP):
         os.system(f'cd {repo_dir} && git submodule update --depth 1')
         print(f'  {name}: done')
 
-    def _symlink_xmls(self, repos=None):
-        """Create symlinks from xml/{repo}/{prefix}/{ID}.xml to repo texts."""
+    def _gzip_copy_xmls(self, repos=None):
+        """Gzip-copy XMLs from repos to xml/{repo}/{prefix}/{ID}.xml.gz (~10x compression)."""
+        import gzip as _gzip
+        import shutil
+
         if repos is None:
             repos = list(EARLYPRINT_REPOS.keys())
 
@@ -122,25 +144,34 @@ class EarlyPrint(TCP):
 
             repo_xml_dir = os.path.join(xml_dir, repo_name)
             os.makedirs(repo_xml_dir, exist_ok=True)
-            count = 0
 
+            # Collect files to compress
+            to_compress = []
             for root, dirs, files in os.walk(repo_texts):
                 for fn in files:
                     if not fn.endswith('.xml'):
                         continue
                     src = os.path.join(root, fn)
-                    # Preserve the prefix subdirectory: texts/A00/A00001.xml -> xml/eebotcp/A00/A00001.xml
                     rel = os.path.relpath(src, repo_texts)
-                    dst = os.path.join(repo_xml_dir, rel)
-                    os.makedirs(os.path.dirname(dst), exist_ok=True)
+                    dst = os.path.join(repo_xml_dir, rel + '.gz')
                     if not os.path.exists(dst):
-                        os.symlink(os.path.abspath(src), dst)
-                    count += 1
+                        to_compress.append((src, dst))
 
-            print(f'  {repo_name}: {count} XML files linked')
-            total += count
+            if not to_compress:
+                existing = sum(1 for r, d, f in os.walk(repo_xml_dir) for fn in f if fn.endswith('.xml.gz'))
+                print(f'  {repo_name}: {existing} XML files already compressed')
+                total += existing
+                continue
 
-        print(f'  Total: {total} XML files in {xml_dir}')
+            print(f'  {repo_name}: compressing {len(to_compress)} XML files...')
+            for src, dst in get_tqdm(to_compress, desc=f'  [{repo_name}] Gzipping'):
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                with open(src, 'rb') as f_in:
+                    with _gzip.open(dst, 'wb', compresslevel=6) as f_out:
+                        shutil.copyfileobj(f_in, f_out)
+            total += len(to_compress)
+
+        print(f'  Total: {total} XML.gz files in {xml_dir}')
 
     def _build_metadata(self):
         """Build metadata.csv by parsing XML headers."""
@@ -190,7 +221,9 @@ def _parse_earlyprint_meta(fnfn):
     """Parse metadata from an EarlyPrint TEI XML file."""
     try:
         import bs4
-        with open(fnfn, encoding='utf-8', errors='ignore') as f:
+        import gzip as _gzip
+        opener = _gzip.open if fnfn.endswith('.gz') else open
+        with opener(fnfn, 'rt', encoding='utf-8', errors='ignore') as f:
             # Read only the header to save time
             header_txt = ''
             for line in f:
@@ -202,7 +235,13 @@ def _parse_earlyprint_meta(fnfn):
         meta = {}
 
         # ID from filename
-        meta['id'] = os.path.splitext(os.path.basename(fnfn))[0]
+        basename = os.path.basename(fnfn)
+        # Strip .xml.gz or .xml
+        if basename.endswith('.xml.gz'):
+            basename = basename[:-7]
+        elif basename.endswith('.xml'):
+            basename = basename[:-4]
+        meta['id'] = basename
 
         # ── IDs from <idno> tags ──
         for idno in dom.find_all('idno'):
