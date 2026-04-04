@@ -181,7 +181,7 @@ class EarlyPrint(TCP):
 
         for root, dirs, files in os.walk(xml_dir):
             for fn in files:
-                if fn.endswith('.xml'):
+                if fn.endswith('.xml') or fn.endswith('.xml.gz'):
                     objs.append(os.path.join(root, fn))
 
         print(f'  Parsing {len(objs)} XML files...')
