@@ -187,20 +187,133 @@ class EarlyPrint(TCP):
 
 
 def _parse_earlyprint_meta(fnfn):
-    """Parse metadata from an EarlyPrint XML file."""
+    """Parse metadata from an EarlyPrint TEI XML file."""
     try:
+        import bs4
         with open(fnfn, encoding='utf-8', errors='ignore') as f:
-            txt = f.read()
+            # Read only the header to save time
+            header_txt = ''
+            for line in f:
+                header_txt += line
+                if '</teiHeader>' in line or '</teiheader>' in line:
+                    break
 
-        meta = extract_metadata(txt)
-        # ID from filename (strip .xml)
+        dom = bs4.BeautifulSoup(header_txt, 'lxml')
+        meta = {}
+
+        # ID from filename
         meta['id'] = os.path.splitext(os.path.basename(fnfn))[0]
-        # Track which repo it came from
+
+        # ── IDs from <idno> tags ──
+        for idno in dom.find_all('idno'):
+            id_type = (idno.get('type') or '').strip()
+            id_val = idno.get_text(strip=True)
+            if id_type and id_val:
+                key = 'id_' + id_type.lower().replace(' ', '_').replace('-', '_')
+                meta[key] = id_val
+
+        # Normalize ESTC ID: "ESTC S112788" → "S112788"
+        estc_raw = meta.get('id_stc', '')
+        if estc_raw.startswith('ESTC '):
+            meta['id_estc'] = estc_raw[5:].strip()
+            meta['id_stc'] = estc_raw  # keep original too
+        elif estc_raw.startswith('STC '):
+            meta['id_stc_wing'] = estc_raw
+
+        # ── Title from <titleStmt> (first title only) ──
+        title_stmt = dom.find('titlestmt')
+        if title_stmt:
+            title_tag = title_stmt.find('title')
+            if title_tag:
+                meta['title'] = title_tag.get_text(strip=True)
+
+        # ── Author from <biblFull> <titleStmt> <author> ──
+        biblfull = dom.find('biblfull')
+        if biblfull:
+            author_tag = biblfull.find('author')
+            if author_tag:
+                meta['author'] = author_tag.get_text(strip=True)
+            # Extent
+            extent_tag = biblfull.find('extent')
+            if extent_tag:
+                meta['extent'] = extent_tag.get_text(strip=True)
+            # Publisher info from biblFull publicationStmt
+            pub_stmt = biblfull.find('publicationstmt')
+            if pub_stmt:
+                pub = pub_stmt.find('publisher')
+                if pub:
+                    meta['publisher'] = pub.get_text(strip=True)
+                place = pub_stmt.find('pubplace')
+                if place:
+                    meta['pubplace'] = place.get_text(strip=True)
+                date = pub_stmt.find('date')
+                if date:
+                    meta['date'] = date.get_text(strip=True)
+            # Notes
+            notes = biblfull.find('notesstmt')
+            if notes:
+                note_texts = [n.get_text(strip=True) for n in notes.find_all('note')]
+                meta['notes'] = ' | '.join(note_texts)
+
+        # ── Language ──
+        lang_tag = dom.find('language')
+        if lang_tag:
+            meta['language'] = lang_tag.get('ident', '') or lang_tag.get_text(strip=True)
+
+        # ── Subject keywords ──
+        keywords = dom.find('keywords')
+        if keywords:
+            terms = [t.get_text(strip=True) for t in keywords.find_all('term')]
+            meta['subject'] = ' | '.join(terms)
+
+        # ── EarlyPrint epHeader (structured metadata) ──
+        ep_header = dom.find('ep:epheader') or dom.find('epheader')
+        if ep_header:
+            ep_fields = {
+                'ep:corpus': 'ep_corpus',
+                'ep:title': 'ep_title',
+                'ep:author': 'ep_author',
+                'ep:publicationyear': 'year',
+                'ep:creationyear': 'year_creation',
+                'ep:pagecount': 'num_pages',
+                'ep:wordcount': 'num_words',
+                'ep:defectivetokencount': 'ep_defective_tokens',
+                'ep:finalgrade': 'ep_quality_grade',
+                'ep:defectrate': 'ep_defect_rate',
+            }
+            for tag_name, meta_key in ep_fields.items():
+                # Try namespaced and non-namespaced
+                tag = ep_header.find(tag_name) or ep_header.find(tag_name.split(':')[-1])
+                if tag:
+                    val = tag.get_text(strip=True)
+                    if val and val != '[no entry]':
+                        meta[meta_key] = val
+
+        # ── Parse year to int ──
+        year_str = meta.get('year', meta.get('date', ''))
+        if year_str:
+            digits = ''.join(c for c in str(year_str) if c.isdigit())[:4]
+            if digits:
+                try:
+                    meta['year'] = int(digits)
+                except ValueError:
+                    pass
+
+        # ── Numeric fields ──
+        for key in ('num_pages', 'num_words', 'ep_defective_tokens'):
+            if key in meta:
+                try:
+                    meta[key] = int(meta[key])
+                except (ValueError, TypeError):
+                    pass
+
+        # ── Track source repo ──
         parts = fnfn.split(os.sep)
         for repo_name in EARLYPRINT_REPOS:
             if repo_name in parts:
                 meta['ep_repo'] = repo_name
                 break
+
         return meta
     except Exception as e:
         return None
