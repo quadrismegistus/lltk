@@ -150,6 +150,113 @@ class CuratedCorpus(SyntheticCorpus):
         from lltk.web.annotate import run_annotate
         run_annotate(self.id, port=port)
 
+    def propagate_from(self, source_corpus_id, columns=None, dry_run=False):
+        """Propagate metadata from a source corpus via match groups into annotations.
+
+        Finds texts in this corpus's SOURCES that share a match group with a
+        source_corpus_id text, and writes annotations for the specified columns.
+        Skips texts that already have a direct annotation for those columns.
+
+        Args:
+            source_corpus_id: corpus to propagate from (e.g. 'fiction_biblio')
+            columns: list of columns to propagate (default: ['genre'])
+            dry_run: if True, print what would be written without saving
+        Returns:
+            dict of {_id: annotation_dict} that were written (or would be)
+        """
+        import lltk
+        if columns is None:
+            columns = ['genre']
+
+        annotations = self._load_annotations()
+
+        # Get all source corpus _ids and their metadata
+        source_texts = lltk.db.query(f"""
+            SELECT _id, {', '.join(columns)}
+            FROM texts WHERE corpus = '{source_corpus_id}'
+        """)
+        if not len(source_texts):
+            print(f'No texts found for corpus {source_corpus_id}')
+            return {}
+
+        # Get match groups for source texts
+        source_ids = set(source_texts['_id'])
+        mg = lltk.db.match_conn.execute(
+            "SELECT _id, group_id FROM match_db.match_groups"
+        ).fetchdf()
+        if not len(mg):
+            print('No match groups found')
+            return {}
+
+        id_to_group = dict(zip(mg['_id'], mg['group_id']))
+        group_to_ids = {}
+        for _id, gid in zip(mg['_id'], mg['group_id']):
+            group_to_ids.setdefault(gid, []).append(_id)
+
+        # Build source values per group (track which source _id provided them)
+        source_vals = {}
+        for _, row in source_texts.iterrows():
+            gid = id_to_group.get(row['_id'])
+            if gid is not None:
+                vals = {col: row[col] for col in columns if pd.notna(row[col])}
+                if vals:
+                    source_vals[gid] = (row['_id'], vals)
+
+        # Get valid target corpora from SOURCES
+        target_corpora = set(self.SOURCES.keys()) if self.SOURCES else set()
+
+        # Find targets to annotate
+        written = {}
+        for gid, (source_id, vals) in source_vals.items():
+            for _id in group_to_ids.get(gid, []):
+                if _id in source_ids:
+                    continue
+                # Check target is in our SOURCES corpora
+                corpus_id = _id.lstrip('_').split('/')[0]
+                if target_corpora and corpus_id not in target_corpora:
+                    continue
+                # Skip columns already in direct annotations; always add genre_source
+                existing = annotations.get(_id, {})
+                new_vals = {col: v for col, v in vals.items() if col not in existing}
+                # Add provenance even if genre already annotated
+                if new_vals or 'genre_source' not in existing:
+                    new_vals['genre_source'] = source_id
+                if not new_vals:
+                    continue
+                written[_id] = new_vals
+
+        if dry_run:
+            print(f'Would write {len(written)} annotations:')
+            from collections import Counter
+            corpora = Counter(_id.lstrip('_').split('/')[0] for _id in written)
+            for c, n in corpora.most_common():
+                print(f'  {c}: {n}')
+            return written
+
+        # Write to annotations
+        for _id, vals in written.items():
+            if _id not in annotations:
+                annotations[_id] = {}
+            annotations[_id].update(vals)
+
+        if written:
+            self._save_annotations(annotations)
+            print(f'Wrote {len(written)} annotations from {source_corpus_id}')
+            from collections import Counter
+            corpora = Counter(_id.lstrip('_').split('/')[0] for _id in written)
+            for c, n in corpora.most_common():
+                print(f'  {c}: {n}')
+        else:
+            print('No new annotations to write')
+
+        return written
+
+    def _save_annotations(self, data):
+        """Save annotations to JSON file."""
+        os.makedirs(os.path.dirname(self.path_annotations), exist_ok=True)
+        with open(self.path_annotations, 'w') as f:
+            json.dump(data, f, indent=2, default=str)
+
     def load_metadata(self, **kwargs):
         """Load from DB, merge annotation overrides from JSON."""
         df = super().load_metadata(**kwargs)
@@ -181,6 +288,12 @@ class CuratedCorpus(SyntheticCorpus):
                 if val == '__none__':
                     df.loc[mask, col] = None
                 else:
+                    # Cast value to match column dtype (e.g. str '1619' → Int32)
+                    if col in df.columns:
+                        try:
+                            val = df[col].dtype.type(val)
+                        except (TypeError, ValueError):
+                            pass
                     df.loc[mask, col] = val
 
         # Propagate annotations across match groups:
@@ -216,9 +329,9 @@ class CuratedCorpus(SyntheticCorpus):
                                 for col, val in propagated.items():
                                     if col not in df.columns:
                                         df[col] = None
-                                    # Only set if not already set by a direct annotation
-                                    current = df.loc[mask, col].iloc[0] if mask.any() else None
-                                    if pd.isna(current) or current == '' or current is None:
+                                    if val == '__none__':
+                                        df.loc[mask, col] = None
+                                    else:
                                         df.loc[mask, col] = val
             except Exception:
                 pass  # match DB not available, skip propagation
