@@ -728,13 +728,19 @@ class BaseCorpus(TextList):
         if progress:
             ids = get_tqdm(ids, desc=f'[{self.name}] Loading corpus')
 
+        # Pre-convert DataFrame rows to dicts for fast lookup
+        records = df.to_dict('index')
+
         for id in ids:
             id = to_corpus_and_id(id)[1]
-            # Construct bare text shells — metadata looked up lazily from corpus DataFrame
             if id in self._textd and self._textd[id] is not None:
                 t = self._textd[id]
             else:
-                t = self.TEXT_CLASS(id=id, _corpus=self, _remote=remote)
+                # Pass row metadata directly — avoids lazy hydration overhead
+                row_meta = records.get(id, {})
+                row_meta = {k: v for k, v in row_meta.items() if pd.notna(v) and str(v) != 'nan'}
+                t = self.TEXT_CLASS(id=id, _corpus=self, _remote=remote, **row_meta)
+                t._meta_hydrated = True  # skip DB lookup — we already have the data
                 self._textd[id] = t
             yield t
 
