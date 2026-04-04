@@ -166,6 +166,16 @@ url_raw = https://www.dropbox.com/s/aubdaixvc59d8o9/ecco_tcp_raw.zip?dl=1
 public = raw,metadata,freqs,txt,xml
 license_type = Free
 
+[EarlyPrint]
+id = earlyprint
+name = EarlyPrint
+desc = EarlyPrint Project: linguistically tagged TCP texts (EEBO+ECCO+Evans)
+link = https://earlyprint.org
+path_python = earlyprint/earlyprint.py
+class_name = EarlyPrint
+public = xml,metadata
+license_type = Free
+
 [EEBO_TCP]
 id = eebo_tcp
 name = EEBO_TCP
@@ -569,6 +579,27 @@ name = ArcPeriodical
 desc = Synthetic corpus: periodical texts across LLTK, deduplicated
 path_python = arc_corpora/arc_corpora.py
 class_name = ArcPeriodical
+
+[ArcEssays]
+id = arc_essays
+name = ArcEssays
+desc = Synthetic corpus: essays across LLTK, deduplicated
+path_python = arc_corpora/arc_corpora.py
+class_name = ArcEssays
+
+[ArcSermons]
+id = arc_sermons
+name = ArcSermons
+desc = Synthetic corpus: sermons across LLTK, deduplicated
+path_python = arc_corpora/arc_corpora.py
+class_name = ArcSermons
+
+[ArcBiography]
+id = arc_biography
+name = ArcBiography
+desc = Synthetic corpus: biographies across LLTK, deduplicated
+path_python = arc_corpora/arc_corpora.py
+class_name = ArcBiography
 
 [TestFixture]
 id = test_fixture
