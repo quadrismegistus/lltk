@@ -219,9 +219,25 @@ class EarlyPrint(TCP):
         print(f'  Saved {len(df)} records to {self.path_metadata}')
 
     def load_metadata(self, *x, **y):
+        from lltk.corpus.eebo_tcp.eebo_tcp import _normalize_estc_id
         meta = super().load_metadata(*x, **y)
         if not len(meta):
             return meta
+
+        # Normalize ESTC IDs for linking (zero-pad)
+        if 'id_estc' in meta.columns:
+            meta['id_estc'] = meta['id_estc'].apply(_normalize_estc_id)
+
+        # Merge ESTC metadata for genre etc.
+        meta = self.merge_linked_metadata(meta)
+
+        # Inherit genre from ESTC
+        if 'estc_genre' in meta.columns:
+            meta['genre'] = meta['estc_genre']
+        if 'estc_genre_raw' in meta.columns:
+            meta['genre_raw'] = meta['estc_genre_raw']
+        if 'estc_is_translated' in meta.columns:
+            meta['is_translated'] = meta['estc_is_translated']
 
         # Determine source collection from TCP ID prefix
         if meta.index.name == 'id' or 'id' in meta.columns:
@@ -229,9 +245,6 @@ class EarlyPrint(TCP):
             meta['tcp_source'] = ids.map(
                 lambda x: TCP_PREFIX_TO_SOURCE.get(str(x)[0], 'unknown')
             )
-
-        # Genre from medium detection
-        # (TCP texts use estimate_genre based on tag counts, already in parent)
 
         return meta
 
