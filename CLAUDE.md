@@ -340,12 +340,72 @@ Tests use the `test_fixture` corpus (3 texts: Blake, Austen, Shelley) checked in
 - Text metadata DB: `~/lltk_data/data/metadb.duckdb`
 - Match/dedup DB: `~/lltk_data/data/metadb_matches.duckdb`
 
+## Performance
+
+- **Parquet caching**: `BaseCorpus.load_metadata()` caches CSV as `.parquet` next to the CSV. 5-10x faster reads. Auto-regenerated if CSV is newer.
+- **Enriched parquet**: ESTC, ECCO, EEBO_TCP, ECCO_TCP cache full enrichment (genre classification, linked metadata) as `metadata_enriched.parquet`. Skips all enrichment on subsequent loads. `load_metadata(force=True)` bypasses.
+- **Pre-populated text metadata**: `iter_init()` passes DataFrame row directly to each text constructor, sets `_meta_hydrated=True`. No per-text DuckDB lookups when iterating via `C.texts()`.
+- **pmap**: Built-in parallel map using `concurrent.futures` (replaced yapmap). ThreadPoolExecutor for I/O-bound, ProcessPoolExecutor for CPU-bound. `DEFAULT_NUM_PROC = cpu_count - 2`.
+
+## Annotation web app
+
+```bash
+lltk annotate arc_fiction          # launch on http://0.0.0.0:8989
+lltk annotate arc_fiction --port 9000
+```
+
+FastAPI app for browsing and annotating CuratedCorpus metadata:
+- **Table view**: paginated, filterable (corpus, genre, year, translated, search), deduped
+- **Detail panel**: full metadata, text preview (~10K words), match group with links
+- **Annotation form**: genre (dropdown from GENRE_VOCAB + clear option), genre_raw (autocomplete datalist), is_translated, exclude, notes, dynamic custom fields
+- **Bulk actions**: select multiple → exclude or set genre
+- **Manual duplicate linking**: search + link button in match group panel
+- **Auto-reload**: code changes auto-restart server
+- **Annotations**: saved to `~/lltk_data/corpora/{corpus_id}/annotations.json`, keyed by `_id`
+- **Propagation**: annotations propagate across match groups (annotate eebo_tcp → earlyprint version inherits)
+
+## CuratedCorpus
+
+Extends SyntheticCorpus with annotations.json support:
+
+```python
+class ArcFiction(CuratedCorpus):
+    SOURCES = {'chadwyck': {}, 'earlyprint': {'genre': 'Fiction'}, ...}
+    DEDUP = True
+    DEDUP_BY = 'oldest'
+```
+
+- `annotations.json`: overrides DB values for individual texts. Keyed by `_id`.
+- `exclude` field: any truthy value removes text from corpus
+- `__none__` sentinel: explicitly clears a field (vs no-override)
+- `annotate()`: launches web app
+- Annotations propagate across match groups via `match_db.match_groups`
+
+## EarlyPrint corpus
+
+Combined EEBO/ECCO/Evans TCP with linguistic tagging from [EarlyPrint Project](https://earlyprint.org). ~66K texts.
+
+```bash
+lltk compile earlyprint                    # all repos
+lltk compile earlyprint --repos eccotcp    # one at a time
+```
+
+- Shallow git clones + gzip-compressed XML copies (~10x smaller)
+- Rich TEI header parser: title, author, year, IDs, quality grades, word counts
+- Medium detection from body tag counts (Verse/Drama/Prose)
+- `LINKS` to ESTC for genre. `MATCH_LINKS` to eebo_tcp/ecco_tcp/evans_tcp for dedup.
+- `update()`: git pull + re-gzip + rebuild metadata
+- See `lltk/corpus/earlyprint/README.md` for full field reference
+
 ## Development notes
 
 - `__getattr__` on BaseCorpus handles `path_*` attributes; raises `AttributeError` for everything else
 - `BaseText.get(key)` does fuzzy metadata lookup (`ish=True`): searches for keys starting with `key`. Calls `_hydrate_meta()` first.
-- `_corpus_meta_row()` tries DB lookup, then checks cached `_metadfd` before triggering expensive `load_metadata()` (avoids re-running ESTC genre classification on 482K rows)
-- `iter_init()` constructs bare `TEXT_CLASS` shells — metadata hydrated lazily via `_hydrate_meta()`
+- `metadata_initial()` calls `_hydrate_meta()` so `t.meta` works on bare text shells
+- `_corpus_meta_row()` tries DB lookup, then checks cached `_metadfd` before triggering expensive `load_metadata()`
+- `iter_init()` pre-populates text._meta from DataFrame and sets `_meta_hydrated=True`
 - `iter_texts()` uses objects from `_textd` directly (no `Text()` factory wrapping)
-- `load_metadata()` cached via `_metadfd` with key `('load_metadata', clean)`. Subclass overrides also cached.
-- `CORPUS_SOURCE_RANKS` in `metadb.py` defines preference order for dedup: chadwyck(1) > canon_fiction(2) > chicago(4) > eebo_tcp(6) > estc(7) > ecco(8) > hathi_englit(9) > internet_archive(12)
+- `get_idx()` preserves spaces, `+`, `$` in IDs (no longer forces snake_case)
+- `CORPUS_SOURCE_RANKS` in `metadb.py` defines preference order for dedup
+- `MATCH_LINKS`: ID-based matching without metadata merge (separate from `LINKS`)
+- `is_translated`: ESTC detection via title/notes/subject, inherited by linked corpora, core DB column
