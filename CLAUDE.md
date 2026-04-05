@@ -83,6 +83,7 @@ The split means matches can be deleted/rebuilt independently without touching th
 | `genre_raw` | TEXT | raw genre value from corpus metadata |
 | `title_norm` | TEXT | normalized title for matching (indexed) |
 | `author_norm` | TEXT | normalized author last name (indexed) |
+| `path_freqs` | TEXT | freqs file path relative to PATH_CORPUS (NULL if no freqs) |
 | `meta` | TEXT (JSON) | all other corpus-specific fields |
 
 **`corpus_info` table** (in `metadb.duckdb`): `corpus TEXT PK, ingested_at DOUBLE, n_texts INTEGER`
@@ -97,7 +98,7 @@ The split means matches can be deleted/rebuilt independently without touching th
 
 Computed at ingest time, stored as indexed columns for fast matching:
 
-**`normalize_title(title)`**: lowercase, strip subtitle after first `:;.([,!?`, collapse whitespace. E.g. `"Incognita: or, Love and duty reconcil'd. A novel."` → `"incognita"`. Also strips title-end phrases ("a novel", "by the author", "edited by", etc.).
+**`normalize_title(title)`**: modernize early modern spelling (MorphAdorner, 358K entries: u/v, vv/w, i/j, terminal -e, etc.), lowercase, strip subtitle after first `:;.([,!?`, collapse whitespace. E.g. `"Loues load-starre"` → `"loves loadstar"`, `"Incognita: or, Love and duty reconcil'd. A novel."` → `"incognita"`. Also strips title-end phrases ("a novel", "by the author", "edited by", etc.).
 
 **`normalize_author(author)`**: lowercase, take text before first comma. E.g. `"Congreve, William, 1670-1729."` → `"congreve"`.
 
@@ -115,15 +116,28 @@ Every corpus's `load_metadata()` should return a DataFrame with at least: `id` (
 
 ### Cross-corpus matching and dedup
 
-Matching finds duplicate/reprint texts both within and across corpora using `title_norm` + `author_norm`.
+Matching finds duplicate/reprint texts both within and across corpora via multiple tiers:
 
-**Algorithm**: Chain linking via SQL `LEAD()` window function. For N texts with the same title+author, stores N-1 edges (a chain) instead of N*(N-1)/2 (all pairs). Connected components via NetworkX produce identical groups with 94% fewer stored pairs.
+| Tier | match_type | Constraint | Notes |
+|------|-----------|-----------|-------|
+| 0 | `id_link` | Shared IDs from LINKS/MATCH_LINKS | SQL, instant |
+| 1a | `exact_norm` | title_norm + author_norm | SQL LEAD() chain linking |
+| 1b | `exact_norm_year` | title_norm + year (authorless only) | SQL LEAD(), min title 11 chars |
+| 2a | `containment` | short title `in` long title, same author | Python, min_sim=0.3, min 8 chars |
+| 2b | `containment_year` | short title `in` long title, same year (authorless) | Python, min_sim=0.3, min 15 chars |
+| 3 | `fuzzy_title` | Jaro-Winkler > 0.85, same author (opt-in `--fuzzy`) | Python, slow |
 
-**Match groups**: Each text in a match group gets a `rank` based on `CORPUS_SOURCE_RANKS` (chadwyck=1, canon_fiction=2, ... hathi_englit=9, internet_archive=12). Rank 0 = preferred representative.
+**Chain linking**: SQL `LEAD()` window function. For N texts with the same title+author, stores N-1 edges (a chain) instead of N*(N-1)/2 (all pairs). Connected components via NetworkX produce identical groups.
+
+**Containment**: `min_sim` = `len(short) / len(long)` — filters generic fragments like "the life" matching every biography. 0.3 threshold keeps good matches like "pompey the little" / "the history of pompey the little" (sim=0.53).
+
+**Authorless matching**: 26% of fiction_biblio texts have no author. Year substitutes for author constraint in both exact (tier 1b) and containment (tier 2b) tiers, with stricter min title lengths.
+
+**Match groups**: Each text in a match group gets a `rank` based on `CORPUS_SOURCE_RANKS` (chadwyck=1, earlyprint=2, eebo_tcp/ecco_tcp=3, ... hathi_englit=5, internet_archive=7). Rank 0 = preferred representative.
 
 **Dedup modes**: `dedup_by='rank'` picks preferred corpus source. `dedup_by='oldest'` picks earliest year, breaking ties by rank.
 
-**Scale**: ~2M texts across 50 corpora → 489K match pairs, 170K groups, runs in ~5 seconds.
+**Scale**: ~2.2M texts across 52 corpora → 1.75M match pairs, 1.14M texts in 300K groups. Exact tiers run in seconds; containment ~5 min.
 
 ### CLI
 
@@ -131,8 +145,8 @@ Matching finds duplicate/reprint texts both within and across corpora using `tit
 lltk db-rebuild                          # drop all + rebuild all corpora (~4 min)
 lltk db-rebuild estc ecco                # re-ingest specific corpora (rest untouched)
 lltk db-info                             # genre × corpus crosstab with totals
-lltk db-match                            # run exact title+author matching (~5 sec)
-lltk db-match --fuzzy                    # also run fuzzy matching (~15 sec)
+lltk db-match                            # exact + containment matching (~5 min)
+lltk db-match --fuzzy                    # also run fuzzy matching (adds ~15 sec)
 lltk db-matches "Incognita"              # search matches by title
 lltk db-match-stats                      # show matching statistics
 ```
@@ -274,19 +288,28 @@ The abstraction project can:
 
 Genre assignment happens in each corpus's `load_metadata()`. The approach varies by corpus type:
 
-### ESTC genre classification (`estc.py`)
+### ESTC genre classification (`parse_estc_genre.py`)
 
-`classify_genres(form, subject_topic, title, title_sub)` classifies ESTC records using three tiers:
-1. **form** field (MARC 655_a, most reliable — cataloger-assigned)
-2. **subject_topic** field (MARC 650_a, cataloger-assigned but noisier)
+`classify_genres(form_terms, subject_terms, title, title_sub)` classifies ESTC records using three tiers:
+1. **form_terms** (MARC 655$a, most reliable — cataloger-assigned)
+2. **subject_terms** (MARC 650$a, cataloger-assigned but noisier)
 3. **title keywords** (last resort fallback, only fires if tiers 1+2 found nothing)
 
-Returns a set of fine-grained genre labels from `GENRE_RULES` (40+ genres). Mapped to broad `GENRE_VOCAB` via `_genres_to_harmonized()`.
+Accepts `list[str]` or pipe-joined strings (backward compat). Returns `{'genres': set, 'source': str}`. Mapped to broad `GENRE_VOCAB` via `_genres_to_harmonized()`.
 
 Key design decisions:
 - `history` removed from title keywords — too many novels use "History of..."
 - Satire maps to `None` — cross-cutting mode, not a genre. When co-occurring with Poetry/Drama/Fiction, those win.
 - `FICTION_GENRES` = {Fiction, Novel, Romance, Tale, Fable, Picaresque, Epistolary fiction, Imaginary voyage}
+
+### ESTC translation detection (`parse_estc_genre.py`)
+
+`detect_translation(rec)` uses three tiers on a parsed MARC bib record:
+1. **MARC structural signals** (strongest): 700$e relator = translator, 240$l uniform title language subfield
+2. **Title/subtitle/notes keyword matching**: "translated", "englished", "done into english", etc.
+3. **Subject topic foreign language indicators**: "french", "latin", etc. in 650$a
+
+~37% more translations detected vs old title-only approach (extrapolates to ~9,500 additional catches across 481K records).
 
 ### Linked corpora (ECCO, EEBO_TCP, ECCO_TCP)
 
@@ -343,7 +366,7 @@ Tests use the `test_fixture` corpus (3 texts: Blake, Austen, Shelley) checked in
 ## Performance
 
 - **Parquet caching**: `BaseCorpus.load_metadata()` caches CSV as `.parquet` next to the CSV. 5-10x faster reads. Auto-regenerated if CSV is newer.
-- **Enriched parquet**: ESTC, ECCO, EEBO_TCP, ECCO_TCP cache full enrichment (genre classification, linked metadata) as `metadata_enriched.parquet`. Skips all enrichment on subsequent loads. `load_metadata(force=True)` bypasses.
+- **Enriched parquet**: ECCO, EEBO_TCP, ECCO_TCP cache full enrichment (linked metadata) as `metadata_enriched.parquet`. Skips all enrichment on subsequent loads. `load_metadata(force=True)` bypasses. ESTC no longer needs this — all enrichment done in `compile()`.
 - **Pre-populated text metadata**: `iter_init()` passes DataFrame row directly to each text constructor, sets `_meta_hydrated=True`. No per-text DuckDB lookups when iterating via `C.texts()`.
 - **pmap**: Built-in parallel map using `concurrent.futures` (replaced yapmap). ThreadPoolExecutor for I/O-bound, ProcessPoolExecutor for CPU-bound. `DEFAULT_NUM_PROC = cpu_count - 2`.
 
@@ -361,8 +384,8 @@ FastAPI app for browsing and annotating CuratedCorpus metadata:
 - **Bulk actions**: select multiple → exclude or set genre
 - **Manual duplicate linking**: search + link button in match group panel
 - **Auto-reload**: code changes auto-restart server
-- **Annotations**: saved to `~/lltk_data/corpora/{corpus_id}/annotations.json`, keyed by `_id`
-- **Propagation**: annotations propagate across match groups (annotate eebo_tcp → earlyprint version inherits)
+- **Annotations**: saved to `~/lltk_data/corpora/{corpus_id}/annotations.json` as a list of dicts with `_id` and `genre_source`
+- **Propagation**: annotations propagate across match groups at read time in `load_metadata()` (annotate eebo_tcp → earlyprint version inherits)
 
 ## CuratedCorpus
 
@@ -375,11 +398,137 @@ class ArcFiction(CuratedCorpus):
     DEDUP_BY = 'oldest'
 ```
 
-- `annotations.json`: overrides DB values for individual texts. Keyed by `_id`.
+- `annotations.json`: list of dicts, each with `_id`, `genre_source`, and annotation columns:
+  ```json
+  [
+    {"_id": "_eebo_tcp/A69320", "genre_source": "human", "exclude": true},
+    {"_id": "_eebo_tcp/A07095", "genre_source": "fiction_biblio", "genre": "Fiction"},
+    {"_id": "_eebo_tcp/A07095", "genre_source": "llm:gemini-flash", "genre": "Fiction", "genre_raw": "Novel"}
+  ]
+  ```
+- Multiple entries per `_id` from different sources. Legacy dict format auto-migrated on load.
+- `SOURCE_HIERARCHY = ['human']` — flattening picks highest-priority source per column
 - `exclude` field: any truthy value removes text from corpus
 - `__none__` sentinel: explicitly clears a field (vs no-override)
 - `annotate()`: launches web app
-- Annotations propagate across match groups via `match_db.match_groups`
+- Annotations propagate across match groups at read time in `load_metadata()`
+- **Whitelist**: any `_id` in annotations.json (not excluded) is included in the corpus even if it doesn't match SOURCES genre filters. This lets bibliography-corrected texts enter the corpus.
+
+### propagate_from()
+
+Add annotation entries from a corpus, DataFrame, or list of dicts:
+
+```python
+# From a corpus (queries DB)
+C.propagate_from('fiction_biblio', columns=['genre'])
+
+# From LLM results (list of dicts)
+C.propagate_from(records)  # records have _id, genre_source, genre, genre_raw, etc.
+
+# From a DataFrame
+C.propagate_from(df, columns=['genre', 'genre_raw'])
+
+# Preview
+C.propagate_from(records, dry_run=True)
+```
+
+- Accepts str (corpus ID), DataFrame, or list[dict] as source
+- Re-running is safe: old entries from same source are replaced
+- Match group propagation happens at read time in `load_metadata()`, not at write time
+- `genre_source` from source data is respected (not overwritten)
+
+### Multi-source hierarchy
+
+```python
+class ArcFiction(CuratedCorpus):
+    SOURCE_HIERARCHY = ['human', 'fiction_biblio', 'llm:gemini-2.5-pro', 'llm:gemini-2.5-flash']
+```
+
+For each `_id`, each column is set by the highest-priority source that provides it. Lower-priority sources fill gaps. Raw entries preserved in `_load_annotations_raw()` for provenance analysis.
+
+## Fiction bibliography corpus (fiction_biblio)
+
+Metadata-only corpus from parsed scholarly bibliographies of early English fiction.
+
+```python
+C = lltk.load('fiction_biblio')
+C.compile()  # merges CSVs from sources/ dir into metadata.csv
+```
+
+- Source CSVs in `~/lltk_data/corpora/fiction_biblio/sources/` (mish.csv, more to come)
+- IDs: `{source}_{00001}` format (e.g. `mish_00001`)
+- All entries get `genre='Fiction'`
+- No text files — metadata only, for genre propagation via match groups
+- Currently: Mish 1600-1700 (1,455 entries)
+- `id_biblio` column has STC/Wing reference numbers (e.g. `"STC 11502"`, `"Wing M600"`)
+
+### fiction_biblio → ESTC linking via Wing/STC refs
+
+ESTC `compile()` extracts `id_stc` and `id_wing` from MARC 510 reference fields. fiction_biblio has the same IDs in `id_biblio`. Direct deterministic linking:
+
+| Method | Matched | Coverage |
+|--------|---------|----------|
+| Title matching (current) | 890 | 61.2% |
+| Ref-based, exact | 1,010 | 69.4% |
+| Ref-based, normalized | 1,037 | 71.3% |
+
+Wing hit rate: 84.6%, STC hit rate: 94.2%. 294 entries have no bibliographic reference. Some mismatches from OCR errors in bibliography PDF parsing — LLM-based page image extraction (Gemini Flash) gets 0/8 ref errors vs OCR's 2/8.
+
+## LLM genre classification
+
+Genre classification task at `~/github/largeliterarymodels/largeliterarymodels/tasks/classify_genre.py`.
+
+```python
+from largeliterarymodels.tasks import GenreTask, format_text_for_classification
+task = GenreTask()
+prompt = format_text_for_classification(title=t.title, author_norm='richardson', year=1740)
+result = task.run(prompt)  # or task.run(prompt, model=GEMINI_FLASH)
+```
+
+- Schema: genre, genre_raw, is_translated, author_first_name, year_estimated, confidence, reasoning
+- **Verification**: sends author last name only + century year range; LLM returns first name + exact year to prove it recognizes the work
+- Few-shot examples cover novels, romances, misclassified non-fiction, allegory, translations
+- Tested with Claude Sonnet and Gemini Flash — both excellent
+- Results cached via hashstash (pay once per text per model)
+
+## ESTC corpus
+
+481K bibliographic records from the English Short Title Catalogue. Metadata-only (no full text) — serves as the genre/metadata authority for linked corpora (ECCO, EEBO_TCP, ECCO_TCP).
+
+### ESTC compile (`estc.py`)
+
+```bash
+lltk compile estc     # ~3 min, writes metadata.csv (42 columns, 481K rows)
+```
+
+Parses raw MARC JSON files from `_json_estc/` (bib) and `_json_estc_holdings/` (holdings) using `estc_json_parser.py`. Produces a wide, pre-enriched `metadata.csv` — all enrichment done at compile time, `load_metadata()` is just a plain CSV read.
+
+### ESTC metadata columns (42)
+
+| Category | Columns |
+|----------|---------|
+| Core | id, id_estc, title, title_sub, author, author_dates, year, year_end, year_type |
+| Language/Place | lang, country, pub_place, publisher, pub_date, pub_nation, pub_region, pub_city |
+| Physical | extent, dimensions, illustrations, format_std, format_modifier, num_pages, num_volumes, has_plates, extent_type |
+| Genre | genre, genre_raw, genre_source, is_fiction, form (655$a), subject_topic (650$a), subject_place, subject_person |
+| Translation | is_translated (enhanced: relator codes + uniform title language + keywords) |
+| References | id_stc, id_wing (from 510), references (all 510 pipe-joined) |
+| Other | added_persons, notes, urls, n_holdings |
+
+### ESTC MARC JSON parser (`estc_json_parser.py`)
+
+- `parse_bib_record(path_or_data)` → structured dict covering all MARC tags (control fields, 1XX authors, 245 title, 260 publication, 300 physical, 5XX notes, 6XX subjects/genres, 7XX added entries, 752 place, 76X-78X linking, 856 URLs)
+- `parse_holdings_record(path_or_data)` → estc_id + list of 852 holdings (institution, shelfmark, provenance)
+- Raw data: `~/lltk_data/corpora/estc/_json_estc/` (4096 shards) and `_json_estc_holdings/` (4096 shards)
+
+### ESTC → linked corpora
+
+ESTC metadata flows to linked corpora via `merge_linked_metadata()`:
+- **ECCO**: `LINKS = {'estc': ('id_estc', 'id_estc')}` → copies estc_genre → genre
+- **EEBO_TCP**: same pattern; own genre renamed to medium; medium overrides (Verse→Poetry, Drama→Drama)
+- **ECCO_TCP**: same pattern as EEBO
+
+All ESTC columns get prefixed as `estc_*` in linked corpora. Linked corpora cherry-pick what they need (genre, is_translated, title).
 
 ## EarlyPrint corpus
 
@@ -390,11 +539,13 @@ lltk compile earlyprint                    # all repos
 lltk compile earlyprint --repos eccotcp    # one at a time
 ```
 
-- Shallow git clones + gzip-compressed XML copies (~10x smaller)
+- Shallow git clones + gzip-compressed XML copies to flat `xml/{ID}.xml.gz` (~10x smaller)
 - Rich TEI header parser: title, author, year, IDs, quality grades, word counts
 - Medium detection from body tag counts (Verse/Drama/Prose)
 - `LINKS` to ESTC for genre. `MATCH_LINKS` to eebo_tcp/ecco_tcp/evans_tcp for dedup.
 - `update()`: git pull + re-gzip + rebuild metadata
+- XML path resolution: `xml/{tcp_id}.xml.gz` (flat directory, TCP ID = text ID)
+- `ep_repo` derived from TCP ID prefix: A/B→eebotcp, K→eccotcp, N→evanstcp
 - See `lltk/corpus/earlyprint/README.md` for full field reference
 
 ## Development notes
@@ -406,6 +557,8 @@ lltk compile earlyprint --repos eccotcp    # one at a time
 - `iter_init()` pre-populates text._meta from DataFrame and sets `_meta_hydrated=True`
 - `iter_texts()` uses objects from `_textd` directly (no `Text()` factory wrapping)
 - `get_idx()` preserves spaces, `+`, `$` in IDs (no longer forces snake_case)
-- `CORPUS_SOURCE_RANKS` in `metadb.py` defines preference order for dedup
+- `CORPUS_SOURCE_RANKS` in `metadb.py` defines preference order for dedup: chadwyck=1, earlyprint=2, eebo_tcp/ecco_tcp/evans_tcp=3, ...
 - `MATCH_LINKS`: ID-based matching without metadata merge (separate from `LINKS`)
-- `is_translated`: ESTC detection via title/notes/subject, inherited by linked corpora, core DB column
+- `is_translated`: ESTC detection via MARC structural signals (relator, uniform title lang) + title/notes/subject keywords; inherited by linked corpora, core DB column
+- `t.match_group_texts`: returns text objects for all match group members (falls back to `[self]`). Enables multi-version scoring.
+- `path_freqs` in DB: relative to PATH_CORPUS, resolved during `ingest()` via `_resolve_freqs_paths()`. Enables bulk DuckDB queries for scoring without text object instantiation.
