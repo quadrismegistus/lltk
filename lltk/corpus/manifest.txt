@@ -482,6 +482,21 @@ public =
 private = 
 license_type = Academic
 
+[FictionBiblio]
+id = fiction_biblio
+name = FictionBiblio
+desc = Compiled fiction bibliographies (Mish, McBurney, Beasley, etc.) 1475-1830
+public =
+private = metadata
+
+[END]
+id = end
+name = END
+desc = Early Novels Database: 2,002 MARCXML records of early English novels 1660-1830 (UPenn)
+link = https://github.com/earlynovels/end-dataset
+public =
+private = metadata
+
 [RavenGarside]
 id = ravengarside
 name = RavenGarside

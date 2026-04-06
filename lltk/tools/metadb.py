@@ -62,6 +62,23 @@ CORE_COLS = ['_id', 'corpus', 'id', 'title', 'author', 'year', 'genre', 'genre_r
 STANDARD_COLS = ['id', 'title', 'author', 'year', 'genre', 'genre_raw']
 TEXT_COLS = ['_id', 'corpus', 'id', 'title', 'author', 'genre', 'genre_raw', 'title_norm', 'author_norm', 'path_freqs']  # cols stored as TEXT (not is_translated — that's BOOLEAN)
 
+# Genre authority corpora — metadata-only corpora whose genre labels propagate
+# to digitized corpora via match groups. Higher priority = trusted more.
+GENRE_AUTHORITY_CORPORA = {
+    'fiction_biblio': 10,
+    'end': 10,
+    'ravengarside': 10,
+}
+
+# Genre source priority (higher = more trusted). Used to resolve conflicts.
+GENRE_SOURCE_PRIORITY = {
+    'bibliography': 50,   # fiction_biblio, end, ravengarside
+    'form': 30,           # ESTC 655$a cataloger-assigned
+    'topic': 20,          # ESTC 650$a cataloger-assigned
+    'title': 5,           # ESTC title keyword heuristic
+    'corpus': 10,         # corpus's own genre (non-ESTC corpora)
+}
+
 # Corpus preference ranks for dedup (lower = preferred)
 CORPUS_SOURCE_RANKS = {
     'chadwyck': 1, 'chadwyck_drama': 1, 'chadwyck_poetry': 1,
@@ -91,13 +108,50 @@ _TITLE_END_PHRASES = sorted([
     'translated by', 'with a preface', 'with an introduction',
 ], key=len, reverse=True)
 
+# Lazy-loaded spelling modernizer for title normalization
+_spelling_modernizer = None
+
+def _get_spelling_modernizer():
+    """Load MorphAdorner spelling modernizer (cached after first call)."""
+    global _spelling_modernizer
+    if _spelling_modernizer is not None:
+        return _spelling_modernizer
+    try:
+        from lltk.imports import PATH_LLTK_HOME, PATH_TO_ENGLISH_SPELLING_MODERNIZER
+        path = PATH_TO_ENGLISH_SPELLING_MODERNIZER
+        if not os.path.isabs(path):
+            path = os.path.join(PATH_LLTK_HOME, path)
+        if os.path.exists(path):
+            import gzip
+            d = {}
+            with gzip.open(path, 'rt') as f:
+                for ln in f:
+                    ln = ln.strip()
+                    if not ln:
+                        continue
+                    try:
+                        old, new = ln.split('\t')
+                        d[old] = new
+                    except ValueError:
+                        continue
+            _spelling_modernizer = d
+        else:
+            _spelling_modernizer = {}
+    except Exception:
+        _spelling_modernizer = {}
+    return _spelling_modernizer
+
 
 def normalize_title(title):
-    """Normalize a title for matching: lowercase, strip subtitle/edition info."""
+    """Normalize a title for matching: modernize spelling, lowercase, strip subtitle/edition info."""
     if not title or not isinstance(title, str) or title == 'nan':
         return None
     t = title.strip().lower()
     t = t.replace('\u2014', '--').replace('\u2013', '-')
+    # Modernize early modern spelling (u/v, vv/w, i/j, etc.)
+    mod = _get_spelling_modernizer()
+    if mod:
+        t = ' '.join(mod.get(w, w) for w in t.split())
     # Strip after first punctuation
     m = _TITLE_NORM_PUNCS.search(t)
     if m:
@@ -269,7 +323,8 @@ class MetaDB:
         """)
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_corpus ON texts(corpus)")
         # Add columns if upgrading from older schema
-        for col, dtype in [('title_norm', 'TEXT'), ('author_norm', 'TEXT'), ('is_translated', 'BOOLEAN'), ('path_freqs', 'TEXT')]:
+        for col, dtype in [('title_norm', 'TEXT'), ('author_norm', 'TEXT'), ('is_translated', 'BOOLEAN'), ('path_freqs', 'TEXT'),
+                           ('genre_enriched_source', 'TEXT'), ('genre_corpus', 'TEXT')]:
             try:
                 self._conn.execute(f"ALTER TABLE texts ADD COLUMN {col} {dtype}")
             except Exception:
@@ -685,7 +740,7 @@ class MetaDB:
 
     # ── Dedup & Matching ─────────────────────────────────────────────
 
-    def match(self, corpora=None, fuzzy=False, progress=True):
+    def match(self, corpora=None, fuzzy=False, containment=True, progress=True):
         """
         Find matching texts — both within and across corpora.
         Single SQL join on author_norm + title_norm. Handles dedup and
@@ -693,6 +748,7 @@ class MetaDB:
 
         Args:
             corpora: list of corpus IDs to include (default: all).
+            containment: if True (default), match when short title is substring of long title.
             fuzzy: if True, also run fuzzy title matching within author blocks (slow).
         """
         from lltk.tools.tools import get_tqdm
@@ -734,7 +790,133 @@ class MetaDB:
               {corpus_filter}
         """)
         count_exact = self.match_conn.execute("SELECT COUNT(*) FROM match_db.matches WHERE match_type = 'exact_norm'").fetchone()[0]
-        print(f'  Exact: {count_exact} pairs')
+        print(f'  Exact (by author): {count_exact} pairs')
+
+        # Exact: same title_norm + year, authorless texts only
+        # Stricter title length (>10) to compensate for weaker constraint
+        print('Exact title + year matching (authorless)...')
+        self.match_conn.execute(f"""
+            INSERT OR IGNORE INTO match_db.matches (_id_a, _id_b, similarity, match_type)
+            SELECT a._id, b._id, 1.0, 'exact_norm_year'
+            FROM (
+                SELECT _id, title_norm, year,
+                       LEAD(_id) OVER (PARTITION BY title_norm, year ORDER BY _id) as next_id
+                FROM texts
+                WHERE title_norm IS NOT NULL
+                  AND author_norm IS NULL
+                  AND year IS NOT NULL
+                  AND length(title_norm) > 10
+            ) a
+            JOIN texts b ON a.next_id = b._id
+            WHERE a.next_id IS NOT NULL
+              {corpus_filter}
+        """)
+        count_exact_year = self.match_conn.execute("SELECT COUNT(*) FROM match_db.matches WHERE match_type = 'exact_norm_year'").fetchone()[0]
+        print(f'  Exact (by year, authorless): {count_exact_year} pairs')
+
+        if containment:
+            print('Containment title matching...')
+            batch = []
+            existing_pairs = set()
+            for row in self.match_conn.execute("SELECT _id_a, _id_b FROM match_db.matches").fetchall():
+                existing_pairs.add((row[0], row[1]))
+
+            def _check_containment(rows, match_type='containment', min_short=8, min_sim=0.3):
+                """Check all cross-corpus pairs in a block for title containment.
+
+                min_sim is the minimum ratio of len(short)/len(long) to accept.
+                Filters out generic short fragments like 'the life' matching long titles.
+                """
+                for i in range(len(rows)):
+                    for j in range(i + 1, len(rows)):
+                        a_id, a_title, a_corp = rows[i][0], rows[i][1], rows[i][2]
+                        b_id, b_title, b_corp = rows[j][0], rows[j][1], rows[j][2]
+                        if a_corp == b_corp:
+                            continue
+                        pair = (a_id, b_id) if a_id < b_id else (b_id, a_id)
+                        if pair in existing_pairs:
+                            continue
+                        short, long = (a_title, b_title) if len(a_title) <= len(b_title) else (b_title, a_title)
+                        if len(short) < min_short:
+                            continue
+                        if short in long:
+                            sim = len(short) / len(long)
+                            if sim < min_sim:
+                                continue
+                            batch.append((*pair, sim, match_type))
+                            existing_pairs.add(pair)
+
+            # (a) Within author blocks
+            authors = self.match_conn.execute(f"""
+                SELECT author_norm, COUNT(*) as n
+                FROM texts
+                WHERE author_norm IS NOT NULL AND title_norm IS NOT NULL
+                  AND length(title_norm) > 3
+                  {corpus_where}
+                GROUP BY author_norm
+                HAVING n > 1 AND n <= 500
+            """).fetchall()
+
+            iterr = authors
+            if progress:
+                iterr = get_tqdm(authors, desc='[MetaDB] Containment by author')
+
+            for author_norm, _ in iterr:
+                rows = self.match_conn.execute(f"""
+                    SELECT _id, title_norm, corpus FROM texts
+                    WHERE author_norm = ? AND title_norm IS NOT NULL
+                      AND length(title_norm) > 3
+                      {corpus_where}
+                """, [author_norm]).fetchall()
+                _check_containment(rows)
+                if len(batch) >= 10000:
+                    self._insert_matches_batch(batch)
+                    batch = []
+
+            if batch:
+                self._insert_matches_batch(batch)
+                batch = []
+
+            count_by_author = self.match_conn.execute(
+                "SELECT COUNT(*) FROM match_db.matches WHERE match_type = 'containment'"
+            ).fetchone()[0]
+            print(f'  By author: {count_by_author} pairs')
+
+            # (b) Authorless texts: match by year + title containment
+            # Stricter: min 15 chars for short title to avoid false positives
+            years = self.match_conn.execute(f"""
+                SELECT year, COUNT(*) as n
+                FROM texts
+                WHERE author_norm IS NULL AND title_norm IS NOT NULL
+                  AND year IS NOT NULL AND length(title_norm) > 5
+                  {corpus_where}
+                GROUP BY year
+                HAVING n > 1 AND n <= 500
+            """).fetchall()
+
+            iterr = years
+            if progress:
+                iterr = get_tqdm(years, desc='[MetaDB] Containment by year (authorless)')
+
+            for year, _ in iterr:
+                rows = self.match_conn.execute(f"""
+                    SELECT _id, title_norm, corpus FROM texts
+                    WHERE author_norm IS NULL AND title_norm IS NOT NULL
+                      AND year = ? AND length(title_norm) > 5
+                      {corpus_where}
+                """, [year]).fetchall()
+                _check_containment(rows, match_type='containment_year', min_short=15)
+                if len(batch) >= 10000:
+                    self._insert_matches_batch(batch)
+                    batch = []
+
+            if batch:
+                self._insert_matches_batch(batch)
+
+            count_by_year = self.match_conn.execute(
+                "SELECT COUNT(*) FROM match_db.matches WHERE match_type = 'containment_year'"
+            ).fetchone()[0]
+            print(f'  By year (authorless): {count_by_year} pairs')
 
         if fuzzy:
             print('Fuzzy title matching within author blocks...')
@@ -937,6 +1119,154 @@ class MetaDB:
             'by_type': by_type,
             'group_sizes': sizes,
         }
+
+    # ── Genre enrichment ─────────────────────────────────────────────
+
+    def enrich_genres(self, progress=True):
+        """
+        Propagate genre labels from authority corpora across match groups.
+
+        For each text in the DB:
+        1. Start with its own genre + genre_source (from corpus load_metadata)
+        2. If any match group member is in a genre authority corpus
+           (fiction_biblio, end, ravengarside), inherit that genre
+        3. Bibliography sources outrank ESTC heuristics
+
+        Updates genre and genre_enriched_source columns on the texts table.
+        The original corpus genre is preserved in genre_corpus.
+        Must be run after db-match (needs match_groups).
+        """
+        from lltk.tools.tools import get_tqdm
+
+        # Ensure columns exist
+        for col, dtype in [('genre_enriched_source', 'TEXT'), ('genre_corpus', 'TEXT')]:
+            try:
+                self.conn.execute(f"ALTER TABLE texts ADD COLUMN {col} {dtype}")
+            except Exception:
+                pass
+
+        # Step 0: Save original corpus genre before we overwrite
+        self.conn.execute("UPDATE texts SET genre_corpus = genre")
+
+        # Step 1: Reset enrichment source
+        self.conn.execute("""
+            UPDATE texts SET
+                genre_enriched_source = CASE
+                    WHEN genre IS NOT NULL THEN 'corpus'
+                    ELSE NULL
+                END
+        """)
+        if log: log('Reset genre_enriched to corpus baseline')
+
+        # Step 1b: For ESTC-linked corpora, carry forward the genre_source from meta JSON
+        # (form/topic/title) so we know which ESTC tier the genre came from
+        self.conn.execute("""
+            UPDATE texts SET
+                genre_enriched_source = json_extract_string(meta, '$.genre_source')
+            WHERE json_extract_string(meta, '$.genre_source') IS NOT NULL
+              AND json_extract_string(meta, '$.genre_source') != ''
+        """)
+        if log: log('Set genre_enriched_source from ESTC genre_source where available')
+
+        # Step 1c: For ESTC-linked corpora that inherited genre, use the estc_genre_source
+        self.conn.execute("""
+            UPDATE texts SET
+                genre_enriched_source = json_extract_string(meta, '$.estc_genre_source')
+            WHERE json_extract_string(meta, '$.estc_genre_source') IS NOT NULL
+              AND json_extract_string(meta, '$.estc_genre_source') != ''
+              AND genre_enriched_source = 'corpus'
+        """)
+        if log: log('Set genre_enriched_source from estc_genre_source for linked corpora')
+
+        # Step 2: Propagate from genre authority corpora via match groups
+        authority_corpora = list(GENRE_AUTHORITY_CORPORA.keys())
+        authority_list = ', '.join(f"'{c}'" for c in authority_corpora)
+
+        # Find all match groups that contain at least one authority corpus text
+        # For each group, pick the authority text's genre (highest-priority authority wins)
+        authority_groups = self.conn.execute(f"""
+            SELECT mg.group_id,
+                   t.genre as authority_genre,
+                   t.genre_raw as authority_genre_raw,
+                   t.corpus as authority_corpus,
+                   t._id as authority_id
+            FROM match_db.match_groups mg
+            JOIN texts t ON mg._id = t._id
+            WHERE t.corpus IN ({authority_list})
+              AND t.genre IS NOT NULL
+        """).fetchdf()
+
+        if not len(authority_groups):
+            if log: log('No authority corpus texts found in match groups')
+            return
+
+        # Deduplicate: one genre per group (highest priority authority wins)
+        authority_groups['priority'] = authority_groups['authority_corpus'].map(GENRE_AUTHORITY_CORPORA)
+        authority_groups = authority_groups.sort_values('priority', ascending=False)
+        group_genre = authority_groups.drop_duplicates('group_id', keep='first')
+
+        if log: log(f'Found {len(group_genre)} match groups with authority corpus members')
+
+        # Step 3: For each group, update all member texts
+        updated = 0
+        iterr = group_genre.iterrows()
+        if progress:
+            iterr = get_tqdm(iterr, total=len(group_genre), desc='Enriching genres')
+        for _, row in iterr:
+            gid = int(row['group_id'])
+            genre = row['authority_genre']
+            genre_raw = row.get('authority_genre_raw') or ''
+            source = f"bibliography:{row['authority_corpus']}"
+
+            # Update texts in this group whose current genre_enriched_source
+            # has lower priority than bibliography
+            n = self.conn.execute("""
+                UPDATE texts SET
+                    genre = ?,
+                    genre_enriched_source = ?
+                WHERE _id IN (
+                    SELECT _id FROM match_db.match_groups WHERE group_id = ?
+                )
+                AND (
+                    genre IS NULL
+                    OR genre != ?
+                    OR genre_enriched_source IN ('corpus', 'title', 'topic')
+                )
+            """, [genre, source, gid, genre]).fetchone()
+            # DuckDB UPDATE doesn't return rowcount easily; count separately
+            updated += 1
+
+        # Step 3b: Also update texts NOT in any match group but IN authority corpora
+        # (authority corpus texts that didn't match anything still get bibliography source)
+        self.conn.execute(f"""
+            UPDATE texts SET
+                genre_enriched_source = 'bibliography:' || corpus
+            WHERE corpus IN ({authority_list})
+              AND genre IS NOT NULL
+        """)
+
+        # Report
+        stats = self.conn.execute("""
+            SELECT genre_enriched_source, COUNT(*) as n
+            FROM texts
+            WHERE genre_enriched_source IS NOT NULL
+            GROUP BY genre_enriched_source
+            ORDER BY n DESC
+        """).fetchdf()
+
+        if log:
+            log(f'Genre enrichment complete:')
+            for _, r in stats.iterrows():
+                log(f'  {r["genre_enriched_source"]}: {r["n"]}')
+
+        # Count texts whose genre changed from original corpus genre
+        changed = self.conn.execute("""
+            SELECT COUNT(*) FROM texts
+            WHERE genre != genre_corpus OR (genre IS NOT NULL AND genre_corpus IS NULL)
+        """).fetchone()[0]
+        if log: log(f'Texts with genre changed by enrichment: {changed}')
+
+        return stats
 
     # ── Query API ──────────────────────────────────────────────────
 

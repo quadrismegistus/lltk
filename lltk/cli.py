@@ -61,6 +61,9 @@ def main():
 	p_db_matches = subparsers.add_parser('db-matches', help='Search for matches by title')
 	p_db_matches.add_argument('query', help='Title search string')
 
+	# db enrich-genres
+	p_db_enrich = subparsers.add_parser('db-enrich-genres', help='Propagate genre from bibliography corpora via match groups')
+
 	# db match-stats
 	p_db_match_stats = subparsers.add_parser('db-match-stats', help='Show matching statistics')
 
@@ -200,6 +203,12 @@ def main():
 			print(df.to_string(index=False))
 		else:
 			print(f'No matches found for "{args.query}"')
+
+	elif args.cmd == 'db-enrich-genres':
+		stats = lltk.db.enrich_genres()
+		if stats is not None and len(stats):
+			print('\nGenre enrichment source distribution:')
+			print(stats.to_string(index=False))
 
 	elif args.cmd == 'db-match-stats':
 		stats = lltk.db.match_stats()

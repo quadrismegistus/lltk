@@ -103,6 +103,11 @@ input[type="checkbox"] { width: 14px; height: 14px; }
       <select id="fGenre" onchange="loadTexts()"><option value="">All</option></select>
     </div>
     <div class="filter-group">
+      <label>Genre (raw)</label>
+      <input type="text" id="fGenreRaw" list="fGenreRawList" placeholder="e.g. Novel" onchange="loadTexts()" onkeyup="if(event.key==='Enter')loadTexts()">
+      <datalist id="fGenreRawList"></datalist>
+    </div>
+    <div class="filter-group">
       <label>Year min</label>
       <input type="number" id="fYearMin" placeholder="e.g. 1600" onchange="loadTexts()">
     </div>
@@ -206,6 +211,9 @@ async function loadGenreRawValues() {
   const resp = await fetch('/api/genre-raw-values');
   const data = await resp.json();
   genreRawValues = data.values || [];
+  // Populate filter datalist
+  const dl = document.getElementById('fGenreRawList');
+  if (dl) dl.innerHTML = genreRawValues.map(v => `<option value="${v}">`).join('');
 }
 
 async function loadStats() {
@@ -227,6 +235,8 @@ async function loadTexts() {
   if (corpus) params.set('corpus_filter', corpus);
   const genre = document.getElementById('fGenre').value;
   if (genre) params.set('genre', genre);
+  const genreRaw = document.getElementById('fGenreRaw').value.trim();
+  if (genreRaw) params.set('genre_raw', genreRaw);
   const ymin = document.getElementById('fYearMin').value;
   if (ymin) params.set('year_min', ymin);
   const ymax = document.getElementById('fYearMax').value;

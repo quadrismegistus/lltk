@@ -207,7 +207,7 @@ class TextECCO(BaseText):
 
 class ECCO(BaseCorpus):
 	TEXT_CLASS=TextECCO
-	LINKS = {'estc': ('ESTCID', 'id_estc')}
+	LINKS = {'estc': ('id_estc', 'id_estc')}
 
 	@property
 	def path_metadata_enriched(self):
@@ -229,6 +229,11 @@ class ECCO(BaseCorpus):
 		meta = super().load_metadata()
 		if not len(meta):
 			return meta
+		# Normalize ESTC IDs: zero-pad to Letter+6 digits
+		if 'ESTCID' in meta.columns:
+			from lltk.corpus.eebo_tcp.eebo_tcp import _normalize_estc_id
+			meta['id_estc_orig'] = meta['ESTCID']
+			meta['id_estc'] = meta['ESTCID'].apply(_normalize_estc_id)
 		meta = self.merge_linked_metadata(meta)
 		# Inherit genre from linked ESTC
 		if 'estc_genre' in meta.columns:

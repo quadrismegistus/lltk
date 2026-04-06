@@ -67,9 +67,9 @@ class EarlyPrint(TCP):
         'estc': ('id_estc', 'id_estc'),
     }
     MATCH_LINKS = {
-        'eebo_tcp': ('id_tcp', 'id'),
+        'eebo_tcp': ('id', 'id'),
         'ecco_tcp': ('id_tcp', 'id_TCP'),
-        'evans_tcp': ('id_tcp', 'id'),
+        'evans_tcp': ('id', 'id'),
     }
 
     @property
@@ -149,7 +149,7 @@ class EarlyPrint(TCP):
         print(f'  {name}: done')
 
     def _gzip_copy_xmls(self, repos=None):
-        """Gzip-copy XMLs from repos to xml/{repo}/{prefix}/{ID}.xml.gz (~10x compression)."""
+        """Gzip-copy XMLs from repos to xml/{ID}.xml.gz (flat directory)."""
         import gzip as _gzip
         import shutil
 
@@ -166,36 +166,31 @@ class EarlyPrint(TCP):
                 print(f'  {repo_name}: no texts/ directory found')
                 continue
 
-            repo_xml_dir = os.path.join(xml_dir, repo_name)
-            os.makedirs(repo_xml_dir, exist_ok=True)
-
-            # Collect files to compress
+            # Collect files to compress — flat destination: xml/{ID}.xml.gz
             to_compress = []
             for root, dirs, files in os.walk(repo_texts):
                 for fn in files:
                     if not fn.endswith('.xml'):
                         continue
                     src = os.path.join(root, fn)
-                    rel = os.path.relpath(src, repo_texts)
-                    dst = os.path.join(repo_xml_dir, rel + '.gz')
+                    dst = os.path.join(xml_dir, fn + '.gz')
                     if not os.path.exists(dst):
                         to_compress.append((src, dst))
 
             if not to_compress:
-                existing = sum(1 for r, d, f in os.walk(repo_xml_dir) for fn in f if fn.endswith('.xml.gz'))
-                print(f'  {repo_name}: {existing} XML files already compressed')
-                total += existing
+                # Count existing files for this repo by checking IDs
+                print(f'  {repo_name}: all XML files already compressed')
                 continue
 
             print(f'  {repo_name}: compressing {len(to_compress)} XML files...')
             for src, dst in get_tqdm(to_compress, desc=f'  [{repo_name}] Gzipping'):
-                os.makedirs(os.path.dirname(dst), exist_ok=True)
                 with open(src, 'rb') as f_in:
                     with _gzip.open(dst, 'wb', compresslevel=6) as f_out:
                         shutil.copyfileobj(f_in, f_out)
             total += len(to_compress)
 
-        print(f'  Total: {total} XML.gz files in {xml_dir}')
+        existing = sum(1 for fn in os.listdir(xml_dir) if fn.endswith('.xml.gz'))
+        print(f'  Total: {existing} XML.gz files in {xml_dir}')
 
     def _build_metadata(self):
         """Build metadata.csv by parsing XML headers."""
@@ -229,8 +224,9 @@ class EarlyPrint(TCP):
         if not len(meta):
             return meta
 
-        # Normalize ESTC IDs for linking (zero-pad)
+        # Normalize ESTC IDs for linking: strip "ESTC " prefix, zero-pad to Letter+6 digits
         if 'id_estc' in meta.columns:
+            meta['id_estc_orig'] = meta['id_estc']
             meta['id_estc'] = meta['id_estc'].apply(_normalize_estc_id)
 
         # Merge ESTC metadata for genre etc.
@@ -399,12 +395,11 @@ def _parse_earlyprint_meta(fnfn):
         else:
             meta['medium'] = 'Prose'
 
-        # ── Track source repo ──
-        parts = fnfn.split(os.sep)
-        for repo_name in EARLYPRINT_REPOS:
-            if repo_name in parts:
-                meta['ep_repo'] = repo_name
-                break
+        # ── Track source repo from TCP ID prefix ──
+        prefix_map = {'A': 'eebotcp', 'B': 'eebotcp', 'K': 'eccotcp', 'N': 'evanstcp'}
+        tcp_id = meta.get('id', '')
+        if tcp_id and tcp_id[0] in prefix_map:
+            meta['ep_repo'] = prefix_map[tcp_id[0]]
 
         return meta
     except Exception as e:

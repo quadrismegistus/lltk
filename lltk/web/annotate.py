@@ -38,18 +38,107 @@ def create_app(corpus_id: str):
         corpus_id, 'annotations.json'
     )
 
-    def _load_annotations():
+    def _load_annotations_raw():
+        """Load raw list of annotation entries from JSON."""
         if os.path.exists(annotations_path):
             with open(annotations_path) as f:
-                return json.load(f)
-        return {}
+                data = json.load(f)
+            if isinstance(data, dict):
+                # Migrate legacy dict-of-dicts format
+                entries = []
+                for _id, vals in data.items():
+                    entry = {'_id': _id}
+                    entry['genre_source'] = vals.pop('genre_source', 'human')
+                    entry.update(vals)
+                    entries.append(entry)
+                return entries
+            return data
+        return []
 
-    def _save_annotations(data):
+    def _flatten_annotations(entries):
+        """Flatten list of entries into {_id: {col: val}} with human priority."""
+        hierarchy = getattr(corpus, 'SOURCE_HIERARCHY', ['human'])
+        def _rank(source):
+            try:
+                return hierarchy.index(source)
+            except ValueError:
+                return len(hierarchy)
+
+        from collections import defaultdict
+        by_id = defaultdict(list)
+        for entry in entries:
+            _id = entry.get('_id')
+            if _id:
+                by_id[_id].append(entry)
+
+        result = {}
+        for _id, id_entries in by_id.items():
+            id_entries.sort(key=lambda e: _rank(e.get('genre_source', 'human')))
+            merged = {}
+            winning_source = None
+            for entry in id_entries:
+                source = entry.get('genre_source', 'human')
+                for col, val in entry.items():
+                    if col in ('_id', 'genre_source'):
+                        continue
+                    if col not in merged:
+                        merged[col] = val
+                        if col == 'genre' and winning_source is None:
+                            winning_source = source
+            if winning_source:
+                merged['genre_source'] = winning_source
+            result[_id] = merged
+        return result
+
+    def _save_annotations(entries):
+        """Save raw annotation entries list to JSON."""
         os.makedirs(os.path.dirname(annotations_path), exist_ok=True)
         with open(annotations_path, 'w') as f:
-            json.dump(data, f, indent=2, default=str)
+            json.dump(entries, f, indent=2, default=str)
 
-    annotations = _load_annotations()
+    annotations_raw = _load_annotations_raw()
+    annotations = _flatten_annotations(annotations_raw)
+
+    # Load match group lookups once at startup (immutable between db-match runs)
+    _mg_id_to_group = {}
+    _mg_group_to_ids = {}
+    try:
+        _mg_df = lltk.db.match_conn.execute(
+            "SELECT _id, group_id FROM match_db.match_groups"
+        ).fetchdf()
+        if len(_mg_df):
+            _mg_id_to_group = dict(zip(_mg_df['_id'], _mg_df['group_id']))
+            for _id, gid in zip(_mg_df['_id'], _mg_df['group_id']):
+                _mg_group_to_ids.setdefault(gid, []).append(_id)
+        del _mg_df
+    except Exception:
+        pass
+
+    def _build_propagation_map(ann):
+        """Build _id → annotations for match group propagation.
+        If any member of a match group is annotated, all other members
+        inherit those annotations (direct annotations take priority)."""
+        prop = {}
+        if not _mg_id_to_group:
+            return prop
+        # Map group_id → annotation (from any annotated member)
+        group_to_ann = {}
+        for _id, overrides in ann.items():
+            gid = _mg_id_to_group.get(_id)
+            if gid is not None:
+                group_to_ann[gid] = overrides
+        # Map group members → the group's annotation
+        for gid, overrides in group_to_ann.items():
+            for _id in _mg_group_to_ids.get(gid, []):
+                if _id not in ann:
+                    prop[_id] = overrides
+        return prop
+
+    propagated = _build_propagation_map(annotations)
+
+    def _get_annotations_for(_id):
+        """Get annotations for a text: direct first, then propagated."""
+        return annotations.get(_id) or propagated.get(_id) or {}
 
     # ── HTML pages ───────────────────────────────────────────────
 
@@ -68,6 +157,7 @@ def create_app(corpus_id: str):
         per_page: int = 100,
         corpus_filter: Optional[str] = None,
         genre: Optional[str] = None,
+        genre_raw: Optional[str] = None,
         year_min: Optional[int] = None,
         year_max: Optional[int] = None,
         is_translated: Optional[bool] = None,
@@ -83,6 +173,7 @@ def create_app(corpus_id: str):
             clauses.append(f"t.corpus = '{corpus_filter}'")
         if genre:
             clauses.append(f"t.genre = '{genre}'")
+        # genre_raw filtered post-annotation-merge (annotations can override DB value)
         if year_min is not None:
             clauses.append(f't.year >= {year_min}')
         if year_max is not None:
@@ -115,7 +206,8 @@ def create_app(corpus_id: str):
         order = f't.{sort_by} {"ASC" if sort_dir == "asc" else "DESC"} NULLS LAST'
 
         # Dedup: keep only best representative per match group
-        dedup_sql = lltk.db._dedup_sql(where, 'rank', texts_table='texts')
+        dedup_by = getattr(corpus, 'DEDUP_BY', 'rank')
+        dedup_sql = lltk.db._dedup_sql(where, dedup_by, texts_table='texts')
         dedup_join = "LEFT JOIN match_db.match_groups mg ON t._id = mg._id"
 
         # Count
@@ -135,24 +227,30 @@ def create_app(corpus_id: str):
         """
         rows = lltk.db.conn.execute(sql).fetchdf()
 
-        # Merge annotations
+        # Merge annotations (direct + propagated from match groups)
         texts = []
         for _, row in rows.iterrows():
             d = row.to_dict()
             _id = d['_id']
-            ann = annotations.get(_id, {})
+            ann = _get_annotations_for(_id)
+            is_direct = _id in annotations
             d['exclude'] = ann.get('exclude', '')
             d['notes'] = ann.get('notes', '')
             d['is_annotated'] = bool(ann)
+            d['is_propagated'] = bool(ann) and not is_direct
             # Apply annotation overrides for display
             for k, v in ann.items():
                 if k in d:
-                    d[k] = v
+                    d[k] = v if v != '__none__' else None
             texts.append(d)
 
         # Filter excluded unless requested
         if not show_excluded:
             texts = [t for t in texts if not t.get('exclude')]
+
+        # Filter by genre_raw (post-merge, since annotations can override DB value)
+        if genre_raw:
+            texts = [t for t in texts if t.get('genre_raw') == genre_raw]
 
         # Filter annotated-only
         if show_annotated is True:
@@ -197,15 +295,35 @@ def create_app(corpus_id: str):
         except Exception:
             pass
 
-        # Merge annotation
-        ann = annotations.get(_id, {})
+        # Merge annotation (direct or propagated)
+        ann = _get_annotations_for(_id)
+        is_direct = _id in annotations
 
         return {
             'metadata': row,
             'annotations': ann,
+            'is_propagated': bool(ann) and not is_direct,
             'txt_preview': txt_preview,
             'match_group': match_group,
         }
+
+    def _upsert_human_entry(_id, ann_vals, save=True):
+        """Insert or replace the 'human' entry for an _id in annotations_raw."""
+        nonlocal annotations_raw, annotations, propagated
+        # Remove existing human entry for this _id
+        annotations_raw = [
+            e for e in annotations_raw
+            if not (e.get('_id') == _id and e.get('genre_source', 'human') == 'human')
+        ]
+        # Add new human entry if non-empty
+        if ann_vals:
+            entry = {'_id': _id, 'genre_source': 'human'}
+            entry.update(ann_vals)
+            annotations_raw.append(entry)
+        if save:
+            _save_annotations(annotations_raw)
+            annotations = _flatten_annotations(annotations_raw)
+            propagated = _build_propagation_map(annotations)
 
     @app.post('/api/text/{_id:path}/annotate')
     async def annotate_text(_id: str, request: Request):
@@ -214,13 +332,7 @@ def create_app(corpus_id: str):
 
         # Remove empty values
         ann = {k: v for k, v in body.items() if v not in (None, '', False)}
-
-        if ann:
-            annotations[_id] = ann
-        elif _id in annotations:
-            del annotations[_id]
-
-        _save_annotations(annotations)
+        _upsert_human_entry(_id, ann)
         return {'ok': True, '_id': _id, 'annotations': annotations.get(_id, {})}
 
     @app.post('/api/texts/bulk-annotate')
@@ -232,15 +344,20 @@ def create_app(corpus_id: str):
         updates = {k: v for k, v in updates.items() if v not in (None,)}
 
         for _id in ids:
-            if _id not in annotations:
-                annotations[_id] = {}
-            annotations[_id].update(updates)
-            # Clean empty
-            annotations[_id] = {k: v for k, v in annotations[_id].items() if v not in (None, '', False)}
-            if not annotations[_id]:
-                del annotations[_id]
+            # Merge with existing human entry
+            existing_human = {}
+            for e in annotations_raw:
+                if e.get('_id') == _id and e.get('genre_source', 'human') == 'human':
+                    existing_human = {k: v for k, v in e.items() if k not in ('_id', 'genre_source')}
+                    break
+            existing_human.update(updates)
+            cleaned = {k: v for k, v in existing_human.items() if v not in (None, '', False)}
+            _upsert_human_entry(_id, cleaned, save=False)
 
-        _save_annotations(annotations)
+        nonlocal annotations, propagated
+        _save_annotations(annotations_raw)
+        annotations = _flatten_annotations(annotations_raw)
+        propagated = _build_propagation_map(annotations)
         return {'ok': True, 'count': len(ids)}
 
     @app.get('/api/stats')

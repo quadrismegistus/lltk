@@ -130,6 +130,10 @@ class CuratedCorpus(SyntheticCorpus):
     PRIORITY_COLS = ['_id', 'corpus', 'title', 'author', 'year', 'genre', 'genre_raw',
                      'is_translated', 'exclude']
 
+    # Source hierarchy for flattening annotations (earlier = higher priority).
+    # Sources not listed here are ranked after all listed sources.
+    SOURCE_HIERARCHY = ['human']
+
     @property
     def path_annotations(self):
         return os.path.join(os.path.expanduser(PATH_CORPUS), self.id, 'annotations.json')
@@ -138,127 +142,191 @@ class CuratedCorpus(SyntheticCorpus):
     def is_curated(self):
         return os.path.exists(self.path_annotations)
 
+    def _load_annotations_raw(self):
+        """Load raw annotations list from JSON file.
+
+        annotations.json is a list of dicts, each with '_id' and 'genre_source':
+            [{"_id": "...", "genre_source": "human", "genre": "Fiction", ...}, ...]
+
+        Legacy format (dict of dicts keyed by _id) is auto-migrated on load.
+        """
+        if not os.path.exists(self.path_annotations):
+            return []
+        with open(self.path_annotations) as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            # Migrate legacy format: dict-of-dicts → list-of-dicts
+            entries = []
+            for _id, vals in data.items():
+                entry = {'_id': _id}
+                entry['genre_source'] = vals.pop('genre_source', 'human')
+                entry.update(vals)
+                entries.append(entry)
+            return entries
+        return data
+
     def _load_annotations(self):
-        """Load annotations from JSON file."""
-        if os.path.exists(self.path_annotations):
-            with open(self.path_annotations) as f:
-                return json.load(f)
-        return {}
+        """Load annotations and flatten by source hierarchy → dict of dicts.
+
+        Returns the same {_id: {col: val, ...}} shape that all consumers expect.
+        Higher-priority sources win per-column when multiple entries exist for one _id.
+        """
+        entries = self._load_annotations_raw()
+        return self._flatten_annotations(entries)
+
+    def _flatten_annotations(self, entries):
+        """Flatten a list of annotation entries into {_id: {col: val}} by source hierarchy.
+
+        For each _id, iterates entries from highest to lowest priority source.
+        Each column is set by the first (highest priority) entry that provides it.
+        The winning genre_source for the 'genre' column is preserved.
+        """
+        hierarchy = list(self.SOURCE_HIERARCHY)
+
+        def _source_rank(source):
+            try:
+                return hierarchy.index(source)
+            except ValueError:
+                return len(hierarchy)  # unlisted sources rank last
+
+        # Group entries by _id, sorted by source priority
+        from collections import defaultdict
+        by_id = defaultdict(list)
+        for entry in entries:
+            _id = entry.get('_id')
+            if _id:
+                by_id[_id].append(entry)
+
+        result = {}
+        for _id, id_entries in by_id.items():
+            id_entries.sort(key=lambda e: _source_rank(e.get('genre_source', 'human')))
+            merged = {}
+            winning_source = None
+            for entry in id_entries:
+                source = entry.get('genre_source', 'human')
+                for col, val in entry.items():
+                    if col in ('_id', 'genre_source'):
+                        continue
+                    if col not in merged:
+                        merged[col] = val
+                        if col == 'genre' and winning_source is None:
+                            winning_source = source
+            if winning_source:
+                merged['genre_source'] = winning_source
+            result[_id] = merged
+        return result
 
     def annotate(self, port=8989):
         """Launch the annotation web app for this corpus."""
         from lltk.web.annotate import run_annotate
         run_annotate(self.id, port=port)
 
-    def propagate_from(self, source_corpus_id, columns=None, dry_run=False):
-        """Propagate metadata from a source corpus via match groups into annotations.
+    def propagate_from(self, source, columns=None, dry_run=False,
+                       source_label=None):
+        """Add annotation entries from a corpus, DataFrame, or list of dicts.
 
-        Finds texts in this corpus's SOURCES that share a match group with a
-        source_corpus_id text, and writes annotations for the specified columns.
-        Skips texts that already have a direct annotation for those columns.
+        Source can be:
+            - str: corpus ID to query from the DB (e.g. 'fiction_biblio')
+            - DataFrame: must have '_id' column (or as index) plus columns to write
+            - list[dict]: each dict must have '_id' plus columns to write
+
+        Entries are stored with their genre_source for provenance. Spreading to
+        match group siblings happens at read time in load_metadata(), not here.
+
+        Re-running is safe: existing entries from the same source are replaced.
 
         Args:
-            source_corpus_id: corpus to propagate from (e.g. 'fiction_biblio')
-            columns: list of columns to propagate (default: ['genre'])
+            source: corpus ID (str), DataFrame, or list of dicts
+            columns: list of columns to write (default: ['genre'] for corpus,
+                     all non-_id columns for DataFrame/list)
             dry_run: if True, print what would be written without saving
+            source_label: provenance label for genre_source (default: corpus ID or 'external')
         Returns:
-            dict of {_id: annotation_dict} that were written (or would be)
+            list of annotation dicts that were written (or would be)
         """
         import lltk
-        if columns is None:
-            columns = ['genre']
 
-        annotations = self._load_annotations()
+        entries = self._load_annotations_raw()
 
-        # Get all source corpus _ids and their metadata
-        source_texts = lltk.db.query(f"""
-            SELECT _id, {', '.join(columns)}
-            FROM texts WHERE corpus = '{source_corpus_id}'
-        """)
-        if not len(source_texts):
-            print(f'No texts found for corpus {source_corpus_id}')
-            return {}
+        # Resolve source to a DataFrame with '_id' column
+        if isinstance(source, str):
+            source_corpus_id = source
+            if source_label is None:
+                source_label = source_corpus_id
+            if columns is None:
+                columns = ['genre']
+            source_df = lltk.db.query(f"""
+                SELECT _id, {', '.join(columns)}
+                FROM texts WHERE corpus = '{source_corpus_id}'
+            """)
+            if not len(source_df):
+                print(f'No texts found for corpus {source_corpus_id}')
+                return []
+        else:
+            if source_label is None:
+                source_label = 'external'
+            if isinstance(source, list):
+                source_df = pd.DataFrame(source)
+            else:
+                source_df = source.copy()
+            if '_id' not in source_df.columns and source_df.index.name == '_id':
+                source_df = source_df.reset_index()
+            if '_id' not in source_df.columns:
+                raise ValueError("Source must have '_id' column or '_id' as index")
+            if columns is None:
+                columns = [c for c in source_df.columns if c not in ('_id', 'genre_source')]
 
-        # Get match groups for source texts
-        source_ids = set(source_texts['_id'])
-        mg = lltk.db.match_conn.execute(
-            "SELECT _id, group_id FROM match_db.match_groups"
-        ).fetchdf()
-        if not len(mg):
-            print('No match groups found')
-            return {}
-
-        id_to_group = dict(zip(mg['_id'], mg['group_id']))
-        group_to_ids = {}
-        for _id, gid in zip(mg['_id'], mg['group_id']):
-            group_to_ids.setdefault(gid, []).append(_id)
-
-        # Build source values per group (track which source _id provided them)
-        source_vals = {}
-        for _, row in source_texts.iterrows():
-            gid = id_to_group.get(row['_id'])
-            if gid is not None:
-                vals = {col: row[col] for col in columns if pd.notna(row[col])}
-                if vals:
-                    source_vals[gid] = (row['_id'], vals)
-
-        # Get valid target corpora from SOURCES
-        target_corpora = set(self.SOURCES.keys()) if self.SOURCES else set()
-
-        # Find targets to annotate
-        written = {}
-        for gid, (source_id, vals) in source_vals.items():
-            for _id in group_to_ids.get(gid, []):
-                if _id in source_ids:
-                    continue
-                # Check target is in our SOURCES corpora
-                corpus_id = _id.lstrip('_').split('/')[0]
-                if target_corpora and corpus_id not in target_corpora:
-                    continue
-                # Skip columns already in direct annotations; always add genre_source
-                existing = annotations.get(_id, {})
-                new_vals = {col: v for col, v in vals.items() if col not in existing}
-                # Add provenance even if genre already annotated
-                if new_vals or 'genre_source' not in existing:
-                    new_vals['genre_source'] = source_id
-                if not new_vals:
-                    continue
-                written[_id] = new_vals
+        # Build new entries
+        new_entries = []
+        for _, row in source_df.iterrows():
+            _id = row['_id']
+            vals = {col: row[col] for col in columns
+                    if col in row.index and pd.notna(row[col])}
+            if vals:
+                label = row.get('genre_source', source_label) if 'genre_source' in row.index else source_label
+                entry = {'_id': _id, 'genre_source': label}
+                entry.update(vals)
+                new_entries.append(entry)
 
         if dry_run:
-            print(f'Would write {len(written)} annotations:')
+            print(f'Would write {len(new_entries)} annotation entries:')
             from collections import Counter
-            corpora = Counter(_id.lstrip('_').split('/')[0] for _id in written)
+            corpora = Counter(e['_id'].lstrip('_').split('/')[0] for e in new_entries)
             for c, n in corpora.most_common():
                 print(f'  {c}: {n}')
-            return written
+            return new_entries
 
-        # Write to annotations
-        for _id, vals in written.items():
-            if _id not in annotations:
-                annotations[_id] = {}
-            annotations[_id].update(vals)
+        # Remove old entries from the same source for _ids we're updating
+        new_ids = {e['_id'] for e in new_entries}
+        new_source_labels = {e.get('genre_source', source_label) for e in new_entries}
+        entries = [
+            e for e in entries
+            if not (e.get('_id') in new_ids and e.get('genre_source', 'human') in new_source_labels)
+        ]
+        entries.extend(new_entries)
 
-        if written:
-            self._save_annotations(annotations)
-            print(f'Wrote {len(written)} annotations from {source_corpus_id}')
+        if new_entries:
+            self._save_annotations(entries)
+            print(f'Wrote {len(new_entries)} annotation entries from {source_label}')
             from collections import Counter
-            corpora = Counter(_id.lstrip('_').split('/')[0] for _id in written)
+            corpora = Counter(e['_id'].lstrip('_').split('/')[0] for e in new_entries)
             for c, n in corpora.most_common():
                 print(f'  {c}: {n}')
         else:
             print('No new annotations to write')
 
-        return written
+        return new_entries
 
     def _save_annotations(self, data):
-        """Save annotations to JSON file."""
+        """Save annotations list to JSON file."""
         os.makedirs(os.path.dirname(self.path_annotations), exist_ok=True)
         with open(self.path_annotations, 'w') as f:
             json.dump(data, f, indent=2, default=str)
 
     def load_metadata(self, **kwargs):
-        """Load from DB, merge annotation overrides from JSON."""
+        """Load from DB, merge annotation overrides from JSON.
+        Annotated _ids act as a whitelist: texts in annotations.json are
+        included even if they don't match SOURCES genre filters."""
         df = super().load_metadata(**kwargs)
         if not self.is_curated or df is None or not len(df):
             return df
@@ -272,6 +340,30 @@ class CuratedCorpus(SyntheticCorpus):
         if not has_id_col and df.index.name == 'id':
             # _id might not be in columns if index was set
             pass
+
+        # Whitelist: fetch annotated _ids not already in DataFrame
+        if has_id_col:
+            existing_ids = set(df['_id'])
+            missing_ids = [
+                _id for _id in annotations
+                if _id not in existing_ids
+                and not annotations[_id].get('exclude')
+            ]
+            if missing_ids:
+                try:
+                    import lltk
+                    placeholders = ', '.join(f"'{_id}'" for _id in missing_ids)
+                    extra = lltk.db.query(f"SELECT * FROM texts WHERE _id IN ({placeholders})")
+                    if extra is not None and len(extra):
+                        # Drop meta JSON column for consistency
+                        if 'meta' in extra.columns:
+                            extra = extra.drop(columns=['meta'])
+                        # Align columns and index
+                        if df.index.name == 'id' and 'id' in extra.columns:
+                            extra = extra.set_index('id')
+                        df = pd.concat([df, extra], ignore_index=False)
+                except Exception:
+                    pass
 
         # Apply direct overrides
         for _id, overrides in annotations.items():

@@ -94,6 +94,15 @@ def untar_to_freqs_folder(args):
 class HathiBio(BaseCorpus):
 	TEXT_CLASS=TextHathiBio
 
+	GENRE_MAP = {
+		'fic': 'Fiction',
+		'bio': 'Biography',
+		'non': 'Nonfiction',
+		'letters': 'Letters',
+		# 'latin': 'Latin',
+		# 'dra': 'Drama',
+	}
+
 
 	####################################################################################################################
 	# (2.1) Installation methods
@@ -178,7 +187,8 @@ class HathiBio(BaseCorpus):
 
 	def load_metadata(self,*x,**y):
 		meta=super().load_metadata()
-		meta['genre']='Biography'
+		meta['genre_raw']=meta['tags']
+		meta['genre']=meta['tags'].map(self.GENRE_MAP)
 		# Normalize IDs to canonical flat form
 		meta.index = meta.index.map(hathi_id_normalize)
 		meta.index.name = 'id'

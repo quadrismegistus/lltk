@@ -918,6 +918,27 @@ class BaseText(BaseObject):
             return df if df is not None and len(df) else None
         except Exception:
             return None
+
+    @property
+    def match_group_texts(self):
+        """Return text objects for all texts in this text's match group.
+        Falls back to [self] if no match group exists."""
+        mg = self.match_group
+        if mg is None:
+            return [self]
+        from lltk.corpus.corpus import Corpus
+        texts = []
+        for _, row in mg.iterrows():
+            _id = row['_id']
+            parts = _id.lstrip('_').split('/', 1)
+            if len(parts) != 2:
+                continue
+            try:
+                t = Corpus(parts[0]).text(parts[1])
+                texts.append(t)
+            except Exception:
+                continue
+        return texts or [self]
     
 
 

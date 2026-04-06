@@ -60,15 +60,26 @@ class ESTC(BaseCorpus):
 		bib_dir = os.path.join(self.path, '_json_estc')
 		hol_dir = os.path.join(self.path, '_json_estc_holdings')
 
-		# ── Step 1: count holdings per ESTC ID ────────────────────────
-		logger.info('Counting holdings...')
-		holdings_counts = {}
+		# ── Step 1: parse holdings per ESTC ID ────────────────────────
+		logger.info('Parsing holdings...')
+		holdings_data = {}  # estc_id → list of {institution_code, shelfmark, ...}
 
-		def _count_one_hol(path):
+		def _parse_one_hol(path):
 			rec = parse_holdings_record(path)
 			eid = rec.get('estc_id')
-			if eid:
-				return (eid, len(rec['holdings']))
+			if eid and rec['holdings']:
+				entries = []
+				for h in rec['holdings']:
+					entry = {}
+					if h.get('institution_code'):
+						entry['code'] = h['institution_code']
+					if h.get('institution_name'):
+						entry['name'] = h['institution_name']
+					if h.get('shelfmark'):
+						entry['shelfmark'] = h['shelfmark']
+					if entry:
+						entries.append(entry)
+				return (eid, entries)
 			return None
 
 		hol_paths = []
@@ -80,10 +91,10 @@ class ESTC(BaseCorpus):
 				hol_paths.append(os.path.join(shard_path, fname))
 
 		with ThreadPoolExecutor(max_workers=8) as pool:
-			for result in pool.map(_count_one_hol, hol_paths):
+			for result in pool.map(_parse_one_hol, hol_paths):
 				if result:
-					holdings_counts[result[0]] = result[1]
-		logger.info(f'  {len(holdings_counts)} holdings records')
+					holdings_data[result[0]] = result[1]
+		logger.info(f'  {len(holdings_data)} holdings records')
 
 		# ── Step 2: collect bib file paths ────────────────────────────
 		bib_paths = []
@@ -224,7 +235,8 @@ class ESTC(BaseCorpus):
 				'genre_source': genre_source,
 				'is_translated': is_trans,
 				'is_fiction': is_fiction(genres),
-				'n_holdings': holdings_counts.get(eid, 0),
+				'n_holdings': len(holdings_data.get(eid, [])),
+				'holdings': json.dumps(holdings_data[eid]) if eid in holdings_data else None,
 				'id_stc': id_stc,
 				'id_wing': id_wing,
 				'references': ' | '.join(ref_parts) if ref_parts else None,

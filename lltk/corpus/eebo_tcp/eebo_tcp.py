@@ -35,8 +35,7 @@ def _normalize_estc_id(raw):
 class EEBO_TCP(TCP):
 	TEXT_CLASS=TextEEBO_TCP
 	EXT_XML = '.headed.xml.gz'
-	LINKS = {'estc': ('id_stc', 'id_estc')}
-	LINK_TRANSFORMS = {'id_stc': _normalize_estc_id}
+	LINKS = {'estc': ('id_estc', 'id_estc')}
 
 	@property
 	def path_metadata_enriched(self):
@@ -59,6 +58,10 @@ class EEBO_TCP(TCP):
 		meta=super().load_metadata()
 		if not len(meta):
 			return meta
+		# Normalize ESTC IDs: strip "ESTC " prefix, zero-pad to Letter+6 digits
+		if 'id_stc' in meta.columns:
+			meta['id_estc_orig'] = meta['id_stc']
+			meta['id_estc'] = meta['id_stc'].apply(_normalize_estc_id)
 		meta = self.merge_linked_metadata(meta)
 		# EEBO's own 'genre' column is really a medium (Prose/Verse/Drama) — rename it
 		if 'genre' in meta.columns:

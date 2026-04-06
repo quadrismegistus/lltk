@@ -35,8 +35,7 @@ def fix_genre(genre,title):
 class ECCO_TCP(TCP):
     EXT_XML = '.xml'
     TEXT_CLASS=TextECCO_TCP
-    LINKS = {'estc': ('id_ESTC', 'id_estc')}
-    LINK_TRANSFORMS = {'id_ESTC': _normalize_estc_id}
+    LINKS = {'estc': ('id_estc', 'id_estc')}
 
     @property
     def path_hdr(self):
@@ -69,6 +68,10 @@ class ECCO_TCP(TCP):
         meta=super().load_metadata(*x,**y)
         if 'pubplace' in meta.columns:
             meta['pubcity']=meta.pubplace.apply(lambda x: zeropunc(x).strip().split()[0])
+        # Normalize ESTC IDs: zero-pad to Letter+6 digits
+        if 'id_ESTC' in meta.columns:
+            meta['id_estc_orig'] = meta['id_ESTC']
+            meta['id_estc'] = meta['id_ESTC'].apply(_normalize_estc_id)
         meta = self.merge_linked_metadata(meta)
         if 'genre' in meta.columns:
             meta['medium'] = meta['genre']

@@ -139,6 +139,21 @@ Matching finds duplicate/reprint texts both within and across corpora via multip
 
 **Scale**: ~2.2M texts across 52 corpora → 1.75M match pairs, 1.14M texts in 300K groups. Exact tiers run in seconds; containment ~5 min.
 
+### Genre enrichment (post-match)
+
+After matching, `db-enrich-genres` propagates genre labels from bibliography authority corpora across match groups. This adds `genre_enriched` and `genre_enriched_source` columns to the `texts` table.
+
+**Authority corpora**: `fiction_biblio`, `end`, `ravengarside` — metadata-only corpora from scholarly bibliographies whose genre labels are more reliable than ESTC heuristics.
+
+**How it works**:
+1. Saves original corpus genre to `genre_corpus` column
+2. `genre_enriched_source` set from ESTC `genre_source` where available (`form`/`topic`/`title`)
+3. For each match group containing an authority corpus text, all members get `genre` updated to the authority's genre (bibliography > form > topic > title)
+
+**Query integration**: enrichment writes directly to `genre`, so all existing queries, views, and external consumers (e.g. abstraction web app) see enriched genres with zero code changes. `genre_corpus` preserves the original. `genre_enriched_source` provides provenance.
+
+**Impact** (as of 2026-04-06): ~10K texts reclassified, mostly ESTC-linked corpora gaining Fiction labels from bibliographies. e.g. eebo_tcp 131→621, ecco 7469→10229, earlyprint 268→859.
+
 ### CLI
 
 ```bash
@@ -147,6 +162,7 @@ lltk db-rebuild estc ecco                # re-ingest specific corpora (rest unto
 lltk db-info                             # genre × corpus crosstab with totals
 lltk db-match                            # exact + containment matching (~5 min)
 lltk db-match --fuzzy                    # also run fuzzy matching (adds ~15 sec)
+lltk db-enrich-genres                    # propagate genre from bibliographies (~5 sec)
 lltk db-matches "Incognita"              # search matches by title
 lltk db-match-stats                      # show matching statistics
 ```
@@ -160,6 +176,9 @@ import lltk
 lltk.db.ingest('estc')                   # one corpus
 lltk.db.rebuild()                         # all corpora from manifest
 lltk.db.rebuild(['estc', 'ecco'])         # specific list
+
+# ── Genre enrichment ──
+lltk.db.enrich_genres()                   # after match, propagates bibliography genres
 
 # ── Metadata queries ──
 lltk.db.get('_estc/T012345')             # single-row lookup by _id → dict
@@ -248,10 +267,12 @@ metadata.csv → load_metadata() → DataFrame (cached in _metadfd)
                                                           ↓
                                   lltk.db.match()  → metadb_matches.duckdb (matches, match_groups)
                                                           ↓
+                                  lltk.db.enrich_genres() → genre_enriched on texts table
+                                                          ↓
                                   lltk.db.texts()  → text objects (from source corpora)
 ```
 
-`load_metadata()` is the source of truth. The DB caches its output. Matching operates on the DB. Virtual corpus queries return real text objects that delegate file access to their source corpus.
+`load_metadata()` is the source of truth. The DB caches its output. Matching operates on the DB. Genre enrichment propagates bibliography labels across match groups. Virtual corpus queries use `genre_enriched` for filtering and return real text objects that delegate file access to their source corpus.
 
 ### For the abstraction project
 
