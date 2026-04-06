@@ -474,6 +474,34 @@ ESTC `compile()` extracts `id_stc` and `id_wing` from MARC 510 reference fields.
 
 Wing hit rate: 84.6%, STC hit rate: 94.2%. 294 entries have no bibliographic reference. Some mismatches from OCR errors in bibliography PDF parsing — LLM-based page image extraction (Gemini Flash) gets 0/8 ref errors vs OCR's 2/8.
 
+### Early Novels Database (END)
+
+Source: `~/lltk_data/corpora/fiction_biblio/sources/end-dataset-11282018-full.xml`
+Downloaded from: `github.com/earlynovels/end-dataset`
+
+2,002 MARCXML records of early novels from Penn's Collection of British and American Fiction (1660-1830). Core C18 subset: 1,440 records (all Penn holdings 1700-1797). Penn estimates ~14% coverage of all known English fiction for the 1760s.
+
+**ESTC cross-references:** 1,168/2,002 records have ESTC IDs in MARC 510 field (e.g. `T77338`, `N6875`). Direct matching to ESTC → ECCO/TCP, no fuzzy title matching needed.
+
+**Built from standard bibliographies:** Raven (1750-1770, 155 records), Garside/Raven/Schöwerling (1770-1829, ~520), McBurney (pre-1740, 74), Block (~495), Beasley (1740-1749, 55).
+
+**Rich metadata beyond title/author/date:**
+
+| MARC field | Coverage | Content |
+|-----------|---------|---------|
+| 592 (narrative form) | 95% | Primary: Third-person (951), First-person (508), Epistolary (449). Secondary forms + non-prose (poems, verse, dialogue) |
+| 599 (author gender) | 79% | Male (1,571), Female (820), Indeterminate (1,266) |
+| 520 (paratext) | 83% | Dedication, preface, advertisement, etc. with first-sentence transcriptions |
+| 591 (epigraph) | 42% | Transcription + source author/work identification |
+| 300 (physical) | 100% | Volume count, format (duodecimo, octavo, etc.) |
+| 700/710 (publishers) | 99% | Named publishers and printers, VIAF-authorized |
+| 596 (translation) | 15% | Structured source language, translation claims |
+| 510 (bibliography refs) | 83% | Cross-references to ESTC, Raven, Garside, Block, McBurney |
+
+**Complementary to fiction_biblio:** END covers C18 (1,440 records), fiction_biblio/Mish covers C17 (1,455 records). Together they provide expert-curated fiction identification across 1600-1830.
+
+**Integration plan:** Parse END XML, extract ESTC IDs for direct ESTC→ECCO/TCP matching. Use narrative form (field 592) to test whether epistolary/first-person novels score differently on abstractness. Use author gender (field 599) for gender analysis.
+
 ## LLM genre classification
 
 Genre classification task at `~/github/largeliterarymodels/largeliterarymodels/tasks/classify_genre.py`.
