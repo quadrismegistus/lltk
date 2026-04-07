@@ -1371,7 +1371,17 @@ class MetaDB:
             n = self.conn.execute("""
                 UPDATE texts SET
                     genre = ?,
-                    genre_raw = CASE WHEN ? != '' THEN ? ELSE genre_raw END,
+                    genre_raw = CASE
+                        WHEN ? != '' THEN ?
+                        WHEN genre_raw IS NOT NULL AND genre_raw NOT IN (
+                            'Fiction','Novel','Novel, epistolary','Romance','Tale',
+                            'Fable','Novella','Picaresque','Gothic','Imaginary voyage',
+                            'Satire','Dialogue','Allegory','Epistolary fiction',
+                            'Novel, sentimental','Novel, Gothic','Novel, satire',
+                            'Novel, historical','Novel, didactic','Novel, oriental'
+                        ) AND ? = 'Fiction' THEN NULL
+                        ELSE genre_raw
+                    END,
                     genre_enriched_source = ?
                 WHERE _id IN (
                     SELECT _id FROM match_db.match_groups WHERE group_id = ?
@@ -1379,9 +1389,9 @@ class MetaDB:
                 AND (
                     genre IS NULL
                     OR genre != ?
-                    OR genre_enriched_source IN ('corpus', 'title', 'topic')
+                    OR genre_enriched_source IN ('corpus', 'form', 'title', 'topic')
                 )
-            """, [genre, genre_raw, genre_raw, source, gid, genre]).fetchone()
+            """, [genre, genre_raw, genre_raw, genre, source, gid, genre]).fetchone()
             # DuckDB UPDATE doesn't return rowcount easily; count separately
             updated += 1
 
@@ -1530,10 +1540,20 @@ class MetaDB:
 
         if sources:
             source_clauses = []
+            _RANGE_SUFFIXES = {'_min': '>=', '_max': '<='}
             for corpus_id, filters in sources.items():
                 parts = [f"t.corpus = '{corpus_id}'"]
                 for k, v in filters.items():
-                    parts.append(f"t.{k} = '{v}'")
+                    # Support range filters: year_min, year_max, etc.
+                    handled = False
+                    for suffix, op in _RANGE_SUFFIXES.items():
+                        if k.endswith(suffix):
+                            col = k[:-len(suffix)]
+                            parts.append(f"t.{col} {op} {int(v)}")
+                            handled = True
+                            break
+                    if not handled:
+                        parts.append(f"t.{k} = '{v}'")
                 source_clauses.append('(' + ' AND '.join(parts) + ')')
             clauses.append('(' + ' OR '.join(source_clauses) + ')')
 

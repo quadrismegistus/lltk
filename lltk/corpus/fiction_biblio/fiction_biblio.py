@@ -489,10 +489,20 @@ class FictionBiblio(BaseCorpus):
             needs_genre = is_raven2000 & (meta['genre_raw'].isna() | (meta['genre_raw'] == ''))
             meta.loc[needs_genre, 'genre_raw'] = 'Novel'
 
-        # Fall back to ESTC genre_raw only where bibliography has nothing
+        # Fall back to ESTC genre_raw only where bibliography has nothing,
+        # and only accept fiction-relevant values (ESTC often misclassifies
+        # novels as Biography, Letter, etc. based on title conventions)
+        FICTION_RAW = {
+            'Fiction', 'Novel', 'Novel, epistolary', 'Romance', 'Tale', 'Fable',
+            'Novella', 'Picaresque', 'Gothic', 'Imaginary voyage',
+            'Novel, sentimental', 'Novel, Gothic', 'Novel, satire',
+            'Novel, historical', 'Novel, didactic', 'Novel, oriental',
+            'Epistolary fiction', 'Satire', 'Dialogue', 'Allegory',
+        }
         if 'estc_genre_raw' in meta.columns:
             needs_genre = meta['genre_raw'].isna() | (meta['genre_raw'] == '')
             estc_raw = meta['estc_genre_raw']
-            meta.loc[needs_genre, 'genre_raw'] = estc_raw.where(estc_raw.notna() & (estc_raw != ''))
+            is_fiction_raw = estc_raw.isin(FICTION_RAW)
+            meta.loc[needs_genre & is_fiction_raw, 'genre_raw'] = estc_raw
 
         return meta

@@ -43,13 +43,15 @@ class ArcFiction(CuratedCorpus):
     # Conservative mode: pre-CONSERVATIVE_BEFORE, only include texts whose
     # genre was confirmed by an approved authority (bibliography or ESTC form).
     # Set to None to disable.
-    CONSERVATIVE_BEFORE = 1800
+    CONSERVATIVE_BEFORE = 1801
     CONSERVATIVE_SOURCES = {
         'form',
         'bibliography:fiction_biblio',
         'bibliography:end',
         'bibliography:ravengarside',
     }
+    # Corpora whose self-assignment is trusted pre-CONSERVATIVE_BEFORE
+    CONSERVATIVE_CORPORA = {'chadwyck'}
 
     _UNSET = object()
 
@@ -62,7 +64,8 @@ class ArcFiction(CuratedCorpus):
         if conservative and 'genre_enriched_source' in meta.columns:
             pre = meta.year < conservative
             approved = meta.genre_enriched_source.isin(self.CONSERVATIVE_SOURCES)
-            meta = meta[~pre | approved]
+            trusted_corpus = meta.corpus.isin(self.CONSERVATIVE_CORPORA) if self.CONSERVATIVE_CORPORA else False
+            meta = meta[~pre | approved | trusted_corpus]
         return meta
 
 
