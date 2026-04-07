@@ -126,6 +126,8 @@ class FictionBiblio(BaseCorpus):
         meta['id_estc'] = meta['id_estc'].fillna('').astype(str).str.strip()
         # Strip 'ESTC' prefix if present, normalize to uppercase letter + digits
         meta['id_estc'] = meta['id_estc'].str.replace(r'^ESTC\s*', '', regex=True).str.strip()
+        # Uppercase prefix: t124724 → T124724 to match ESTC canonical IDs
+        meta['id_estc'] = meta['id_estc'].str.replace(r'^([a-z])', lambda m: m.group(1).upper(), regex=True)
         if 'estc_match_source' not in meta.columns:
             meta['estc_match_source'] = ''
         # Mark pre-existing ESTC IDs
