@@ -98,6 +98,17 @@ class END(BaseCorpus):
         meta['genre'] = 'Fiction'
         if 'estc_genre_raw' in meta.columns:
             meta['genre_raw'] = meta['estc_genre_raw']
+
+        # Enrich genre_raw from narrative_form where genre_raw is missing
+        if 'narrative_form' in meta.columns:
+            needs_genre = meta['genre_raw'].isna() | (meta['genre_raw'] == '')
+            nf = meta['narrative_form'].fillna('')
+            is_epistolary = nf.str.contains(r'Epistolary|Letters', case=False, na=False)
+            is_first = nf.str.contains(r'First-person', case=False, na=False) & ~is_epistolary
+            is_third = nf.str.contains(r'Third-person', case=False, na=False) & ~is_epistolary
+            meta.loc[needs_genre & is_epistolary, 'genre_raw'] = 'Novel, epistolary'
+            meta.loc[needs_genre & (is_first | is_third), 'genre_raw'] = 'Novel'
+
         return meta
 
 

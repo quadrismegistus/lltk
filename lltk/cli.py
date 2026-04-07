@@ -64,6 +64,10 @@ def main():
 	# db enrich-genres
 	p_db_enrich = subparsers.add_parser('db-enrich-genres', help='Propagate genre from bibliography corpora via match groups')
 
+	# db wordcounts
+	p_db_wc = subparsers.add_parser('db-wordcounts', help='Compute word counts from freqs files')
+	p_db_wc.add_argument('-j', '--jobs', type=int, default=None, help='Number of parallel workers')
+
 	# db match-stats
 	p_db_match_stats = subparsers.add_parser('db-match-stats', help='Show matching statistics')
 
@@ -203,6 +207,9 @@ def main():
 			print(df.to_string(index=False))
 		else:
 			print(f'No matches found for "{args.query}"')
+
+	elif args.cmd == 'db-wordcounts':
+		lltk.db.wordcounts(num_proc=args.jobs)
 
 	elif args.cmd == 'db-enrich-genres':
 		stats = lltk.db.enrich_genres()

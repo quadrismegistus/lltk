@@ -26,7 +26,7 @@ GENRE_RULES = {
         'form_keywords': [],
         'topic_exact': set(),
         'topic_keywords': [],
-        'title_keywords': ['novel'],
+        'title_keywords': [],  # 'novel' removed: too many false positives ("A Novel Method...")
     },
 
     'Romance': {
@@ -34,7 +34,7 @@ GENRE_RULES = {
         'form_keywords': [],
         'topic_exact': set(),
         'topic_keywords': [],
-        'title_keywords': ['romance'],
+        'title_keywords': [],  # 'romance' removed
     },
 
     'Tale': {
@@ -44,7 +44,7 @@ GENRE_RULES = {
         'form_keywords': [],
         'topic_exact': set(),
         'topic_keywords': ["children's stories"],
-        'title_keywords': ['tale', 'tales'],
+        'title_keywords': [],  # 'tale'/'tales' removed
     },
 
     'Fable': {
@@ -52,7 +52,7 @@ GENRE_RULES = {
         'form_keywords': [],
         'topic_exact': {'fables'},
         'topic_keywords': ['fables,'],
-        'title_keywords': ['fable', 'fables'],
+        'title_keywords': [],  # 'fable'/'fables' removed
     },
 
     'Picaresque': {
@@ -84,7 +84,7 @@ GENRE_RULES = {
 
     'Fiction': {
         'form_exact': {
-            'fiction', 'chapbooks', 'adventure stories',
+            'fiction', 'adventure stories',
             'utopian literature', 'utopian literature.',
             'fantasy literature', 'harlequinades',
             'short stories', 'sea stories', 'bible stories',
@@ -93,11 +93,9 @@ GENRE_RULES = {
         'form_keywords': [],
         'topic_exact': {
             'english fiction', 'french fiction', 'utopias',
-            'chapbooks', 'fiction',
+            'fiction',
         },
-        'topic_keywords': [
-            'chapbooks,',
-        ],
+        'topic_keywords': [],
         'title_keywords': [],
     },
 

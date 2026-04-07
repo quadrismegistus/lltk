@@ -14,6 +14,7 @@ import json as _json
 # McBurney library abbreviations → ESTC institution codes
 SHELFMARK_LIBRARY_MAP = {
     'BM': 'bL',       # British Museum → British Library
+    'BL': 'bL',       # British Library (Raven 2000+)
     'Bod': 'bO',      # Bodleian Library
     'H': 'nMH',       # Harvard University
     'Y': 'nCtY',      # Yale University
@@ -119,12 +120,25 @@ class FictionBiblio(BaseCorpus):
             if col in meta.columns:
                 meta[col] = meta[col].apply(lambda x: x.split(',')[0].strip() if isinstance(x, str) else '')
 
+        # ── Step 2b: Normalize pre-existing ESTC IDs (e.g. Raven) ────
+        if 'id_estc' not in meta.columns:
+            meta['id_estc'] = ''
+        meta['id_estc'] = meta['id_estc'].fillna('').astype(str).str.strip()
+        # Strip 'ESTC' prefix if present, normalize to uppercase letter + digits
+        meta['id_estc'] = meta['id_estc'].str.replace(r'^ESTC\s*', '', regex=True).str.strip()
+        if 'estc_match_source' not in meta.columns:
+            meta['estc_match_source'] = ''
+        # Mark pre-existing ESTC IDs
+        has_estc = meta['id_estc'] != ''
+        meta.loc[has_estc & (meta['estc_match_source'] == ''), 'estc_match_source'] = 'direct'
+        if has_estc.sum():
+            if log: log(f'Pre-existing ESTC IDs: {has_estc.sum()}')
+
         # ── Step 3: Auto-match to ESTC via STC/Wing ─────────────────
         estc_meta = self._load_estc_metadata()
         if estc_meta is not None:
             meta = self._match_stc_wing(meta, estc_meta)
-        else:
-            meta['id_estc'] = ''
+        elif not has_estc.any():
             if log: log('ESTC metadata not available — skipping STC/Wing matching')
 
         # ── Step 4: Auto-match to ESTC via shelfmarks ────────────────
@@ -192,29 +206,22 @@ class FictionBiblio(BaseCorpus):
 
         if log: log(f'ESTC lookup: {len(estc_by_stc)} STC, {len(estc_by_wing)} Wing entries')
 
-        # Match
+        # Match (skip entries that already have an ESTC ID)
         matched_stc = 0
         matched_wing = 0
-        estc_ids = []
-        match_sources = []
-        for _, row in meta.iterrows():
-            stc = str(row.get('id_stc', '')).strip()
-            wing = str(row.get('id_wing', '')).strip()
-            eid = None
-            src = ''
+        for idx in meta.index:
+            if meta.at[idx, 'id_estc']:
+                continue  # already has ESTC ID (e.g. from Raven)
+            stc = str(meta.at[idx, 'id_stc'] if 'id_stc' in meta.columns else '').strip()
+            wing = str(meta.at[idx, 'id_wing'] if 'id_wing' in meta.columns else '').strip()
             if stc and stc in estc_by_stc:
-                eid = estc_by_stc[stc]
-                src = 'stc'
+                meta.at[idx, 'id_estc'] = estc_by_stc[stc]
+                meta.at[idx, 'estc_match_source'] = 'stc'
                 matched_stc += 1
             elif wing and wing in estc_by_wing:
-                eid = estc_by_wing[wing]
-                src = 'wing'
+                meta.at[idx, 'id_estc'] = estc_by_wing[wing]
+                meta.at[idx, 'estc_match_source'] = 'wing'
                 matched_wing += 1
-            estc_ids.append(eid or '')
-            match_sources.append(src)
-
-        meta['id_estc'] = estc_ids
-        meta['estc_match_source'] = match_sources
         if log: log(f'STC/Wing matching: {matched_stc} STC, {matched_wing} Wing, {matched_stc+matched_wing} total')
         return meta
 
@@ -463,6 +470,29 @@ class FictionBiblio(BaseCorpus):
                 meta[c+'_biblio'] = meta[c]
                 meta[c] = meta[c2].where(meta[c2].notna() & (meta[c2] != ''), meta[c])
         meta['genre'] = 'Fiction'
+
+        # Enrich genre_raw: bibliography categories first, ESTC fills gaps
+        # Raven 1987 category codes: N=Novel, E=Epistolary, M=Miscellaneous, C=Collection
+        if 'category' in meta.columns:
+            cat = meta['category'].fillna('')
+            is_epistolary = cat.str.startswith('E')
+            is_novel = cat.str.startswith('N')
+            meta.loc[is_epistolary, 'genre_raw'] = 'Novel, epistolary'
+            meta.loc[is_novel, 'genre_raw'] = 'Novel'
+
+        # Raven 2000: extract epistolary from notes, default to Novel
+        if 'notes' in meta.columns:
+            is_raven2000 = meta['biblio'] == 'raven2000' if 'biblio' in meta.columns else pd.Series(False, index=meta.index)
+            needs_genre = is_raven2000 & (meta['genre_raw'].isna() | (meta['genre_raw'] == ''))
+            notes = meta['notes'].fillna('')
+            meta.loc[needs_genre & notes.str.contains(r'[Ee]pistolary', regex=True), 'genre_raw'] = 'Novel, epistolary'
+            needs_genre = is_raven2000 & (meta['genre_raw'].isna() | (meta['genre_raw'] == ''))
+            meta.loc[needs_genre, 'genre_raw'] = 'Novel'
+
+        # Fall back to ESTC genre_raw only where bibliography has nothing
         if 'estc_genre_raw' in meta.columns:
-            meta['genre_raw'] = meta['estc_genre_raw']
+            needs_genre = meta['genre_raw'].isna() | (meta['genre_raw'] == '')
+            estc_raw = meta['estc_genre_raw']
+            meta.loc[needs_genre, 'genre_raw'] = estc_raw.where(estc_raw.notna() & (estc_raw != ''))
+
         return meta

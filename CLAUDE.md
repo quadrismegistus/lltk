@@ -56,16 +56,17 @@ lltk/
 
 ### Database files
 
-Two separate DuckDB files connected via ATTACH:
+Three separate DuckDB files connected via ATTACH:
 
-| File | Contents | Size |
-|------|----------|------|
-| `~/lltk_data/data/metadb.duckdb` | `texts` table, `corpus_info` table | ~300MB |
-| `~/lltk_data/data/metadb_matches.duckdb` | `matches` table, `match_groups` table | ~165MB |
+| File | Alias | Contents | Lifecycle |
+|------|-------|----------|-----------|
+| `~/lltk_data/data/metadb.duckdb` | (main) | `texts` table, `corpus_info` table | Rebuilt by `db-rebuild` |
+| `~/lltk_data/data/metadb_matches.duckdb` | `match_db` | `matches` table, `match_groups` table | Rebuilt by `db-match` |
+| `~/lltk_data/data/metadb_wordcounts.duckdb` | `wc_db` | `wordcounts` table (path_freqs → n_words) | Persistent cache, survives rebuilds |
 
-Single DuckDB connection opens `metadb.duckdb` and ATTACHes `metadb_matches.duckdb` as `match_db`. All queries go through one connection. Match tables are prefixed `match_db.matches`, `match_db.match_groups` in SQL. Texts table is plain `texts`.
+Single DuckDB connection opens `metadb.duckdb` and ATTACHes both other files. Match tables prefixed `match_db.*`, wordcount table prefixed `wc_db.*`. Texts table is plain `texts`.
 
-The split means matches can be deleted/rebuilt independently without touching the texts metadata. Delete `metadb_matches.duckdb` and re-run `lltk db-match` to rebuild matches only.
+The split means matches can be deleted/rebuilt independently. Wordcounts persist across all rebuilds — `ingest_df()` backfills `n_words` from the cache automatically.
 
 ### Schema
 
@@ -79,14 +80,19 @@ The split means matches can be deleted/rebuilt independently without touching th
 | `title` | TEXT | |
 | `author` | TEXT | |
 | `year` | INTEGER | parsed to int at ingest (handles ranges, circa dates) |
-| `genre` | TEXT | harmonized to `GENRE_VOCAB` standard vocabulary |
-| `genre_raw` | TEXT | raw genre value from corpus metadata |
+| `genre` | TEXT | **Enriched genre** — may differ from corpus original after `db-enrich-genres` |
+| `genre_raw` | TEXT | fine-grained genre (e.g. Novel, Novel epistolary, Romance) — also enriched |
+| `genre_corpus` | TEXT | original genre from corpus `load_metadata()` (pre-enrichment) |
+| `genre_enriched_source` | TEXT | provenance: `corpus`, `form`, `topic`, `title`, `bibliography:fiction_biblio`, etc. |
 | `title_norm` | TEXT | normalized title for matching (indexed) |
 | `author_norm` | TEXT | normalized author last name (indexed) |
 | `path_freqs` | TEXT | freqs file path relative to PATH_CORPUS (NULL if no freqs) |
+| `n_words` | INTEGER | word count from freqs (sum of values). Cached in `wc_db`, backfilled on ingest |
 | `meta` | TEXT (JSON) | all other corpus-specific fields |
 
 **`corpus_info` table** (in `metadb.duckdb`): `corpus TEXT PK, ingested_at DOUBLE, n_texts INTEGER`
+
+**`wordcounts` table** (in `metadb_wordcounts.duckdb`, accessed as `wc_db.wordcounts`): `path_freqs TEXT PK, n_words INTEGER`. Persistent cache — survives `db-rebuild`.
 
 **`matches` table** (in `metadb_matches.duckdb`, accessed as `match_db.matches`):
 `_id_a TEXT, _id_b TEXT, similarity FLOAT, match_type TEXT, PRIMARY KEY (_id_a, _id_b)`
@@ -98,7 +104,7 @@ The split means matches can be deleted/rebuilt independently without touching th
 
 Computed at ingest time, stored as indexed columns for fast matching:
 
-**`normalize_title(title)`**: modernize early modern spelling (MorphAdorner, 358K entries: u/v, vv/w, i/j, terminal -e, etc.), lowercase, strip subtitle after first `:;.([,!?`, collapse whitespace. E.g. `"Loues load-starre"` → `"loves loadstar"`, `"Incognita: or, Love and duty reconcil'd. A novel."` → `"incognita"`. Also strips title-end phrases ("a novel", "by the author", "edited by", etc.).
+**`normalize_title(title)`**: HTML entity unescape, Unicode dash normalization, strip `[]` brackets, strip abbreviation periods (Mr., Mrs., Dr., St., Q., single letters), modernize early modern spelling (MorphAdorner, 358K entries: u/v, vv/w, i/j, terminal -e, etc.), lowercase, strip subtitle after first `:;.([,!?`, collapse whitespace. E.g. `"Loues load-starre"` → `"loves loadstar"`, `"Love&hyphen;Letters Between a Noble&hyphen;Man"` → `"loveletters between a nobleman"`, `"The Life and Death of Mr. Badman"` → `"the life and death of mr badman"`. Also strips title-end phrases ("a novel", "by the author", "edited by", etc.).
 
 **`normalize_author(author)`**: lowercase, take text before first comma. E.g. `"Congreve, William, 1670-1729."` → `"congreve"`.
 
@@ -148,9 +154,11 @@ After matching, `db-enrich-genres` propagates genre labels from bibliography aut
 **How it works**:
 1. Saves original corpus genre to `genre_corpus` column
 2. `genre_enriched_source` set from ESTC `genre_source` where available (`form`/`topic`/`title`)
-3. For each match group containing an authority corpus text, all members get `genre` updated to the authority's genre (bibliography > form > topic > title)
+3. For each match group containing an authority corpus text, all members get `genre` and `genre_raw` updated to the authority's values (bibliography > form > topic > title)
 
 **Query integration**: enrichment writes directly to `genre`, so all existing queries, views, and external consumers (e.g. abstraction web app) see enriched genres with zero code changes. `genre_corpus` preserves the original. `genre_enriched_source` provides provenance.
+
+**genre_raw enrichment**: END enriches genre_raw from narrative_form (Epistolary→"Novel, epistolary", First/Third-person→"Novel"). fiction_biblio enriches from Raven category codes (E→"Novel, epistolary", N→"Novel"). These propagate across match groups via `enrich_genres()`.
 
 **Impact** (as of 2026-04-06): ~10K texts reclassified, mostly ESTC-linked corpora gaining Fiction labels from bibliographies. e.g. eebo_tcp 131→621, ecco 7469→10229, earlyprint 268→859.
 
@@ -163,6 +171,7 @@ lltk db-info                             # genre × corpus crosstab with totals
 lltk db-match                            # exact + containment matching (~5 min)
 lltk db-match --fuzzy                    # also run fuzzy matching (adds ~15 sec)
 lltk db-enrich-genres                    # propagate genre from bibliographies (~5 sec)
+lltk db-wordcounts [-j 8]               # compute word counts from freqs (persistent cache)
 lltk db-matches "Incognita"              # search matches by title
 lltk db-match-stats                      # show matching statistics
 ```
@@ -263,16 +272,18 @@ The virtual/synthetic corpus is just a view — it selects which texts to includ
 ```
 metadata.csv → load_metadata() → DataFrame (cached in _metadfd)
                                       ↓
-                                  lltk.db.ingest() → metadb.duckdb (texts table)
-                                                          ↓
-                                  lltk.db.match()  → metadb_matches.duckdb (matches, match_groups)
-                                                          ↓
-                                  lltk.db.enrich_genres() → genre_enriched on texts table
-                                                          ↓
-                                  lltk.db.texts()  → text objects (from source corpora)
+                                  lltk.db.ingest()         → metadb.duckdb (texts table)
+                                                                 ↓
+                                  lltk.db.match()          → metadb_matches.duckdb
+                                                                 ↓
+                                  lltk.db.enrich_genres()  → genre + genre_raw on texts table
+                                                                 ↓
+                                  lltk.db.wordcounts()     → metadb_wordcounts.duckdb (persistent cache)
+                                                                 ↓
+                                  lltk.db.texts()          → text objects (from source corpora)
 ```
 
-`load_metadata()` is the source of truth. The DB caches its output. Matching operates on the DB. Genre enrichment propagates bibliography labels across match groups. Virtual corpus queries use `genre_enriched` for filtering and return real text objects that delegate file access to their source corpus.
+`load_metadata()` is the source of truth. The DB caches its output. Matching operates on the DB. Genre enrichment propagates bibliography labels across match groups, writing directly to `genre`. Word counts cached persistently and backfilled on ingest. Virtual corpus queries return real text objects that delegate file access to their source corpus.
 
 ### For the abstraction project
 
@@ -473,27 +484,36 @@ Metadata-only corpus from parsed scholarly bibliographies of early English ficti
 
 ```python
 C = lltk.load('fiction_biblio')
-C.compile()  # merges CSVs from sources/ dir into metadata.csv
+C.compile()  # reads sources_parsed/ CSVs, auto-matches to ESTC, writes metadata.csv
 ```
 
-- Source CSVs in `~/lltk_data/corpora/fiction_biblio/sources/` (mish.csv, more to come)
-- IDs: `{source}_{00001}` format (e.g. `mish_00001`)
-- All entries get `genre='Fiction'`
-- No text files — metadata only, for genre propagation via match groups
-- Currently: Mish 1600-1700 (1,455 entries)
-- `id_biblio` column has STC/Wing reference numbers (e.g. `"STC 11502"`, `"Wing M600"`)
+### Sources (6 bibliographies, 6,862 entries)
 
-### fiction_biblio → ESTC linking via Wing/STC refs
+| Bibliography | ID | Period | Entries | ESTC matching method | ESTC rate |
+|---|---|---|---|---|---|
+| Mish 1967 | mish1967 | 1475-1700 | 1,497 | STC/Wing IDs | 70.5% |
+| Odell 1954 | odell1954 | 1475-1700 | 1,024 | STC/Wing IDs | 77.6% |
+| McBurney 1960 | mcburney1960 | 1700-1739 | 1,089 | Shelfmarks (BM→bL etc.) | 27.0% |
+| Beasley 1972 | beasley1972 | 1740-1749 | 494 | McBurney cross-refs | 6.5% |
+| Raven 1987 | raven1987 | 1750-1770 | 1,357 | Direct ESTC IDs | 56.4% |
+| Raven 2000 | raven2000 | 1770-1799 | 1,401 | Direct ESTC IDs | 75.0% |
 
-ESTC `compile()` extracts `id_stc` and `id_wing` from MARC 510 reference fields. fiction_biblio has the same IDs in `id_biblio`. Direct deterministic linking:
+- Gemini Flash-parsed page images in `sources_parsed/{biblio}.csv`
+- `compile()` assigns IDs (`{biblio}_{NNNN}`), auto-matches to ESTC (STC/Wing + shelfmarks + McBurney xrefs + direct ESTC IDs)
+- `matches_to_verify.csv`: auto-generated with fuzzy scores for human review
+- `matches_verified.csv`: manual overrides (y/n per match)
+- `load_metadata()` enriches genre_raw from Raven category codes (E→"Novel, epistolary", N→"Novel")
+- All entries get `genre='Fiction'`, no text files — genre propagation via match groups + `db-enrich-genres`
 
-| Method | Matched | Coverage |
-|--------|---------|----------|
-| Title matching (current) | 890 | 61.2% |
-| Ref-based, exact | 1,010 | 69.4% |
-| Ref-based, normalized | 1,037 | 71.3% |
+### fiction_biblio → ESTC linking
 
-Wing hit rate: 84.6%, STC hit rate: 94.2%. 294 entries have no bibliographic reference. Some mismatches from OCR errors in bibliography PDF parsing — LLM-based page image extraction (Gemini Flash) gets 0/8 ref errors vs OCR's 2/8.
+| Method | How | Corpora |
+|--------|-----|---------|
+| STC/Wing | `id_stc`/`id_wing` → ESTC `id_stc`/`id_wing` | Mish, Odell |
+| Shelfmarks | Parse references field, map library codes (BM→bL, Bod→bO, H→nMH), lookup in ESTC `holdings` JSON | McBurney |
+| McBurney xrefs | `id_mcburney` → McBurney entry with ESTC ID | Beasley |
+| Direct ESTC IDs | `id_estc` from bibliography | Raven |
+| Title matching | via `db-match` (containment, exact_norm) | All (catches what ID-based misses) |
 
 ### Early Novels Database (END)
 

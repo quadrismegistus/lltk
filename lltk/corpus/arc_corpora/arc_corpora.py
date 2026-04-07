@@ -40,6 +40,31 @@ class ArcFiction(CuratedCorpus):
     DEDUP = True
     DEDUP_BY = 'oldest'
 
+    # Conservative mode: pre-CONSERVATIVE_BEFORE, only include texts whose
+    # genre was confirmed by an approved authority (bibliography or ESTC form).
+    # Set to None to disable.
+    CONSERVATIVE_BEFORE = 1800
+    CONSERVATIVE_SOURCES = {
+        'form',
+        'bibliography:fiction_biblio',
+        'bibliography:end',
+        'bibliography:ravengarside',
+    }
+
+    _UNSET = object()
+
+    def load_metadata(self, conservative=_UNSET, **kwargs):
+        meta = super().load_metadata(**kwargs)
+        if meta is None or not len(meta):
+            return meta
+        if conservative is self._UNSET:
+            conservative = self.CONSERVATIVE_BEFORE
+        if conservative and 'genre_enriched_source' in meta.columns:
+            pre = meta.year < conservative
+            approved = meta.genre_enriched_source.isin(self.CONSERVATIVE_SOURCES)
+            meta = meta[~pre | approved]
+        return meta
+
 
 class ArcPoetry(CuratedCorpus):
     ID = 'arc_poetry'

@@ -31,6 +31,7 @@ from lltk.imports import PATH_LLTK_DATA, log
 
 PATH_METADB = os.path.join(PATH_LLTK_DATA, 'metadb.duckdb')
 PATH_MATCHDB = os.path.join(PATH_LLTK_DATA, 'metadb_matches.duckdb')
+PATH_WORDCOUNTDB = os.path.join(PATH_LLTK_DATA, 'metadb_wordcounts.duckdb')
 
 # Standard genre vocabulary — harmonized across corpora
 GENRE_VOCAB = {
@@ -98,7 +99,7 @@ CORPUS_SOURCE_RANKS = {
     'arc_fiction': 101, 'arc_poetry': 101, 'arc_periodical': 101, 'tmp':101,
 }
 
-_TITLE_NORM_PUNCS = re.compile(r'[;:.\(\[,!?]')
+_TITLE_NORM_PUNCS = re.compile(r'[;:.\(\[,!?]')  # period safe now — abbreviation periods already stripped
 _TITLE_END_PHRASES = sorted([
     'edited by', 'written by', 'by the author', 'by mr', 'by mrs',
     'by miss', 'by dr', 'a novel', 'a romance', 'a tale', 'a poem',
@@ -147,12 +148,37 @@ def normalize_title(title):
     if not title or not isinstance(title, str) or title == 'nan':
         return None
     t = title.strip().lower()
-    t = t.replace('\u2014', '--').replace('\u2013', '-')
+
+    # Unescape HTML entities (e.g. &hyphen; → -, &amp; → &)
+    import html
+    t = html.unescape(t)
+
+    # Normalize all dash/hyphen variants to ASCII hyphen
+    t = re.sub(r'[\u2010\u2011\u2012\u2013\u2014\u2015\u2212\uFE58\uFE63\uFF0D]', '-', t)
+    t = t.replace('--', ' ')
+
+    # Strip brackets: [Love-Letters...] → Love-Letters...
+    t = re.sub(r'[\[\]]', '', t).strip()
+
+    # Strip periods after known abbreviations only (Mr. Mrs. Dr. St. Q. K. E. etc.)
+    # Keeps subtitle-separating periods intact: "The life of X. Being a history"
+    _ABBREV_PREFIXES = {
+        'mr', 'mrs', 'ms', 'dr', 'st', 'sr', 'jr', 'esq', 'rev', 'gen', 'col', 'capt', 'maj', 'sgt',
+        'vol', 'pt', 'no', 'ed', 'edn',
+    }
+    # Also strip period after any single letter (Q., E., K., A., etc.)
+    t = re.sub(r'\b([a-z])\.\s', r'\1 ', t)
+    for abbr in _ABBREV_PREFIXES:
+        t = re.sub(r'\b' + abbr + r'\.\s', abbr + ' ', t)
+        t = re.sub(r'\b' + abbr + r'\.$', abbr, t)
+
     # Modernize early modern spelling (u/v, vv/w, i/j, etc.)
     mod = _get_spelling_modernizer()
     if mod:
         t = ' '.join(mod.get(w, w) for w in t.split())
-    # Strip after first punctuation
+
+    # Split on first subtitle punctuation: ; : . ( [ , ! ?
+    # Abbreviation periods already stripped above, so remaining periods are subtitle separators
     m = _TITLE_NORM_PUNCS.search(t)
     if m:
         t = t[:m.start()].strip()
@@ -164,6 +190,9 @@ def normalize_title(title):
             if idx > 3:
                 t = t[:idx].strip()
                 break
+
+    # Strip trailing period and whitespace
+    t = t.rstrip('. ')
     t = ' '.join(t.split())  # collapse whitespace
     return t if len(t) > 1 else None
 
@@ -233,6 +262,91 @@ def normalize_author(author):
     return a if len(a) > 1 else None
 
 
+def normalize_genre_raw(val):
+    """Normalize a genre_raw value: harmonize codes, synonyms, and pipe-separated compounds.
+
+    Applied at ingest time so all downstream consumers (matching, enrichment,
+    arc corpora) see clean values.
+    """
+    if not val or not isinstance(val, str) or val in ('nan', 'None', ''):
+        return None
+
+    # ── Step 1: Code-to-label mappings (COCA/COHA, lowercase variants) ──
+    CODE_MAP = {
+        'FIC': 'Fiction', 'fic': 'Fiction',
+        'NEWS': 'News', 'MAG': 'Magazine',
+        'ACAD': 'Academic', 'SPOK': 'Spoken',
+        'bio': 'Biography',
+        'Non-Fiction': 'Nonfiction', 'Non-fiction': 'Nonfiction',
+    }
+    stripped = val.strip()
+    if stripped in CODE_MAP:
+        return CODE_MAP[stripped]
+
+    # ── Step 2: Split pipe-separated terms, normalize each ──
+    # Two separators in use: " | " (ESTC) and "|" (litlab)
+    if '|' in stripped:
+        parts = [p.strip() for p in re.split(r'\s*\|\s*', stripped) if p.strip()]
+    else:
+        parts = [stripped]
+
+    # Normalize individual terms
+    EPISTOLARY = {'Epistolary fiction', 'Epistolary', 'Epistolary novel'}
+    normalized = []
+    for p in parts:
+        if p in CODE_MAP:
+            p = CODE_MAP[p]
+        if p in EPISTOLARY:
+            p = 'Novel, epistolary'
+        # Capitalize first letter
+        if p and p[0].islower() and p not in CODE_MAP:
+            p = p[0].upper() + p[1:]
+        normalized.append(p)
+
+    # Deduplicate after normalization
+    seen = set()
+    deduped = []
+    for p in normalized:
+        if p not in seen:
+            seen.add(p)
+            deduped.append(p)
+
+    # ── Step 3: Remove generic terms when more specific ones present ──
+    FICTION_SUBGENRES = {
+        'Novel', 'Novel, epistolary', 'Romance', 'Tale', 'Fable', 'Novella',
+        'Picaresque', 'Gothic', 'Imaginary voyage', 'Silver Fork',
+        'Bildungsroman', 'New Woman', 'Rogue fiction', 'Chapbook',
+        'It Narrative', 'Utopia', 'Jestbook',
+    }
+    # Novel subtypes that make plain "Novel" redundant
+    NOVEL_SUBTYPES = {
+        'Novel, epistolary', 'Novel, sentimental', 'Novel, Gothic',
+        'Novel, picaresque', 'Novel, satire', 'Novel, historical',
+        'Novel, didactic', 'Novel, oriental', 'Novel, utopian',
+        'Novel, utopia', 'Novel, erotic', 'Novel, philosophical',
+        'Novel, anti-Jacobin', 'Novel, satirical',
+        'Novel, It Narrative', 'Novel, scandalous memoir',
+        'Novel, scandal chronicle', 'Novel, secret history',
+        'Novel, miscellany', 'Novel, Romance',
+    }
+    if len(deduped) > 1:
+        has_specific_fiction = any(p in FICTION_SUBGENRES for p in deduped)
+        if has_specific_fiction:
+            deduped = [p for p in deduped if p != 'Fiction']
+        # Novel is redundant when a more specific Novel subtype is present
+        has_novel_subtype = any(p in NOVEL_SUBTYPES for p in deduped)
+        if has_novel_subtype:
+            deduped = [p for p in deduped if p != 'Novel']
+        # Letter is redundant with Novel, epistolary
+        if 'Novel, epistolary' in deduped:
+            deduped = [p for p in deduped if p != 'Letter']
+
+    if not deduped:
+        return None
+
+    return ' | '.join(deduped)
+
+
 def _parse_year(val):
     """Parse a year value to integer. Handles ranges, circa dates, etc."""
     if val is None or (isinstance(val, float) and np.isnan(val)):
@@ -277,9 +391,10 @@ def _parse_year(val):
 
 
 class MetaDB:
-    def __init__(self, path=None, match_path=None):
+    def __init__(self, path=None, match_path=None, wordcount_path=None):
         self.path = path or PATH_METADB
         self.match_path = match_path or PATH_MATCHDB
+        self.wordcount_path = wordcount_path or PATH_WORDCOUNTDB
         self._conn = None
         self._col_cache = None
 
@@ -297,6 +412,13 @@ class MetaDB:
             except Exception:
                 pass  # already attached
             self._ensure_match_tables()
+            # Attach wordcounts DB
+            try:
+                os.makedirs(os.path.dirname(self.wordcount_path), exist_ok=True)
+                self._conn.execute(f"ATTACH '{self.wordcount_path}' AS wc_db")
+            except Exception:
+                pass  # already attached
+            self._ensure_wordcount_tables()
         return self._conn
 
     @property
@@ -359,6 +481,19 @@ class MetaDB:
             )
         """)
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_mg_gid ON match_db.match_groups(group_id)")
+
+    def _ensure_wordcount_tables(self):
+        self._conn.execute("""
+            CREATE TABLE IF NOT EXISTS wc_db.wordcounts (
+                path_freqs  TEXT PRIMARY KEY,
+                n_words     INTEGER NOT NULL
+            )
+        """)
+        # Add n_words column to texts table if not present
+        try:
+            self._conn.execute("ALTER TABLE texts ADD COLUMN n_words INTEGER")
+        except Exception:
+            pass
 
     def ingest(self, corpus_id, force=True):
         """Ingest a corpus's load_metadata() output into the DB."""
@@ -522,6 +657,10 @@ class MetaDB:
                 })
             df['is_translated'] = col.astype('boolean')
 
+        # Normalize genre_raw
+        if 'genre_raw' in df.columns:
+            df['genre_raw'] = df['genre_raw'].apply(normalize_genre_raw)
+
         # Compute normalized title and author for matching
         df['title_norm'] = df['title'].apply(normalize_title) if 'title' in df.columns else None
         df['author_norm'] = df['author'].apply(normalize_author) if 'author' in df.columns else None
@@ -549,6 +688,15 @@ class MetaDB:
             INSERT OR REPLACE INTO corpus_info (corpus, ingested_at, n_texts)
             VALUES (?, ?, ?)
         """, [corpus_id, time.time(), count])
+
+        # Backfill n_words from wordcount cache
+        self.conn.execute("""
+            UPDATE texts SET n_words = wc.n_words
+            FROM wc_db.wordcounts wc
+            WHERE texts.path_freqs = wc.path_freqs
+              AND texts.n_words IS NULL
+              AND texts.corpus = ?
+        """, [corpus_id])
 
         if log: log(f'Ingested {count} texts from {corpus_id}')
         self._col_cache = None
@@ -1223,6 +1371,7 @@ class MetaDB:
             n = self.conn.execute("""
                 UPDATE texts SET
                     genre = ?,
+                    genre_raw = CASE WHEN ? != '' THEN ? ELSE genre_raw END,
                     genre_enriched_source = ?
                 WHERE _id IN (
                     SELECT _id FROM match_db.match_groups WHERE group_id = ?
@@ -1232,7 +1381,7 @@ class MetaDB:
                     OR genre != ?
                     OR genre_enriched_source IN ('corpus', 'title', 'topic')
                 )
-            """, [genre, source, gid, genre]).fetchone()
+            """, [genre, genre_raw, genre_raw, source, gid, genre]).fetchone()
             # DuckDB UPDATE doesn't return rowcount easily; count separately
             updated += 1
 
@@ -1267,6 +1416,94 @@ class MetaDB:
         if log: log(f'Texts with genre changed by enrichment: {changed}')
 
         return stats
+
+    # ── Word counts ────────────────────────────────────────────────
+
+    def wordcounts(self, num_proc=None, progress=True):
+        """Compute word counts from freqs files, cached in metadb_wordcounts.duckdb.
+
+        Reads freqs JSON files, sums word counts, and stores in a persistent
+        cache keyed by path_freqs. Incremental: only processes paths not
+        already cached. Results are written back to n_words on the texts table.
+        """
+        from lltk.tools.tools import get_tqdm
+        from concurrent.futures import ThreadPoolExecutor
+        if num_proc is None:
+            num_proc = max(1, os.cpu_count() - 2)
+
+        # Find paths that need counting (not in cache)
+        todo = self.conn.execute("""
+            SELECT DISTINCT t.path_freqs
+            FROM texts t
+            WHERE t.path_freqs IS NOT NULL
+              AND t.path_freqs NOT IN (SELECT path_freqs FROM wc_db.wordcounts)
+        """).fetchdf()
+
+        if not len(todo):
+            if log: log('All word counts cached')
+        else:
+            paths = todo['path_freqs'].tolist()
+            if log: log(f'Counting words for {len(paths)} freqs files...')
+
+            from lltk.imports import PATH_CORPUS
+            corpus_root = os.path.expanduser(PATH_CORPUS)
+
+            def _count_one(rel_path):
+                abs_path = os.path.join(corpus_root, rel_path)
+                try:
+                    if abs_path.endswith('.gz'):
+                        import gzip
+                        with gzip.open(abs_path, 'rt') as f:
+                            d = json.load(f)
+                    else:
+                        with open(abs_path) as f:
+                            d = json.load(f)
+                    return (rel_path, int(sum(d.values())))
+                except Exception:
+                    return None
+
+            results = []
+            with ThreadPoolExecutor(max_workers=num_proc) as pool:
+                iterr = pool.map(_count_one, paths)
+                if progress:
+                    iterr = get_tqdm(iterr, total=len(paths), desc='Counting words')
+                for result in iterr:
+                    if result:
+                        results.append(result)
+                    # Batch insert every 10K
+                    if len(results) >= 10000:
+                        self._insert_wordcounts_batch(results)
+                        results = []
+
+            if results:
+                self._insert_wordcounts_batch(results)
+
+            if log: log(f'Cached {len(todo)} word counts')
+
+        # Backfill n_words on texts table from cache
+        updated = self.conn.execute("""
+            UPDATE texts SET n_words = wc.n_words
+            FROM wc_db.wordcounts wc
+            WHERE texts.path_freqs = wc.path_freqs
+              AND texts.n_words IS NULL
+        """)
+
+        total_with_wc = self.conn.execute(
+            "SELECT COUNT(*) FROM texts WHERE n_words IS NOT NULL"
+        ).fetchone()[0]
+        total_with_freqs = self.conn.execute(
+            "SELECT COUNT(*) FROM texts WHERE path_freqs IS NOT NULL"
+        ).fetchone()[0]
+        if log: log(f'Word counts: {total_with_wc}/{total_with_freqs} texts with n_words')
+
+    def _insert_wordcounts_batch(self, results):
+        """Insert a batch of (path_freqs, n_words) into the wordcount cache."""
+        import pandas as pd
+        df = pd.DataFrame(results, columns=['path_freqs', 'n_words'])
+        self.conn.execute("""
+            INSERT OR IGNORE INTO wc_db.wordcounts (path_freqs, n_words)
+            SELECT path_freqs, n_words FROM df
+        """)
 
     # ── Query API ──────────────────────────────────────────────────
 
