@@ -2,6 +2,14 @@ from lltk.imports import *
 from .utils import *
 
 
+def _open_file(path, **kwargs):
+    """Open a file, using gzip if path ends with .gz."""
+    import gzip
+    if path.endswith('.gz'):
+        return gzip.open(path, 'rt', encoding='utf-8', errors='ignore')
+    return open(path, encoding='utf-8', errors='ignore', **kwargs)
+
+
 class BaseText(BaseObject):
     BAD_TAGS={'note','footnote','greek','latin'}
     # BODY_TAG=None
@@ -1097,7 +1105,7 @@ with lltk.online: self.get_remote_sources()
         if self._xml: return self._xml
         path_xml = self.get_path_xml()
         if not os.path.exists(path_xml): return ''
-        with open(path_xml) as f: return clean_text(f.read())
+        with _open_file(path_xml) as f: return clean_text(f.read())
     
     
     
@@ -1128,7 +1136,7 @@ with lltk.online: self.get_remote_sources()
         """
         # Return plain text version if it exists
         if self.path_txt and os.path.exists(self.path_txt) and not force_xml:
-            with open(self.path_txt,encoding='utf-8',errors='ignore') as f:
+            with _open_file(self.path_txt) as f:
                 return f.read()
         # Otherwise, load from XML?
         if os.path.exists(self.path_xml): return self.XML2TXT.__func__(self.path_xml)
@@ -1453,7 +1461,7 @@ class TextSection(BaseText):
         if self._txt: return self._txt
         # try cached file
         if self.path_txt and os.path.exists(self.path_txt):
-            with open(self.path_txt) as f: return f.read()
+            with _open_file(self.path_txt) as f: return f.read()
         # try extracting from XML
         return self.txt_from_xml()
 
