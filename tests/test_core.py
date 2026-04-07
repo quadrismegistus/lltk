@@ -625,6 +625,205 @@ class TestBLBooks:
         assert _join_authors('', '', '') == ''
 
 
+class TestCorpusPathResolution:
+    """Tests for corpus __getattr__ → get_path path resolution."""
+
+    def test_path_txt_is_directory(self, corpus):
+        assert os.path.isdir(corpus.path_txt)
+        assert corpus.path_txt.endswith('/txt') or corpus.path_txt.endswith('\\txt')
+
+    def test_path_xml_is_directory(self, corpus):
+        assert os.path.isdir(corpus.path_xml)
+
+    def test_path_freqs_is_directory(self, corpus):
+        assert os.path.isdir(corpus.path_freqs)
+
+    def test_path_metadata_is_file(self, corpus):
+        assert os.path.isfile(corpus.path_metadata)
+        assert corpus.path_metadata.endswith('.csv')
+
+    def test_path_nonexistent_raises(self, corpus):
+        with pytest.raises(AttributeError):
+            _ = corpus.some_nonexistent_attr
+
+    def test_getattr_path_prefix(self, corpus):
+        """path_* attributes should resolve via __getattr__ → get_path."""
+        # These all go through __getattr__ since they're not regular attributes
+        assert isinstance(corpus.path_txt, str)
+        assert isinstance(corpus.path_xml, str)
+        assert isinstance(corpus.path_freqs, str)
+
+
+class TestTextPathResolution:
+    """Tests for text path resolution via get_path / get_path_old."""
+
+    @pytest.fixture
+    def text(self, corpus):
+        return list(corpus.texts())[0]
+
+    def test_path_txt_resolves(self, text):
+        assert text.path_txt.endswith('.txt')
+        assert os.path.exists(text.path_txt)
+
+    def test_path_txt_in_corpus_dir(self, text):
+        """Text path_txt should be inside corpus.path_txt directory."""
+        assert text.path_txt.startswith(text.corpus.path_txt)
+
+    def test_path_xml_resolves(self, text):
+        assert text.path_xml.endswith('.xml')
+        assert text.path_xml.startswith(text.corpus.path_xml)
+
+    def test_path_freqs_resolves(self, text):
+        assert text.path_freqs.endswith('.json')
+        assert os.path.exists(text.path_freqs)
+
+    def test_path_freqs_in_corpus_dir(self, text):
+        assert text.path_freqs.startswith(text.corpus.path_freqs)
+
+    def test_path_contains_text_id(self, text):
+        """All path_* should contain the text's id."""
+        assert text.id in text.path_txt
+        assert text.id in text.path_xml
+        assert text.id in text.path_freqs
+
+    def test_path_per_text_dir(self, text):
+        """text.path should be the per-text directory (texts/{id})."""
+        assert text.path.endswith(text.id)
+        assert 'texts' in text.path
+
+    def test_get_path_old_used(self, text):
+        """get_path_old should find flat-directory paths when corpus.path_* exists."""
+        path = text.get_path_old('txt')
+        assert path is not None
+        assert text.id in path
+
+
+class TestTextMetadataHydration:
+    """Tests for lazy metadata hydration on text objects."""
+
+    @pytest.fixture
+    def text(self, corpus):
+        return list(corpus.texts())[0]
+
+    def test_hydrated_after_iteration(self, text):
+        """Texts from corpus.texts() should be pre-hydrated."""
+        assert text._meta_hydrated is True
+
+    def test_author_accessible(self, text):
+        assert isinstance(text.author, str)
+        assert len(text.author) > 0
+
+    def test_title_accessible(self, text):
+        assert isinstance(text.title, str)
+        assert len(text.title) > 0
+
+    def test_year_accessible(self, text):
+        assert int(text.year) == text.year  # may be np.int64
+
+    def test_genre_accessible(self, text):
+        assert isinstance(text.genre, str)
+
+    def test_get_exact_key(self, text):
+        """get('author') should return the author."""
+        assert text.get('author') == text.author
+
+    def test_get_fuzzy_key(self, text):
+        """get('au') should fuzzy-match to 'author'."""
+        assert text.get('au') == text.author
+
+    def test_get_nonexistent_returns_none(self, text):
+        assert text.get('xyzzy_nonexistent_key') is None
+
+    def test_get_nonexistent_returns_none_not_error(self, text):
+        """get() for missing key should return None, not raise."""
+        result = text.get('xyzzy_nonexistent_key')
+        assert result is None
+
+    def test_getattr_metadata_lookup(self, text):
+        """__getattr__ should resolve metadata keys."""
+        # 'author' is a metadata key, resolved via __getattr__ → get()
+        assert text.author is not None
+
+    def test_getattr_nonexistent_raises(self, text):
+        with pytest.raises(AttributeError):
+            _ = text.xyzzy_nonexistent_attr
+
+    def test_bare_text_hydrates_on_access(self, corpus):
+        """A bare text shell (not from texts()) should hydrate on first access."""
+        t = corpus.text('austen_pride')
+        # Force hydration via attribute access
+        author = t.author
+        assert author == 'Jane Austen'
+
+
+class TestTextTxtAndFreqs:
+    """Tests for text content access (.txt, .freqs())."""
+
+    @pytest.fixture
+    def text(self, corpus):
+        for t in corpus.texts():
+            if t.id == 'austen_pride':
+                return t
+
+    def test_txt_reads_file(self, text):
+        """text.txt should read from path_txt."""
+        txt = text.txt
+        assert isinstance(txt, str)
+        assert len(txt) > 100
+
+    def test_freqs_returns_counter(self, text):
+        freqs = text.freqs()
+        assert isinstance(freqs, Counter)
+        assert len(freqs) > 0
+
+    def test_freqs_common_word(self, text):
+        freqs = text.freqs()
+        assert freqs.get('the', 0) > 0
+
+    def test_xml2txt_func_resolved(self, text):
+        """xml2txt_func should resolve to a callable."""
+        func = text.xml2txt_func
+        assert callable(func)
+
+
+class TestCorpusMetadataLoading:
+    """Tests for corpus metadata loading and caching."""
+
+    def test_meta_returns_dataframe(self, corpus):
+        assert isinstance(corpus.meta, pd.DataFrame)
+
+    def test_meta_cached(self, corpus):
+        """Subsequent calls should return the same cached DataFrame."""
+        m1 = corpus.meta
+        m2 = corpus.meta
+        assert m1 is m2
+
+    def test_meta_index_is_id(self, corpus):
+        meta = corpus.meta
+        assert meta.index.name == 'id'
+
+    def test_load_metadata_with_force(self, corpus):
+        """force=True should reload (not return cached)."""
+        m1 = corpus.meta
+        m2 = corpus.load_metadata(force=True)
+        assert isinstance(m2, pd.DataFrame)
+        assert len(m2) == len(m1)
+
+    def test_texts_iter_covers_meta(self, corpus):
+        """All metadata IDs should appear among iterated texts."""
+        meta = corpus.meta
+        text_ids = {t.id for t in corpus.texts()}
+        for mid in meta.index:
+            assert mid in text_ids, f'{mid} in metadata but not in texts()'
+
+    def test_meta_ids_subset_of_texts(self, corpus):
+        """Metadata index should be a subset of text IDs (texts may include sections)."""
+        meta = corpus.meta
+        text_ids = {t.id for t in corpus.texts()}
+        meta_ids = set(meta.index)
+        assert meta_ids.issubset(text_ids)
+
+
 class TestXml2txtEarlyprint:
     """Tests for EarlyPrint XML → TXT conversion with reg spelling."""
 
