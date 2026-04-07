@@ -824,6 +824,301 @@ class TestCorpusMetadataLoading:
         assert meta_ids.issubset(text_ids)
 
 
+class TestNormalizeTitle:
+    """Tests for metadb.normalize_title()."""
+
+    def test_basic_lowercase(self):
+        from lltk.tools.metadb import normalize_title
+        assert normalize_title('The Life of Samuel Johnson') == 'the life of samuel johnson'
+
+    def test_strip_subtitle_colon(self):
+        from lltk.tools.metadb import normalize_title
+        result = normalize_title('Gulliver\'s Travels: A Satire')
+        assert result == "gulliver's travels"
+
+    def test_strip_subtitle_semicolon(self):
+        from lltk.tools.metadb import normalize_title
+        result = normalize_title('Robinson Crusoe; or, The Life and Adventures')
+        assert result == 'robinson crusoe'
+
+    def test_html_entity_unescape(self):
+        from lltk.tools.metadb import normalize_title
+        result = normalize_title('Love&hyphen;Letters Between a Noble&hyphen;Man')
+        assert 'love' in result
+        assert '&' not in result
+
+    def test_strip_brackets(self):
+        from lltk.tools.metadb import normalize_title
+        result = normalize_title('[The] History of Tom Jones')
+        assert result.startswith('the history')
+
+    def test_abbreviation_periods(self):
+        from lltk.tools.metadb import normalize_title
+        result = normalize_title('The Life and Death of Mr. Badman')
+        assert 'mr badman' in result
+        assert 'mr.' not in result
+
+    def test_empty_returns_none(self):
+        from lltk.tools.metadb import normalize_title
+        assert normalize_title('') is None
+        assert normalize_title(None) is None
+        assert normalize_title('nan') is None
+
+    def test_short_title_returns_none(self):
+        from lltk.tools.metadb import normalize_title
+        assert normalize_title('A') is None
+
+
+class TestNormalizeAuthor:
+    """Tests for metadb.normalize_author()."""
+
+    def test_basic(self):
+        from lltk.tools.metadb import normalize_author
+        assert normalize_author('Congreve, William, 1670-1729.') == 'congreve'
+
+    def test_no_comma(self):
+        from lltk.tools.metadb import normalize_author
+        assert normalize_author('Shakespeare') == 'shakespeare'
+
+    def test_empty_returns_none(self):
+        from lltk.tools.metadb import normalize_author
+        assert normalize_author('') is None
+        assert normalize_author(None) is None
+        assert normalize_author('nan') is None
+
+    def test_strip_trailing_period(self):
+        from lltk.tools.metadb import normalize_author
+        assert normalize_author('Defoe.') == 'defoe'
+
+
+class TestJaroWinkler:
+    """Tests for metadb._jaro_winkler()."""
+
+    def test_identical(self):
+        from lltk.tools.metadb import _jaro_winkler
+        assert _jaro_winkler('hello', 'hello') == 1.0
+
+    def test_empty(self):
+        from lltk.tools.metadb import _jaro_winkler
+        assert _jaro_winkler('', 'hello') == 0.0
+        assert _jaro_winkler('hello', '') == 0.0
+
+    def test_similar(self):
+        from lltk.tools.metadb import _jaro_winkler
+        score = _jaro_winkler('martha', 'marhta')
+        assert score > 0.9
+
+    def test_dissimilar(self):
+        from lltk.tools.metadb import _jaro_winkler
+        score = _jaro_winkler('abcdef', 'zyxwvu')
+        assert score < 0.5
+
+
+class TestParseYear:
+    """Tests for metadb._parse_year()."""
+
+    def test_integer(self):
+        from lltk.tools.metadb import _parse_year
+        assert _parse_year(1750) == 1750
+
+    def test_string(self):
+        from lltk.tools.metadb import _parse_year
+        assert _parse_year('1750') == 1750
+
+    def test_range(self):
+        from lltk.tools.metadb import _parse_year
+        assert _parse_year('1750-1755') == 1750
+
+    def test_circa(self):
+        from lltk.tools.metadb import _parse_year
+        assert _parse_year('[1750?]') == 1750
+
+    def test_none(self):
+        from lltk.tools.metadb import _parse_year
+        assert _parse_year(None) is None
+        assert _parse_year('') is None
+        assert _parse_year('unknown') is None
+
+    def test_float(self):
+        from lltk.tools.metadb import _parse_year
+        assert _parse_year(1750.0) == 1750
+
+
+class TestMetaDB:
+    """Tests for MetaDB with a temporary DuckDB."""
+
+    @pytest.fixture(scope='class')
+    def tmpdb(self, tmp_path_factory):
+        """Create a MetaDB backed by temp DuckDB files."""
+        tmpdir = tmp_path_factory.mktemp('metadb')
+        from lltk.tools.metadb import MetaDB
+        db = MetaDB(
+            path=str(tmpdir / 'test.duckdb'),
+            match_path=str(tmpdir / 'test_matches.duckdb'),
+            wordcount_path=str(tmpdir / 'test_wc.duckdb'),
+        )
+        # Ingest some test data
+        df = pd.DataFrame({
+            'id': ['t001', 't002', 't003', 't004'],
+            'title': ['Pride and Prejudice', 'Sense and Sensibility',
+                       'Frankenstein', 'The Monk'],
+            'author': ['Austen, Jane', 'Austen, Jane',
+                        'Shelley, Mary', 'Lewis, Matthew'],
+            'year': [1813, 1811, 1818, 1796],
+            'genre': ['Fiction', 'Fiction', 'Fiction', 'Fiction'],
+            'genre_raw': ['Novel', 'Novel', 'Novel, Gothic', 'Novel, Gothic'],
+        })
+        db.ingest_df(df, 'test_corpus')
+        return db
+
+    def test_ingest_count(self, tmpdb):
+        count = tmpdb.conn.execute(
+            "SELECT COUNT(*) FROM texts WHERE corpus = 'test_corpus'"
+        ).fetchone()[0]
+        assert count == 4
+
+    def test_get_by_id(self, tmpdb):
+        row = tmpdb.get('_test_corpus/t001')
+        assert row is not None
+        assert row['title'] == 'Pride and Prejudice'
+        assert row['author'] == 'Austen, Jane'
+        assert row['year'] == 1813
+
+    def test_get_by_corpus_and_id(self, tmpdb):
+        row = tmpdb.get('test_corpus', 't001')
+        assert row is not None
+        assert row['title'] == 'Pride and Prejudice'
+
+    def test_get_nonexistent(self, tmpdb):
+        row = tmpdb.get('_test_corpus/nonexistent')
+        assert row is None
+
+    def test_query(self, tmpdb):
+        df = tmpdb.query("SELECT * FROM texts WHERE corpus = 'test_corpus'")
+        assert isinstance(df, pd.DataFrame)
+        assert len(df) == 4
+
+    def test_query_filter(self, tmpdb):
+        df = tmpdb.query(
+            "SELECT * FROM texts WHERE corpus = 'test_corpus' AND year < 1800"
+        )
+        assert len(df) == 1
+        assert df.iloc[0]['id'] == 't004'
+
+    def test_corpora(self, tmpdb):
+        df = tmpdb.corpora()
+        assert 'test_corpus' in df['corpus'].values
+
+    def test_title_norm_computed(self, tmpdb):
+        row = tmpdb.get('_test_corpus/t001')
+        assert row.get('title_norm') is not None
+        assert 'pride' in row['title_norm']
+
+    def test_author_norm_computed(self, tmpdb):
+        row = tmpdb.get('_test_corpus/t001')
+        assert row.get('author_norm') is not None
+        assert row['author_norm'] == 'austen'
+
+    def test_genre_stored(self, tmpdb):
+        row = tmpdb.get('_test_corpus/t003')
+        assert row['genre'] == 'Fiction'
+        assert row['genre_raw'] == 'Novel, Gothic'
+
+    def test_meta_json_extra_cols(self, tmpdb):
+        """Extra columns beyond core should be in meta JSON."""
+        # Our test data only has core columns, so meta should be minimal
+        row = tmpdb.get('_test_corpus/t001')
+        assert 'corpus' in row
+        assert row['corpus'] == 'test_corpus'
+
+    def test_ingest_df_replaces_on_force(self, tmpdb):
+        """Re-ingesting with force=True should replace data."""
+        df = pd.DataFrame({
+            'id': ['t001'],
+            'title': ['Updated Title'],
+            'author': ['New Author'],
+            'year': [2000],
+            'genre': ['Poetry'],
+        })
+        tmpdb.ingest_df(df, 'test_replace')
+        row = tmpdb.get('_test_replace/t001')
+        assert row['title'] == 'Updated Title'
+
+        # Re-ingest with different data
+        df2 = pd.DataFrame({
+            'id': ['t001'],
+            'title': ['Final Title'],
+            'author': ['Final Author'],
+            'year': [2001],
+            'genre': ['Drama'],
+        })
+        tmpdb.ingest_df(df2, 'test_replace')
+        row2 = tmpdb.get('_test_replace/t001')
+        assert row2['title'] == 'Final Title'
+
+    def test_corpus_info(self, tmpdb):
+        df = tmpdb.corpus_info()
+        assert isinstance(df, pd.DataFrame)
+        assert 'test_corpus' in df['corpus'].values
+
+    def test_validate(self, tmpdb):
+        result = tmpdb.validate('test_corpus')
+        assert isinstance(result, pd.DataFrame)
+
+
+class TestCleanText:
+    """Tests for text/utils.py clean_text()."""
+
+    def test_html_entities(self):
+        from lltk.text.utils import clean_text
+        result = clean_text('love&hyphen;letters')
+        assert 'love' in result and 'letters' in result
+
+    def test_longs_s(self):
+        from lltk.text.utils import clean_text
+        result = clean_text('&longs;ome text')
+        assert result == 'some text'
+
+    def test_unicode_pipe(self):
+        from lltk.text.utils import clean_text
+        result = clean_text('hello\u2223world')
+        assert result == 'helloworld'
+
+    def test_mdash(self):
+        from lltk.text.utils import clean_text
+        result = clean_text('hello\u2014world')
+        assert 'hello' in result and 'world' in result
+
+
+class TestTokenize:
+    """Tests for text/utils.py tokenization functions."""
+
+    def test_tokenize_fast_basic(self):
+        from lltk.text.utils import tokenize_fast
+        tokens = tokenize_fast('Hello, World! How are you?')
+        assert 'Hello' in tokens
+        assert 'World' in tokens
+        assert ',' not in tokens
+
+    def test_tokenize_fast_lowercase(self):
+        from lltk.text.utils import tokenize_fast
+        tokens = tokenize_fast('Hello World', lower=True)
+        assert 'hello' in tokens
+
+    def test_tokenize_agnostic(self):
+        from lltk.text.utils import tokenize_agnostic
+        tokens = tokenize_agnostic('hello world')
+        # tokenize_agnostic includes non-letter spans
+        word_tokens = [t for t in tokens if t.strip()]
+        assert 'hello' in word_tokens
+
+    def test_tokenize_default(self):
+        from lltk.text.utils import tokenize
+        tokens = tokenize('The quick brown fox')
+        assert 'quick' in tokens
+        assert 'fox' in tokens
+
+
 class TestXml2txtEarlyprint:
     """Tests for EarlyPrint XML → TXT conversion with reg spelling."""
 
