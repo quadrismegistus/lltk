@@ -36,22 +36,62 @@ TCP_PREFIX_TO_SOURCE = {
 }
 
 
-def xml2txt_earlyprint(xmlfn, OK=['p', 'l'], BAD=[], body_tag='text'):
-    """Like xml2txt_tcp but handles .xml.gz files."""
-    import bs4
+def xml2txt_earlyprint(xmlfn, use_reg=True):
+    """Extract plain text from EarlyPrint TEI XML.
+
+    Uses linguistically tagged <w> elements with optional regularized spelling
+    (reg attribute) for modernized output. Falls back to surface form when reg
+    is absent. Punctuation from <pc> elements is attached without leading space.
+
+    Extracts from <p> (paragraph) and <l> (verse line) elements within <body>.
+
+    Args:
+        xmlfn: Path to .xml or .xml.gz file.
+        use_reg: If True, prefer reg attribute over surface text on <w> tags.
+    """
+    from lxml import etree
     import gzip as _gzip
+
+    TEI = 'http://www.tei-c.org/ns/1.0'
+    W = f'{{{TEI}}}w'
+    PC = f'{{{TEI}}}pc'
+    BLOCK_TAGS = {f'{{{TEI}}}p', f'{{{TEI}}}l'}
+
     opener = _gzip.open if xmlfn.endswith('.gz') else open
-    with opener(xmlfn, 'rt', encoding='utf-8', errors='ignore') as f:
-        xml = f.read()
-    dom = bs4.BeautifulSoup(xml, 'lxml')
-    for tag in BAD:
-        [x.extract() for x in dom.findAll(tag)]
-    txt = []
-    for doc in dom.find_all(body_tag):
-        for tag in doc.find_all():
-            if tag.name in OK:
-                txt.append(clean_text(tag.text))
-    return '\n\n'.join(txt).replace('\u2223', '')
+    with opener(xmlfn, 'rb') as f:
+        tree = etree.parse(f)
+
+    body = tree.find(f'.//{{{TEI}}}body')
+    if body is None:
+        return ''
+
+    paragraphs = []
+    for block in body.iter():
+        if block.tag not in BLOCK_TAGS:
+            continue
+        tokens = []
+        for el in block.iter():
+            if el.tag == W:
+                text = (el.get('reg') if use_reg and el.get('reg') else el.text) or ''
+                if text:
+                    tokens.append(('w', text))
+            elif el.tag == PC:
+                if el.text:
+                    tokens.append(('pc', el.text))
+        # Join: space before words, no space before punctuation
+        parts = []
+        for typ, text in tokens:
+            if typ == 'pc' and parts:
+                parts.append(text)
+            else:
+                if parts:
+                    parts.append(' ')
+                parts.append(text)
+        line = ''.join(parts).strip()
+        if line:
+            paragraphs.append(line)
+
+    return '\n\n'.join(paragraphs)
 
 
 class TextEarlyPrint(TextTCP):
