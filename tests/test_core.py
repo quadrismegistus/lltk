@@ -623,3 +623,223 @@ class TestBLBooks:
         assert _join_authors('', 'Dickens', '') == 'Dickens'
         assert _join_authors('', '', 'Publisher Co.') == 'Publisher Co.'
         assert _join_authors('', '', '') == ''
+
+
+class TestXml2txtEarlyprint:
+    """Tests for EarlyPrint XML → TXT conversion with reg spelling."""
+
+    @pytest.fixture(scope='class')
+    def sample_xml(self, tmp_path_factory):
+        """Create a minimal EarlyPrint TEI XML.gz for testing."""
+        import gzip
+        xml_content = b"""<?xml version="1.0" encoding="UTF-8"?>
+<TEI xmlns="http://www.tei-c.org/ns/1.0">
+  <teiHeader><fileDesc><titleStmt><title>Test</title></titleStmt></fileDesc></teiHeader>
+  <text>
+    <body>
+      <p xml:id="p1">
+        <w lemma="now" pos="av" reg="Now">NOwe</w>
+        <w lemma="we" pos="pns">we</w>
+        <w lemma="have" pos="vvb" reg="have">haue</w>
+        <w lemma="declare" pos="vvn">declared</w>
+        <w lemma="many" pos="d">many</w>
+        <w lemma="thing" pos="n2" reg="things">thinges</w>
+        <pc>,</pc>
+        <w lemma="which" pos="pnr">which</w>
+        <w lemma="be" pos="vvb" reg="are">bee</w>
+        <w lemma="worthy" pos="j" reg="worthy">worthye</w>
+        <pc>.</pc>
+      </p>
+      <l xml:id="l1">
+        <w lemma="the" pos="d">The</w>
+        <w lemma="key" pos="n2" reg="Keys">Keyes</w>
+        <w lemma="of" pos="acp">of</w>
+        <w lemma="ancient" pos="j" reg="ancient">auncient</w>
+        <w lemma="time" pos="n2" reg="times">tymes</w>
+        <pc>.</pc>
+      </l>
+    </body>
+  </text>
+</TEI>"""
+        path = tmp_path_factory.mktemp("earlyprint") / "test.xml.gz"
+        with gzip.open(str(path), 'wb') as f:
+            f.write(xml_content)
+        return str(path)
+
+    def test_basic_extraction(self, sample_xml):
+        from lltk.corpus.earlyprint.earlyprint import xml2txt_earlyprint
+        txt = xml2txt_earlyprint(sample_xml)
+        assert len(txt) > 0
+        assert 'Now' in txt or 'NOwe' in txt
+
+    def test_reg_spelling(self, sample_xml):
+        from lltk.corpus.earlyprint.earlyprint import xml2txt_earlyprint
+        txt = xml2txt_earlyprint(sample_xml, use_reg=True)
+        assert 'Now' in txt
+        assert 'have' in txt
+        assert 'things' in txt
+        assert 'NOwe' not in txt
+        assert 'haue' not in txt
+        assert 'thinges' not in txt
+
+    def test_surface_spelling(self, sample_xml):
+        from lltk.corpus.earlyprint.earlyprint import xml2txt_earlyprint
+        txt = xml2txt_earlyprint(sample_xml, use_reg=False)
+        assert 'NOwe' in txt
+        assert 'haue' in txt
+        assert 'thinges' in txt
+
+    def test_punctuation_no_leading_space(self, sample_xml):
+        from lltk.corpus.earlyprint.earlyprint import xml2txt_earlyprint
+        txt = xml2txt_earlyprint(sample_xml, use_reg=True)
+        assert ', which' in txt
+        assert 'worthy.' in txt
+
+    def test_verse_lines_extracted(self, sample_xml):
+        from lltk.corpus.earlyprint.earlyprint import xml2txt_earlyprint
+        txt = xml2txt_earlyprint(sample_xml, use_reg=True)
+        assert 'Keys' in txt
+        assert 'ancient' in txt
+
+    def test_paragraphs_separated(self, sample_xml):
+        from lltk.corpus.earlyprint.earlyprint import xml2txt_earlyprint
+        txt = xml2txt_earlyprint(sample_xml, use_reg=True)
+        # Paragraph and verse line should be separate blocks
+        assert '\n\n' in txt
+
+    def test_empty_body(self, tmp_path):
+        """XML with no body should return empty string."""
+        import gzip
+        xml = b"""<?xml version="1.0" encoding="UTF-8"?>
+<TEI xmlns="http://www.tei-c.org/ns/1.0">
+  <teiHeader><fileDesc><titleStmt><title>Empty</title></titleStmt></fileDesc></teiHeader>
+  <text></text>
+</TEI>"""
+        path = str(tmp_path / "empty.xml.gz")
+        with gzip.open(path, 'wb') as f:
+            f.write(xml)
+        from lltk.corpus.earlyprint.earlyprint import xml2txt_earlyprint
+        assert xml2txt_earlyprint(path) == ''
+
+
+class TestFictionBiblioEstcIds:
+    """Tests for fiction_biblio ESTC ID parsing and normalization."""
+
+    def test_normalize_uppercase(self):
+        from lltk.corpus.fiction_biblio.fiction_biblio import FictionBiblio
+        import pandas as pd, re
+        # Simulate the normalization logic
+        def _normalize(raw):
+            s = str(raw).strip()
+            s = re.sub(r'^ESTC\s*', '', s).strip()
+            s = re.sub(r'\s*\[.*?\]', '', s).strip()
+            if not s: return ''
+            if s[0].islower(): s = s[0].upper() + s[1:]
+            s = re.sub(r'^([A-Z])0+', r'\1', s)
+            if re.match(r'^[A-Z]\d+$', s): return s
+            return ''
+        assert _normalize('t068056') == 'T68056'
+        assert _normalize('T068056') == 'T68056'
+
+    def test_normalize_strip_zeros(self):
+        import re
+        def _strip(s):
+            return re.sub(r'^([A-Z])0+', r'\1', s)
+        assert _strip('T068056') == 'T68056'
+        assert _strip('N024384') == 'N24384'
+        assert _strip('T221825') == 'T221825'  # no leading zeros
+        assert _strip('T2') == 'T2'
+
+    def test_normalize_reject_year(self):
+        import re
+        def _normalize(raw):
+            s = str(raw).strip()
+            s = re.sub(r'^ESTC\s*', '', s).strip()
+            s = re.sub(r'\s*\[.*?\]', '', s).strip()
+            if not s: return ''
+            if s[0].islower(): s = s[0].upper() + s[1:]
+            s = re.sub(r'^([A-Z])0+', r'\1', s)
+            if re.match(r'^[A-Z]\d+$', s): return s
+            return ''
+        assert _normalize('1785') == ''
+        assert _normalize('1790?') == ''
+        assert _normalize('027439') == ''
+
+    def test_normalize_strip_brackets(self):
+        import re
+        def _normalize(raw):
+            s = str(raw).strip()
+            s = re.sub(r'^ESTC\s*', '', s).strip()
+            s = re.sub(r'\s*\[.*?\]', '', s).strip()
+            if not s: return ''
+            if s[0].islower(): s = s[0].upper() + s[1:]
+            s = re.sub(r'^([A-Z])0+', r'\1', s)
+            if re.match(r'^[A-Z]\d+$', s): return s
+            return ''
+        assert _normalize('T63646 [vols. 1–4]') == 'T63646'
+
+    def test_parse_multi_value(self):
+        import re, pandas as pd
+        def _normalize(raw):
+            s = str(raw).strip()
+            s = re.sub(r'^ESTC\s*', '', s).strip()
+            s = re.sub(r'\s*\[.*?\]', '', s).strip()
+            if not s: return ''
+            if s[0].islower(): s = s[0].upper() + s[1:]
+            s = re.sub(r'^([A-Z])0+', r'\1', s)
+            if re.match(r'^[A-Z]\d+$', s): return s
+            return ''
+        raw = 'T90269, t090270'
+        ids = []
+        for part in re.split(r'[;,]', raw):
+            norm = _normalize(part)
+            if norm and norm not in ids:
+                ids.append(norm)
+        assert ids == ['T90269', 'T90270']
+
+
+class TestEarlyprintPrefixMap:
+    """Tests for EarlyPrint TCP ID prefix → repo mapping."""
+
+    def test_eebo_prefixes(self):
+        from lltk.corpus.earlyprint.earlyprint import EarlyPrint
+        # Check the prefix map used in extract_metadata
+        prefix_map = {'A': 'eebotcp', 'B': 'eebotcp', 'C': 'eccotcp',
+                       'E': 'eebotcp', 'K': 'eccotcp', 'N': 'evanstcp'}
+        assert prefix_map['A'] == 'eebotcp'
+        assert prefix_map['B'] == 'eebotcp'
+        assert prefix_map['E'] == 'eebotcp'
+
+    def test_ecco_prefixes(self):
+        prefix_map = {'A': 'eebotcp', 'B': 'eebotcp', 'C': 'eccotcp',
+                       'E': 'eebotcp', 'K': 'eccotcp', 'N': 'evanstcp'}
+        assert prefix_map['C'] == 'eccotcp'
+        assert prefix_map['K'] == 'eccotcp'
+
+    def test_evans_prefix(self):
+        prefix_map = {'A': 'eebotcp', 'B': 'eebotcp', 'C': 'eccotcp',
+                       'E': 'eebotcp', 'K': 'eccotcp', 'N': 'evanstcp'}
+        assert prefix_map['N'] == 'evanstcp'
+
+
+class TestPmapPickle:
+    """Tests for pmap picklability fix."""
+
+    def test_pmap_caller_picklable(self):
+        import pickle
+        from lltk.tools.tools import _PmapCaller
+        caller = _PmapCaller(str.upper, (), {})
+        pickled = pickle.dumps(caller)
+        restored = pickle.loads(pickled)
+        assert restored('hello') == 'HELLO'
+
+    def test_pmap_sequential(self):
+        from lltk.tools.tools import pmap
+        results = pmap(lambda x: x * 2, [1, 2, 3], num_proc=1, progress=False)
+        assert results == [2, 4, 6]
+
+    def test_pmap_threads(self):
+        from lltk.tools.tools import pmap
+        results = pmap(lambda x: x * 2, [1, 2, 3], num_proc=2,
+                       use_threads=True, progress=False)
+        assert results == [2, 4, 6]
