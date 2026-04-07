@@ -173,6 +173,7 @@ desc = EarlyPrint Project: linguistically tagged TCP texts (EEBO+ECCO+Evans)
 link = https://earlyprint.org
 path_python = earlyprint/earlyprint.py
 class_name = EarlyPrint
+ext_xml = .xml.gz
 public = xml,metadata
 license_type = Free
 

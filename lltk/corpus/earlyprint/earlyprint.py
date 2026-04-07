@@ -95,7 +95,7 @@ def xml2txt_earlyprint(xmlfn, use_reg=True):
 
 
 class TextEarlyPrint(TextTCP):
-    pass
+    XML2TXT = xml2txt_earlyprint
 
 
 class EarlyPrint(TCP):
