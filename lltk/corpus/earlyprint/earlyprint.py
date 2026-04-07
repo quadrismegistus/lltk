@@ -396,7 +396,7 @@ def _parse_earlyprint_meta(fnfn):
             meta['medium'] = 'Prose'
 
         # ── Track source repo from TCP ID prefix ──
-        prefix_map = {'A': 'eebotcp', 'B': 'eebotcp', 'K': 'eccotcp', 'N': 'evanstcp'}
+        prefix_map = {'A': 'eebotcp', 'B': 'eebotcp', 'C': 'eccotcp', 'E': 'eebotcp', 'K': 'eccotcp', 'N': 'evanstcp'}
         tcp_id = meta.get('id', '')
         if tcp_id and tcp_id[0] in prefix_map:
             meta['ep_repo'] = prefix_map[tcp_id[0]]
