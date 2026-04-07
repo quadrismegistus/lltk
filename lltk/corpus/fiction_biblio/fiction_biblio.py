@@ -123,13 +123,50 @@ class FictionBiblio(BaseCorpus):
         # ── Step 2b: Normalize pre-existing ESTC IDs (e.g. Raven) ────
         if 'id_estc' not in meta.columns:
             meta['id_estc'] = ''
-        meta['id_estc'] = meta['id_estc'].fillna('').astype(str).str.strip()
-        # Strip 'ESTC' prefix if present, normalize to uppercase letter + digits
-        meta['id_estc'] = meta['id_estc'].str.replace(r'^ESTC\s*', '', regex=True).str.strip()
-        # Uppercase prefix: t124724 → T124724 to match ESTC canonical IDs
-        meta['id_estc'] = meta['id_estc'].str.replace(r'^([a-z])', lambda m: m.group(1).upper(), regex=True)
-        # Strip leading zeros: T068056 → T68056 to match ESTC canonical form
-        meta['id_estc'] = meta['id_estc'].str.replace(r'^([A-Z])0+', r'\1', regex=True)
+        if 'id_estc_all' not in meta.columns:
+            meta['id_estc_all'] = ''
+
+        def _normalize_estc_id(raw):
+            """Normalize a single ESTC ID: strip prefix, uppercase, strip leading zeros."""
+            s = str(raw).strip()
+            s = re.sub(r'^ESTC\s*', '', s).strip()
+            # Strip bracketed qualifiers like [vols. 1-4]
+            s = re.sub(r'\s*\[.*?\]', '', s).strip()
+            if not s:
+                return ''
+            # Uppercase prefix
+            if s[0].islower():
+                s = s[0].upper() + s[1:]
+            # Strip leading zeros: T068056 → T68056
+            s = re.sub(r'^([A-Z])0+', r'\1', s)
+            # Validate: must be letter + digits
+            if re.match(r'^[A-Z]\d+$', s):
+                return s
+            return ''
+
+        def _parse_estc_ids(raw, raw_all=''):
+            """Parse potentially multi-value ESTC ID fields into a list of normalized IDs."""
+            ids = []
+            # Combine id_estc and id_estc_all
+            for field in [raw, raw_all]:
+                s = str(field).strip() if pd.notna(field) else ''
+                if not s:
+                    continue
+                # Split on commas or semicolons
+                for part in re.split(r'[;,]', s):
+                    norm = _normalize_estc_id(part)
+                    if norm and norm not in ids:
+                        ids.append(norm)
+            return ids
+
+        # Parse and normalize all ESTC IDs
+        for idx in meta.index:
+            raw = meta.at[idx, 'id_estc']
+            raw_all = meta.at[idx, 'id_estc_all'] if 'id_estc_all' in meta.columns else ''
+            ids = _parse_estc_ids(raw, raw_all)
+            meta.at[idx, 'id_estc'] = ids[0] if ids else ''
+            meta.at[idx, 'id_estc_all'] = '|'.join(ids) if len(ids) > 1 else ''
+
         if 'estc_match_source' not in meta.columns:
             meta['estc_match_source'] = ''
         # Mark pre-existing ESTC IDs
