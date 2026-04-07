@@ -94,6 +94,16 @@ def xml2txt_earlyprint(xmlfn, use_reg=True):
     return '\n\n'.join(paragraphs)
 
 
+def _gzip_copy_one(src_dst):
+    """Gzip-copy a single XML file. Worker for parallel compress."""
+    import gzip as _gzip
+    import shutil
+    src, dst = src_dst
+    with open(src, 'rb') as f_in:
+        with _gzip.open(dst, 'wb', compresslevel=6) as f_out:
+            shutil.copyfileobj(f_in, f_out)
+
+
 class TextEarlyPrint(TextTCP):
     XML2TXT = xml2txt_earlyprint
 
@@ -190,9 +200,6 @@ class EarlyPrint(TCP):
 
     def _gzip_copy_xmls(self, repos=None):
         """Gzip-copy XMLs from repos to xml/{ID}.xml.gz (flat directory)."""
-        import gzip as _gzip
-        import shutil
-
         if repos is None:
             repos = list(EARLYPRINT_REPOS.keys())
 
@@ -223,10 +230,8 @@ class EarlyPrint(TCP):
                 continue
 
             print(f'  {repo_name}: compressing {len(to_compress)} XML files...')
-            for src, dst in get_tqdm(to_compress, desc=f'  [{repo_name}] Gzipping'):
-                with open(src, 'rb') as f_in:
-                    with _gzip.open(dst, 'wb', compresslevel=6) as f_out:
-                        shutil.copyfileobj(f_in, f_out)
+            pmap(_gzip_copy_one, to_compress, use_threads=True,
+                 num_proc=DEFAULT_NUM_PROC, desc=f'  [{repo_name}] Gzipping')
             total += len(to_compress)
 
         existing = sum(1 for fn in os.listdir(xml_dir) if fn.endswith('.xml.gz'))
