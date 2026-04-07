@@ -3,6 +3,16 @@ import time
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 
 
+class _PmapCaller:
+    """Picklable callable for pmap — avoids unpicklable closures."""
+    def __init__(self, func, args, kwargs):
+        self.func = func
+        self.args = args
+        self.kwargs = kwargs
+    def __call__(self, obj):
+        return self.func(obj, *self.args, **self.kwargs)
+
+
 def pmap(func, objs, args=(), kwargs=None, num_proc=1, use_threads=False,
          progress=True, desc='', **_ignored):
     """
@@ -24,19 +34,18 @@ def pmap(func, objs, args=(), kwargs=None, num_proc=1, use_threads=False,
     if not objs:
         return []
 
-    def _call(obj):
-        return func(obj, *args, **kwargs)
+    caller = _PmapCaller(func, args, kwargs)
 
     if num_proc <= 1:
         # Sequential
         iterr = get_tqdm(objs, desc=desc) if progress else objs
-        return [_call(obj) for obj in iterr]
+        return [caller(obj) for obj in iterr]
 
     # Parallel
     Executor = ThreadPoolExecutor if use_threads else ProcessPoolExecutor
     results = []
     with Executor(max_workers=num_proc) as pool:
-        futures = pool.map(_call, objs)
+        futures = pool.map(caller, objs)
         if progress:
             from tqdm import tqdm
             futures = tqdm(futures, total=len(objs), desc=desc)
