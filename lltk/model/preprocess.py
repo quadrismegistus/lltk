@@ -30,6 +30,7 @@ def preprocess_txt(
             do_preprocess_txt,
             objs,
             num_proc=num_proc if num_proc else get_ideal_cpu_count(),
+            use_threads=True,  # threads avoid pickle issues with dynamically loaded modules
             desc=f'[{self.name}] Saving plain text versions of XML files',
             kwargs=kwargs
         )
