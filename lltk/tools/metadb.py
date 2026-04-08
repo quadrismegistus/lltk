@@ -1545,12 +1545,9 @@ class MetaDB:
                          vocab_size=100_000, corpora=None):
         """Build per-word frequency index from freqs files.
 
-        Two-pass build:
-          Pass 1: scan all freqs files to build vocabulary (top N words by document frequency)
+        Two-pass build using as_completed for streaming (no memory blowup):
+          Pass 1: scan ALL texts to build vocabulary (top N words by document frequency)
           Pass 2: re-scan and insert only words in the vocabulary
-
-        This keeps the index manageable (~2-4 GB) while covering all useful words.
-        Incremental: skips texts already indexed on pass 2.
 
             lltk.db.build_word_index()                      # all texts, top 100K words
             lltk.db.build_word_index(vocab_size=50_000)     # smaller vocab
@@ -1558,7 +1555,7 @@ class MetaDB:
         """
         from lltk.tools.tools import get_tqdm
         from collections import Counter
-        from concurrent.futures import ThreadPoolExecutor
+        from concurrent.futures import ThreadPoolExecutor, as_completed
         if num_proc is None:
             num_proc = max(1, os.cpu_count() - 2)
 
@@ -1597,36 +1594,38 @@ class MetaDB:
             except Exception:
                 return None
 
-        # ── Pass 1: Build vocabulary ────────────────────────────────
-        if log: log(f'Pass 1: Building vocabulary from {len(all_pairs):,} texts...')
+        # ── Pass 1: Build vocabulary (all texts, streaming) ─────────
+        if log: log(f'Pass 1: Building vocabulary from {len(all_pairs):,} texts ({num_proc} threads)...')
 
-        doc_freq = Counter()  # word → number of texts containing it
+        doc_freq = Counter()  # ~1GB for 15M keys — fine
 
-        def _count_vocab(row):
+        def _get_word_set(row):
+            """Return set of unique words in a text's freqs."""
             _id, rel_path = row
             d = _read_freqs_file(rel_path)
             if d is None:
                 return set()
             return set(w for w, c in d.items() if c >= min_count)
 
+        # Use as_completed to stream results (not pool.map which queues all)
         with ThreadPoolExecutor(max_workers=num_proc) as pool:
-            iterr = pool.map(_count_vocab, all_pairs)
+            futures = [pool.submit(_get_word_set, pair) for pair in all_pairs]
+            iterr = as_completed(futures)
             if progress:
-                iterr = get_tqdm(iterr, total=len(all_pairs), desc='Pass 1: vocabulary')
-            for word_set in iterr:
-                doc_freq.update(word_set)
+                iterr = get_tqdm(iterr, total=len(futures), desc='Pass 1: vocabulary')
+            for future in iterr:
+                doc_freq.update(future.result())
 
         # Keep top N by document frequency
         vocab = set(w for w, _ in doc_freq.most_common(vocab_size))
         if log:
             log(f'Vocabulary: {len(doc_freq):,} unique words → top {len(vocab):,} kept')
-            # Show doc freq at the cutoff
             if len(doc_freq) > vocab_size:
                 cutoff_df = doc_freq.most_common(vocab_size)[-1][1]
                 log(f'  Min doc frequency in vocab: {cutoff_df}')
+        del doc_freq  # free ~1GB
 
         # ── Pass 2: Index words in vocabulary ───────────────────────
-        # Find texts not yet indexed
         todo = self.conn.execute(f"""
             SELECT t._id, t.path_freqs
             FROM texts t
@@ -1639,7 +1638,7 @@ class MetaDB:
             self._ensure_wordindex_indexes()
             return
 
-        if log: log(f'Pass 2: Indexing {len(todo):,} texts...')
+        if log: log(f'Pass 2: Indexing {len(todo):,} texts ({num_proc} threads)...')
         todo_pairs = list(zip(todo['_id'], todo['path_freqs']))
 
         def _read_filtered(row):
@@ -1654,11 +1653,12 @@ class MetaDB:
         n_inserted = 0
 
         with ThreadPoolExecutor(max_workers=num_proc) as pool:
-            iterr = pool.map(_read_filtered, todo_pairs)
+            futures = [pool.submit(_read_filtered, pair) for pair in todo_pairs]
+            iterr = as_completed(futures)
             if progress:
-                iterr = get_tqdm(iterr, total=len(todo_pairs), desc='Pass 2: indexing')
-            for result in iterr:
-                rows_to_insert.extend(result)
+                iterr = get_tqdm(iterr, total=len(futures), desc='Pass 2: indexing')
+            for future in iterr:
+                rows_to_insert.extend(future.result())
                 if len(rows_to_insert) >= batch_size:
                     self._insert_wordindex_batch(rows_to_insert)
                     n_inserted += len(rows_to_insert)
