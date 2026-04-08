@@ -393,11 +393,13 @@ def _parse_year(val):
 
 
 class MetaDB:
-    def __init__(self, path=None, match_path=None, wordcount_path=None, wordindex_path=None):
+    def __init__(self, path=None, match_path=None, wordcount_path=None, wordindex_path=None,
+                 read_only=False):
         self.path = path or PATH_METADB
         self.match_path = match_path or PATH_MATCHDB
         self.wordcount_path = wordcount_path or PATH_WORDCOUNTDB
         self.wordindex_path = wordindex_path or PATH_WORDINDEXDB
+        self.read_only = read_only
         self._conn = None
         self._col_cache = None
 
@@ -406,29 +408,34 @@ class MetaDB:
         """Single connection to texts DB, with matches DB attached as match_db."""
         if self._conn is None:
             os.makedirs(os.path.dirname(self.path), exist_ok=True)
-            self._conn = duckdb.connect(self.path)
-            self._ensure_text_tables()
+            self._conn = duckdb.connect(self.path, read_only=self.read_only)
+            if not self.read_only:
+                self._ensure_text_tables()
             # Attach matches DB
+            ro = ' (READ_ONLY)' if self.read_only else ''
             try:
                 os.makedirs(os.path.dirname(self.match_path), exist_ok=True)
-                self._conn.execute(f"ATTACH '{self.match_path}' AS match_db")
+                self._conn.execute(f"ATTACH '{self.match_path}' AS match_db{ro}")
             except Exception:
-                pass  # already attached
-            self._ensure_match_tables()
+                pass  # already attached or doesn't exist
+            if not self.read_only:
+                self._ensure_match_tables()
             # Attach wordcounts DB
             try:
                 os.makedirs(os.path.dirname(self.wordcount_path), exist_ok=True)
-                self._conn.execute(f"ATTACH '{self.wordcount_path}' AS wc_db")
+                self._conn.execute(f"ATTACH '{self.wordcount_path}' AS wc_db{ro}")
             except Exception:
-                pass  # already attached
-            self._ensure_wordcount_tables()
+                pass
+            if not self.read_only:
+                self._ensure_wordcount_tables()
             # Attach word index DB
             try:
                 os.makedirs(os.path.dirname(self.wordindex_path), exist_ok=True)
-                self._conn.execute(f"ATTACH '{self.wordindex_path}' AS wi_db")
+                self._conn.execute(f"ATTACH '{self.wordindex_path}' AS wi_db{ro}")
             except Exception:
-                pass  # already attached
-            self._ensure_wordindex_tables()
+                pass
+            if not self.read_only:
+                self._ensure_wordindex_tables()
         return self._conn
 
     @property
@@ -1562,15 +1569,27 @@ class MetaDB:
         from lltk.imports import PATH_CORPUS
         corpus_root = os.path.expanduser(PATH_CORPUS)
 
+        # Use a dedicated connection: wi_db read-write, main DB read-only.
+        # This lets the app serve read-only while the build runs.
+        wi_conn = duckdb.connect(self.wordindex_path)
+        wi_conn.execute(f"ATTACH '{self.path}' AS main_db (READ_ONLY)")
+        wi_conn.execute("""
+            CREATE TABLE IF NOT EXISTS word_index (
+                _id    TEXT NOT NULL,
+                word   TEXT NOT NULL,
+                count  INTEGER NOT NULL
+            )
+        """)
+
         corpus_filter = ''
         if corpora:
             corpus_list = ', '.join(f"'{c}'" for c in corpora)
             corpus_filter = f'AND t.corpus IN ({corpus_list})'
 
-        # All texts with freqs
-        all_texts = self.conn.execute(f"""
+        # All texts with freqs (read from main_db)
+        all_texts = wi_conn.execute(f"""
             SELECT t._id, t.path_freqs
-            FROM texts t
+            FROM main_db.texts t
             WHERE t.path_freqs IS NOT NULL {corpus_filter}
         """).fetchdf()
 
@@ -1663,16 +1682,18 @@ class MetaDB:
             del doc_freq
 
         # ── Pass 2: Index words in vocabulary ───────────────────────
-        todo = self.conn.execute(f"""
+        todo = wi_conn.execute(f"""
             SELECT t._id, t.path_freqs
-            FROM texts t
+            FROM main_db.texts t
             WHERE t.path_freqs IS NOT NULL {corpus_filter}
-              AND t._id NOT IN (SELECT DISTINCT _id FROM wi_db.word_index)
+              AND t._id NOT IN (SELECT DISTINCT _id FROM word_index)
         """).fetchdf()
 
         if not len(todo):
             if log: log('All texts already indexed')
-            self._ensure_wordindex_indexes()
+            wi_conn.execute("CREATE INDEX IF NOT EXISTS idx_wi_word ON word_index(word)")
+            wi_conn.execute("CREATE INDEX IF NOT EXISTS idx_wi_id ON word_index(_id)")
+            wi_conn.close()
             return
 
         if log: log(f'Pass 2: Indexing {len(todo):,} texts ({num_proc} threads)...')
@@ -1689,27 +1710,34 @@ class MetaDB:
         batch_size = 500_000
         n_inserted = 0
 
+        def _flush_batch(rows):
+            batch_df = pd.DataFrame(rows, columns=['_id', 'word', 'count'])
+            wi_conn.execute("INSERT INTO word_index (_id, word, count) SELECT _id, word, count FROM batch_df")
+
         with ThreadPoolExecutor(max_workers=num_proc) as pool:
             for result in _bounded_map(pool, _read_filtered, todo_pairs, desc='Pass 2: indexing'):
                 rows_to_insert.extend(result)
                 if len(rows_to_insert) >= batch_size:
-                    self._insert_wordindex_batch(rows_to_insert)
+                    _flush_batch(rows_to_insert)
                     n_inserted += len(rows_to_insert)
                     rows_to_insert = []
 
         if rows_to_insert:
-            self._insert_wordindex_batch(rows_to_insert)
+            _flush_batch(rows_to_insert)
             n_inserted += len(rows_to_insert)
 
         if log: log(f'Inserted {n_inserted:,} word-count rows')
 
         # Build indexes
         if log: log('Building indexes...')
-        self._ensure_wordindex_indexes()
+        wi_conn.execute("CREATE INDEX IF NOT EXISTS idx_wi_word ON word_index(word)")
+        wi_conn.execute("CREATE INDEX IF NOT EXISTS idx_wi_id ON word_index(_id)")
 
-        n_total = self.conn.execute("SELECT COUNT(DISTINCT _id) FROM wi_db.word_index").fetchone()[0]
-        n_rows = self.conn.execute("SELECT COUNT(*) FROM wi_db.word_index").fetchone()[0]
+        n_total = wi_conn.execute("SELECT COUNT(DISTINCT _id) FROM word_index").fetchone()[0]
+        n_rows = wi_conn.execute("SELECT COUNT(*) FROM word_index").fetchone()[0]
         if log: log(f'Word index: {n_total:,} texts, {n_rows:,} rows')
+
+        wi_conn.close()
 
     def _insert_wordindex_batch(self, rows):
         """Insert a batch of (_id, word, count) into word_index."""

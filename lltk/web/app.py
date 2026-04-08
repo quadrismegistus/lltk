@@ -19,7 +19,6 @@ from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-import lltk
 from lltk.tools.metadb import GENRE_VOCAB
 
 WEB_DIR = Path(__file__).parent
@@ -29,9 +28,13 @@ STATIC_DIR = WEB_DIR / 'static'
 
 def create_app():
     """Create the LLTK explorer FastAPI app."""
+    from lltk.tools.metadb import MetaDB
 
     app = FastAPI(title='LLTK Explorer')
     app.mount('/static', StaticFiles(directory=str(STATIC_DIR)), name='static')
+
+    # Read-only DB so the app can run concurrently with db-wordindex/db-rebuild
+    db = MetaDB(read_only=True)
 
     # ── HTML shell ──────────────────────────────────────────────────────
 
@@ -45,13 +48,13 @@ def create_app():
     @app.get('/api/stats')
     async def get_stats():
         try:
-            row = lltk.db.conn.execute(
+            row = db.conn.execute(
                 "SELECT COUNT(*) as n, COUNT(DISTINCT corpus) as n_corpora, "
                 "MIN(year) as year_min, MAX(year) as year_max FROM texts"
             ).fetchone()
             # match groups
             try:
-                mg = lltk.db.match_conn.execute(
+                mg = db.match_conn.execute(
                     "SELECT COUNT(DISTINCT group_id) FROM match_db.match_groups"
                 ).fetchone()[0]
             except Exception:
@@ -84,7 +87,7 @@ def create_app():
                 }
 
             # Per-corpus stats
-            corpus_stats = lltk.db.conn.execute("""
+            corpus_stats = db.conn.execute("""
                 SELECT corpus,
                        COUNT(*) as n_texts,
                        MIN(year) as year_min,
@@ -95,7 +98,7 @@ def create_app():
             """).fetchdf().to_dict('records')
 
             # Genre breakdown per corpus
-            genre_rows = lltk.db.conn.execute("""
+            genre_rows = db.conn.execute("""
                 SELECT corpus, genre, COUNT(*) as n
                 FROM texts WHERE genre IS NOT NULL
                 GROUP BY corpus, genre
@@ -122,7 +125,7 @@ def create_app():
     @app.get('/api/heatmap')
     async def get_heatmap():
         try:
-            df = lltk.db.conn.execute("""
+            df = db.conn.execute("""
                 SELECT genre, CAST(year / 100 AS INTEGER) * 100 as century, COUNT(*) as n
                 FROM texts
                 WHERE year IS NOT NULL AND genre IS NOT NULL
@@ -139,7 +142,7 @@ def create_app():
     @app.get('/api/genre-timeline')
     async def get_genre_timeline():
         try:
-            df = lltk.db.conn.execute("""
+            df = db.conn.execute("""
                 SELECT CAST(year / 10 AS INTEGER) * 10 as decade,
                        genre,
                        COUNT(*) as n
@@ -211,14 +214,14 @@ def create_app():
             # Dedup join
             if dedup:
                 join = "LEFT JOIN match_db.match_groups mg ON t._id = mg._id"
-                dedup_clause = lltk.db._dedup_sql(where, dedup_by=dedup_by)
+                dedup_clause = db._dedup_sql(where, dedup_by=dedup_by)
             else:
                 join = ""
                 dedup_clause = ""
 
             # Count
             count_sql = f"SELECT COUNT(*) FROM texts t {join} WHERE {where} {dedup_clause}"
-            total = lltk.db.conn.execute(count_sql).fetchone()[0]
+            total = db.conn.execute(count_sql).fetchone()[0]
 
             # Fetch page
             offset = (page - 1) * per_page
@@ -230,7 +233,7 @@ def create_app():
                 ORDER BY t.{sort_by} {'ASC' if sort_dir == 'asc' else 'DESC'} NULLS LAST
                 LIMIT {per_page} OFFSET {offset}
             """
-            rows = lltk.db.conn.execute(select_sql).fetchdf().to_dict('records')
+            rows = db.conn.execute(select_sql).fetchdf().to_dict('records')
 
             return {
                 'texts': rows,
@@ -246,7 +249,7 @@ def create_app():
 
     @app.get('/api/text/{_id:path}')
     async def get_text(_id: str):
-        row = lltk.db.get(_id)
+        row = db.get(_id)
         if not row:
             return JSONResponse({'error': 'Not found'}, status_code=404)
 
@@ -266,7 +269,7 @@ def create_app():
         # Match group
         match_group = []
         try:
-            mg = lltk.db.get_group(_id)
+            mg = db.get_group(_id)
             if len(mg):
                 match_group = mg.to_dict('records')
         except Exception:
@@ -283,7 +286,7 @@ def create_app():
     @app.get('/api/corpora')
     async def get_corpora():
         try:
-            df = lltk.db.conn.execute("""
+            df = db.conn.execute("""
                 SELECT corpus,
                        COUNT(*) as n_texts,
                        MIN(year) as year_min,
@@ -300,7 +303,7 @@ def create_app():
     async def get_corpus(corpus_id: str):
         try:
             # Basic stats
-            stats = lltk.db.conn.execute("""
+            stats = db.conn.execute("""
                 SELECT COUNT(*) as n_texts,
                        MIN(year) as year_min, MAX(year) as year_max,
                        COUNT(path_freqs) as n_freqs
@@ -310,21 +313,21 @@ def create_app():
                 return JSONResponse({'error': 'Corpus not found'}, status_code=404)
 
             # Genre breakdown
-            genres = lltk.db.conn.execute("""
+            genres = db.conn.execute("""
                 SELECT genre, COUNT(*) as n FROM texts
                 WHERE corpus = ? AND genre IS NOT NULL
                 GROUP BY genre ORDER BY n DESC
             """, [corpus_id]).fetchdf().to_dict('records')
 
             # Year histogram (by decade)
-            years = lltk.db.conn.execute("""
+            years = db.conn.execute("""
                 SELECT (year / 10 * 10) as decade, COUNT(*) as n FROM texts
                 WHERE corpus = ? AND year IS NOT NULL
                 GROUP BY decade ORDER BY decade
             """, [corpus_id]).fetchdf().to_dict('records')
 
             # Top authors
-            authors = lltk.db.conn.execute("""
+            authors = db.conn.execute("""
                 SELECT author, COUNT(*) as n FROM texts
                 WHERE corpus = ? AND author IS NOT NULL
                 GROUP BY author ORDER BY n DESC LIMIT 20
@@ -365,10 +368,10 @@ def create_app():
     ):
         if not words.strip():
             return {'data': [], 'words': [], 'series': []}
-        if not lltk.db.has_word_index():
+        if not db.has_word_index():
             return JSONResponse({'error': 'Word index not built. Run: lltk db-wordindex'}, status_code=404)
         try:
-            df = lltk.db.ngram(
+            df = db.ngram(
                 words, genre=genre or None, corpus=corpus or None,
                 year_min=year_min, year_max=year_max, normalize=normalize,
                 dedup=dedup, dedup_by=dedup_by, by_corpus=by_corpus,
@@ -421,10 +424,10 @@ def create_app():
         dedup: bool = Query(False),
         dedup_by: str = Query('rank'),
     ):
-        if not lltk.db.has_word_index():
+        if not db.has_word_index():
             return JSONResponse({'error': 'Word index not built'}, status_code=404)
         try:
-            df = lltk.db.ngram_examples(
+            df = db.ngram_examples(
                 word, genre=genre or None, corpus=corpus or None,
                 year_min=year_min, year_max=year_max, limit=limit,
                 dedup=dedup, dedup_by=dedup_by,
@@ -444,10 +447,10 @@ def create_app():
         dedup: bool = Query(False),
         dedup_by: str = Query('rank'),
     ):
-        if not lltk.db.has_word_index():
+        if not db.has_word_index():
             return JSONResponse({'error': 'Word index not built'}, status_code=404)
         try:
-            df = lltk.db.ngram_collocates(
+            df = db.ngram_collocates(
                 word, genre=genre or None, corpus=corpus or None,
                 year_min=year_min, year_max=year_max, limit=limit,
                 dedup=dedup, dedup_by=dedup_by,
@@ -468,7 +471,7 @@ def create_app():
             if not search:
                 return {'groups': [], 'total_groups': 0}
 
-            df = lltk.db.find_matches(search)
+            df = db.find_matches(search)
             if df.empty:
                 return {'groups': [], 'total_groups': 0}
 
@@ -498,7 +501,7 @@ def create_app():
     @app.get('/api/match-stats')
     async def get_match_stats():
         try:
-            stats = lltk.db.match_stats()
+            stats = db.match_stats()
             return {
                 'total_matches': stats['total_matches'],
                 'total_groups': stats['total_groups'],
@@ -513,7 +516,7 @@ def create_app():
     @app.get('/api/corpus-overlap')
     async def get_corpus_overlap():
         try:
-            df = lltk.db.match_conn.execute("""
+            df = db.match_conn.execute("""
                 SELECT t1.corpus as corpus_a, t2.corpus as corpus_b, COUNT(*) as n
                 FROM match_db.matches m
                 JOIN texts t1 ON m._id_a = t1._id
