@@ -1170,7 +1170,8 @@ with lltk.online: self.get_remote_sources()
             # print('loading from file')
             if not os.path.exists(self.path_freqs): self.save_freqs_json()
             if not os.path.exists(self.path_freqs): return {}
-            with open(self.path_freqs) as f: freqs=Counter(json.load(f))
+            import orjson
+            with open(self.path_freqs, 'rb') as f: freqs=Counter(orjson.loads(f.read()))
             self._freqs=freqs
         return filter_freqs(self._freqs,modernize=modernize_spelling,lower=lower)
 

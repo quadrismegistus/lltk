@@ -772,8 +772,9 @@ def do_text(obj):
     try:
         path_freqs=os.path.join(corpus_path,idx+'.json')
         if not os.path.exists(path_freqs): return 0
-        with open(path_freqs) as f:
-            freqd=json.load(f)
+        import orjson
+        with open(path_freqs, 'rb') as f:
+            freqd=orjson.loads(f.read())
             return sum(freqd.values())
     except ValueError:
         pass
@@ -822,9 +823,9 @@ def show_stats(corpus_names=[],genre=None,title=None):
         print(f'* *{corpus_name}*: {corpus.desc} ({minyear}-{maxyear}, n={lltk.human_format(numtexts)} texts, {lltk.human_format(num_words)} words)')
 
 def getfreqs(path_freqs,by_ntext=False,by_fpm=False):
-    import ujson as json
+    import orjson
     try:
-        with open(path_freqs) as f: freqs=json.load(f)
+        with open(path_freqs, 'rb') as f: freqs=orjson.loads(f.read())
     except FileNotFoundError:
         return {}
     if by_ntext: freqs=dict((w,1) for w in freqs)

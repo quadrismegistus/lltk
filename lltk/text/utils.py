@@ -457,10 +457,10 @@ def load_english():
 
 
 def get_dtm_freqs(obj):
-    import ujson as json
+    import orjson
     path,words,dmeta = obj
-    with open(path,encoding='utf-8',errors='ignore') as f:
-        counts=json.load(f)
+    with open(path,'rb') as f:
+        counts=orjson.loads(f.read())
     total=sum(counts.values())
     dx={
         **dict((w,c) for w,c in counts.items() if w in words),

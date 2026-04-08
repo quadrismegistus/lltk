@@ -26,6 +26,7 @@ import time
 import duckdb
 import networkx as nx
 import numpy as np
+import orjson
 import pandas as pd
 from lltk.imports import PATH_LLTK_DATA, log
 
@@ -1486,11 +1487,11 @@ class MetaDB:
                 try:
                     if abs_path.endswith('.gz'):
                         import gzip
-                        with gzip.open(abs_path, 'rt') as f:
-                            d = json.load(f)
+                        with gzip.open(abs_path, 'rb') as f:
+                            d = orjson.loads(f.read())
                     else:
-                        with open(abs_path) as f:
-                            d = json.load(f)
+                        with open(abs_path, 'rb') as f:
+                            d = orjson.loads(f.read())
                     return (rel_path, int(sum(d.values())))
                 except Exception:
                     return None
@@ -1588,11 +1589,11 @@ class MetaDB:
             try:
                 if abs_path.endswith('.gz'):
                     import gzip
-                    with gzip.open(abs_path, 'rt') as f:
-                        return json.load(f)
+                    with gzip.open(abs_path, 'rb') as f:
+                        return orjson.loads(f.read())
                 else:
-                    with open(abs_path) as f:
-                        return json.load(f)
+                    with open(abs_path, 'rb') as f:
+                        return orjson.loads(f.read())
             except Exception:
                 return None
 
