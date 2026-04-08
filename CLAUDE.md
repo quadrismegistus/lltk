@@ -772,6 +772,18 @@ lltk.db.drop_word_index()                                    # clear and rebuild
 7. **Network view** (medium effort): D3 force graph of corpus overlap from match groups
 8. **API documentation page** (low effort): styled examples with curl/Python snippets
 
+### Global annotations (future)
+
+Generalize the CuratedCorpus annotation system to allow annotating any text from any corpus via the web app. Currently annotations are per-CuratedCorpus JSON files; this would add a global annotation layer.
+
+- **Storage**: `metadb_annotations.duckdb` with `annotations(_id, field, value, source, created_at)`. Keyed by `(_id, field, source)` so multiple sources (human, LLM, bibliography) can coexist.
+- **Fields**: genre, genre_raw, exclude, is_translated, notes, arbitrary custom fields
+- **Match group propagation**: annotate one text → all match group members inherit (same as CuratedCorpus)
+- **Priority**: CuratedCorpus annotations override global annotations (more specific). Global overrides DB values.
+- **UI**: editable genre/genre_raw dropdowns in TextDetail panel with save button. POST to `/api/annotate/{_id}`.
+- **Auth**: for public deployment, gate POST endpoints behind a token/password. GET remains open.
+- **Migration**: existing CuratedCorpus `annotations.json` files could optionally import into the global table via `propagate_from()`.
+
 ### Passages table (future)
 
 If full-text search is built, chunking texts into ~500-word passages creates a reusable unit for:
