@@ -71,6 +71,18 @@ def create_app():
     @app.get('/api/overview')
     async def get_overview():
         try:
+            # Manifest info (name, desc) keyed by corpus id
+            from lltk.corpus.utils import load_manifest
+            manifest = load_manifest()
+            manifest_by_id = {}
+            for section, vals in manifest.items():
+                cid = vals.get('id', '')
+                manifest_by_id[cid] = {
+                    'name': vals.get('name', section),
+                    'desc': vals.get('desc', ''),
+                    'link': vals.get('link', ''),
+                }
+
             # Per-corpus stats
             corpus_stats = lltk.db.conn.execute("""
                 SELECT corpus,
@@ -96,6 +108,10 @@ def create_app():
                 cs['genres'] = genre_by_corpus.get(cs['corpus'], {})
                 cs['n_freqs'] = int(cs['n_freqs'])
                 cs['n_words'] = int(cs['n_words'])
+                info = manifest_by_id.get(cs['corpus'], {})
+                cs['name'] = info.get('name', cs['corpus'])
+                cs['desc'] = info.get('desc', '')
+                cs['link'] = info.get('link', '')
 
             return {'corpora': corpus_stats}
         except Exception as e:
@@ -107,11 +123,12 @@ def create_app():
     async def get_heatmap():
         try:
             df = lltk.db.conn.execute("""
-                SELECT genre, (year / 10 * 10) as decade, COUNT(*) as n
+                SELECT genre, CAST(year / 100 AS INTEGER) * 100 as century, COUNT(*) as n
                 FROM texts
                 WHERE year IS NOT NULL AND genre IS NOT NULL
-                GROUP BY genre, decade
-                ORDER BY decade, genre
+                  AND year >= 1400 AND year <= 2100
+                GROUP BY genre, century
+                ORDER BY century, genre
             """).fetchdf()
             return {'cells': df.to_dict('records')}
         except Exception as e:

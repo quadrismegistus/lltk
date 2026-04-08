@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { getCorpora, getCorpus } from '../lib/api.js';
   import { formatNumber, yearRange } from '../lib/utils.js';
-  import { activeTab, filters } from '../stores.js';
+  import { switchTab, filters } from '../stores.js';
 
   let corpora = $state([]);
   let selectedCorpus = $state(null);
@@ -11,7 +11,7 @@
 
   function browseCorpus(corpus) {
     filters.update(f => ({ ...f, corpus, page: 1 }));
-    activeTab.set('texts');
+    switchTab('texts');
   }
 
   async function selectCorpus(id) {

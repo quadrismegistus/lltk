@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { getOverview, getHeatmap, getStats } from '../lib/api.js';
   import { formatNumber, yearRange } from '../lib/utils.js';
-  import { activeTab, filters } from '../stores.js';
+  import { switchTab, filters } from '../stores.js';
 
   let stats = $state(null);
   let corpora = $state([]);
@@ -11,7 +11,7 @@
 
   function browseCorpus(corpus) {
     filters.update(f => ({ ...f, corpus, page: 1 }));
-    activeTab.set('texts');
+    switchTab('texts');
   }
 
   onMount(async () => {
@@ -21,18 +21,18 @@
     stats = statsData;
     corpora = overviewData.corpora;
 
-    // Process heatmap
+    // Process heatmap (genre x century)
     const cells = heatmapData.cells;
     const genres = [...new Set(cells.map(c => c.genre))].sort();
-    const decades = [...new Set(cells.map(c => c.decade))].sort((a, b) => a - b);
+    const centuries = [...new Set(cells.map(c => c.century))].sort((a, b) => a - b);
     const lookup = {};
     let maxVal = 0;
     for (const c of cells) {
-      const key = `${c.genre}|${c.decade}`;
+      const key = `${c.genre}|${c.century}`;
       lookup[key] = c.n;
       if (c.n > maxVal) maxVal = c.n;
     }
-    heatmap = { cells: lookup, genres, decades, max: maxVal };
+    heatmap = { cells: lookup, genres, centuries, max: maxVal };
     loading = false;
   });
 
@@ -71,9 +71,9 @@
 <div class="corpus-grid">
   {#each corpora as c}
     <button class="corpus-card" onclick={() => browseCorpus(c.corpus)}>
-      <div class="corpus-name">{c.corpus}</div>
-      <div class="corpus-count">{formatNumber(c.n_texts)} texts</div>
-      <div class="corpus-years">{yearRange(c.year_min, c.year_max)}</div>
+      <div class="corpus-name">{c.name || c.corpus}</div>
+      {#if c.desc}<div class="corpus-desc">{c.desc}</div>{/if}
+      <div class="corpus-count">{formatNumber(c.n_texts)} texts &middot; {yearRange(c.year_min, c.year_max)}</div>
       {#if c.genres && Object.keys(c.genres).length}
         <div class="corpus-genres">
           {#each Object.entries(c.genres).sort((a,b) => b[1] - a[1]).slice(0, 3) as [genre, n]}
@@ -89,14 +89,14 @@
 </div>
 
 {#if heatmap.genres.length}
-<h2>Genre x Decade</h2>
+<h2>Genre x Century</h2>
 <div class="heatmap-wrap">
   <table class="heatmap">
     <thead>
       <tr>
         <th></th>
-        {#each heatmap.decades as d}
-          <th class="decade-label">{d}s</th>
+        {#each heatmap.centuries as c}
+          <th class="century-label">{c}s</th>
         {/each}
       </tr>
     </thead>
@@ -104,12 +104,12 @@
       {#each heatmap.genres as genre}
         <tr>
           <td class="genre-label">{genre}</td>
-          {#each heatmap.decades as d}
-            {@const val = heatmap.cells[`${genre}|${d}`] || 0}
+          {#each heatmap.centuries as c}
+            {@const val = heatmap.cells[`${genre}|${c}`] || 0}
             <td
               class="heatmap-cell"
               style="background: {heatColor(val)}"
-              title="{genre} {d}s: {formatNumber(val)}"
+              title="{genre} {c}s: {formatNumber(val)}"
             >
               {#if val > 0}<span class="cell-val">{val > 999 ? Math.round(val/1000) + 'k' : val}</span>{/if}
             </td>
@@ -168,9 +168,9 @@
     color: inherit;
   }
   .corpus-card:hover { border-color: #3b82f6; box-shadow: 0 2px 8px rgba(59,130,246,0.1); }
-  .corpus-name { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
-  .corpus-count { font-size: 13px; color: #64748b; }
-  .corpus-years { font-size: 12px; color: #94a3b8; }
+  .corpus-name { font-weight: 600; font-size: 14px; margin-bottom: 2px; }
+  .corpus-desc { font-size: 12px; color: #94a3b8; margin-bottom: 4px; line-height: 1.3; }
+  .corpus-count { font-size: 12px; color: #64748b; }
   .corpus-genres { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px; }
   .genre-tag {
     background: #f1f5f9;
@@ -202,12 +202,9 @@
     text-align: center;
     white-space: nowrap;
   }
-  .decade-label {
+  .century-label {
     font-weight: 500;
     color: #64748b;
-    writing-mode: vertical-rl;
-    transform: rotate(180deg);
-    height: 50px;
   }
   .genre-label {
     text-align: right;

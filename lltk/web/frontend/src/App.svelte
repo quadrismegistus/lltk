@@ -1,5 +1,5 @@
 <script>
-  import { activeTab, detailOpen, closeDetail } from './stores.js';
+  import { activeTab, detailOpen, closeDetail, switchTab } from './stores.js';
   import Dashboard from './components/Dashboard.svelte';
   import TextsExplorer from './components/TextsExplorer.svelte';
   import TextDetail from './components/TextDetail.svelte';
@@ -42,7 +42,7 @@
         <button
           class="tab"
           class:active={$activeTab === tab.id}
-          onclick={() => activeTab.set(tab.id)}
+          onclick={() => switchTab(tab.id)}
         >{tab.label}</button>
       {/each}
     </nav>

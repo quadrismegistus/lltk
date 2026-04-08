@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { getTexts, getCorpora, getGenres } from '../lib/api.js';
   import { formatNumber, truncate } from '../lib/utils.js';
-  import { filters, openDetail } from '../stores.js';
+  import { filters, openDetail, replaceState } from '../stores.js';
   import Pagination from './Pagination.svelte';
 
   let texts = $state([]);
@@ -33,7 +33,7 @@
   function updateFilter(key, value) {
     filters.update(f => ({ ...f, [key]: value, page: key === 'page' ? value : 1 }));
     clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(loadTexts, key === 'search' ? 300 : 0);
+    debounceTimer = setTimeout(() => { loadTexts(); replaceState(); }, key === 'search' ? 300 : 0);
   }
 
   function sort(col) {

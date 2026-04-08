@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { getMatches, getMatchStats } from '../lib/api.js';
   import { formatNumber } from '../lib/utils.js';
-  import { openDetail } from '../stores.js';
+  import { openDetail, matchSearch, replaceState } from '../stores.js';
   import Pagination from './Pagination.svelte';
 
   let search = $state('');
@@ -14,6 +14,9 @@
   let stats = $state(null);
 
   let debounceTimer;
+
+  // Sync from store (for URL-driven state)
+  matchSearch.subscribe(v => { if (v !== search) { search = v; loadMatches(); } });
 
   async function loadMatches() {
     if (!search.trim()) { groups = []; totalGroups = 0; return; }
@@ -30,9 +33,10 @@
 
   function onSearch(e) {
     search = e.target.value;
+    matchSearch.set(search);
     page = 1;
     clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(loadMatches, 400);
+    debounceTimer = setTimeout(() => { loadMatches(); replaceState(); }, 400);
   }
 
   onMount(async () => {
