@@ -88,11 +88,13 @@ class Logger():
     def start_file(self):
         if self.id_file is None and self.fn:
             from lltk.tools.tools import ensure_dir_exists,backup_fn,rmfn
-            ensure_dir_exists(self.fn)
-            if os.path.exists(self.fn): backup_fn(self.fn)
-            rmfn(self.fn)
-            
-            self.id_file=logger.add(self.fn, rotation=self.fn_rotation, colorize=False, format=self.format)
+            try:
+                ensure_dir_exists(self.fn)
+                if os.path.exists(self.fn): backup_fn(self.fn)
+                rmfn(self.fn)
+                self.id_file=logger.add(self.fn, rotation=self.fn_rotation, colorize=False, format=self.format)
+            except (PermissionError, OSError):
+                self.to_file = False
             #logger.debug(f'log added: {self.id_file}')
 
     def stop_file(self):

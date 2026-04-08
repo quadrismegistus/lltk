@@ -1,6 +1,6 @@
 # Literary Language Toolkit (LLTK)
 
-A Python package for computational literary analysis and digital humanities research. Provides 50+ literary corpora, text processing tools, and analysis methods including word frequencies, document-term matrices, cross-corpus linking, and duplicate detection.
+A Python package for computational literary analysis and digital humanities research. Provides 50+ literary corpora, text processing tools, and analysis methods including word frequencies, document-term matrices, cross-corpus linking, deduplication, and a centralized DuckDB metadata store for querying 2M+ texts across all corpora.
 
 **Package:** `lltk-dh` on PyPI | **License:** MIT | **Python:** >=3.8
 
@@ -18,6 +18,9 @@ pip install -U git+https://github.com/quadrismegistus/lltk
 ```python
 import lltk
 
+# List available corpora
+lltk.show()
+
 # Load a corpus
 c = lltk.load('ecco_tcp')
 
@@ -30,21 +33,28 @@ for t in c.texts():
     print(t.id, t.author, t.title, t.year)
     print(t.txt[:200])
     print(t.freqs())       # word frequencies (Counter)
+
+# Corpus-level analysis
+mfw = c.mfw(n=10000)              # top 10K words across corpus
+dtm = c.dtm(n=10000)              # document-term matrix (DataFrame)
+dtm = c.dtm(n=10000, tfidf=True)  # TF-IDF weighted
 ```
 
-## Corpora
+### Installing corpus data
 
-```python
-lltk.show()                # list available corpora
-c = lltk.load('ecco_tcp')  # load by name or ID
+Corpora live at `~/lltk_data/corpora/<corpus_id>/`. Each has: `metadata.csv`, `txt/`, and optionally `xml/`, `freqs/`. Some corpora are freely downloadable; others require institutional access.
+
+```bash
+# Download a corpus (metadata + freqs ≈ 150 MB for ecco_tcp)
+lltk install ecco_tcp --parts metadata,freqs
+
+# Full texts (adds ~600 MB)
+lltk install ecco_tcp --parts txt
 ```
-
-Corpora live at `~/lltk_data/corpora/<corpus_id>/`. Each has: `metadata.csv`, `txt/`, and optionally `xml/`, `freqs/`. Some corpora are freely downloadable; others require institutional access. See [Available Corpora](#available-corpora) below.
 
 ## Texts
 
 ```python
-# Access text objects
 for t in c.texts():
     t.id                    # text identifier
     t.author                # metadata attributes
@@ -179,19 +189,6 @@ for et in ecco_texts:
 eebo_texts = t.linked('eebo_tcp')
 ```
 
-Linked texts are returned with full metadata. Lookup indices are built once and cached for O(1) traversal.
-
-### ID normalization
-
-When ID formats differ between corpora, use `LINK_TRANSFORMS`:
-
-```python
-class EEBO_TCP(BaseCorpus):
-    LINKS = {'estc': ('id_stc', 'id_estc')}
-    LINK_TRANSFORMS = {'id_stc': _normalize_estc_id}
-    # 'ESTC S115782' → 'S115782'
-```
-
 ### Currently linked corpora
 
 | Source | Target | Link column | Direction |
@@ -201,6 +198,81 @@ class EEBO_TCP(BaseCorpus):
 | ESTC | ECCO | `id_estc` → `ESTCID` | text traversal |
 | ESTC | EEBO_TCP | `id_estc` → `id_stc` | text traversal |
 
+## MetaDB (centralized DuckDB metadata store)
+
+`lltk.db` is a DuckDB-backed metadata cache that indexes all corpora into a single queryable store. It enables fast single-row lookups, cross-corpus queries, title/author matching for deduplication, genre enrichment from bibliography corpora, and virtual corpus construction.
+
+### Building the database
+
+```bash
+lltk db-rebuild                          # ingest all corpora (~4 min)
+lltk db-rebuild estc ecco                # re-ingest specific corpora
+lltk db-info                             # genre × corpus crosstab
+lltk db-match                            # cross-corpus dedup matching (~5 min)
+lltk db-enrich-genres                    # propagate genre from bibliographies
+lltk db-wordcounts                       # compute word counts from freqs
+```
+
+### Querying
+
+```python
+import lltk
+
+# Single-row lookup
+lltk.db.get('_estc/T012345')
+
+# SQL queries on the texts table
+lltk.db.query("SELECT * FROM texts WHERE year < 1700 AND genre = 'Fiction'")
+lltk.db.query("SELECT corpus, COUNT(*) as n FROM texts GROUP BY corpus")
+
+# Iterate text objects with filters + dedup
+for t in lltk.db.texts(genre='Fiction', year_min=1600, year_max=1800, dedup=True):
+    print(t.corpus.id, t.title, t.year)
+    print(t.freqs())   # resolves through source corpus
+
+# As DataFrame (no text objects)
+df = lltk.db.texts_df(genre='Fiction', dedup=True)
+
+# As a corpus object (supports .mfw, .dtm, .meta)
+fiction = lltk.db.corpus(genre='Fiction', dedup=True)
+```
+
+Text objects returned by `lltk.db.texts()` keep their original corpus reference, so `t.txt`, `t.freqs()`, and file paths all resolve through the source corpus.
+
+### Cross-corpus matching
+
+Matching finds duplicate/reprint texts across corpora via multiple tiers: exact title+author, containment (short title within long title), and optional fuzzy matching (Jaro-Winkler). Connected components are grouped and ranked by corpus source preference.
+
+```python
+lltk.db.match()                          # exact + containment matching
+lltk.db.find_matches('Incognita')        # search match groups by title
+lltk.db.get_group('_estc/T012345')       # all texts in same match group
+```
+
+### SyntheticCorpus (virtual corpora from DB queries)
+
+Declarative corpus class that pulls texts from multiple source corpora, deduplicated:
+
+```python
+from lltk.corpus.synthetic import SyntheticCorpus
+
+class BigFiction(SyntheticCorpus):
+    ID = 'big_fiction'
+    NAME = 'BigFiction'
+    SOURCES = {
+        'chadwyck': {'genre': 'Fiction'},
+        'ecco': {'genre': 'Fiction'},
+        'hathi_englit': {'genre': 'Fiction'},
+    }
+    DEDUP = True
+    DEDUP_BY = 'oldest'
+
+C = BigFiction()
+C.meta                    # DataFrame — all fiction, deduplicated
+for t in C.texts():
+    t.txt[:100]           # resolves through source corpus paths
+```
+
 ## Architecture
 
 ```
@@ -208,12 +280,13 @@ lltk/
 ├── imports.py          # Constants, config, third-party imports
 ├── __init__.py         # Package entry point
 ├── text/
-│   ├── text.py         # BaseText, TextSection, MemoryText, Text() factory
+│   ├── text.py         # BaseText, TextSection, Text() factory
 │   ├── textlist.py     # TextList collection class
 │   └── utils.py        # Tokenization, XML parsing, text utilities
 ├── corpus/
 │   ├── corpus.py       # BaseCorpus, SectionCorpus, Corpus() factory
-│   ├── utils.py        # load_corpus(), manifest loading
+│   ├── synthetic.py    # SyntheticCorpus — virtual corpora from DuckDB queries
+│   ├── utils.py        # load_corpus(), manifest loading, corpus discovery
 │   ├── manifest.txt    # Corpus registry (configparser format)
 │   └── <corpus_name>/  # Per-corpus implementations (50+)
 ├── model/
@@ -224,6 +297,7 @@ lltk/
     ├── baseobj.py      # BaseObject (root class)
     ├── tools.py        # Config, utilities, parallel processing
     ├── db.py           # Local DB backends
+    ├── metadb.py       # DuckDB centralized metadata store (lltk.db)
     └── logs.py         # Logging
 ```
 
@@ -231,11 +305,32 @@ lltk/
 
 - **Inheritance:** `BaseObject` → `TextList` → `BaseCorpus` → corpus subclasses
 - **Factories:** `Text(id)` and `Corpus(id)` return cached objects
-- **Lazy loading:** Metadata loaded on first access via `load_metadata()`
+- **Lazy loading:** Metadata loaded on first access via `load_metadata()`. Text metadata hydrated lazily on first attribute access.
 - **Path resolution:** `corpus.path_*` attributes resolved via `__getattr__` → `get_path()`
 - **Manifest:** Corpora registered in `manifest.txt` (configparser). Multiple manifest files merged from package dir, `~/lltk_data/`, and user config.
 - **Metadata enrichment:** Override `load_metadata()` → call `super()` → transform DataFrame → return
 - **Cross-corpus links:** `LINKS` dict + `merge_linked_metadata()` for joins, `t.linked()` for traversal
+- **Parquet caching:** Metadata CSVs cached as `.parquet` for 5-10x faster subsequent reads
+
+## CLI reference
+
+```bash
+lltk show                                # list available corpora
+lltk install <corpus> [--parts ...]      # download corpus data
+lltk compile <corpus>                    # compile corpus from raw sources
+lltk preprocess <corpus> --parts txt     # XML→TXT conversion
+lltk preprocess <corpus> --parts freqs   # TXT→word frequencies
+
+lltk db-rebuild [corpus ...]             # rebuild DuckDB metadata store
+lltk db-info                             # genre × corpus crosstab
+lltk db-match [--fuzzy]                  # cross-corpus dedup matching
+lltk db-enrich-genres                    # propagate genre from bibliographies
+lltk db-wordcounts [-j N]               # compute word counts from freqs
+lltk db-matches "title"                  # search matches by title
+lltk db-match-stats                      # matching statistics
+
+lltk annotate <corpus> [--port N]        # launch annotation web app
+```
 
 ## Development
 
@@ -244,9 +339,10 @@ lltk/
 ```bash
 pip install pytest
 python -m pytest tests/ -v
+python -m pytest tests/ --cov=lltk --cov-report=term   # with coverage
 ```
 
-Tests use the `test_fixture` corpus (Blake, Austen, Shelley) checked into the repo — no external data needed.
+199 tests using the `test_fixture` corpus (Blake, Austen, Shelley) checked into the repo — no external data needed.
 
 ### Adding a new corpus
 
@@ -300,10 +396,11 @@ LLTK has built in functionality for the following corpora. Some (🌞) are freel
 | Chicago             | [U of Chicago Corpus of C20 Novels](https://textual-optics-lab.uchicago.edu/us_novel_corpus)                                                                              | Academic                                                                    | [🌞](https://www.dropbox.com/s/oba29ymlg7arhdu/chicago_metadata.zip?dl=1)             | [🌞](https://www.dropbox.com/s/w29o1urthijbxgn/chicago_freqs.zip?dl=1)             | ☂️                                                                             |                                                                        |                                                                        |
 | DTA                 | [Deutsches Text Archiv](http://www.deutschestextarchiv.de)                                                                                                                | [Free](https://creativecommons.org/licenses/by-sa/4.0/)                     | [🌞](https://www.dropbox.com/s/294h2suvtu6sing/dta_metadata.zip?dl=1)                 | [🌞](https://www.dropbox.com/s/nb1u0e77ng2d5mh/dta_freqs.zip?dl=1)                 | [🌞](https://www.dropbox.com/s/8ez1tpa7awfb100/dta_txt.zip?dl=1)              | [🌞](https://www.dropbox.com/s/jy0o1cy37wioqqv/dta_xml.zip?dl=1)       | [🌞](http://media.dwds.de/dta/download/dta_komplett_2019-06-05.zip)    |
 | DialNarr            | [Dialogue and Narration separated in Chadwyck-Healey Novels](https://doi.org/10.1093/llc/fqx031)                                                                          | Academic                                                                    | [🌞](https://www.dropbox.com/s/jw53k1mba6eumna/dialnarr_metadata.zip?dl=1)            | [🌞](https://www.dropbox.com/s/rgduzqatl4j0x5s/dialnarr_freqs.zip?dl=1)            | ☂️                                                                             |                                                                        |                                                                        |
+| EarlyPrint          | [EarlyPrint Project: EEBO/ECCO/Evans TCP with linguistic tagging](https://earlyprint.org)                                                                                 | Free                                                                        | 🌞                                                                                     | 🌞                                                                                  | 🌞                                                                             | 🌞                                                                      |                                                                        |
 | ECCO                | [Eighteenth Century Collections Online](https://www.gale.com/intl/primary-sources/eighteenth-century-collections-online)                                                  | Commercial                                                                  | ☂️                                                                                     | ☂️                                                                                  | ☂️                                                                             | ☂️                                                                      | ☂️                                                                      |
 | ECCO_TCP            | [ECCO (Text Creation Partnership)](https://textcreationpartnership.org/tcp-texts/ecco-tcp-eighteenth-century-collections-online/)                                         | Free                                                                        | [🌞](https://www.dropbox.com/s/xh991n4sohulczb/ecco_tcp_metadata.zip?dl=1)            | [🌞](https://www.dropbox.com/s/sdf5pdyifnrulyk/ecco_tcp_freqs.zip?dl=1)            | [🌞](https://www.dropbox.com/s/8sa4f6yqpz6ku3d/ecco_tcp_txt.zip?dl=1)         | [🌞](https://www.dropbox.com/s/vtv2iw7ujtivqss/ecco_tcp_xml.zip?dl=1)  | [🌞](https://www.dropbox.com/s/aubdaixvc59d8o9/ecco_tcp_raw.zip?dl=1)  |
 | EEBO_TCP            | [Early English Books Online (curated by the Text Creation Partnership)](https://textcreationpartnership.org/tcp-texts/eebo-tcp-early-english-books-online/)               | Free                                                                        | [🌞](https://www.dropbox.com/s/th2i7jvuxksb0ma/eebo_tcp_metadata.zip?dl=1)            | [🌞](https://www.dropbox.com/s/n2oocs233wh5edo/eebo_tcp_freqs.zip?dl=1)            | [🌞](https://www.dropbox.com/s/otgqbs0vdli3gvb/eebo_tcp_txt.zip?dl=1)         | [🌞](https://www.dropbox.com/s/1wui9qjhkzy8fnm/eebo_tcp_xml.zip?dl=1)  |                                                                        |
-| ESTC                | [English Short Title Catalogue](http://estc.ucr.edu/)                                                                                                                     | Academic                                                                    | ☂️                                                                                     |                                                                                    |                                                                               |                                                                        |                                                                        |
+| ESTC                | [English Short Title Catalogue](http://estc.ucr.edu/) (481K bibliographic records, metadata-only)                                                                         | Academic                                                                    | ☂️                                                                                     |                                                                                    |                                                                               |                                                                        |                                                                        |
 | EnglishDialogues    | [A Corpus of English Dialogues, 1560-1760](https://ota.bodleian.ox.ac.uk/repository/xmlui/handle/20.500.12024/2507)                                                       | [Academic](https://ota.bodleian.ox.ac.uk/repository/xmlui/page/licence-ota) | [🌞](https://www.dropbox.com/s/lcudgwmxdpspsc9/dialogues_metadata.zip?dl=1)           | [🌞](https://www.dropbox.com/s/tji67pv89e61wd6/dialogues_freqs.zip?dl=1)           |                                                                               | [🌞](https://www.dropbox.com/s/u07u3mrrom3i9f5/dialogues_xml.zip?dl=1) |                                                                        |
 | EvansTCP            | [Early American Fiction](https://textcreationpartnership.org/tcp-texts/evans-tcp-evans-early-american-imprints/)                                                          | Free                                                                        | [🌞](https://www.dropbox.com/s/jr1j9i7wbz5uh0f/evans_tcp_metadata.zip?dl=1)           | [🌞](https://www.dropbox.com/s/4r426a5f6jk3tq8/evans_tcp_freqs.zip?dl=1)           | [🌞](https://www.dropbox.com/s/ezen3zxyt9hzxxp/evans_tcp_txt.zip?dl=1)        | [🌞](https://www.dropbox.com/s/yg7hjf536klg04c/evans_tcp_xml.zip?dl=1) | [🌞](https://www.dropbox.com/s/05qtu8r2xejqpkh/evans_tcp_raw.zip?dl=1) |
 | GaleAmericanFiction | [Gale American Fiction, 1774-1920](https://www.gale.com/c/american-fiction-1774-1920)                                                                                     | Academic                                                                    | [🌞](https://www.dropbox.com/s/9ysabqrrx05832u/gale_amfic_metadata.zip?dl=1)          | [🌞](https://www.dropbox.com/s/7tbwfcgbcincdi1/gale_amfic_freqs.zip?dl=1)          | ☂️                                                                             |                                                                        | ☂️                                                                      |

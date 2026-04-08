@@ -22,7 +22,7 @@ id = bpo
 name = BPO
 desc = British Periodicals Online
 link = https://proquest.libguides.com/britishperiodicals
-public =
+public = 
 private = raw,metadata
 license_type = Commercial
 
@@ -346,7 +346,6 @@ path_python = hathi/hathi.py
 public = metadata,freqs
 license_type = Academic
 
-
 [HathiProclamations]
 id = hathi_proclamations
 name = HathiProclamations
@@ -487,15 +486,16 @@ license_type = Academic
 id = fiction_biblio
 name = FictionBiblio
 desc = Compiled fiction bibliographies (Mish, McBurney, Beasley, etc.) 1475-1830
-public =
-private = metadata
+public = metadata
+private = 
+url_metadata = https://www.dropbox.com/scl/fi/10emibpmwbzweh7kigd4n/fiction_biblio_metadata.zip?rlkey=dvv16r5ce6i3l45duzarwbcrw&dl=1
 
 [END]
 id = end
 name = END
 desc = Early Novels Database: 2,002 MARCXML records of early English novels 1660-1830 (UPenn)
 link = https://github.com/earlynovels/end-dataset
-public =
+public = 
 private = metadata
 
 [RavenGarside]

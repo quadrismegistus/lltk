@@ -29,6 +29,7 @@ data/*
 #MANIFEST.in
 build/
 dist/
+!lltk/web/static/dist/
 mpi_slingshot.egg-info/
 lltk.egg-info/
 
@@ -36,11 +37,14 @@ venv
 .venv
 .vscode
 
+# Web frontend
+lltk/web/frontend/node_modules/
 
 .*.py
 .*.ipynb
 *-jvsc-*
 Preview*
 *.html
+!lltk/web/templates/*.html
 Untitled*
 *.pkl

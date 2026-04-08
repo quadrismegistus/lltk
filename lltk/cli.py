@@ -76,6 +76,10 @@ def main():
 	p_annotate.add_argument('corpus', help='Corpus ID (e.g. arc_fiction)')
 	p_annotate.add_argument('--port', type=int, default=8989, help='Port (default: 8989)')
 
+	# app (explorer)
+	p_app = subparsers.add_parser('app', help='Launch LLTK explorer web app')
+	p_app.add_argument('--port', type=int, default=8899, help='Port (default: 8899)')
+
 	if len(sys.argv) == 1:
 		parser.print_help(sys.stderr)
 		sys.exit(1)
@@ -230,6 +234,10 @@ def main():
 	elif args.cmd == 'annotate':
 		from lltk.web.annotate import run_annotate
 		run_annotate(args.corpus, port=args.port)
+
+	elif args.cmd == 'app':
+		from lltk.web.app import run_app
+		run_app(port=args.port)
 
 
 if __name__ == '__main__':

@@ -40,7 +40,7 @@ from lltk.tools.tools import *
 
 ### IMPORTANT: SET WHERE LLTK ROOT IS BASED:
 PATH_LLTK_HOME = PATH_DEFAULT_LLTK_HOME
-PATH_CORPUS = config.get('PATH_TO_CORPORA', os.path.join(PATH_LLTK_HOME,'corpora') )
+PATH_CORPUS = os.path.expanduser(config.get('PATH_TO_CORPORA', os.path.join(PATH_LLTK_HOME,'corpora') ))
 PATH_CORPUS_ZIP = os.path.join(PATH_CORPUS, 'lltk_corpora')
 PATH_TO_CORPUS_CODE = config.get('PATH_TO_CORPUS_CODE', os.path.join(PATH_HERE,'corpus') )
 PATH_TO_DATA_CODE = os.path.abspath(os.path.join(PATH_TO_CORPUS_CODE,'..','..','data'))

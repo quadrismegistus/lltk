@@ -928,8 +928,9 @@ class BaseCorpus(TextList):
 
 
     def zip(self,savedir=PATH_CORPUS_ZIP,ask=False,parts=ZIP_PART_DEFAULTS):
+        import zipfile
+        savedir = os.path.expanduser(savedir)
         if not os.path.exists(savedir): os.makedirs(savedir)
-        here=os.getcwd()
         ## ask which parts
         if not parts and ask:
             part2ok=defaultdict(None)
@@ -942,62 +943,50 @@ class BaseCorpus(TextList):
         else:
             return
 
-        def _paths(path,pathpart=''):
-            # paths in folder
+        def _collect_paths(path, pathpart=''):
+            """Collect file paths relative to parent directory."""
+            path = os.path.abspath(path)
+            if not os.path.isdir(path):
+                # single file (e.g. metadata.csv)
+                return [path]
             paths = []
             for root, dirs, files in os.walk(path):
                 for file in files:
-                    ofnfn=os.path.join(root, file)
-                    paths.append(ofnfn)
-            if pathpart=='raw': return paths
-            # do they belong to this corpus?
+                    paths.append(os.path.join(root, file))
+            if pathpart == 'raw':
+                return paths
+            # filter to files belonging to this corpus
             try:
-                pppath=getattr(self,f'path_{pathpart}')
+                pppath = getattr(self, f'path_{pathpart}')
                 pppath0 = os.path.dirname(pppath)
                 acceptable_paths = {getattr(t,f'path_{pathpart}') for t in self.texts()}
-                acceptable_paths = {p.replace(pppath0+os.path.sep,'') for p in acceptable_paths}
-                # if log: log('orig paths',len(paths),list(paths)[:5])
-                # if log: log('ok paths',len(acceptable_paths), list(acceptable_paths)[:5])
-                paths = list(set(paths) & acceptable_paths)
-            except AssertionError:
+                paths = [p for p in paths if p in acceptable_paths]
+            except (AssertionError, Exception):
                 pass
             return paths
 
-
-        def zipdir(path, ziph, pathpart='', paths=None):
-            # ziph is zipfile handle
-            if not paths: paths=_paths(paths,pathpart)
-            for ofnfn in paths:
-                ziph.write(ofnfn)
-                yield ofnfn
-
-        def do_zip(path,fname,msg='Zipping files',default=False, pathpart=''):
+        def do_zip(path, fname, pathpart=''):
+            path = os.path.abspath(path)
             if not os.path.exists(path): return
-            #if ask and input('>> {msg}? [{path}]\n'.format(msg=msg,path=path)).strip()!='y': return
-            if not default: return
-
             if not fname.endswith('.zip'): fname+='.zip'
-            opath=os.path.join(savedir,fname)
+            opath = os.path.join(savedir, fname)
 
-            path1,path2=os.path.split(path)
+            abs_paths = _collect_paths(path, pathpart)
+            if not abs_paths: return
 
-            with zipfile.ZipFile(opath,'w',zipfile.ZIP_DEFLATED) as zipf:
-                os.chdir(path1)
-                paths=list(_paths(path2,pathpart)) if os.path.isdir(path2) else [path2]
-                #if log: log(type(paths),paths[:3])
-                zipper = zipdir(path2, zipf, pathpart=pathpart, paths=paths)
-                for ofnfn in self.get_tqdm(zipper, total=len(paths), desc=f'[{self.name}] Compressing {fname}'):
-                    pass
+            # determine base dir for arcnames (parent of the part path)
+            basedir = os.path.dirname(path) if not os.path.isdir(path) else os.path.dirname(path)
+
+            with zipfile.ZipFile(opath, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for abspath in self.get_tqdm(abs_paths, desc=f'Compressing {fname}'):
+                    arcname = os.path.relpath(abspath, basedir)
+                    zipf.write(abspath, arcname)
+
+            if log: log(f'Created {opath} ({os.path.getsize(opath)/1024:.0f} KB)')
 
         for part in part2ok:
             if not part2ok[part]: continue
-            do_zip(getattr(self,f'path_{part}'), f'{self.id}_{part}.zip', f'Zip {part} files',part in parts,pathpart=part)
-        os.chdir(here)
-        # do_zip(self.path_txt, self.id+'_txt.zip','Zip txt files','txt' in parts)
-        # do_zip(self.path_freqs, self.id+'_freqs.zip','Zip freqs files','freqs' in parts)
-        # do_zip(self.path_metadata, self.id+'_metadata.zip','Zip metadata file','metadata' in parts)
-        # do_zip(self.path_xml, self.id+'_xml.zip','Zip xml files','xml' in parts)
-        # do_zip(self.path_data, self.id+'_data.zip','Zip data files (mfw/dtm)','xml' in parts)
+            do_zip(getattr(self,f'path_{part}'), f'{self.id}_{part}.zip', pathpart=part)
 
 
     def uninstall(self):
@@ -1005,57 +994,154 @@ class BaseCorpus(TextList):
         pass
 
 
-    def upload(self,ask=False,uploader='dbu upload',dest=DEST_LLTK_CORPORA,zipdir=None,overwrite=False,parts=ZIP_PART_DEFAULTS):
-        #if not overwrite: uploader+=' -s'
-        if not zipdir: zipdir=os.path.join(PATH_CORPUS,'lltk_corpora')
-        here=os.getcwd()
-        os.chdir(zipdir)
-        #if log: log('?',zipdir,os.listdir('.'))
+    @staticmethod
+    def _dropbox_cmd():
+        """Find the dropbox_uploader.sh script."""
+        import shutil
+        # check PATH first
+        dbu = shutil.which('dbu') or shutil.which('dropbox_uploader.sh')
+        if dbu: return dbu
+        # bundled copy
+        bundled = os.path.join(PATH_LLTK_REPO, 'bin', 'dropbox_uploader.sh')
+        if os.path.exists(bundled): return bundled
+        return None
 
-
-        cmds=[]
-        for fn in os.listdir('.'):
-            if not fn.endswith('.zip'): continue
-            if not fn.startswith(self.id): continue
-            if not parts:
-                if ask:
-                    if not input(f'>> [{self.name}] Upload {fn}? ').strip().lower().startswith('y'): continue
-            else:
-                part=fn.replace('.zip','').split('_')[-1]
-                if part not in set(parts): continue
-
-            cmd='{upload} {file} {dest}'.format(upload=uploader,file=fn,dest=dest)
-            cmds.append(cmd)
-        # cmdstr="\n".join(cmds)
-        # if log: log(f'Executing:\n{cmdstr}')
-
-        for cmd in self.get_tqdm(cmds,desc=f'[{self.name}] Uploading zip files'):
-            os.system(cmd)
-
-        os.chdir(here)
-
-    def share(self,cmd_share='dbu share',dest=DEST_LLTK_CORPORA):
-        ol=[]
+    def upload(self, parts=None, dest=DEST_LLTK_CORPORA):
         import subprocess
-        ln='['+self.name+']'
-        if log: log(ln)
-        ol+=[ln]
-        for part in ZIP_PART_DEFAULTS:
-            fnzip = self.id+'_'+part+'.zip'
-            cmd=cmd_share+' '+os.path.join(dest,fnzip)
-            try:
-                out=str(subprocess.check_output(cmd.split()))
-            except (subprocess.CalledProcessError,ValueError,TypeError) as e:
-                #if log: log('!!',e)
+        if not parts: parts = DOWNLOAD_PART_DEFAULTS
+        if isinstance(parts, str): parts = [p.strip() for p in parts.split(',')]
+        dbu = self._dropbox_cmd()
+        if not dbu:
+            if log: log.error('dropbox_uploader.sh not found. Install from https://github.com/andreafabrizi/Dropbox-Uploader')
+            return
+        zipdir = os.path.expanduser(PATH_CORPUS_ZIP)
+        for part in parts:
+            local = os.path.join(zipdir, f'{self.id}_{part}.zip')
+            if not os.path.exists(local):
+                if log: log.warning(f'No zip for {part}: {local}')
                 continue
-            link=out.strip().replace('\n','').split('http')[-1].split('?')[0]
-            if link: link='http'+link+'?dl=1'
+            remote = f'{dest}/{self.id}_{part}.zip'
+            if log: log(f'Uploading {os.path.basename(local)} to {remote}...')
+            subprocess.run([dbu, 'upload', local, remote], check=True)
+            if log: log(f'  Done.')
 
-            url='url_'+part+' = '+link
-            if log: log(url)
-            ol+=[url]
-        if log: log()
-        #return '\n'.join(ol)
+    def share(self, parts=None, dest=DEST_LLTK_CORPORA):
+        """Get Dropbox share links. Returns dict of {part: url}."""
+        import subprocess
+        if not parts: parts = DOWNLOAD_PART_DEFAULTS
+        if isinstance(parts, str): parts = [p.strip() for p in parts.split(',')]
+        dbu = self._dropbox_cmd()
+        if not dbu:
+            if log: log.error('dropbox_uploader.sh not found.')
+            return {}
+        urls = {}
+        for part in parts:
+            remote = f'{dest}/{self.id}_{part}.zip'
+            try:
+                out = subprocess.check_output([dbu, 'share', remote], text=True)
+            except subprocess.CalledProcessError:
+                continue
+            # parse URL from output like: " > Share link: https://...?rlkey=...&dl=0"
+            import re
+            m = re.search(r'(https://\S+)', out)
+            if not m: continue
+            url = m.group(1).rstrip("'\"")
+            # ensure dl=1 for direct download, preserve rlkey
+            url = re.sub(r'[&?]dl=\d', '', url)
+            url += ('&' if '?' in url else '?') + 'dl=1'
+            urls[part] = url
+            if log: log(f'url_{part} = {url}')
+        return urls
+
+    def publish(self, public=None, private=None, parts=None):
+        """Zip, upload to Dropbox, get share links, and update manifests.
+
+        Public parts get URLs in the package manifest (checked into repo).
+        Private parts get URLs only in the user manifest (~/.lltk_data/manifest.txt).
+        Both update public= and private= fields.
+
+        Usage:
+            c.publish(public=['metadata'], private=['freqs', 'txt'])
+            c.publish(public=['metadata', 'freqs'])
+            c.publish(parts=['metadata'])  # all parts treated as public
+        """
+        if parts and not public and not private:
+            public = parts
+        if isinstance(public, str): public = [p.strip() for p in public.split(',')]
+        if isinstance(private, str): private = [p.strip() for p in private.split(',')]
+        public = public or []
+        private = private or []
+        all_parts = public + private
+        if not all_parts:
+            if log: log.error('No parts specified.')
+            return {}
+
+        # 1. Zip
+        if log: log(f'[{self.name}] Zipping {all_parts}...')
+        self.zip(parts=all_parts)
+
+        # 2. Upload
+        if log: log(f'[{self.name}] Uploading to Dropbox...')
+        self.upload(parts=all_parts)
+
+        # 3. Share
+        if log: log(f'[{self.name}] Getting share links...')
+        urls = self.share(parts=all_parts)
+        if not urls:
+            if log: log.error('No share links generated.')
+            return {}
+
+        # 4. Update manifests
+        public_urls = {p: urls[p] for p in public if p in urls}
+        private_urls = {p: urls[p] for p in private if p in urls}
+
+        # Package manifest: public URLs + public/private labels
+        self._update_manifest(
+            PATH_MANIFEST_GLOBAL,
+            urls=public_urls,
+            public=public,
+            private=private,
+        )
+        # User manifest: all URLs (public + private)
+        if private_urls:
+            self._update_manifest(
+                DEFAULT_PATH_TO_MANIFEST,
+                urls=private_urls,
+            )
+
+        return urls
+
+    def _update_manifest(self, manifest_path, urls=None, public=None, private=None):
+        """Update a manifest file with URLs and public/private labels."""
+        import configparser
+        manifest_path = os.path.expanduser(manifest_path)
+        config = configparser.ConfigParser()
+        if os.path.exists(manifest_path):
+            config.read(manifest_path)
+
+        section = self.name
+        if section not in config:
+            config.add_section(section)
+            # copy basic fields
+            for key in ['id', 'name', 'desc']:
+                val = getattr(self, key, None)
+                if val: config.set(section, key, str(val))
+
+        if urls:
+            for part, url in urls.items():
+                config.set(section, f'url_{part}', url)
+
+        if public is not None:
+            config.set(section, 'public', ','.join(public))
+        if private is not None:
+            config.set(section, 'private', ','.join(private))
+
+        ensure_dir_exists(manifest_path)
+        with open(manifest_path, 'w') as f:
+            config.write(f)
+
+        n_urls = len(urls) if urls else 0
+        if log: log(f'Updated {manifest_path} with {n_urls} URL(s) for [{section}]')
 
     def get_tqdm(self,*x,desc='',**y):
         if desc: desc=f'[{self.name}] {desc}'
