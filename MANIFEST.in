@@ -8,3 +8,7 @@ recursive-include bin *.sh
 recursive-include data *.gz
 recursive-include lltk *.md
 recursive-include lltk *.txt
+
+# Web app assets
+recursive-include lltk/web/static *.js *.css
+recursive-include lltk/web/templates *.html
