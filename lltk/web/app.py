@@ -134,6 +134,37 @@ def create_app():
         except Exception as e:
             return JSONResponse({'error': str(e)}, status_code=500)
 
+    # ── Genre timeline (stacked area by decade) ──────────────────────────
+
+    @app.get('/api/genre-timeline')
+    async def get_genre_timeline():
+        try:
+            df = lltk.db.conn.execute("""
+                SELECT CAST(year / 10 AS INTEGER) * 10 as decade,
+                       genre,
+                       COUNT(*) as n
+                FROM texts
+                WHERE year IS NOT NULL AND genre IS NOT NULL
+                  AND year >= 1500 AND year < 2020
+                GROUP BY decade, genre
+                ORDER BY decade, genre
+            """).fetchdf()
+            # Pivot: [{decade, Fiction, Poetry, Drama, ...}, ...]
+            decades = sorted(df['decade'].unique())
+            genres = sorted(df['genre'].unique())
+            lookup = {}
+            for _, r in df.iterrows():
+                lookup[(int(r['decade']), r['genre'])] = int(r['n'])
+            rows = []
+            for d in decades:
+                row = {'decade': int(d)}
+                for g in genres:
+                    row[g] = lookup.get((d, g), 0)
+                rows.append(row)
+            return {'data': rows, 'genres': genres}
+        except Exception as e:
+            return JSONResponse({'error': str(e)}, status_code=500)
+
     # ── Paginated text list ─────────────────────────────────────────────
 
     @app.get('/api/texts')

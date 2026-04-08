@@ -1,5 +1,6 @@
 <script>
   import { onMount } from 'svelte';
+  import GenreTimeline from './GenreTimeline.svelte';
   import { getOverview, getHeatmap, getStats } from '../lib/api.js';
   import { formatNumber, yearRange } from '../lib/utils.js';
   import { switchTab, filters } from '../stores.js';
@@ -104,6 +105,9 @@
     </button>
   {/each}
 </div>
+
+<h2>Genre Timeline</h2>
+<GenreTimeline />
 
 {#if heatmap.genres.length}
 <h2>Genre x Century</h2>

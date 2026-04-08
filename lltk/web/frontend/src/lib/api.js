@@ -18,6 +18,10 @@ export function getHeatmap() {
   return fetchJson('/api/heatmap');
 }
 
+export function getGenreTimeline() {
+  return fetchJson('/api/genre-timeline');
+}
+
 export function getTexts(params = {}) {
   const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
