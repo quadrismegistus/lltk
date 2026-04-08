@@ -382,9 +382,10 @@ Applied in `load_metadata()` for all Hathi corpora. Freqs index (`_build_freqs_i
 
 ```bash
 python -m pytest tests/ -v
+python -m pytest tests/ --cov=lltk --cov-report=term   # with coverage
 ```
 
-Tests use the `test_fixture` corpus (3 texts: Blake, Austen, Shelley) checked into the repo — no external data needed.
+199 tests using the `test_fixture` corpus (3 texts: Blake, Austen, Shelley) checked into the repo — no external data needed. Tests cover: corpus/text path resolution, metadata hydration, MetaDB with temp DuckDB (ingest, get, query, match), normalize_title/author, xml2txt_earlyprint, fiction_biblio ID normalization, pmap, clean_text, tokenize. CI runs on push via GitHub Actions + Codecov.
 
 ## Corpus data location
 
@@ -489,14 +490,14 @@ C.compile()  # reads sources_parsed/ CSVs, auto-matches to ESTC, writes metadata
 
 ### Sources (6 bibliographies, 6,862 entries)
 
-| Bibliography | ID | Period | Entries | ESTC matching method | ESTC rate |
+| Bibliography | ID | Period | Entries | ESTC matching method | Match rate |
 |---|---|---|---|---|---|
-| Mish 1967 | mish1967 | 1475-1700 | 1,497 | STC/Wing IDs | 70.5% |
-| Odell 1954 | odell1954 | 1475-1700 | 1,024 | STC/Wing IDs | 77.6% |
-| McBurney 1960 | mcburney1960 | 1700-1739 | 1,089 | Shelfmarks (BM→bL etc.) | 27.0% |
-| Beasley 1972 | beasley1972 | 1740-1749 | 494 | McBurney cross-refs | 6.5% |
-| Raven 1987 | raven1987 | 1750-1770 | 1,357 | Direct ESTC IDs | 56.4% |
-| Raven 2000 | raven2000 | 1770-1799 | 1,401 | Direct ESTC IDs | 75.0% |
+| Mish 1967 | mish1967 | 1475-1700 | 1,497 | STC/Wing IDs | 85.2% |
+| Odell 1954 | odell1954 | 1475-1700 | 1,024 | STC/Wing IDs | 88.2% |
+| McBurney 1960 | mcburney1960 | 1700-1739 | 1,089 | Shelfmarks (BM→bL etc.) | 73.6% |
+| Beasley 1972 | beasley1972 | 1740-1749 | 494 | McBurney cross-refs | 60.1% |
+| Raven 1987 | raven1987 | 1750-1770 | 1,357 | Direct ESTC IDs | 79.7% |
+| Raven 2000 | raven2000 | 1770-1799 | 1,401 | Direct ESTC IDs | 83.4% |
 
 - Gemini Flash-parsed page images in `sources_parsed/{biblio}.csv`
 - `compile()` assigns IDs (`{biblio}_{NNNN}`), auto-matches to ESTC (STC/Wing + shelfmarks + McBurney xrefs + direct ESTC IDs)
@@ -504,6 +505,17 @@ C.compile()  # reads sources_parsed/ CSVs, auto-matches to ESTC, writes metadata
 - `matches_verified.csv`: manual overrides (y/n per match)
 - `load_metadata()` enriches genre_raw from Raven category codes (E→"Novel, epistolary", N→"Novel")
 - All entries get `genre='Fiction'`, no text files — genre propagation via match groups + `db-enrich-genres`
+- 1,425 fiction_biblio texts matched to public digitized corpora (earlyprint/TCP); 831 public-only
+
+### ESTC ID normalization in compile()
+
+Multi-step normalization at compile time:
+- Strip `ESTC ` prefix, uppercase first letter (`t068056` → `T068056`)
+- Strip leading zeros (`T068056` → `T68056`) to match ESTC canonical form
+- Parse multi-value IDs (`T90269, t090270`) → `id_estc` (first) + `id_estc_all` (pipe-separated)
+- Strip bracketed qualifiers (`T63646 [vols. 1–4]` → `T63646`)
+- Validate format (letter + digits) — rejects years-as-IDs (`1785`, `1790?`)
+- ESTC linkage gap: 5 remaining (valid IDs not in our ESTC dump)
 
 ### fiction_biblio → ESTC linking
 
@@ -601,11 +613,13 @@ All ESTC columns get prefixed as `estc_*` in linked corpora. Linked corpora cher
 
 ## EarlyPrint corpus
 
-Combined EEBO/ECCO/Evans TCP with linguistic tagging from [EarlyPrint Project](https://earlyprint.org). ~66K texts.
+Combined EEBO/ECCO/Evans TCP with linguistic tagging from [EarlyPrint Project](https://earlyprint.org). ~60K texts.
 
 ```bash
 lltk compile earlyprint                    # all repos
 lltk compile earlyprint --repos eccotcp    # one at a time
+lltk preprocess earlyprint --parts txt     # xml→txt with reg spelling (~20GB)
+lltk preprocess earlyprint --parts freqs   # txt→freqs
 ```
 
 - Shallow git clones + gzip-compressed XML copies to flat `xml/{ID}.xml.gz` (~10x smaller)
@@ -614,8 +628,22 @@ lltk compile earlyprint --repos eccotcp    # one at a time
 - `LINKS` to ESTC for genre. `MATCH_LINKS` to eebo_tcp/ecco_tcp/evans_tcp for dedup.
 - `update()`: git pull + re-gzip + rebuild metadata
 - XML path resolution: `xml/{tcp_id}.xml.gz` (flat directory, TCP ID = text ID)
-- `ep_repo` derived from TCP ID prefix: A/B→eebotcp, K→eccotcp, N→evanstcp
+- `ep_repo` derived from TCP ID prefix: A/B/E→eebotcp, C/K→eccotcp, N→evanstcp
 - See `lltk/corpus/earlyprint/README.md` for full field reference
+
+### xml2txt_earlyprint
+
+`xml2txt_earlyprint(xmlfn, use_reg=True)` extracts plain text from EarlyPrint TEI XML:
+- Uses `<w>` element `reg` attribute (regularized/modernized spelling) when available, falls back to surface text
+- Punctuation from `<pc>` elements attached without leading space
+- Extracts from `<p>` (paragraph) and `<l>` (verse line) elements within `<body>`
+- Uses lxml (not BeautifulSoup) — ~0.04-0.12s per document
+- Example: "NOwe sithens we haue declared" → "Now sithence we have declared"
+- `reg` coverage varies by text age: ~5-29% of words have reg (only where spelling differs from modern)
+
+### .gz file support
+
+`_open_file(path)` in text.py transparently handles `.gz` files. Applied to `BaseText.xml`, `text_plain()`, and `TextSection.txt`. Corpora can set `ext_xml = .xml.gz` or `ext_txt = .txt.gz` in manifest.
 
 ## Development notes
 
@@ -631,3 +659,7 @@ lltk compile earlyprint --repos eccotcp    # one at a time
 - `is_translated`: ESTC detection via MARC structural signals (relator, uniform title lang) + title/notes/subject keywords; inherited by linked corpora, core DB column
 - `t.match_group_texts`: returns text objects for all match group members (falls back to `[self]`). Enables multi-version scoring.
 - `path_freqs` in DB: relative to PATH_CORPUS, resolved during `ingest()` via `_resolve_freqs_paths()`. Enables bulk DuckDB queries for scoring without text object instantiation.
+- `_open_file(path)` in text.py: helper that returns `gzip.open()` for `.gz` paths, `open()` otherwise. Used by `xml`, `text_plain()`, `TextSection.txt`.
+- `_PmapCaller` class in tools.py: picklable replacement for closures in `pmap()`. Needed because `ProcessPoolExecutor` can't pickle closures.
+- `preprocess_txt` uses `use_threads=True` to avoid pickle issues with corpus modules loaded dynamically via manifest (they get short `__module__` names that workers can't reimport).
+- `ext_xml` manifest field: controls file extension for flat-directory XML path resolution via `get_path_old()`. E.g. earlyprint sets `ext_xml = .xml.gz`.
