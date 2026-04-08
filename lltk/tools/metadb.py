@@ -1594,19 +1594,7 @@ class MetaDB:
             except Exception:
                 return None
 
-        # ── Pass 1: Build vocabulary (all texts, streaming) ─────────
-        if log: log(f'Pass 1: Building vocabulary from {len(all_pairs):,} texts ({num_proc} threads)...')
-
-        doc_freq = Counter()
-
-        def _get_word_set(row):
-            """Return set of unique words in a text's freqs."""
-            _id, rel_path = row
-            d = _read_freqs_file(rel_path)
-            if d is None:
-                return set()
-            return set(w for w, c in d.items() if c >= min_count)
-
+        # ── Helper: bounded parallel map ───────────────────────────
         def _bounded_map(pool, func, items, desc='', max_pending=None):
             """Submit work in bounded batches, yielding results as they complete."""
             if max_pending is None:
@@ -1617,14 +1605,12 @@ class MetaDB:
             pbar = get_tqdm(total=total, desc=desc) if progress else None
             exhausted = False
             while pending or not exhausted:
-                # Fill up to max_pending
                 while len(pending) < max_pending and not exhausted:
                     try:
                         item = next(items_iter)
                         pending.add(pool.submit(func, item))
                     except StopIteration:
                         exhausted = True
-                # Wait for any to complete
                 if pending:
                     done, pending = concurrent.futures.wait(
                         pending, return_when=concurrent.futures.FIRST_COMPLETED
@@ -1638,18 +1624,43 @@ class MetaDB:
 
         import concurrent.futures
 
-        with ThreadPoolExecutor(max_workers=num_proc) as pool:
-            for word_set in _bounded_map(pool, _get_word_set, all_pairs, desc='Pass 1: vocabulary'):
-                doc_freq.update(word_set)
+        # ── Pass 1: Build or load vocabulary ────────────────────────
+        vocab_path = os.path.join(os.path.dirname(self.wordindex_path), f'wordindex_vocab_{vocab_size}.txt')
 
-        # Keep top N by document frequency
-        vocab = set(w for w, _ in doc_freq.most_common(vocab_size))
-        if log:
-            log(f'Vocabulary: {len(doc_freq):,} unique words → top {len(vocab):,} kept')
-            if len(doc_freq) > vocab_size:
-                cutoff_df = doc_freq.most_common(vocab_size)[-1][1]
-                log(f'  Min doc frequency in vocab: {cutoff_df}')
-        del doc_freq
+        if os.path.exists(vocab_path):
+            # Load cached vocabulary
+            with open(vocab_path) as f:
+                vocab = set(line.strip() for line in f if line.strip())
+            if log: log(f'Loaded vocabulary from {vocab_path} ({len(vocab):,} words)')
+        else:
+            if log: log(f'Pass 1: Building vocabulary from {len(all_pairs):,} texts ({num_proc} threads)...')
+
+            doc_freq = Counter()
+
+            def _get_word_set(row):
+                _id, rel_path = row
+                d = _read_freqs_file(rel_path)
+                if d is None:
+                    return set()
+                return set(w for w, c in d.items() if c >= min_count)
+
+            with ThreadPoolExecutor(max_workers=num_proc) as pool:
+                for word_set in _bounded_map(pool, _get_word_set, all_pairs, desc='Pass 1: vocabulary'):
+                    doc_freq.update(word_set)
+
+            # Keep top N by document frequency
+            vocab = set(w for w, _ in doc_freq.most_common(vocab_size))
+            if log:
+                log(f'Vocabulary: {len(doc_freq):,} unique words → top {len(vocab):,} kept')
+                if len(doc_freq) > vocab_size:
+                    cutoff_df = doc_freq.most_common(vocab_size)[-1][1]
+                    log(f'  Min doc frequency in vocab: {cutoff_df}')
+
+            # Save vocabulary for future runs
+            with open(vocab_path, 'w') as f:
+                f.write('\n'.join(sorted(vocab)))
+            if log: log(f'Saved vocabulary to {vocab_path}')
+            del doc_freq
 
         # ── Pass 2: Index words in vocabulary ───────────────────────
         todo = self.conn.execute(f"""
