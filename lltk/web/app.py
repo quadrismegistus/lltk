@@ -48,9 +48,13 @@ def create_app():
     @app.get('/api/stats')
     async def get_stats():
         try:
+            from datetime import date
+            current_year = date.today().year
             row = db.conn.execute(
                 "SELECT COUNT(*) as n, COUNT(DISTINCT corpus) as n_corpora, "
-                "MIN(year) as year_min, MAX(year) as year_max FROM texts"
+                "MIN(year) as year_min, "
+                f"MAX(CASE WHEN year <= {current_year} THEN year END) as year_max "
+                "FROM texts"
             ).fetchone()
             # match groups
             try:
@@ -91,7 +95,7 @@ def create_app():
                 SELECT corpus,
                        COUNT(*) as n_texts,
                        MIN(year) as year_min,
-                       MAX(year) as year_max,
+                       MAX(CASE WHEN year <= 2030 THEN year END) as year_max,
                        COUNT(path_freqs) as n_freqs,
                        COUNT(n_words) as n_words
                 FROM texts GROUP BY corpus ORDER BY corpus
