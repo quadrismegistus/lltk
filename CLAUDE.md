@@ -751,6 +751,8 @@ Incremental: re-running skips texts already indexed.
 ```python
 lltk.db.ngram('virtue', genre='Fiction')                    # time series DataFrame
 lltk.db.ngram(['virtue', 'honor'], year_min=1700)           # comparative
+lltk.db.ngram('virtue', dedup=True)                          # one representative per match group
+lltk.db.ngram('virtue', by_corpus=True)                      # separate line per corpus
 lltk.db.ngram_examples('virtue', genre='Fiction', year_min=1750, year_max=1759)
 lltk.db.ngram_collocates('virtue', genre='Fiction')
 lltk.db.has_word_index()                                     # check if built
@@ -778,3 +780,23 @@ If full-text search is built, chunking texts into ~500-word passages creates a r
 - Sentiment, topic modeling, embeddings
 - Schema: `passages(_id, seq, text, n_words)` + `passage_scores(passage_id, metric, value)`
 - ~60M passages for 600K texts, ~15GB storage
+
+### OCR quality and corpus bias
+
+Corpora have varying OCR quality (Hathi/ECCO noisier than chadwyck). This affects word counts — garbage tokens inflate `n_words` and suppress per-million rates. Mitigation strategies:
+
+- **Dedup (implemented)**: `dedup=True` picks the best source per match group (by `CORPUS_SOURCE_RANKS`), biasing toward cleaner corpora
+- **Corpus faceting (implemented)**: `by_corpus=True` shows separate ngram lines per corpus, making OCR differences visible
+- **Corpus correction factors (future)**: for each corpus pair sharing match groups, compute median per-million ratio for common words. Apply as multiplicative correction when combining corpora.
+- **Per-text quality score (future)**: `quality = min_group_n_words / n_words` using match groups. Texts with inflated word counts (OCR junk) get downweighted.
+
+### Deployment
+
+Recommended VPS for serving the app with ~30GB DuckDB data:
+
+- **Hetzner CCX33/CCX43**: 8-16 cores, 32-64GB RAM, 240-360GB SSD. ~$35-65/mo. Best value.
+- DuckDB mmaps files, so 32GB RAM can work if queries stay simple (hot pages cached by OS)
+- 64GB RAM for comfortable headroom with ngram queries scanning the word index
+- Deployment: copy DuckDB files to server, pip install, `lltk app`. Put behind nginx + Let's Encrypt.
+- **Keep builds local**: `db-wordindex`, `db-rebuild`, `db-match` lock the DB (single-writer). Run on your machine, rsync DB files to server.
+- No Docker needed for basic deploy, but a Dockerfile would help for reproducibility.
