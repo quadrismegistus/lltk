@@ -6,11 +6,24 @@
 
   let stats = $state(null);
   let corpora = $state([]);
-  let heatmap = $state({ cells: [], genres: [], decades: [] });
+  let heatmap = $state({ cells: [], genres: [], centuries: [] });
   let loading = $state(true);
 
   function browseCorpus(corpus) {
     filters.update(f => ({ ...f, corpus, page: 1 }));
+    switchTab('texts');
+  }
+
+  function browseHeatmapCell(genre, century) {
+    filters.update(f => ({
+      ...f,
+      genre,
+      year_min: century,
+      year_max: century + 99,
+      corpus: '',
+      search: '',
+      page: 1,
+    }));
     switchTab('texts');
   }
 
@@ -108,8 +121,10 @@
             {@const val = heatmap.cells[`${genre}|${c}`] || 0}
             <td
               class="heatmap-cell"
+              class:clickable={val > 0}
               style="background: {heatColor(val)}"
               title="{genre} {c}s: {formatNumber(val)}"
+              onclick={() => val > 0 && browseHeatmapCell(genre, c)}
             >
               {#if val > 0}<span class="cell-val">{val > 999 ? Math.round(val/1000) + 'k' : val}</span>{/if}
             </td>
@@ -162,7 +177,9 @@
     text-align: left;
     cursor: pointer;
     transition: border-color 0.15s, box-shadow 0.15s;
-    display: block;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
     width: 100%;
     font: inherit;
     color: inherit;
@@ -218,5 +235,7 @@
     border: 1px solid #f1f5f9;
     border-radius: 2px;
   }
+  .heatmap-cell.clickable { cursor: pointer; }
+  .heatmap-cell.clickable:hover { outline: 2px solid #1e293b; outline-offset: -1px; }
   .cell-val { color: white; font-size: 9px; font-weight: 600; text-shadow: 0 0 2px rgba(0,0,0,0.3); }
 </style>
