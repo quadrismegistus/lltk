@@ -392,6 +392,42 @@ def _parse_year(val):
     return None
 
 
+# ── Picklable workers for ProcessPoolExecutor (word index build) ──
+
+def _wi_read_freqs(args):
+    """Read a freqs JSON, return dict or None. Picklable for multiprocessing."""
+    corpus_root, rel_path = args
+    abs_path = os.path.join(corpus_root, rel_path)
+    try:
+        if abs_path.endswith('.gz'):
+            import gzip
+            with gzip.open(abs_path, 'rb') as f:
+                return orjson.loads(f.read())
+        else:
+            with open(abs_path, 'rb') as f:
+                return orjson.loads(f.read())
+    except Exception:
+        return None
+
+def _wi_get_word_set(args):
+    """Return set of unique words in a text's freqs. For pass 1 vocabulary."""
+    corpus_root, _id, rel_path, min_count = args
+    d = _wi_read_freqs((corpus_root, rel_path))
+    if d is None:
+        return set()
+    return set(w for w, c in d.items() if c >= min_count)
+
+_wi_vocab = None  # set by parent before ProcessPoolExecutor fork
+
+def _wi_read_filtered(args):
+    """Read freqs, filter to vocabulary. For pass 2 indexing."""
+    corpus_root, _id, rel_path, min_count = args
+    d = _wi_read_freqs((corpus_root, rel_path))
+    if d is None:
+        return []
+    return [(_id, w, c) for w, c in d.items() if w in _wi_vocab and c >= min_count]
+
+
 class MetaDB:
     def __init__(self, path=None, match_path=None, wordcount_path=None, wordindex_path=None,
                  read_only=False):
@@ -1599,21 +1635,9 @@ class MetaDB:
 
         all_pairs = list(zip(all_texts['_id'], all_texts['path_freqs']))
 
-        def _read_freqs_file(rel_path):
-            """Read a freqs JSON file, return dict or None."""
-            abs_path = os.path.join(corpus_root, rel_path)
-            try:
-                if abs_path.endswith('.gz'):
-                    import gzip
-                    with gzip.open(abs_path, 'rb') as f:
-                        return orjson.loads(f.read())
-                else:
-                    with open(abs_path, 'rb') as f:
-                        return orjson.loads(f.read())
-            except Exception:
-                return None
+        import concurrent.futures
+        from concurrent.futures import ProcessPoolExecutor
 
-        # ── Helper: bounded parallel map ───────────────────────────
         def _bounded_map(pool, func, items, desc='', max_pending=None):
             """Submit work in bounded batches, yielding results as they complete."""
             if max_pending is None:
@@ -1641,33 +1665,23 @@ class MetaDB:
             if pbar:
                 pbar.close()
 
-        import concurrent.futures
-
         # ── Pass 1: Build or load vocabulary ────────────────────────
         vocab_path = os.path.join(os.path.dirname(self.wordindex_path), f'wordindex_vocab_{vocab_size}.txt')
 
         if os.path.exists(vocab_path):
-            # Load cached vocabulary
             with open(vocab_path) as f:
                 vocab = set(line.strip() for line in f if line.strip())
             if log: log(f'Loaded vocabulary from {vocab_path} ({len(vocab):,} words)')
         else:
-            if log: log(f'Pass 1: Building vocabulary from {len(all_pairs):,} texts ({num_proc} threads)...')
+            if log: log(f'Pass 1: Building vocabulary from {len(all_pairs):,} texts ({num_proc} processes)...')
 
             doc_freq = Counter()
+            pass1_args = [(corpus_root, _id, rp, min_count) for _id, rp in all_pairs]
 
-            def _get_word_set(row):
-                _id, rel_path = row
-                d = _read_freqs_file(rel_path)
-                if d is None:
-                    return set()
-                return set(w for w, c in d.items() if c >= min_count)
-
-            with ThreadPoolExecutor(max_workers=num_proc) as pool:
-                for word_set in _bounded_map(pool, _get_word_set, all_pairs, desc='Pass 1: vocabulary'):
+            with ProcessPoolExecutor(max_workers=num_proc) as pool:
+                for word_set in _bounded_map(pool, _wi_get_word_set, pass1_args, desc='Pass 1: vocabulary'):
                     doc_freq.update(word_set)
 
-            # Keep top N by document frequency
             vocab = set(w for w, _ in doc_freq.most_common(vocab_size))
             if log:
                 log(f'Vocabulary: {len(doc_freq):,} unique words → top {len(vocab):,} kept')
@@ -1675,7 +1689,6 @@ class MetaDB:
                     cutoff_df = doc_freq.most_common(vocab_size)[-1][1]
                     log(f'  Min doc frequency in vocab: {cutoff_df}')
 
-            # Save vocabulary for future runs
             with open(vocab_path, 'w') as f:
                 f.write('\n'.join(sorted(vocab)))
             if log: log(f'Saved vocabulary to {vocab_path}')
@@ -1696,15 +1709,12 @@ class MetaDB:
             wi_conn.close()
             return
 
-        if log: log(f'Pass 2: Indexing {len(todo):,} texts ({num_proc} threads)...')
-        todo_pairs = list(zip(todo['_id'], todo['path_freqs']))
-
-        def _read_filtered(row):
-            _id, rel_path = row
-            d = _read_freqs_file(rel_path)
-            if d is None:
-                return []
-            return [(_id, w, c) for w, c in d.items() if w in vocab and c >= min_count]
+        if log: log(f'Pass 2: Indexing {len(todo):,} texts ({num_proc} processes)...')
+        # Set module-level vocab for forked workers (copy-on-write shared memory)
+        global _wi_vocab
+        _wi_vocab = vocab
+        pass2_args = [(corpus_root, _id, rp, min_count)
+                      for _id, rp in zip(todo['_id'], todo['path_freqs'])]
 
         rows_to_insert = []
         batch_size = 500_000
@@ -1714,8 +1724,8 @@ class MetaDB:
             batch_df = pd.DataFrame(rows, columns=['_id', 'word', 'count'])
             wi_conn.execute("INSERT INTO word_index (_id, word, count) SELECT _id, word, count FROM batch_df")
 
-        with ThreadPoolExecutor(max_workers=num_proc) as pool:
-            for result in _bounded_map(pool, _read_filtered, todo_pairs, desc='Pass 2: indexing'):
+        with ProcessPoolExecutor(max_workers=num_proc) as pool:
+            for result in _bounded_map(pool, _wi_read_filtered, pass2_args, desc='Pass 2: indexing'):
                 rows_to_insert.extend(result)
                 if len(rows_to_insert) >= batch_size:
                     _flush_batch(rows_to_insert)
