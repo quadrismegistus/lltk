@@ -663,3 +663,118 @@ lltk preprocess earlyprint --parts freqs   # txt→freqs
 - `_PmapCaller` class in tools.py: picklable replacement for closures in `pmap()`. Needed because `ProcessPoolExecutor` can't pickle closures.
 - `preprocess_txt` uses `use_threads=True` to avoid pickle issues with corpus modules loaded dynamically via manifest (they get short `__module__` names that workers can't reimport).
 - `ext_xml` manifest field: controls file extension for flat-directory XML path resolution via `get_path_old()`. E.g. earlyprint sets `ext_xml = .xml.gz`.
+- All frequency JSON reading uses `orjson` (3-10x faster than stdlib json, releases GIL for threaded parallelism). Changed in text.py, text/utils.py, metadb.py, corpus/utils.py.
+- `corpus.zip()` rewritten to avoid `os.chdir()` (broke imports on macOS SIP). Uses `os.path.abspath()` + `os.path.relpath()` for arcnames.
+- `corpus.publish(public=, private=)` zips, uploads to Dropbox via bundled `bin/dropbox_uploader.sh`, gets share links, updates manifest. Public URLs go to package manifest, private URLs to user manifest only.
+- `PATH_CORPUS` now wrapped in `os.path.expanduser()` to handle `~` from config files.
+- Log file rotation wrapped in try/except for PermissionError resilience (macOS SIP).
+
+## Web app (`lltk app`)
+
+FastAPI + Svelte explorer for browsing all corpora via the DuckDB metadata store. Read-only.
+
+```bash
+lltk app                    # launches on http://0.0.0.0:8899
+lltk app --port 9000
+```
+
+### Architecture
+
+- Backend: `lltk/web/app.py` — FastAPI with JSON API endpoints
+- Frontend: `lltk/web/frontend/` — Svelte 5 source, built to `lltk/web/static/dist/`
+- Built bundle (index.js + index.css) checked into git — no npm needed for end users
+- HTML shell: `lltk/web/templates/app.html`
+- Frontend developers: `cd lltk/web/frontend && npm install && npm run build`
+
+### Current views
+
+- **Dashboard**: stat cards, corpus grid (name/desc from manifest), genre timeline (stacked bars by decade with count/proportion toggle), genre x century heatmap (clickable → drills into Texts)
+- **Texts**: searchable/filterable table with sort, dedup toggle, server-side pagination. Click row → detail panel with metadata, match group, text preview
+- **Ngrams**: word frequency explorer — SVG line chart, clickable decades show example texts, collocate panel. Requires `lltk db-wordindex` to be built.
+- **Matches**: search match groups by title, expandable group cards
+- **Corpora**: corpus list with detail panel (genre/year bars, top authors). "Browse" links to filtered Texts view.
+- **Overlap**: cross-corpus duplicate match counts
+
+### URL hash routing
+
+State is encoded in the URL hash: `#texts?search=Pamela&genre=Fiction`, `#ngrams`, `#matches?search=Crusoe`. Back/forward buttons work. Tab switches push history; filter changes replace state.
+
+### API endpoints
+
+All read-only JSON, auto-documented at `/docs`:
+
+| Route | Purpose |
+|-------|---------|
+| `GET /api/stats` | Global stats |
+| `GET /api/overview` | Per-corpus summaries with manifest name/desc |
+| `GET /api/heatmap` | Genre x century counts |
+| `GET /api/genre-timeline` | Genre counts by decade (for stacked chart) |
+| `GET /api/texts` | Paginated text list with filters |
+| `GET /api/text/{_id}` | Single text + match group + txt preview |
+| `GET /api/corpora` | Corpus list |
+| `GET /api/corpus/{id}` | Corpus detail (genres, years, authors) |
+| `GET /api/genres` | Genre vocabulary |
+| `GET /api/ngram` | Word frequency time series |
+| `GET /api/ngram/{word}/examples` | Texts using a word most |
+| `GET /api/ngram/{word}/collocates` | Document-level co-occurring words |
+| `GET /api/matches` | Search match groups by title |
+| `GET /api/match-stats` | Matching statistics |
+| `GET /api/corpus-overlap` | Cross-corpus overlap counts |
+
+## Word index (metadb_wordindex.duckdb)
+
+Per-word frequency index built from freqs files. Enables ngram queries, example text lookup, and collocate analysis via SQL.
+
+```bash
+lltk db-wordindex [-j 32] [--vocab-size 100000]    # ~1.5h for 1.6M texts
+```
+
+### Schema
+
+Separate DuckDB file attached as `wi_db`:
+
+```sql
+wi_db.word_index(_id TEXT, word TEXT, count INTEGER)
+-- Indexes on word and _id after bulk load
+```
+
+### Build process
+
+Two-pass with bounded thread pool (`_bounded_map`, max `num_proc*4` pending futures):
+- **Pass 1**: Scan all freqs files, count document frequency per word into a Counter (~1GB for 15M unique words). Uses orjson for fast JSON parsing.
+- **Pass 2**: Re-scan, insert only words in top N vocabulary (default 100K). Batch insert 500K rows at a time into DuckDB.
+
+Incremental: re-running skips texts already indexed.
+
+### Python API
+
+```python
+lltk.db.ngram('virtue', genre='Fiction')                    # time series DataFrame
+lltk.db.ngram(['virtue', 'honor'], year_min=1700)           # comparative
+lltk.db.ngram_examples('virtue', genre='Fiction', year_min=1750, year_max=1759)
+lltk.db.ngram_collocates('virtue', genre='Fiction')
+lltk.db.has_word_index()                                     # check if built
+lltk.db.drop_word_index()                                    # clear and rebuild
+```
+
+## App development roadmap
+
+### Planned features (roughly ordered by priority)
+
+1. **Saved queries / collections** (low effort, no backend): localStorage-based saved filter sets with "Export as Python" code generation
+2. **Author page** (low effort): click author name → all works across corpora, grouped by match group, with timeline
+3. **Text export** (low effort): checkbox selection in Texts view → download CSV/JSON/ZIP of metadata, freqs, or txt files
+4. **Comparison view** (medium effort): select 2+ texts, compare word frequencies side by side, show distinctive words via log-likelihood
+5. **Full-text search** (high effort): SQLite FTS5 index built from txt files (~600K texts, ~10GB). Enables phrase search, KWIC concordance, highlighted snippets. Could also build a passages table for downstream scoring.
+6. **Map view** (medium effort): Leaflet.js showing publication places from ESTC metadata. Requires geocoding ~2K unique city names.
+7. **Network view** (medium effort): D3 force graph of corpus overlap from match groups
+8. **API documentation page** (low effort): styled examples with curl/Python snippets
+
+### Passages table (future)
+
+If full-text search is built, chunking texts into ~500-word passages creates a reusable unit for:
+- FTS5 search with meaningful snippets
+- Abstraction scoring at passage level
+- Sentiment, topic modeling, embeddings
+- Schema: `passages(_id, seq, text, n_words)` + `passage_scores(passage_id, metric, value)`
+- ~60M passages for 600K texts, ~15GB storage
