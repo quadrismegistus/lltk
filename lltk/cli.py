@@ -72,6 +72,7 @@ def main():
 	p_db_wi = subparsers.add_parser('db-wordindex', help='Build per-word frequency index from freqs files')
 	p_db_wi.add_argument('-j', '--jobs', type=int, default=None, help='Number of parallel workers')
 	p_db_wi.add_argument('--min-count', type=int, default=1, help='Min word count to include (default: 1)')
+	p_db_wi.add_argument('--vocab-size', type=int, default=100_000, help='Top N words by document frequency (default: 100000)')
 	p_db_wi.add_argument('corpora', nargs='*', help='Specific corpora (default: all)')
 
 	# db match-stats
@@ -231,6 +232,7 @@ def main():
 		lltk.db.build_word_index(
 			num_proc=args.jobs,
 			min_count=args.min_count,
+			vocab_size=args.vocab_size,
 			corpora=args.corpora or None,
 		)
 

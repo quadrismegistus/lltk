@@ -1540,72 +1540,122 @@ class MetaDB:
 
     # ── Word Index ────────────────────────────────────────────────
 
-    def build_word_index(self, num_proc=None, progress=True, min_count=1, corpora=None):
+    def build_word_index(self, num_proc=None, progress=True, min_count=1,
+                         vocab_size=100_000, corpora=None):
         """Build per-word frequency index from freqs files.
 
-        Reads each text's freqs JSON and inserts (id, word, count) rows into
-        wi_db.word_index. Incremental: skips texts already indexed.
+        Two-pass build:
+          Pass 1: scan all freqs files to build vocabulary (top N words by document frequency)
+          Pass 2: re-scan and insert only words in the vocabulary
 
-            lltk.db.build_word_index()             # all texts
+        This keeps the index manageable (~2-4 GB) while covering all useful words.
+        Incremental: skips texts already indexed on pass 2.
+
+            lltk.db.build_word_index()                      # all texts, top 100K words
+            lltk.db.build_word_index(vocab_size=50_000)     # smaller vocab
             lltk.db.build_word_index(corpora=['ecco_tcp'])  # specific corpora
         """
         from lltk.tools.tools import get_tqdm
+        from collections import Counter
         from concurrent.futures import ThreadPoolExecutor
         if num_proc is None:
             num_proc = max(1, os.cpu_count() - 2)
 
-        # Find texts not yet indexed
+        from lltk.imports import PATH_CORPUS
+        corpus_root = os.path.expanduser(PATH_CORPUS)
+
         corpus_filter = ''
         if corpora:
             corpus_list = ', '.join(f"'{c}'" for c in corpora)
             corpus_filter = f'AND t.corpus IN ({corpus_list})'
 
-        todo = self.conn.execute(f"""
+        # All texts with freqs
+        all_texts = self.conn.execute(f"""
             SELECT t._id, t.path_freqs
             FROM texts t
-            WHERE t.path_freqs IS NOT NULL
-              {corpus_filter}
-              AND t._id NOT IN (SELECT DISTINCT _id FROM wi_db.word_index)
+            WHERE t.path_freqs IS NOT NULL {corpus_filter}
         """).fetchdf()
 
-        if not len(todo):
-            if log: log('All texts already indexed in word_index')
-            self._ensure_wordindex_indexes()
-            n_total = self.conn.execute("SELECT COUNT(DISTINCT _id) FROM wi_db.word_index").fetchone()[0]
-            if log: log(f'Word index: {n_total} texts indexed')
+        if not len(all_texts):
+            if log: log('No texts with freqs found')
             return
 
-        if log: log(f'Building word index for {len(todo)} texts ({num_proc} threads)...')
+        all_pairs = list(zip(all_texts['_id'], all_texts['path_freqs']))
 
-        from lltk.imports import PATH_CORPUS
-        corpus_root = os.path.expanduser(PATH_CORPUS)
-
-        def _read_freqs(row):
-            """Read a freqs file and return list of (_id, word, count) tuples."""
-            _id, rel_path = row
+        def _read_freqs_file(rel_path):
+            """Read a freqs JSON file, return dict or None."""
             abs_path = os.path.join(corpus_root, rel_path)
             try:
                 if abs_path.endswith('.gz'):
                     import gzip
                     with gzip.open(abs_path, 'rt') as f:
-                        d = json.load(f)
+                        return json.load(f)
                 else:
                     with open(abs_path) as f:
-                        d = json.load(f)
-                return [(_id, word, count) for word, count in d.items()
-                        if count >= min_count]
+                        return json.load(f)
             except Exception:
+                return None
+
+        # ── Pass 1: Build vocabulary ────────────────────────────────
+        if log: log(f'Pass 1: Building vocabulary from {len(all_pairs):,} texts...')
+
+        doc_freq = Counter()  # word → number of texts containing it
+
+        def _count_vocab(row):
+            _id, rel_path = row
+            d = _read_freqs_file(rel_path)
+            if d is None:
+                return set()
+            return set(w for w, c in d.items() if c >= min_count)
+
+        with ThreadPoolExecutor(max_workers=num_proc) as pool:
+            iterr = pool.map(_count_vocab, all_pairs)
+            if progress:
+                iterr = get_tqdm(iterr, total=len(all_pairs), desc='Pass 1: vocabulary')
+            for word_set in iterr:
+                doc_freq.update(word_set)
+
+        # Keep top N by document frequency
+        vocab = set(w for w, _ in doc_freq.most_common(vocab_size))
+        if log:
+            log(f'Vocabulary: {len(doc_freq):,} unique words → top {len(vocab):,} kept')
+            # Show doc freq at the cutoff
+            if len(doc_freq) > vocab_size:
+                cutoff_df = doc_freq.most_common(vocab_size)[-1][1]
+                log(f'  Min doc frequency in vocab: {cutoff_df}')
+
+        # ── Pass 2: Index words in vocabulary ───────────────────────
+        # Find texts not yet indexed
+        todo = self.conn.execute(f"""
+            SELECT t._id, t.path_freqs
+            FROM texts t
+            WHERE t.path_freqs IS NOT NULL {corpus_filter}
+              AND t._id NOT IN (SELECT DISTINCT _id FROM wi_db.word_index)
+        """).fetchdf()
+
+        if not len(todo):
+            if log: log('All texts already indexed')
+            self._ensure_wordindex_indexes()
+            return
+
+        if log: log(f'Pass 2: Indexing {len(todo):,} texts...')
+        todo_pairs = list(zip(todo['_id'], todo['path_freqs']))
+
+        def _read_filtered(row):
+            _id, rel_path = row
+            d = _read_freqs_file(rel_path)
+            if d is None:
                 return []
+            return [(_id, w, c) for w, c in d.items() if w in vocab and c >= min_count]
 
         rows_to_insert = []
         batch_size = 500_000
         n_inserted = 0
-        pairs = list(zip(todo['_id'], todo['path_freqs']))
 
         with ThreadPoolExecutor(max_workers=num_proc) as pool:
-            iterr = pool.map(_read_freqs, pairs)
+            iterr = pool.map(_read_filtered, todo_pairs)
             if progress:
-                iterr = get_tqdm(iterr, total=len(pairs), desc='Building word index')
+                iterr = get_tqdm(iterr, total=len(todo_pairs), desc='Pass 2: indexing')
             for result in iterr:
                 rows_to_insert.extend(result)
                 if len(rows_to_insert) >= batch_size:
