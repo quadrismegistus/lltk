@@ -11,6 +11,8 @@
   let yearMax = $state(2020);
   let normalize = $state('per_million');
 
+  let dedup = $state(false);
+
   let data = $state([]);
   let wordList = $state([]);
   let loading = $state(false);
@@ -40,6 +42,7 @@
     try {
       const res = await getNgram({
         words, genre, corpus, year_min: yearMin, year_max: yearMax, normalize,
+        dedup: dedup ? true : undefined,
       });
       if (res.error) { error = res.error; data = []; }
       else { data = res.data; wordList = res.words; }
@@ -174,6 +177,10 @@
       <option value="per_million">Per million</option>
       <option value="raw">Raw count</option>
     </select>
+    <label class="checkbox-label">
+      <input type="checkbox" bind:checked={dedup} onchange={search} />
+      Dedup
+    </label>
   </div>
 
   {#if error}
@@ -265,8 +272,11 @@
     box-shadow: 0 1px 3px rgba(0,0,0,0.06);
   }
   .word-input { flex: 1; min-width: 250px; }
-  .search-row input, .search-row select {
+  .search-row input[type="text"], .search-row input[type="number"], .search-row select {
     padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px;
+  }
+  .checkbox-label {
+    font-size: 13px; display: flex; align-items: center; gap: 4px; color: #475569;
   }
 
   .error {

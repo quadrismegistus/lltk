@@ -1734,12 +1734,33 @@ class MetaDB:
 
     # ── Ngram queries ──────────────────────────────────────────────
 
+    def _ngram_where(self, genre=None, corpus=None, year_min=None, year_max=None):
+        """Build WHERE clauses for ngram queries."""
+        clauses = []
+        if genre:
+            clauses.append(f"t.genre = '{genre}'")
+        if corpus:
+            clauses.append(f"t.corpus = '{corpus}'")
+        if year_min is not None:
+            clauses.append(f't.year >= {int(year_min)}')
+        if year_max is not None:
+            clauses.append(f't.year <= {int(year_max)}')
+        return ' AND '.join(clauses) if clauses else '1=1'
+
+    def _ngram_dedup(self, where, dedup=False, dedup_by='rank'):
+        """Return (join_clause, where_clause) for dedup in ngram queries."""
+        if not dedup:
+            return '', ''
+        join = 'LEFT JOIN match_db.match_groups mg ON t._id = mg._id'
+        dedup_clause = self._dedup_sql(where, dedup_by=dedup_by)
+        return join, dedup_clause
+
     def ngram(self, words, genre=None, corpus=None, year_min=1500, year_max=2020,
-              normalize='per_million', by='decade'):
+              normalize='per_million', by='decade', dedup=False, dedup_by='rank'):
         """Query word frequency over time.
 
             lltk.db.ngram('virtue')
-            lltk.db.ngram(['virtue', 'honor'], genre='Fiction')
+            lltk.db.ngram(['virtue', 'honor'], genre='Fiction', dedup=True)
             lltk.db.ngram('virtue', normalize='raw', by='year')
         """
         if isinstance(words, str):
@@ -1754,12 +1775,8 @@ class MetaDB:
         else:
             time_expr = f'CAST(t.year / {int(by)} AS INTEGER) * {int(by)}'
 
-        clauses = [f't.year BETWEEN {int(year_min)} AND {int(year_max)}']
-        if genre:
-            clauses.append(f"t.genre = '{genre}'")
-        if corpus:
-            clauses.append(f"t.corpus = '{corpus}'")
-        where = ' AND '.join(clauses)
+        where = self._ngram_where(genre=genre, corpus=corpus, year_min=year_min, year_max=year_max)
+        dedup_join, dedup_clause = self._ngram_dedup(where, dedup=dedup, dedup_by=dedup_by)
 
         if normalize == 'per_million':
             value_expr = 'SUM(wi.count) * 1000000.0 / NULLIF(SUM(t.n_words), 0)'
@@ -1774,29 +1791,24 @@ class MetaDB:
                    COUNT(DISTINCT wi._id) as n_texts
             FROM wi_db.word_index wi
             JOIN texts t ON wi._id = t._id
+            {dedup_join}
             WHERE wi.word IN ({word_list})
               AND {where}
+              {dedup_clause}
             GROUP BY period, wi.word
             ORDER BY period, wi.word
         """
         return self.conn.execute(sql).fetchdf()
 
     def ngram_examples(self, word, genre=None, corpus=None,
-                       year_min=None, year_max=None, limit=20):
+                       year_min=None, year_max=None, limit=20,
+                       dedup=False, dedup_by='rank'):
         """Find texts that use a word most frequently.
 
-            lltk.db.ngram_examples('virtue', genre='Fiction', year_min=1750, year_max=1759)
+            lltk.db.ngram_examples('virtue', genre='Fiction', year_min=1750, year_max=1759, dedup=True)
         """
-        clauses = [f"wi.word = '{word}'"]
-        if genre:
-            clauses.append(f"t.genre = '{genre}'")
-        if corpus:
-            clauses.append(f"t.corpus = '{corpus}'")
-        if year_min is not None:
-            clauses.append(f't.year >= {int(year_min)}')
-        if year_max is not None:
-            clauses.append(f't.year <= {int(year_max)}')
-        where = ' AND '.join(clauses)
+        where = self._ngram_where(genre=genre, corpus=corpus, year_min=year_min, year_max=year_max)
+        dedup_join, dedup_clause = self._ngram_dedup(where, dedup=dedup, dedup_by=dedup_by)
 
         sql = f"""
             SELECT t._id, t.corpus, t.title, t.author, t.year, t.genre,
@@ -1804,35 +1816,45 @@ class MetaDB:
                    wi.count * 1000000.0 / NULLIF(t.n_words, 0) as per_million
             FROM wi_db.word_index wi
             JOIN texts t ON wi._id = t._id
-            WHERE {where}
+            {dedup_join}
+            WHERE wi.word = '{word}'
+              AND {where}
+              {dedup_clause}
             ORDER BY per_million DESC
             LIMIT {int(limit)}
         """
         return self.conn.execute(sql).fetchdf()
 
     def ngram_collocates(self, word, genre=None, corpus=None,
-                         year_min=None, year_max=None, limit=50):
+                         year_min=None, year_max=None, limit=50,
+                         dedup=False, dedup_by='rank'):
         """Find words that co-occur with a given word (document-level).
 
-            lltk.db.ngram_collocates('virtue', genre='Fiction', year_min=1750, year_max=1759)
+            lltk.db.ngram_collocates('virtue', genre='Fiction', year_min=1750, year_max=1759, dedup=True)
         """
-        clauses = [f"w1.word = '{word}'", f"w2.word != '{word}'"]
+        where_parts = [f"w1.word = '{word}'", f"w2.word != '{word}'"]
         if genre:
-            clauses.append(f"t.genre = '{genre}'")
+            where_parts.append(f"t.genre = '{genre}'")
         if corpus:
-            clauses.append(f"t.corpus = '{corpus}'")
+            where_parts.append(f"t.corpus = '{corpus}'")
         if year_min is not None:
-            clauses.append(f't.year >= {int(year_min)}')
+            where_parts.append(f't.year >= {int(year_min)}')
         if year_max is not None:
-            clauses.append(f't.year <= {int(year_max)}')
-        where = ' AND '.join(clauses)
+            where_parts.append(f't.year <= {int(year_max)}')
+        where = ' AND '.join(where_parts)
+
+        # For dedup, filter the set of text _ids first, then find collocates
+        filter_where = self._ngram_where(genre=genre, corpus=corpus, year_min=year_min, year_max=year_max)
+        dedup_join, dedup_clause = self._ngram_dedup(filter_where, dedup=dedup, dedup_by=dedup_by)
 
         sql = f"""
             SELECT w2.word, COUNT(DISTINCT w1._id) as n_texts, SUM(w2.count) as total_count
             FROM wi_db.word_index w1
             JOIN wi_db.word_index w2 ON w1._id = w2._id
             JOIN texts t ON w1._id = t._id
+            {dedup_join}
             WHERE {where}
+              {dedup_clause}
             GROUP BY w2.word
             ORDER BY n_texts DESC
             LIMIT {int(limit)}
