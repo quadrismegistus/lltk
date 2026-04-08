@@ -361,32 +361,52 @@ def create_app():
         normalize: str = Query('per_million', description='per_million or raw'),
         dedup: bool = Query(False),
         dedup_by: str = Query('rank', description='rank or oldest'),
+        by_corpus: bool = Query(False, description='Break down by corpus'),
     ):
         if not words.strip():
-            return {'data': [], 'words': []}
+            return {'data': [], 'words': [], 'series': []}
         if not lltk.db.has_word_index():
             return JSONResponse({'error': 'Word index not built. Run: lltk db-wordindex'}, status_code=404)
         try:
             df = lltk.db.ngram(
                 words, genre=genre or None, corpus=corpus or None,
                 year_min=year_min, year_max=year_max, normalize=normalize,
-                dedup=dedup, dedup_by=dedup_by,
+                dedup=dedup, dedup_by=dedup_by, by_corpus=by_corpus,
             )
             if df.empty:
-                return {'data': [], 'words': words.split(',')}
-            # Pivot to {period, word1_value, word2_value, ...}
-            word_list = [w.strip() for w in words.split(',')]
-            periods = sorted(df['period'].unique())
-            rows = []
-            for p in periods:
-                row = {'period': int(p)}
-                pdf = df[df['period'] == p]
-                for _, r in pdf.iterrows():
-                    row[r['word']] = float(r['value']) if r['value'] is not None else 0
-                    row[f'{r["word"]}_count'] = int(r['raw_count'])
-                    row[f'{r["word"]}_texts'] = int(r['n_texts'])
-                rows.append(row)
-            return {'data': rows, 'words': word_list}
+                return {'data': [], 'words': [w.strip() for w in words.split(',')], 'series': []}
+
+            word_list = [w.strip().lower() for w in words.split(',')]
+
+            if by_corpus:
+                # Series are word:corpus combinations
+                series = sorted(set(
+                    f"{r['word']}:{r['corpus']}" for _, r in df.iterrows()
+                ))
+                periods = sorted(df['period'].unique())
+                rows = []
+                for p in periods:
+                    row = {'period': int(p)}
+                    pdf = df[df['period'] == p]
+                    for _, r in pdf.iterrows():
+                        key = f"{r['word']}:{r['corpus']}"
+                        row[key] = float(r['value']) if r['value'] is not None else 0
+                        row[f'{key}_count'] = int(r['raw_count'])
+                        row[f'{key}_texts'] = int(r['n_texts'])
+                    rows.append(row)
+                return {'data': rows, 'words': word_list, 'series': series}
+            else:
+                periods = sorted(df['period'].unique())
+                rows = []
+                for p in periods:
+                    row = {'period': int(p)}
+                    pdf = df[df['period'] == p]
+                    for _, r in pdf.iterrows():
+                        row[r['word']] = float(r['value']) if r['value'] is not None else 0
+                        row[f'{r["word"]}_count'] = int(r['raw_count'])
+                        row[f'{r["word"]}_texts'] = int(r['n_texts'])
+                    rows.append(row)
+                return {'data': rows, 'words': word_list, 'series': word_list}
         except Exception as e:
             return JSONResponse({'error': str(e)}, status_code=500)
 

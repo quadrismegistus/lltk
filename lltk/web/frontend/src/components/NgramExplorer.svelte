@@ -12,9 +12,11 @@
   let normalize = $state('per_million');
 
   let dedup = $state(false);
+  let byCorpus = $state(false);
 
   let data = $state([]);
   let wordList = $state([]);
+  let seriesList = $state([]);
   let loading = $state(false);
   let error = $state('');
 
@@ -31,28 +33,33 @@
   let collocates = $state([]);
   let loadingCollocates = $state(false);
 
-  const COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
+  const COLORS = [
+    '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316',
+    '#84cc16', '#14b8a6', '#6366f1', '#d946ef', '#0ea5e9', '#a855f7', '#64748b', '#eab308',
+    '#78716c', '#e11d48', '#059669', '#7c3aed', '#0891b2', '#c026d3', '#ca8a04', '#dc2626',
+  ];
 
   let debounceTimer;
 
   async function search() {
-    if (!words.trim()) { data = []; wordList = []; return; }
+    if (!words.trim()) { data = []; wordList = []; seriesList = []; return; }
     loading = true;
     error = '';
     try {
       const res = await getNgram({
         words, genre, corpus, year_min: yearMin, year_max: yearMax, normalize,
         dedup: dedup ? true : undefined,
+        by_corpus: byCorpus ? true : undefined,
       });
       if (res.error) { error = res.error; data = []; }
-      else { data = res.data; wordList = res.words; }
+      else { data = res.data; wordList = res.words; seriesList = res.series || res.words; }
     } catch (e) {
       error = e.message;
     }
     loading = false;
 
     // Auto-load collocates for single word
-    if (wordList.length === 1) loadCollocates(wordList[0]);
+    if (wordList.length === 1 && !byCorpus) loadCollocates(wordList[0]);
   }
 
   function onInput() {
@@ -92,38 +99,40 @@
   const plotH = H - PAD.top - PAD.bottom;
 
   function chartPaths() {
-    if (!data.length || !wordList.length) return [];
+    if (!data.length || !seriesList.length) return [];
     const periods = data.map(d => d.period);
     const minP = Math.min(...periods), maxP = Math.max(...periods);
     const rangeP = maxP - minP || 1;
 
-    // Find max value across all words
+    // Find max value across all series
     let maxVal = 0;
     for (const row of data) {
-      for (const w of wordList) {
-        if (row[w] > maxVal) maxVal = row[w];
+      for (const s of seriesList) {
+        if (row[s] > maxVal) maxVal = row[s];
       }
     }
     if (!maxVal) maxVal = 1;
 
-    return wordList.map((w, i) => {
+    return seriesList.map((s, i) => {
       const points = data
-        .filter(d => d[w] != null)
+        .filter(d => d[s] != null)
         .map(d => {
           const x = PAD.left + ((d.period - minP) / rangeP) * plotW;
-          const y = PAD.top + plotH - (d[w] / maxVal) * plotH;
-          return { x, y, period: d.period, value: d[w], count: d[`${w}_count`], texts: d[`${w}_texts`] };
+          const y = PAD.top + plotH - (d[s] / maxVal) * plotH;
+          return { x, y, period: d.period, value: d[s], count: d[`${s}_count`], texts: d[`${s}_texts`] };
         });
       const pathD = points.map((p, j) => `${j === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
-      return { word: w, color: COLORS[i % COLORS.length], pathD, points };
+      // Display label: for "virtue:chadwyck" show "chadwyck", for "virtue" show "virtue"
+      const label = s.includes(':') ? s : s;
+      return { word: s, label, color: COLORS[i % COLORS.length], pathD, points };
     });
   }
 
   function yTicks() {
-    if (!data.length || !wordList.length) return [];
+    if (!data.length || !seriesList.length) return [];
     let maxVal = 0;
     for (const row of data) {
-      for (const w of wordList) { if (row[w] > maxVal) maxVal = row[w]; }
+      for (const s of seriesList) { if (row[s] > maxVal) maxVal = row[s]; }
     }
     if (!maxVal) return [];
     const ticks = [];
@@ -181,6 +190,10 @@
       <input type="checkbox" bind:checked={dedup} onchange={search} />
       Dedup
     </label>
+    <label class="checkbox-label">
+      <input type="checkbox" bind:checked={byCorpus} onchange={search} />
+      By corpus
+    </label>
   </div>
 
   {#if error}
@@ -208,7 +221,7 @@
             <circle cx={pt.x} cy={pt.y} r="4" fill={path.color} class="data-point"
               onclick={() => showExamples(path.word, pt.period)}
             >
-              <title>{path.word} {pt.period}s: {pt.value?.toFixed?.(1)} ({formatNumber(pt.count)} in {pt.texts} texts)</title>
+              <title>{path.label} {pt.period}s: {pt.value?.toFixed?.(1)} ({formatNumber(pt.count)} in {pt.texts} texts)</title>
             </circle>
           {/each}
         {/each}
@@ -217,7 +230,7 @@
         {#each chartPaths() as path}
           <span class="legend-item">
             <span class="legend-dot" style="background: {path.color}"></span>
-            {path.word}
+            {path.label}
           </span>
         {/each}
       </div>

@@ -1756,12 +1756,13 @@ class MetaDB:
         return join, dedup_clause
 
     def ngram(self, words, genre=None, corpus=None, year_min=1500, year_max=2020,
-              normalize='per_million', by='decade', dedup=False, dedup_by='rank'):
+              normalize='per_million', by='decade', dedup=False, dedup_by='rank',
+              by_corpus=False):
         """Query word frequency over time. Case-insensitive (sums across case variants).
 
             lltk.db.ngram('virtue')
             lltk.db.ngram(['virtue', 'honor'], genre='Fiction', dedup=True)
-            lltk.db.ngram('virtue', normalize='raw', by='year')
+            lltk.db.ngram('virtue', by_corpus=True)  # separate line per corpus
         """
         if isinstance(words, str):
             words = [w.strip().lower() for w in words.split(',')]
@@ -1785,9 +1786,13 @@ class MetaDB:
         else:
             value_expr = 'SUM(wi.count)'
 
+        corpus_col = ', t.corpus' if by_corpus else ''
+        corpus_group = ', t.corpus' if by_corpus else ''
+
         sql = f"""
             SELECT {time_expr} as period,
-                   LOWER(wi.word) as word,
+                   LOWER(wi.word) as word
+                   {corpus_col},
                    {value_expr} as value,
                    SUM(wi.count) as raw_count,
                    COUNT(DISTINCT wi._id) as n_texts
@@ -1797,8 +1802,8 @@ class MetaDB:
             WHERE LOWER(wi.word) IN ({word_list})
               AND {where}
               {dedup_clause}
-            GROUP BY period, LOWER(wi.word)
-            ORDER BY period, LOWER(wi.word)
+            GROUP BY period, LOWER(wi.word) {corpus_group}
+            ORDER BY period, LOWER(wi.word) {corpus_group}
         """
         return self.conn.execute(sql).fetchdf()
 
