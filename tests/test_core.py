@@ -956,6 +956,7 @@ class TestMetaDB:
             path=str(tmpdir / 'test.duckdb'),
             match_path=str(tmpdir / 'test_matches.duckdb'),
             wordcount_path=str(tmpdir / 'test_wc.duckdb'),
+            wordindex_path=str(tmpdir / 'test_wi.duckdb'),
         )
         # Ingest some test data
         df = pd.DataFrame({

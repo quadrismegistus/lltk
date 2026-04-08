@@ -68,6 +68,12 @@ def main():
 	p_db_wc = subparsers.add_parser('db-wordcounts', help='Compute word counts from freqs files')
 	p_db_wc.add_argument('-j', '--jobs', type=int, default=None, help='Number of parallel workers')
 
+	# db-wordindex
+	p_db_wi = subparsers.add_parser('db-wordindex', help='Build per-word frequency index from freqs files')
+	p_db_wi.add_argument('-j', '--jobs', type=int, default=None, help='Number of parallel workers')
+	p_db_wi.add_argument('--min-count', type=int, default=1, help='Min word count to include (default: 1)')
+	p_db_wi.add_argument('corpora', nargs='*', help='Specific corpora (default: all)')
+
 	# db match-stats
 	p_db_match_stats = subparsers.add_parser('db-match-stats', help='Show matching statistics')
 
@@ -220,6 +226,13 @@ def main():
 		if stats is not None and len(stats):
 			print('\nGenre enrichment source distribution:')
 			print(stats.to_string(index=False))
+
+	elif args.cmd == 'db-wordindex':
+		lltk.db.build_word_index(
+			num_proc=args.jobs,
+			min_count=args.min_count,
+			corpora=args.corpora or None,
+		)
 
 	elif args.cmd == 'db-match-stats':
 		stats = lltk.db.match_stats()

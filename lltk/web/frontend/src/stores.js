@@ -65,7 +65,7 @@ function hashToState(hash) {
   const [tab, qs] = raw.split('?', 2);
   const params = new URLSearchParams(qs || '');
 
-  const validTabs = ['dashboard', 'texts', 'matches', 'corpora', 'overlap'];
+  const validTabs = ['dashboard', 'texts', 'ngrams', 'matches', 'corpora', 'overlap'];
   const resolvedTab = validTabs.includes(tab) ? tab : 'dashboard';
 
   suppressHashUpdate = true;

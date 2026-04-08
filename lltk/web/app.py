@@ -349,6 +349,84 @@ def create_app():
     async def get_genres():
         return {'genres': sorted(GENRE_VOCAB)}
 
+    # ── Ngram API ───────────────────────────────────────────────────────
+
+    @app.get('/api/ngram')
+    async def get_ngram(
+        words: str = Query('', description='Comma-separated words'),
+        genre: str = Query(''),
+        corpus: str = Query(''),
+        year_min: int = Query(1500),
+        year_max: int = Query(2020),
+        normalize: str = Query('per_million', description='per_million or raw'),
+    ):
+        if not words.strip():
+            return {'data': [], 'words': []}
+        if not lltk.db.has_word_index():
+            return JSONResponse({'error': 'Word index not built. Run: lltk db-wordindex'}, status_code=404)
+        try:
+            df = lltk.db.ngram(
+                words, genre=genre or None, corpus=corpus or None,
+                year_min=year_min, year_max=year_max, normalize=normalize,
+            )
+            if df.empty:
+                return {'data': [], 'words': words.split(',')}
+            # Pivot to {period, word1_value, word2_value, ...}
+            word_list = [w.strip() for w in words.split(',')]
+            periods = sorted(df['period'].unique())
+            rows = []
+            for p in periods:
+                row = {'period': int(p)}
+                pdf = df[df['period'] == p]
+                for _, r in pdf.iterrows():
+                    row[r['word']] = float(r['value']) if r['value'] is not None else 0
+                    row[f'{r["word"]}_count'] = int(r['raw_count'])
+                    row[f'{r["word"]}_texts'] = int(r['n_texts'])
+                rows.append(row)
+            return {'data': rows, 'words': word_list}
+        except Exception as e:
+            return JSONResponse({'error': str(e)}, status_code=500)
+
+    @app.get('/api/ngram/{word}/examples')
+    async def get_ngram_examples(
+        word: str,
+        genre: str = Query(''),
+        corpus: str = Query(''),
+        year_min: Optional[int] = Query(None),
+        year_max: Optional[int] = Query(None),
+        limit: int = Query(20, ge=1, le=100),
+    ):
+        if not lltk.db.has_word_index():
+            return JSONResponse({'error': 'Word index not built'}, status_code=404)
+        try:
+            df = lltk.db.ngram_examples(
+                word, genre=genre or None, corpus=corpus or None,
+                year_min=year_min, year_max=year_max, limit=limit,
+            )
+            return {'examples': df.to_dict('records'), 'word': word}
+        except Exception as e:
+            return JSONResponse({'error': str(e)}, status_code=500)
+
+    @app.get('/api/ngram/{word}/collocates')
+    async def get_ngram_collocates(
+        word: str,
+        genre: str = Query(''),
+        corpus: str = Query(''),
+        year_min: Optional[int] = Query(None),
+        year_max: Optional[int] = Query(None),
+        limit: int = Query(50, ge=1, le=200),
+    ):
+        if not lltk.db.has_word_index():
+            return JSONResponse({'error': 'Word index not built'}, status_code=404)
+        try:
+            df = lltk.db.ngram_collocates(
+                word, genre=genre or None, corpus=corpus or None,
+                year_min=year_min, year_max=year_max, limit=limit,
+            )
+            return {'collocates': df.to_dict('records'), 'word': word}
+        except Exception as e:
+            return JSONResponse({'error': str(e)}, status_code=500)
+
     # ── Match browser ───────────────────────────────────────────────────
 
     @app.get('/api/matches')

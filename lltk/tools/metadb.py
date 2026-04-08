@@ -32,6 +32,7 @@ from lltk.imports import PATH_LLTK_DATA, log
 PATH_METADB = os.path.join(PATH_LLTK_DATA, 'metadb.duckdb')
 PATH_MATCHDB = os.path.join(PATH_LLTK_DATA, 'metadb_matches.duckdb')
 PATH_WORDCOUNTDB = os.path.join(PATH_LLTK_DATA, 'metadb_wordcounts.duckdb')
+PATH_WORDINDEXDB = os.path.join(PATH_LLTK_DATA, 'metadb_wordindex.duckdb')
 
 # Standard genre vocabulary — harmonized across corpora
 GENRE_VOCAB = {
@@ -391,10 +392,11 @@ def _parse_year(val):
 
 
 class MetaDB:
-    def __init__(self, path=None, match_path=None, wordcount_path=None):
+    def __init__(self, path=None, match_path=None, wordcount_path=None, wordindex_path=None):
         self.path = path or PATH_METADB
         self.match_path = match_path or PATH_MATCHDB
         self.wordcount_path = wordcount_path or PATH_WORDCOUNTDB
+        self.wordindex_path = wordindex_path or PATH_WORDINDEXDB
         self._conn = None
         self._col_cache = None
 
@@ -419,6 +421,13 @@ class MetaDB:
             except Exception:
                 pass  # already attached
             self._ensure_wordcount_tables()
+            # Attach word index DB
+            try:
+                os.makedirs(os.path.dirname(self.wordindex_path), exist_ok=True)
+                self._conn.execute(f"ATTACH '{self.wordindex_path}' AS wi_db")
+            except Exception:
+                pass  # already attached
+            self._ensure_wordindex_tables()
         return self._conn
 
     @property
@@ -494,6 +503,20 @@ class MetaDB:
             self._conn.execute("ALTER TABLE texts ADD COLUMN n_words INTEGER")
         except Exception:
             pass
+
+    def _ensure_wordindex_tables(self):
+        self._conn.execute("""
+            CREATE TABLE IF NOT EXISTS wi_db.word_index (
+                _id    TEXT NOT NULL,
+                word   TEXT NOT NULL,
+                count  INTEGER NOT NULL
+            )
+        """)
+
+    def _ensure_wordindex_indexes(self):
+        """Create indexes on word_index (call after bulk load)."""
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_wi_word ON wi_db.word_index(word)")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_wi_id ON wi_db.word_index(_id)")
 
     def ingest(self, corpus_id, force=True):
         """Ingest a corpus's load_metadata() output into the DB."""
@@ -1514,6 +1537,223 @@ class MetaDB:
             INSERT OR IGNORE INTO wc_db.wordcounts (path_freqs, n_words)
             SELECT path_freqs, n_words FROM df
         """)
+
+    # ── Word Index ────────────────────────────────────────────────
+
+    def build_word_index(self, num_proc=None, progress=True, min_count=1, corpora=None):
+        """Build per-word frequency index from freqs files.
+
+        Reads each text's freqs JSON and inserts (id, word, count) rows into
+        wi_db.word_index. Incremental: skips texts already indexed.
+
+            lltk.db.build_word_index()             # all texts
+            lltk.db.build_word_index(corpora=['ecco_tcp'])  # specific corpora
+        """
+        from lltk.tools.tools import get_tqdm
+        from concurrent.futures import ThreadPoolExecutor
+        if num_proc is None:
+            num_proc = max(1, os.cpu_count() - 2)
+
+        # Find texts not yet indexed
+        corpus_filter = ''
+        if corpora:
+            corpus_list = ', '.join(f"'{c}'" for c in corpora)
+            corpus_filter = f'AND t.corpus IN ({corpus_list})'
+
+        todo = self.conn.execute(f"""
+            SELECT t._id, t.path_freqs
+            FROM texts t
+            WHERE t.path_freqs IS NOT NULL
+              {corpus_filter}
+              AND t._id NOT IN (SELECT DISTINCT _id FROM wi_db.word_index)
+        """).fetchdf()
+
+        if not len(todo):
+            if log: log('All texts already indexed in word_index')
+            self._ensure_wordindex_indexes()
+            n_total = self.conn.execute("SELECT COUNT(DISTINCT _id) FROM wi_db.word_index").fetchone()[0]
+            if log: log(f'Word index: {n_total} texts indexed')
+            return
+
+        if log: log(f'Building word index for {len(todo)} texts ({num_proc} threads)...')
+
+        from lltk.imports import PATH_CORPUS
+        corpus_root = os.path.expanduser(PATH_CORPUS)
+
+        def _read_freqs(row):
+            """Read a freqs file and return list of (_id, word, count) tuples."""
+            _id, rel_path = row
+            abs_path = os.path.join(corpus_root, rel_path)
+            try:
+                if abs_path.endswith('.gz'):
+                    import gzip
+                    with gzip.open(abs_path, 'rt') as f:
+                        d = json.load(f)
+                else:
+                    with open(abs_path) as f:
+                        d = json.load(f)
+                return [(_id, word, count) for word, count in d.items()
+                        if count >= min_count]
+            except Exception:
+                return []
+
+        rows_to_insert = []
+        batch_size = 500_000
+        n_inserted = 0
+        pairs = list(zip(todo['_id'], todo['path_freqs']))
+
+        with ThreadPoolExecutor(max_workers=num_proc) as pool:
+            iterr = pool.map(_read_freqs, pairs)
+            if progress:
+                iterr = get_tqdm(iterr, total=len(pairs), desc='Building word index')
+            for result in iterr:
+                rows_to_insert.extend(result)
+                if len(rows_to_insert) >= batch_size:
+                    self._insert_wordindex_batch(rows_to_insert)
+                    n_inserted += len(rows_to_insert)
+                    rows_to_insert = []
+
+        if rows_to_insert:
+            self._insert_wordindex_batch(rows_to_insert)
+            n_inserted += len(rows_to_insert)
+
+        if log: log(f'Inserted {n_inserted:,} word-count rows')
+
+        # Build indexes
+        if log: log('Building indexes...')
+        self._ensure_wordindex_indexes()
+
+        n_total = self.conn.execute("SELECT COUNT(DISTINCT _id) FROM wi_db.word_index").fetchone()[0]
+        n_rows = self.conn.execute("SELECT COUNT(*) FROM wi_db.word_index").fetchone()[0]
+        if log: log(f'Word index: {n_total:,} texts, {n_rows:,} rows')
+
+    def _insert_wordindex_batch(self, rows):
+        """Insert a batch of (_id, word, count) into word_index."""
+        df = pd.DataFrame(rows, columns=['_id', 'word', 'count'])
+        self.conn.execute("""
+            INSERT INTO wi_db.word_index (_id, word, count)
+            SELECT _id, word, count FROM df
+        """)
+
+    def drop_word_index(self):
+        """Drop all word_index data."""
+        self.conn.execute("DELETE FROM wi_db.word_index")
+        if log: log('Dropped word_index')
+
+    def has_word_index(self):
+        """Check if word_index has data."""
+        try:
+            n = self.conn.execute("SELECT COUNT(*) FROM wi_db.word_index").fetchone()[0]
+            return n > 0
+        except Exception:
+            return False
+
+    # ── Ngram queries ──────────────────────────────────────────────
+
+    def ngram(self, words, genre=None, corpus=None, year_min=1500, year_max=2020,
+              normalize='per_million', by='decade'):
+        """Query word frequency over time.
+
+            lltk.db.ngram('virtue')
+            lltk.db.ngram(['virtue', 'honor'], genre='Fiction')
+            lltk.db.ngram('virtue', normalize='raw', by='year')
+        """
+        if isinstance(words, str):
+            words = [w.strip() for w in words.split(',')]
+
+        word_list = ', '.join(f"'{w}'" for w in words)
+
+        if by == 'decade':
+            time_expr = 'CAST(t.year / 10 AS INTEGER) * 10'
+        elif by == 'year':
+            time_expr = 't.year'
+        else:
+            time_expr = f'CAST(t.year / {int(by)} AS INTEGER) * {int(by)}'
+
+        clauses = [f't.year BETWEEN {int(year_min)} AND {int(year_max)}']
+        if genre:
+            clauses.append(f"t.genre = '{genre}'")
+        if corpus:
+            clauses.append(f"t.corpus = '{corpus}'")
+        where = ' AND '.join(clauses)
+
+        if normalize == 'per_million':
+            value_expr = 'SUM(wi.count) * 1000000.0 / NULLIF(SUM(t.n_words), 0)'
+        else:
+            value_expr = 'SUM(wi.count)'
+
+        sql = f"""
+            SELECT {time_expr} as period,
+                   wi.word,
+                   {value_expr} as value,
+                   SUM(wi.count) as raw_count,
+                   COUNT(DISTINCT wi._id) as n_texts
+            FROM wi_db.word_index wi
+            JOIN texts t ON wi._id = t._id
+            WHERE wi.word IN ({word_list})
+              AND {where}
+            GROUP BY period, wi.word
+            ORDER BY period, wi.word
+        """
+        return self.conn.execute(sql).fetchdf()
+
+    def ngram_examples(self, word, genre=None, corpus=None,
+                       year_min=None, year_max=None, limit=20):
+        """Find texts that use a word most frequently.
+
+            lltk.db.ngram_examples('virtue', genre='Fiction', year_min=1750, year_max=1759)
+        """
+        clauses = [f"wi.word = '{word}'"]
+        if genre:
+            clauses.append(f"t.genre = '{genre}'")
+        if corpus:
+            clauses.append(f"t.corpus = '{corpus}'")
+        if year_min is not None:
+            clauses.append(f't.year >= {int(year_min)}')
+        if year_max is not None:
+            clauses.append(f't.year <= {int(year_max)}')
+        where = ' AND '.join(clauses)
+
+        sql = f"""
+            SELECT t._id, t.corpus, t.title, t.author, t.year, t.genre,
+                   wi.count,
+                   wi.count * 1000000.0 / NULLIF(t.n_words, 0) as per_million
+            FROM wi_db.word_index wi
+            JOIN texts t ON wi._id = t._id
+            WHERE {where}
+            ORDER BY per_million DESC
+            LIMIT {int(limit)}
+        """
+        return self.conn.execute(sql).fetchdf()
+
+    def ngram_collocates(self, word, genre=None, corpus=None,
+                         year_min=None, year_max=None, limit=50):
+        """Find words that co-occur with a given word (document-level).
+
+            lltk.db.ngram_collocates('virtue', genre='Fiction', year_min=1750, year_max=1759)
+        """
+        clauses = [f"w1.word = '{word}'", f"w2.word != '{word}'"]
+        if genre:
+            clauses.append(f"t.genre = '{genre}'")
+        if corpus:
+            clauses.append(f"t.corpus = '{corpus}'")
+        if year_min is not None:
+            clauses.append(f't.year >= {int(year_min)}')
+        if year_max is not None:
+            clauses.append(f't.year <= {int(year_max)}')
+        where = ' AND '.join(clauses)
+
+        sql = f"""
+            SELECT w2.word, COUNT(DISTINCT w1._id) as n_texts, SUM(w2.count) as total_count
+            FROM wi_db.word_index w1
+            JOIN wi_db.word_index w2 ON w1._id = w2._id
+            JOIN texts t ON w1._id = t._id
+            WHERE {where}
+            GROUP BY w2.word
+            ORDER BY n_texts DESC
+            LIMIT {int(limit)}
+        """
+        return self.conn.execute(sql).fetchdf()
 
     # ── Query API ──────────────────────────────────────────────────
 

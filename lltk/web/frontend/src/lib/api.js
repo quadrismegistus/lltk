@@ -61,3 +61,27 @@ export function getMatchStats() {
 export function getCorpusOverlap() {
   return fetchJson('/api/corpus-overlap');
 }
+
+export function getNgram(params = {}) {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== '' && v !== null && v !== undefined) qs.set(k, v);
+  }
+  return fetchJson(`/api/ngram?${qs}`);
+}
+
+export function getNgramExamples(word, params = {}) {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== '' && v !== null && v !== undefined) qs.set(k, v);
+  }
+  return fetchJson(`/api/ngram/${encodeURIComponent(word)}/examples?${qs}`);
+}
+
+export function getNgramCollocates(word, params = {}) {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== '' && v !== null && v !== undefined) qs.set(k, v);
+  }
+  return fetchJson(`/api/ngram/${encodeURIComponent(word)}/collocates?${qs}`);
+}

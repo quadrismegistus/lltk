@@ -4,6 +4,7 @@
   import TextsExplorer from './components/TextsExplorer.svelte';
   import TextDetail from './components/TextDetail.svelte';
   import MatchBrowser from './components/MatchBrowser.svelte';
+  import NgramExplorer from './components/NgramExplorer.svelte';
   import CorpusList from './components/CorpusList.svelte';
   import CorpusOverlap from './components/CorpusOverlap.svelte';
   import { getStats } from './lib/api.js';
@@ -15,6 +16,7 @@
   const tabs = [
     { id: 'dashboard', label: 'Dashboard' },
     { id: 'texts', label: 'Texts' },
+    { id: 'ngrams', label: 'Ngrams' },
     { id: 'matches', label: 'Matches' },
     { id: 'corpora', label: 'Corpora' },
     { id: 'overlap', label: 'Overlap' },
@@ -54,6 +56,8 @@
         <Dashboard />
       {:else if $activeTab === 'texts'}
         <TextsExplorer />
+      {:else if $activeTab === 'ngrams'}
+        <NgramExplorer />
       {:else if $activeTab === 'matches'}
         <MatchBrowser />
       {:else if $activeTab === 'corpora'}
