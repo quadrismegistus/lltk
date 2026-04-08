@@ -1597,7 +1597,7 @@ class MetaDB:
         # ── Pass 1: Build vocabulary (all texts, streaming) ─────────
         if log: log(f'Pass 1: Building vocabulary from {len(all_pairs):,} texts ({num_proc} threads)...')
 
-        doc_freq = Counter()  # ~1GB for 15M keys — fine
+        doc_freq = Counter()
 
         def _get_word_set(row):
             """Return set of unique words in a text's freqs."""
@@ -1607,14 +1607,40 @@ class MetaDB:
                 return set()
             return set(w for w, c in d.items() if c >= min_count)
 
-        # Use as_completed to stream results (not pool.map which queues all)
+        def _bounded_map(pool, func, items, desc='', max_pending=None):
+            """Submit work in bounded batches, yielding results as they complete."""
+            if max_pending is None:
+                max_pending = num_proc * 4
+            pending = set()
+            items_iter = iter(items)
+            total = len(items)
+            pbar = get_tqdm(total=total, desc=desc) if progress else None
+            exhausted = False
+            while pending or not exhausted:
+                # Fill up to max_pending
+                while len(pending) < max_pending and not exhausted:
+                    try:
+                        item = next(items_iter)
+                        pending.add(pool.submit(func, item))
+                    except StopIteration:
+                        exhausted = True
+                # Wait for any to complete
+                if pending:
+                    done, pending = concurrent.futures.wait(
+                        pending, return_when=concurrent.futures.FIRST_COMPLETED
+                    )
+                    for f in done:
+                        yield f.result()
+                        if pbar:
+                            pbar.update(1)
+            if pbar:
+                pbar.close()
+
+        import concurrent.futures
+
         with ThreadPoolExecutor(max_workers=num_proc) as pool:
-            futures = [pool.submit(_get_word_set, pair) for pair in all_pairs]
-            iterr = as_completed(futures)
-            if progress:
-                iterr = get_tqdm(iterr, total=len(futures), desc='Pass 1: vocabulary')
-            for future in iterr:
-                doc_freq.update(future.result())
+            for word_set in _bounded_map(pool, _get_word_set, all_pairs, desc='Pass 1: vocabulary'):
+                doc_freq.update(word_set)
 
         # Keep top N by document frequency
         vocab = set(w for w, _ in doc_freq.most_common(vocab_size))
@@ -1623,7 +1649,7 @@ class MetaDB:
             if len(doc_freq) > vocab_size:
                 cutoff_df = doc_freq.most_common(vocab_size)[-1][1]
                 log(f'  Min doc frequency in vocab: {cutoff_df}')
-        del doc_freq  # free ~1GB
+        del doc_freq
 
         # ── Pass 2: Index words in vocabulary ───────────────────────
         todo = self.conn.execute(f"""
@@ -1653,12 +1679,8 @@ class MetaDB:
         n_inserted = 0
 
         with ThreadPoolExecutor(max_workers=num_proc) as pool:
-            futures = [pool.submit(_read_filtered, pair) for pair in todo_pairs]
-            iterr = as_completed(futures)
-            if progress:
-                iterr = get_tqdm(iterr, total=len(futures), desc='Pass 2: indexing')
-            for future in iterr:
-                rows_to_insert.extend(future.result())
+            for result in _bounded_map(pool, _read_filtered, todo_pairs, desc='Pass 2: indexing'):
+                rows_to_insert.extend(result)
                 if len(rows_to_insert) >= batch_size:
                     self._insert_wordindex_batch(rows_to_insert)
                     n_inserted += len(rows_to_insert)
