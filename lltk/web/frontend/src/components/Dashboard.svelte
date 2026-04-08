@@ -10,7 +10,11 @@
   let loading = $state(true);
 
   function browseCorpus(corpus) {
-    filters.update(f => ({ ...f, corpus, page: 1 }));
+    filters.set({
+      search: '', corpus, genre: '', year_min: null, year_max: null,
+      dedup: false, dedup_by: 'rank', has_freqs: false,
+      sort_by: 'year', sort_dir: 'asc', page: 1, per_page: 100,
+    });
     switchTab('texts');
   }
 
