@@ -3,6 +3,7 @@
   import { getCorpus } from '../lib/api.js';
   import { formatNumber, yearRange } from '../lib/utils.js';
   import { filters, switchTab, corpusPageId } from '../stores.js';
+  import GenreTimeline from './GenreTimeline.svelte';
 
   let detail = $state(null);
   let loading = $state(true);
@@ -83,6 +84,11 @@
       </div>
     </div>
 
+    <div class="timeline-section">
+      <h3>Genre Timeline</h3>
+      <GenreTimeline corpus={corpusId} />
+    </div>
+
     <div class="panels">
       {#if detail.genres.length}
         <div class="panel">
@@ -96,24 +102,6 @@
                   <div class="bar-fill" style="width: {Math.max(pct, 0.5)}%"></div>
                 </div>
                 <span class="bar-value">{formatNumber(g.n)}</span>
-              </div>
-            {/each}
-          </div>
-        </div>
-      {/if}
-
-      {#if detail.years.length}
-        <div class="panel">
-          <h3>Decades</h3>
-          <div class="bar-chart">
-            {#each detail.years as y}
-              {@const maxY = Math.max(...detail.years.map(d => d.n))}
-              <div class="bar-row">
-                <span class="bar-label">{y.decade}s</span>
-                <div class="bar-track">
-                  <div class="bar-fill" style="width: {(y.n / maxY * 100)}%"></div>
-                </div>
-                <span class="bar-value">{formatNumber(y.n)}</span>
               </div>
             {/each}
           </div>
@@ -170,6 +158,15 @@
   .btn-primary:hover { background: #1d4ed8; }
   .btn-secondary { background: white; color: #374151; border: 1px solid #d1d5db; }
   .btn-secondary:hover { background: #f3f4f6; }
+
+  .timeline-section {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    margin-bottom: 16px;
+  }
+  .timeline-section h3 { font-size: 14px; font-weight: 600; color: #475569; margin-bottom: 12px; }
 
   .panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
   .panel {

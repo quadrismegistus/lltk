@@ -31,7 +31,7 @@
 <div class="app" class:detail-open={$detailOpen}>
   <header>
     <div class="header-left">
-      <h1>LLTK Explorer</h1>
+      <h1 class="logo" onclick={() => switchTab('dashboard')}>LLTK Explorer</h1>
       {#if stats}
         <span class="header-stats">
           {formatNumber(stats.total_texts)} texts &middot;
@@ -104,6 +104,7 @@
   }
   .header-left { display: flex; align-items: center; gap: 16px; }
   h1 { font-size: 16px; font-weight: 600; }
+  .logo { cursor: pointer; }
   .header-stats { font-size: 12px; color: #94a3b8; }
 
   nav { display: flex; gap: 2px; }

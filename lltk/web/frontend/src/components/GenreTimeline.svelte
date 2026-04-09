@@ -4,6 +4,8 @@
   import { switchTab, filters } from '../stores.js';
   import { formatNumber } from '../lib/utils.js';
 
+  let { corpus = '' } = $props();
+
   let data = $state([]);
   let genres = $state([]);
   let loading = $state(true);
@@ -35,16 +37,19 @@
 
   function color(genre) { return COLORS[genre] || DEFAULT_COLOR; }
 
-  onMount(async () => {
+  async function loadData() {
+    loading = true;
     try {
-      const res = await getGenreTimeline();
+      const res = await getGenreTimeline(corpus);
       data = res.data;
       genres = res.genres;
     } catch (e) {
       console.error(e);
     }
     loading = false;
-  });
+  }
+
+  onMount(loadData);
 
   function maxTotal() {
     let m = 0;
@@ -77,7 +82,7 @@
 
   function drillDown(decade, genre) {
     filters.set({
-      search: '', corpus: '', genre, year_min: decade, year_max: decade + 9,
+      search: '', corpus, genre, year_min: decade, year_max: decade + 9,
       dedup: false, dedup_by: 'rank', has_freqs: false,
       sort_by: 'year', sort_dir: 'asc', page: 1, per_page: 100,
     });

@@ -3,21 +3,12 @@
   import GenreTimeline from './GenreTimeline.svelte';
   import { getOverview, getHeatmap, getStats } from '../lib/api.js';
   import { formatNumber, yearRange } from '../lib/utils.js';
-  import { switchTab, filters } from '../stores.js';
+  import { switchTab, filters, openCorpusPage } from '../stores.js';
 
   let stats = $state(null);
   let corpora = $state([]);
   let heatmap = $state({ cells: [], genres: [], centuries: [] });
   let loading = $state(true);
-
-  function browseCorpus(corpus) {
-    filters.set({
-      search: '', corpus, genre: '', year_min: null, year_max: null,
-      dedup: false, dedup_by: 'rank', has_freqs: false,
-      sort_by: 'year', sort_dir: 'asc', page: 1, per_page: 100,
-    });
-    switchTab('texts');
-  }
 
   function browseHeatmapCell(genre, century) {
     filters.update(f => ({
@@ -88,7 +79,7 @@
 <h2>Corpora</h2>
 <div class="corpus-grid">
   {#each corpora as c}
-    <button class="corpus-card" onclick={() => browseCorpus(c.corpus)}>
+    <button class="corpus-card" onclick={() => openCorpusPage(c.corpus)}>
       <div class="corpus-name">{c.name || c.corpus}</div>
       {#if c.desc}<div class="corpus-desc">{c.desc}</div>{/if}
       <div class="corpus-count">{formatNumber(c.n_texts)} texts &middot; {yearRange(c.year_min, c.year_max)}</div>

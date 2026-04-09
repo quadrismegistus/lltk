@@ -144,15 +144,17 @@ def create_app():
     # ── Genre timeline (stacked area by decade) ──────────────────────────
 
     @app.get('/api/genre-timeline')
-    async def get_genre_timeline():
+    async def get_genre_timeline(corpus: str = Query('', description='Filter by corpus')):
         try:
-            df = db.conn.execute("""
-                SELECT CAST(year / 10 AS INTEGER) * 10 as decade,
+            corpus_filter = f"AND corpus = '{corpus}'" if corpus else ""
+            df = db.conn.execute(f"""
+                SELECT CAST(FLOOR(year / 10.0) * 10 AS INTEGER) as decade,
                        genre,
                        COUNT(*) as n
                 FROM texts
-                WHERE year IS NOT NULL AND genre IS NOT NULL
-                  AND year >= 1500 AND year < 2020
+                WHERE year IS NOT NULL AND year != 0 AND genre IS NOT NULL
+                  AND year <= 2030
+                  {corpus_filter}
                 GROUP BY decade, genre
                 ORDER BY decade, genre
             """).fetchdf()

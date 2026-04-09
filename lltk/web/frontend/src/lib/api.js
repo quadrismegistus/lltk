@@ -18,8 +18,9 @@ export function getHeatmap() {
   return fetchJson('/api/heatmap');
 }
 
-export function getGenreTimeline() {
-  return fetchJson('/api/genre-timeline');
+export function getGenreTimeline(corpus = '') {
+  const qs = corpus ? `?corpus=${encodeURIComponent(corpus)}` : '';
+  return fetchJson(`/api/genre-timeline${qs}`);
 }
 
 export function getTexts(params = {}) {
