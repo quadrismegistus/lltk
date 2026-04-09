@@ -75,6 +75,9 @@ def main():
 	p_db_wi.add_argument('--vocab-size', type=int, default=100_000, help='Top N words by document frequency (default: 100000)')
 	p_db_wi.add_argument('corpora', nargs='*', help='Specific corpora (default: all)')
 
+	# db-wordagg
+	p_db_wa = subparsers.add_parser('db-wordagg', help='Build word aggregate tables from existing word index')
+
 	# db match-stats
 	p_db_match_stats = subparsers.add_parser('db-match-stats', help='Show matching statistics')
 
@@ -235,6 +238,9 @@ def main():
 			vocab_size=args.vocab_size,
 			corpora=args.corpora or None,
 		)
+
+	elif args.cmd == 'db-wordagg':
+		lltk.db.build_word_aggregates()
 
 	elif args.cmd == 'db-match-stats':
 		stats = lltk.db.match_stats()

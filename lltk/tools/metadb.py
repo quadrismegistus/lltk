@@ -409,23 +409,33 @@ def _wi_read_freqs(args):
     except Exception:
         return None
 
+def _wi_is_word(w):
+    """Filter: keep only alphabetic words (allows hyphens/apostrophes internally)."""
+    return w and w[0].isalpha() and all(c.isalpha() or c in "-'" for c in w)
+
 def _wi_get_word_set(args):
-    """Return set of unique words in a text's freqs. For pass 1 vocabulary."""
+    """Return set of unique lowercased words in a text's freqs. For pass 1 vocabulary."""
     corpus_root, _id, rel_path, min_count = args
     d = _wi_read_freqs((corpus_root, rel_path))
     if d is None:
         return set()
-    return set(w for w, c in d.items() if c >= min_count)
+    return set(w.lower() for w, c in d.items() if c >= min_count and _wi_is_word(w))
 
 _wi_vocab = None  # set by parent before ProcessPoolExecutor fork
 
 def _wi_read_filtered(args):
-    """Read freqs, filter to vocabulary. For pass 2 indexing."""
+    """Read freqs, filter to vocabulary, lowercase and merge counts."""
     corpus_root, _id, rel_path, min_count = args
     d = _wi_read_freqs((corpus_root, rel_path))
     if d is None:
         return []
-    return [(_id, w, c) for w, c in d.items() if w in _wi_vocab and c >= min_count]
+    merged = {}
+    for w, c in d.items():
+        if c >= min_count and _wi_is_word(w):
+            wl = w.lower()
+            if wl in _wi_vocab:
+                merged[wl] = merged.get(wl, 0) + c
+    return [(_id, w, c) for w, c in merged.items()]
 
 
 class MetaDB:
@@ -549,18 +559,12 @@ class MetaDB:
             pass
 
     def _ensure_wordindex_tables(self):
-        self._conn.execute("""
-            CREATE TABLE IF NOT EXISTS wi_db.word_index (
-                _id    TEXT NOT NULL,
-                word   TEXT NOT NULL,
-                count  INTEGER NOT NULL
-            )
-        """)
+        """Ensure word aggregate tables exist (created by build_word_index)."""
+        pass
 
     def _ensure_wordindex_indexes(self):
-        """Create indexes on word_index (call after bulk load)."""
-        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_wi_word ON wi_db.word_index(word)")
-        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_wi_id ON wi_db.word_index(_id)")
+        """No-op — aggregate tables don't need indexes."""
+        pass
 
     def ingest(self, corpus_id, force=True):
         """Ingest a corpus's load_metadata() output into the DB."""
@@ -1585,61 +1589,65 @@ class MetaDB:
     # ── Word Index ────────────────────────────────────────────────
 
     def build_word_index(self, num_proc=None, progress=True, min_count=1,
-                         vocab_size=100_000, corpora=None):
-        """Build per-word frequency index from freqs files.
+                         vocab_size=50_000, corpora=None):
+        """Build word frequency aggregate tables from freqs files.
 
-        Two-pass build using as_completed for streaming (no memory blowup):
-          Pass 1: scan ALL texts to build vocabulary (top N words by document frequency)
-          Pass 2: re-scan and insert only words in the vocabulary
+        Two-pass build:
+          Pass 1: scan all texts to build vocabulary (top N words by doc frequency)
+          Pass 2: group texts by (year, corpus, genre), read freqs, aggregate directly
 
-            lltk.db.build_word_index()                      # all texts, top 100K words
-            lltk.db.build_word_index(vocab_size=50_000)     # smaller vocab
+        Produces two small tables (no per-text detail table):
+          word_year_corpus: word × year × corpus × genre → word_count, n_texts
+          year_corpus_totals: year × corpus × genre → n_texts, total_words
+
+            lltk.db.build_word_index()                      # all texts, top 50K words
+            lltk.db.build_word_index(vocab_size=25_000)     # smaller vocab
             lltk.db.build_word_index(corpora=['ecco_tcp'])  # specific corpora
         """
         from lltk.tools.tools import get_tqdm
-        from collections import Counter
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from collections import Counter, defaultdict
+        from concurrent.futures import ProcessPoolExecutor
+        import concurrent.futures
+        import random
+
         if num_proc is None:
             num_proc = max(1, os.cpu_count() - 2)
 
         from lltk.imports import PATH_CORPUS
         corpus_root = os.path.expanduser(PATH_CORPUS)
 
-        # Use a dedicated connection: wi_db read-write, main DB read-only.
-        # This lets the app serve read-only while the build runs.
         wi_conn = duckdb.connect(self.wordindex_path)
+        wi_conn.execute("SET memory_limit='16GB'")
+        wi_conn.execute("SET preserve_insertion_order=false")
         wi_conn.execute(f"ATTACH '{self.path}' AS main_db (READ_ONLY)")
-        wi_conn.execute("""
-            CREATE TABLE IF NOT EXISTS word_index (
-                _id    TEXT NOT NULL,
-                word   TEXT NOT NULL,
-                count  INTEGER NOT NULL
-            )
-        """)
 
         corpus_filter = ''
         if corpora:
             corpus_list = ', '.join(f"'{c}'" for c in corpora)
             corpus_filter = f'AND t.corpus IN ({corpus_list})'
 
-        # All texts with freqs (read from main_db)
+        # All texts with freqs + metadata
+        # Also load match group rank for dedup support
+        wi_conn.execute(f"ATTACH '{self.match_path}' AS match_db (READ_ONLY)")
         all_texts = wi_conn.execute(f"""
-            SELECT t._id, t.path_freqs
+            SELECT t._id, t.path_freqs, t.year, t.corpus, t.genre, t.n_words,
+                   CASE WHEN mg.rank IS NULL OR mg.rank = 0 THEN TRUE ELSE FALSE END as is_preferred
             FROM main_db.texts t
-            WHERE t.path_freqs IS NOT NULL {corpus_filter}
+            LEFT JOIN match_db.match_groups mg ON t._id = mg._id
+            WHERE t.path_freqs IS NOT NULL AND t.year IS NOT NULL {corpus_filter}
         """).fetchdf()
 
         if not len(all_texts):
             if log: log('No texts with freqs found')
             return
 
-        all_pairs = list(zip(all_texts['_id'], all_texts['path_freqs']))
+        n_preferred = all_texts['is_preferred'].sum()
+        if log: log(f'{len(all_texts):,} texts ({n_preferred:,} preferred / deduped)')
 
-        import concurrent.futures
-        from concurrent.futures import ProcessPoolExecutor
+        all_pairs = list(zip(all_texts['_id'], all_texts['path_freqs']))
+        random.shuffle(all_pairs)
 
         def _bounded_map(pool, func, items, desc='', max_pending=None):
-            """Submit work in bounded batches, yielding results as they complete."""
             if max_pending is None:
                 max_pending = num_proc * 4
             pending = set()
@@ -1666,12 +1674,17 @@ class MetaDB:
                 pbar.close()
 
         # ── Pass 1: Build or load vocabulary ────────────────────────
-        vocab_path = os.path.join(os.path.dirname(self.wordindex_path), f'wordindex_vocab_{vocab_size}.txt')
+        vocab_full_path = os.path.join(os.path.dirname(self.wordindex_path), f'wordindex_vocab_{vocab_size}.tsv')
 
-        if os.path.exists(vocab_path):
-            with open(vocab_path) as f:
-                vocab = set(line.strip() for line in f if line.strip())
-            if log: log(f'Loaded vocabulary from {vocab_path} ({len(vocab):,} words)')
+        if os.path.exists(vocab_full_path):
+            all_vocab = []
+            with open(vocab_full_path) as f:
+                for line in f:
+                    parts = line.strip().split('\t')
+                    if len(parts) == 2:
+                        all_vocab.append((parts[0], int(parts[1])))
+            vocab = frozenset(w for w, _ in all_vocab[:vocab_size])
+            if log: log(f'Loaded vocabulary from {vocab_full_path} ({len(all_vocab):,} total, using top {len(vocab):,})')
         else:
             if log: log(f'Pass 1: Building vocabulary from {len(all_pairs):,} texts ({num_proc} processes)...')
 
@@ -1682,70 +1695,236 @@ class MetaDB:
                 for word_set in _bounded_map(pool, _wi_get_word_set, pass1_args, desc='Pass 1: vocabulary'):
                     doc_freq.update(word_set)
 
-            vocab = set(w for w, _ in doc_freq.most_common(vocab_size))
+            ranked = doc_freq.most_common(vocab_size)
+            vocab = frozenset(w for w, _ in ranked)
             if log:
                 log(f'Vocabulary: {len(doc_freq):,} unique words → top {len(vocab):,} kept')
-                if len(doc_freq) > vocab_size:
-                    cutoff_df = doc_freq.most_common(vocab_size)[-1][1]
-                    log(f'  Min doc frequency in vocab: {cutoff_df}')
+                if ranked:
+                    log(f'  Min doc frequency in vocab: {ranked[-1][1]}')
 
-            with open(vocab_path, 'w') as f:
-                f.write('\n'.join(sorted(vocab)))
-            if log: log(f'Saved vocabulary to {vocab_path}')
+            with open(vocab_full_path, 'w') as f:
+                for w, df in ranked:
+                    f.write(f'{w}\t{df}\n')
+            if log: log(f'Saved vocabulary to {vocab_full_path}')
             del doc_freq
 
-        # ── Pass 2: Index words in vocabulary ───────────────────────
-        todo = wi_conn.execute(f"""
-            SELECT t._id, t.path_freqs
-            FROM main_db.texts t
-            WHERE t.path_freqs IS NOT NULL {corpus_filter}
-              AND t._id NOT IN (SELECT DISTINCT _id FROM word_index)
-        """).fetchdf()
+        # ── Pass 2: Stream all texts, accumulate into group aggregates ───────
+        if log: log(f'Pass 2: Aggregating {len(all_texts):,} texts ({num_proc} processes)...')
 
-        if not len(todo):
-            if log: log('All texts already indexed')
-            wi_conn.execute("CREATE INDEX IF NOT EXISTS idx_wi_word ON word_index(word)")
-            wi_conn.execute("CREATE INDEX IF NOT EXISTS idx_wi_id ON word_index(_id)")
-            wi_conn.close()
-            return
-
-        if log: log(f'Pass 2: Indexing {len(todo):,} texts ({num_proc} processes)...')
-        # Set module-level vocab for forked workers (copy-on-write shared memory)
         global _wi_vocab
-        _wi_vocab = vocab
+        _wi_vocab = frozenset(vocab)
+
+        # Build lookup: _id → (year, corpus, genre, n_words, is_preferred)
+        text_info = {}
+        for _, row in all_texts.iterrows():
+            text_info[row['_id']] = (
+                int(row['year']), row['corpus'], row['genre'],
+                int(row['n_words']) if pd.notna(row['n_words']) else 0,
+                bool(row['is_preferred'])
+            )
+
+        # Create tables (with dedup columns)
+        wi_conn.execute("DROP TABLE IF EXISTS word_year_corpus")
+        wi_conn.execute("""
+            CREATE TABLE word_year_corpus (
+                word TEXT NOT NULL, year INTEGER NOT NULL,
+                corpus TEXT NOT NULL, genre TEXT,
+                word_count BIGINT NOT NULL, n_texts INTEGER NOT NULL,
+                word_count_dedup BIGINT NOT NULL, n_texts_dedup INTEGER NOT NULL
+            )
+        """)
+        wi_conn.execute("DROP TABLE IF EXISTS year_corpus_totals")
+        wi_conn.execute("""
+            CREATE TABLE year_corpus_totals (
+                year INTEGER NOT NULL, corpus TEXT NOT NULL,
+                genre TEXT, n_texts INTEGER NOT NULL,
+                total_words BIGINT NOT NULL,
+                n_texts_dedup INTEGER NOT NULL,
+                total_words_dedup BIGINT NOT NULL
+            )
+        """)
+
+        # Prepare args: (_id, corpus_root, path_freqs, min_count) — shuffled
         pass2_args = [(corpus_root, _id, rp, min_count)
-                      for _id, rp in zip(todo['_id'], todo['path_freqs'])]
+                      for _id, rp in zip(all_texts['_id'], all_texts['path_freqs'])]
+        random.shuffle(pass2_args)
 
-        rows_to_insert = []
-        batch_size = 500_000
-        n_inserted = 0
-
-        def _flush_batch(rows):
-            batch_df = pd.DataFrame(rows, columns=['_id', 'word', 'count'])
-            wi_conn.execute("INSERT INTO word_index (_id, word, count) SELECT _id, word, count FROM batch_df")
+        # Accumulate: (word, year, corpus, genre) → [wc, nt, wc_d, nt_d]
+        agg = defaultdict(lambda: [0, 0, 0, 0])
+        # Totals: (year, corpus, genre) → [n_texts, total_words, n_texts_d, total_words_d]
+        totals = defaultdict(lambda: [0, 0, 0, 0])
 
         with ProcessPoolExecutor(max_workers=num_proc) as pool:
-            for result in _bounded_map(pool, _wi_read_filtered, pass2_args, desc='Pass 2: indexing'):
-                rows_to_insert.extend(result)
-                if len(rows_to_insert) >= batch_size:
-                    _flush_batch(rows_to_insert)
-                    n_inserted += len(rows_to_insert)
-                    rows_to_insert = []
+            for result in _bounded_map(pool, _wi_read_filtered, pass2_args, desc='Pass 2: aggregating'):
+                if not result:
+                    continue
+                _id = result[0][0]
+                info = text_info.get(_id)
+                if not info:
+                    continue
+                year, corpus, genre, n_words, is_pref = info
+                grp = (year, corpus, genre)
 
-        if rows_to_insert:
-            _flush_batch(rows_to_insert)
-            n_inserted += len(rows_to_insert)
+                # Update totals (once per text)
+                tot = totals[grp]
+                tot[0] += 1
+                tot[1] += n_words
+                if is_pref:
+                    tot[2] += 1
+                    tot[3] += n_words
 
-        if log: log(f'Inserted {n_inserted:,} word-count rows')
+                # Accumulate word counts
+                seen = set()
+                for _, word, count in result:
+                    key = (word, year, corpus, genre)
+                    wc = agg[key]
+                    wc[0] += count
+                    if word not in seen:
+                        wc[1] += 1
+                        seen.add(word)
+                if is_pref:
+                    seen_d = set()
+                    for _, word, count in result:
+                        key = (word, year, corpus, genre)
+                        wc = agg[key]
+                        wc[2] += count
+                        if word not in seen_d:
+                            wc[3] += 1
+                            seen_d.add(word)
 
-        # Build indexes
-        if log: log('Building indexes...')
-        wi_conn.execute("CREATE INDEX IF NOT EXISTS idx_wi_word ON word_index(word)")
-        wi_conn.execute("CREATE INDEX IF NOT EXISTS idx_wi_id ON word_index(_id)")
+        # Write aggregate table
+        if log: log(f'Writing {len(agg):,} aggregate rows...')
+        agg_rows = [(w, y, c, g, wc, nt, wcd, ntd)
+                    for (w, y, c, g), (wc, nt, wcd, ntd) in agg.items()]
+        for i in range(0, len(agg_rows), 500_000):
+            batch = agg_rows[i:i+500_000]
+            agg_df = pd.DataFrame(batch, columns=[
+                'word', 'year', 'corpus', 'genre',
+                'word_count', 'n_texts', 'word_count_dedup', 'n_texts_dedup'
+            ])
+            wi_conn.execute("INSERT INTO word_year_corpus SELECT * FROM agg_df")
+        del agg, agg_rows
 
-        n_total = wi_conn.execute("SELECT COUNT(DISTINCT _id) FROM word_index").fetchone()[0]
-        n_rows = wi_conn.execute("SELECT COUNT(*) FROM word_index").fetchone()[0]
-        if log: log(f'Word index: {n_total:,} texts, {n_rows:,} rows')
+        # Write totals
+        tot_rows = [(y, c, g, nt, tw, ntd, twd)
+                    for (y, c, g), (nt, tw, ntd, twd) in totals.items()]
+        tot_df = pd.DataFrame(tot_rows, columns=[
+            'year', 'corpus', 'genre', 'n_texts', 'total_words',
+            'n_texts_dedup', 'total_words_dedup'
+        ])
+        wi_conn.execute("INSERT INTO year_corpus_totals SELECT * FROM tot_df")
+
+        n_agg = wi_conn.execute("SELECT COUNT(*) FROM word_year_corpus").fetchone()[0]
+        n_tot = wi_conn.execute("SELECT COUNT(*) FROM year_corpus_totals").fetchone()[0]
+        if log: log(f'word_year_corpus: {n_agg:,} rows')
+        if log: log(f'year_corpus_totals: {n_tot:,} rows')
+
+        wi_conn.close()
+
+    def build_word_aggregates(self, progress=True):
+        """Build aggregate tables from existing word_index by streaming per-word.
+
+        Avoids the impossible GROUP BY on 5B rows by iterating through words
+        and aggregating in Python.
+
+            lltk.db.build_word_aggregates()
+        """
+        from lltk.tools.tools import get_tqdm
+        from collections import defaultdict
+        import duckdb
+
+        wi_conn = duckdb.connect(self.wordindex_path)
+        wi_conn.execute("SET memory_limit='16GB'")
+        wi_conn.execute(f"ATTACH '{self.path}' AS main_db (READ_ONLY)")
+
+        # Load text metadata lookup
+        if log: log('Loading text metadata...')
+        meta_df = wi_conn.execute("""
+            SELECT t._id, t.year, t.corpus, t.genre, t.n_words
+            FROM main_db.texts t
+            WHERE t.year IS NOT NULL AND t.n_words IS NOT NULL
+        """).fetchdf()
+        text_meta = {}
+        for _, row in meta_df.iterrows():
+            text_meta[row['_id']] = (int(row['year']), row['corpus'], row['genre'], int(row['n_words']))
+        if log: log(f'Loaded metadata for {len(text_meta):,} texts')
+        del meta_df
+
+        # Single sequential scan — stream all rows, accumulate in Python
+        agg = defaultdict(lambda: [0, 0])  # (word, year, corpus, genre) → [word_count, n_texts]
+        totals = defaultdict(lambda: [0, 0])  # (year, corpus, genre) → [n_texts, total_words]
+        seen_ids = set()
+
+        n_total = wi_conn.execute("SELECT COUNT(*) FROM word_index").fetchone()[0]
+        if log: log(f'Scanning {n_total:,} rows...')
+
+        # Fetch in chunks to avoid materializing 5B rows in memory
+        chunk_size = 10_000_000
+        pbar = get_tqdm(total=n_total, desc='Aggregating') if progress else None
+        offset = 0
+        while True:
+            # Use rowid range for chunked scan (no ORDER BY needed)
+            chunk = wi_conn.execute(f"""
+                SELECT _id, word, count FROM word_index
+                LIMIT {chunk_size} OFFSET {offset}
+            """).fetchall()
+            if not chunk:
+                break
+
+            for _id, word, count in chunk:
+                meta = text_meta.get(_id)
+                if not meta:
+                    continue
+                year, corpus, genre, n_words = meta
+                key = (word, year, corpus, genre)
+                agg[key][0] += count
+                agg[key][1] += 1
+                if _id not in seen_ids:
+                    seen_ids.add(_id)
+                    totals[(year, corpus, genre)][0] += 1
+                    totals[(year, corpus, genre)][1] += n_words
+
+            if pbar:
+                pbar.update(len(chunk))
+            offset += chunk_size
+
+        if pbar:
+            pbar.close()
+
+        if log: log(f'Aggregate: {len(agg):,} groups, Totals: {len(totals):,} groups')
+
+        # Write aggregate table
+        if log: log('Writing word_year_corpus...')
+        wi_conn.execute("DROP TABLE IF EXISTS word_year_corpus")
+        wi_conn.execute("""
+            CREATE TABLE word_year_corpus (
+                word TEXT NOT NULL, year INTEGER NOT NULL,
+                corpus TEXT NOT NULL, genre TEXT,
+                word_count BIGINT NOT NULL, n_texts INTEGER NOT NULL
+            )
+        """)
+        agg_rows = [(w, y, c, g, wc, nt) for (w, y, c, g), (wc, nt) in agg.items()]
+        for j in range(0, len(agg_rows), 500_000):
+            batch = agg_rows[j:j+500_000]
+            agg_df = pd.DataFrame(batch, columns=['word', 'year', 'corpus', 'genre', 'word_count', 'n_texts'])
+            wi_conn.execute("INSERT INTO word_year_corpus SELECT * FROM agg_df")
+        if log: log(f'word_year_corpus: {len(agg_rows):,} rows')
+        del agg, agg_rows
+
+        # Write totals table
+        if log: log('Writing year_corpus_totals...')
+        wi_conn.execute("DROP TABLE IF EXISTS year_corpus_totals")
+        wi_conn.execute("""
+            CREATE TABLE year_corpus_totals (
+                year INTEGER NOT NULL, corpus TEXT NOT NULL,
+                genre TEXT, n_texts INTEGER NOT NULL,
+                total_words BIGINT NOT NULL
+            )
+        """)
+        tot_rows = [(y, c, g, nt, tw) for (y, c, g), (nt, tw) in totals.items()]
+        tot_df = pd.DataFrame(tot_rows, columns=['year', 'corpus', 'genre', 'n_texts', 'total_words'])
+        wi_conn.execute("INSERT INTO year_corpus_totals SELECT * FROM tot_df")
+        if log: log(f'year_corpus_totals: {len(tot_rows):,} rows')
 
         wi_conn.close()
 
@@ -1763,9 +1942,9 @@ class MetaDB:
         if log: log('Dropped word_index')
 
     def has_word_index(self):
-        """Check if word_index has data."""
+        """Check if word frequency aggregate tables exist."""
         try:
-            n = self.conn.execute("SELECT COUNT(*) FROM wi_db.word_index").fetchone()[0]
+            n = self.conn.execute("SELECT COUNT(*) FROM wi_db.word_year_corpus").fetchone()[0]
             return n > 0
         except Exception:
             return False
@@ -1796,53 +1975,96 @@ class MetaDB:
     def ngram(self, words, genre=None, corpus=None, year_min=1500, year_max=2020,
               normalize='per_million', by='decade', dedup=False, dedup_by='rank',
               by_corpus=False):
-        """Query word frequency over time. Case-insensitive (sums across case variants).
+        """Query word frequency over time using pre-aggregated table.
 
             lltk.db.ngram('virtue')
             lltk.db.ngram(['virtue', 'honor'], genre='Fiction', dedup=True)
-            lltk.db.ngram('virtue', by_corpus=True)  # separate line per corpus
+            lltk.db.ngram('virtue', by_corpus=True)
         """
         if isinstance(words, str):
             words = [w.strip().lower() for w in words.split(',')]
         else:
             words = [w.lower() for w in words]
 
-        word_list = ', '.join(f"'{w}'" for w in words)
+        word_list = ', '.join("'" + w.replace("'", "''") + "'" for w in words)
 
         if by == 'decade':
-            time_expr = 'CAST(t.year / 10 AS INTEGER) * 10'
+            time_expr = 'CAST(a.year / 10 AS INTEGER) * 10'
         elif by == 'year':
-            time_expr = 't.year'
+            time_expr = 'a.year'
         else:
-            time_expr = f'CAST(t.year / {int(by)} AS INTEGER) * {int(by)}'
+            time_expr = f'CAST(a.year / {int(by)} AS INTEGER) * {int(by)}'
 
-        where = self._ngram_where(genre=genre, corpus=corpus, year_min=year_min, year_max=year_max)
-        dedup_join, dedup_clause = self._ngram_dedup(where, dedup=dedup, dedup_by=dedup_by)
+        # Column suffixes for dedup
+        wc_col = 'word_count_dedup' if dedup else 'word_count'
+        nt_col = 'n_texts_dedup' if dedup else 'n_texts'
+        tw_col = 'total_words_dedup' if dedup else 'total_words'
+
+        wheres = [f'a.word IN ({word_list})']
+        if genre:
+            wheres.append(f"a.genre = '{genre}'")
+        if corpus:
+            wheres.append(f"a.corpus = '{corpus}'")
+        if year_min is not None:
+            wheres.append(f'a.year >= {int(year_min)}')
+        if year_max is not None:
+            wheres.append(f'a.year <= {int(year_max)}')
+        where = ' AND '.join(wheres)
+
+        corpus_col = ', a.corpus' if by_corpus else ''
+        corpus_group = ', a.corpus' if by_corpus else ''
+
+        # Totals filtering (same as word filter minus the word clause)
+        tot_wheres = [c for c in wheres if not c.startswith('a.word')]
+        tot_where = ' AND '.join(tot_wheres) if tot_wheres else '1=1'
+        tot_where_t = tot_where.replace('a.', 'tot.')
+        time_expr_t = time_expr.replace('a.', 'tot.')
+        corpus_col_t = corpus_col.replace('a.', 'tot.')
+        corpus_group_t = corpus_group.replace('a.', 'tot.')
 
         if normalize == 'per_million':
-            value_expr = 'SUM(wi.count) * 1000000.0 / NULLIF(SUM(t.n_words), 0)'
+            sql = f"""
+                WITH counts AS (
+                    SELECT {time_expr} as period,
+                           a.word
+                           {corpus_col},
+                           SUM(a.{wc_col}) as raw_count,
+                           SUM(a.{nt_col}) as n_texts
+                    FROM wi_db.word_year_corpus a
+                    WHERE {where}
+                    GROUP BY period, a.word {corpus_group}
+                ),
+                totals AS (
+                    SELECT {time_expr_t} as period
+                           {corpus_col_t},
+                           SUM(tot.{tw_col}) as total_words
+                    FROM wi_db.year_corpus_totals tot
+                    WHERE {tot_where_t}
+                    GROUP BY period {corpus_group_t}
+                )
+                SELECT c.period, c.word
+                       {corpus_col.replace('a.', 'c.')},
+                       c.raw_count * 1000000.0 / NULLIF(tt.total_words, 0) as value,
+                       c.raw_count,
+                       c.n_texts
+                FROM counts c
+                JOIN totals tt ON c.period = tt.period
+                    {'AND c.corpus = tt.corpus' if by_corpus else ''}
+                ORDER BY c.period, c.word {corpus_group.replace('a.', 'c.')}
+            """
         else:
-            value_expr = 'SUM(wi.count)'
-
-        corpus_col = ', t.corpus' if by_corpus else ''
-        corpus_group = ', t.corpus' if by_corpus else ''
-
-        sql = f"""
-            SELECT {time_expr} as period,
-                   LOWER(wi.word) as word
-                   {corpus_col},
-                   {value_expr} as value,
-                   SUM(wi.count) as raw_count,
-                   COUNT(DISTINCT wi._id) as n_texts
-            FROM wi_db.word_index wi
-            JOIN texts t ON wi._id = t._id
-            {dedup_join}
-            WHERE LOWER(wi.word) IN ({word_list})
-              AND {where}
-              {dedup_clause}
-            GROUP BY period, LOWER(wi.word) {corpus_group}
-            ORDER BY period, LOWER(wi.word) {corpus_group}
-        """
+            sql = f"""
+                SELECT {time_expr} as period,
+                       a.word
+                       {corpus_col},
+                       SUM(a.{wc_col}) as value,
+                       SUM(a.{wc_col}) as raw_count,
+                       SUM(a.{nt_col}) as n_texts
+                FROM wi_db.word_year_corpus a
+                WHERE {where}
+                GROUP BY period, a.word {corpus_group}
+                ORDER BY period, a.word {corpus_group}
+            """
         return self.conn.execute(sql).fetchdf()
 
     def ngram_examples(self, word, genre=None, corpus=None,
