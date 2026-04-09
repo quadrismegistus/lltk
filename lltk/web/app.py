@@ -395,12 +395,22 @@ def create_app():
                 GROUP BY decade ORDER BY decade
             """, [corpus_id]).fetchdf().to_dict('records')
 
-            # Top authors
-            authors = db.conn.execute("""
+            # Top authors (normalize: strip trailing punct, title case, merge)
+            import re
+            from collections import Counter
+            raw_authors = db.conn.execute("""
                 SELECT author, COUNT(*) as n FROM texts
-                WHERE corpus = ? AND author IS NOT NULL
-                GROUP BY author ORDER BY n DESC LIMIT 20
-            """, [corpus_id]).fetchdf().to_dict('records')
+                WHERE corpus = ? AND author IS NOT NULL AND TRIM(author) != ''
+                GROUP BY author
+            """, [corpus_id]).fetchdf()
+            author_counts = Counter()
+            for _, row in raw_authors.iterrows():
+                a = row['author'].strip().rstrip('.,').strip()
+                # Title case if ALL CAPS or all lower
+                if a == a.upper() or a == a.lower():
+                    a = a.title()
+                author_counts[a] += row['n']
+            authors = [{'author': a, 'n': int(n)} for a, n in author_counts.most_common(20)]
 
             # Manifest info
             from lltk.corpus.utils import load_manifest
