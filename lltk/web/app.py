@@ -350,6 +350,30 @@ def create_app():
         except Exception as e:
             return JSONResponse({'error': str(e)}, status_code=500)
 
+    @app.get('/api/corpus/{corpus_id}/download')
+    async def download_corpus_metadata(corpus_id: str):
+        from fastapi.responses import StreamingResponse
+        import io
+        try:
+            df = db.conn.execute("""
+                SELECT _id, corpus, id, title, author, year, genre, genre_raw,
+                       n_words, is_translated, path_freqs
+                FROM texts WHERE corpus = ?
+                ORDER BY year, title
+            """, [corpus_id]).fetchdf()
+            if not len(df):
+                return JSONResponse({'error': 'Corpus not found'}, status_code=404)
+            buf = io.StringIO()
+            df.to_csv(buf, index=False)
+            buf.seek(0)
+            return StreamingResponse(
+                buf,
+                media_type='text/csv',
+                headers={'Content-Disposition': f'attachment; filename="{corpus_id}_metadata.csv"'}
+            )
+        except Exception as e:
+            return JSONResponse({'error': str(e)}, status_code=500)
+
     # ── Genres list ─────────────────────────────────────────────────────
 
     @app.get('/api/genres')

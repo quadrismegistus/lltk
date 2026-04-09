@@ -485,7 +485,7 @@ license_type = Academic
 [FictionBiblio]
 id = fiction_biblio
 name = FictionBiblio
-desc = Compiled fiction bibliographies (Mish, McBurney, Beasley, etc.) 1475-1830
+desc = Early English fiction from 6 scholarly bibliographies: Mish (1475-1700), Odell (1475-1700), McBurney (1700-1739), Beasley (1740-1749), Raven (1750-1770), Raven (1770-1799)
 public = metadata
 private = 
 url_metadata = https://www.dropbox.com/scl/fi/10emibpmwbzweh7kigd4n/fiction_biblio_metadata.zip?rlkey=dvv16r5ce6i3l45duzarwbcrw&dl=1

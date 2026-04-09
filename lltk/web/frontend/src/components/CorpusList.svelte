@@ -78,6 +78,14 @@
         <span>{yearRange(detail.year_min, detail.year_max)}</span>
         <span>{formatNumber(detail.n_freqs)} with freqs</span>
       </div>
+      <div class="detail-actions">
+        <a class="download-btn" href="/api/corpus/{detail.corpus}/download" download>
+          Download CSV
+        </a>
+        <button class="browse-btn" onclick={() => browseCorpus(detail.corpus)}>
+          Browse texts
+        </button>
+      </div>
 
       {#if detail.genres.length}
         <h4>Genres</h4>
@@ -209,4 +217,17 @@
     padding: 2px 0;
   }
   .author-count { color: #94a3b8; }
+
+  .detail-actions { display: flex; gap: 8px; margin-bottom: 12px; }
+  .download-btn {
+    padding: 5px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    background: white;
+    font-size: 12px;
+    cursor: pointer;
+    text-decoration: none;
+    color: #374151;
+  }
+  .download-btn:hover { background: #f3f4f6; }
 </style>
