@@ -89,6 +89,13 @@
       Dedup
     </label>
     <span class="result-count">{formatNumber(total)} results</span>
+    {#if currentFilters.corpus}
+      <a class="download-btn"
+         href="/api/texts/download?corpus={currentFilters.corpus}{currentFilters.genre ? '&genre=' + currentFilters.genre : ''}{currentFilters.year_min ? '&year_min=' + currentFilters.year_min : ''}{currentFilters.year_max ? '&year_max=' + currentFilters.year_max : ''}{currentFilters.dedup ? '&dedup=true' : ''}{currentFilters.search ? '&search=' + encodeURIComponent(currentFilters.search) : ''}"
+         download>
+        CSV
+      </a>
+    {/if}
   </div>
 
   <div class="table-wrap">
@@ -162,6 +169,17 @@
     gap: 4px;
     color: #475569;
   }
+  .download-btn {
+    padding: 4px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    background: white;
+    font-size: 12px;
+    cursor: pointer;
+    text-decoration: none;
+    color: #374151;
+  }
+  .download-btn:hover { background: #f3f4f6; }
   .result-count {
     font-size: 12px;
     color: #64748b;

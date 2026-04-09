@@ -249,6 +249,70 @@ def create_app():
         except Exception as e:
             return JSONResponse({'error': str(e)}, status_code=500)
 
+    @app.get('/api/texts/download')
+    async def download_texts(
+        search: str = Query('', description='Search title/author'),
+        corpus: str = Query('', description='Filter by corpus'),
+        genre: str = Query('', description='Filter by genre'),
+        year_min: Optional[int] = Query(None),
+        year_max: Optional[int] = Query(None),
+        dedup: bool = Query(False),
+        dedup_by: str = Query('rank', description='rank or oldest'),
+        has_freqs: bool = Query(False),
+    ):
+        from fastapi.responses import StreamingResponse
+        import io, json
+        import pandas as pd
+        MAX_ROWS = 100_000
+        try:
+            clauses = []
+            if search:
+                escaped = search.replace("'", "''")
+                clauses.append(f"(t.title ILIKE '%{escaped}%' OR t.author ILIKE '%{escaped}%')")
+            if corpus:
+                clauses.append(f"t.corpus = '{corpus}'")
+            if genre:
+                clauses.append(f"t.genre = '{genre}'")
+            if year_min is not None:
+                clauses.append(f"t.year >= {int(year_min)}")
+            if year_max is not None:
+                clauses.append(f"t.year <= {int(year_max)}")
+            if has_freqs:
+                clauses.append("t.path_freqs IS NOT NULL")
+            where = ' AND '.join(clauses) if clauses else '1=1'
+
+            if dedup:
+                join = "LEFT JOIN match_db.match_groups mg ON t._id = mg._id"
+                dedup_clause = db._dedup_sql(where, dedup_by=dedup_by)
+            else:
+                join = ""
+                dedup_clause = ""
+
+            df = db.conn.execute(f"""
+                SELECT t.* FROM texts t {join}
+                WHERE {where} {dedup_clause}
+                ORDER BY t.year ASC NULLS LAST, t.title
+                LIMIT {MAX_ROWS}
+            """).fetchdf()
+            if not len(df):
+                return JSONResponse({'error': 'No results'}, status_code=404)
+            # Expand meta JSON
+            if 'meta' in df.columns:
+                meta_dicts = df['meta'].apply(lambda x: json.loads(x) if x else {})
+                meta_df = pd.DataFrame(meta_dicts.tolist())
+                meta_df = meta_df.drop(columns=[c for c in meta_df.columns if c in df.columns], errors='ignore')
+                df = pd.concat([df.drop(columns=['meta']), meta_df], axis=1)
+            buf = io.StringIO()
+            df.to_csv(buf, index=False)
+            buf.seek(0)
+            name = corpus or 'lltk'
+            return StreamingResponse(
+                buf, media_type='text/csv',
+                headers={'Content-Disposition': f'attachment; filename="{name}_metadata.csv"'}
+            )
+        except Exception as e:
+            return JSONResponse({'error': str(e)}, status_code=500)
+
     # ── Single text detail ──────────────────────────────────────────────
 
     @app.get('/api/text/{_id:path}')
