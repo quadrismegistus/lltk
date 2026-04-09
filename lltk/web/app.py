@@ -373,8 +373,8 @@ def create_app():
             # Basic stats
             stats = db.conn.execute("""
                 SELECT COUNT(*) as n_texts,
-                       MIN(CASE WHEN year > 0 THEN year END) as year_min,
-                       MAX(CASE WHEN year <= 2030 THEN year END) as year_max,
+                       MIN(CASE WHEN year != 0 THEN year END) as year_min,
+                       MAX(CASE WHEN year != 0 AND year <= 2030 THEN year END) as year_max,
                        COUNT(path_freqs) as n_freqs
                 FROM texts WHERE corpus = ?
             """, [corpus_id]).fetchone()
@@ -390,8 +390,8 @@ def create_app():
 
             # Year histogram (by decade)
             years = db.conn.execute("""
-                SELECT (year / 10 * 10) as decade, COUNT(*) as n FROM texts
-                WHERE corpus = ? AND year IS NOT NULL AND year > 0 AND year <= 2030
+                SELECT CAST(FLOOR(year / 10.0) * 10 AS INTEGER) as decade, COUNT(*) as n FROM texts
+                WHERE corpus = ? AND year IS NOT NULL AND year != 0 AND year <= 2030
                 GROUP BY decade ORDER BY decade
             """, [corpus_id]).fetchdf().to_dict('records')
 
