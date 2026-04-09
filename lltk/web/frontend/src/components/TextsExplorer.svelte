@@ -89,9 +89,9 @@
       Dedup
     </label>
     <span class="result-count">{formatNumber(total)} results</span>
-    {#if currentFilters.corpus}
+    {#if currentFilters.corpus || currentFilters.genre || currentFilters.search}
       <a class="download-btn"
-         href="/api/texts/download?corpus={currentFilters.corpus}{currentFilters.genre ? '&genre=' + currentFilters.genre : ''}{currentFilters.year_min ? '&year_min=' + currentFilters.year_min : ''}{currentFilters.year_max ? '&year_max=' + currentFilters.year_max : ''}{currentFilters.dedup ? '&dedup=true' : ''}{currentFilters.search ? '&search=' + encodeURIComponent(currentFilters.search) : ''}"
+         href="/api/texts/download?{currentFilters.corpus ? 'corpus=' + currentFilters.corpus + '&' : ''}{currentFilters.genre ? 'genre=' + currentFilters.genre + '&' : ''}{currentFilters.year_min ? 'year_min=' + currentFilters.year_min + '&' : ''}{currentFilters.year_max ? 'year_max=' + currentFilters.year_max + '&' : ''}{currentFilters.dedup ? 'dedup=true&' : ''}{currentFilters.search ? 'search=' + encodeURIComponent(currentFilters.search) : ''}"
          download>
         CSV
       </a>

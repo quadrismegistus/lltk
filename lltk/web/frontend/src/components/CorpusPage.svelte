@@ -84,11 +84,6 @@
       </div>
     </div>
 
-    <div class="timeline-section">
-      <h3>Genre Timeline</h3>
-      <GenreTimeline corpus={corpusId} />
-    </div>
-
     <div class="panels">
       {#if detail.genres.length}
         <div class="panel">
@@ -121,6 +116,11 @@
           </div>
         </div>
       {/if}
+    </div>
+
+    <div class="timeline-section">
+      <h3>Genre Timeline</h3>
+      <GenreTimeline corpus={corpusId} />
     </div>
   {/if}
 </div>

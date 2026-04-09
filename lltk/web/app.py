@@ -383,11 +383,11 @@ def create_app():
             if stats[0] == 0:
                 return JSONResponse({'error': 'Corpus not found'}, status_code=404)
 
-            # Genre breakdown
+            # Genre breakdown (include NULL as 'Unknown')
             genres = db.conn.execute("""
-                SELECT genre, COUNT(*) as n FROM texts
-                WHERE corpus = ? AND genre IS NOT NULL
-                GROUP BY genre ORDER BY n DESC
+                SELECT COALESCE(genre, 'Unknown') as genre, COUNT(*) as n FROM texts
+                WHERE corpus = ?
+                GROUP BY 1 ORDER BY n DESC
             """, [corpus_id]).fetchdf().to_dict('records')
 
             # Year histogram (by decade)
