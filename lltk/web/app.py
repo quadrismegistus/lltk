@@ -353,14 +353,20 @@ def create_app():
     @app.get('/api/corpus/{corpus_id}/download')
     async def download_corpus_metadata(corpus_id: str):
         from fastapi.responses import StreamingResponse
-        import io
+        import io, json
+        import pandas as pd
         try:
             df = db.conn.execute("""
-                SELECT _id, corpus, id, title, author, year, genre, genre_raw,
-                       n_words, is_translated, path_freqs
-                FROM texts WHERE corpus = ?
+                SELECT * FROM texts WHERE corpus = ?
                 ORDER BY year, title
             """, [corpus_id]).fetchdf()
+            # Expand meta JSON into separate columns
+            if 'meta' in df.columns:
+                meta_dicts = df['meta'].apply(lambda x: json.loads(x) if x else {})
+                meta_df = pd.DataFrame(meta_dicts.tolist())
+                # Drop columns already in the main table
+                meta_df = meta_df.drop(columns=[c for c in meta_df.columns if c in df.columns], errors='ignore')
+                df = pd.concat([df.drop(columns=['meta']), meta_df], axis=1)
             if not len(df):
                 return JSONResponse({'error': 'Corpus not found'}, status_code=404)
             buf = io.StringIO()
