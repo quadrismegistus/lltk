@@ -6,6 +6,7 @@
   import MatchBrowser from './components/MatchBrowser.svelte';
   import NgramExplorer from './components/NgramExplorer.svelte';
   import CorpusList from './components/CorpusList.svelte';
+  import CorpusPage from './components/CorpusPage.svelte';
   import CorpusOverlap from './components/CorpusOverlap.svelte';
   import { getStats } from './lib/api.js';
   import { formatNumber } from './lib/utils.js';
@@ -60,6 +61,8 @@
         <NgramExplorer />
       {:else if $activeTab === 'matches'}
         <MatchBrowser />
+      {:else if $activeTab === 'corpus'}
+        <CorpusPage />
       {:else if $activeTab === 'corpora'}
         <CorpusList />
       {:else if $activeTab === 'overlap'}

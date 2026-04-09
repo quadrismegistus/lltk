@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { getCorpora, getCorpus } from '../lib/api.js';
   import { formatNumber, yearRange } from '../lib/utils.js';
-  import { switchTab, filters } from '../stores.js';
+  import { switchTab, filters, openCorpusPage } from '../stores.js';
 
   let corpora = $state([]);
   let selectedCorpus = $state(null);
@@ -53,7 +53,7 @@
           {#each corpora as c}
             <tr
               class:selected={selectedCorpus === c.corpus}
-              onclick={() => selectCorpus(c.corpus)}
+              onclick={() => openCorpusPage(c.corpus)}
             >
               <td class="corpus-name">{c.corpus}</td>
               <td class="num">{formatNumber(c.n_texts)}</td>

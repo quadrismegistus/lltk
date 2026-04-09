@@ -23,6 +23,7 @@ export const activeTab = writable('dashboard');
 export const selectedTextId = writable(null);
 export const detailOpen = writable(false);
 export const filters = writable({ ...DEFAULT_FILTERS });
+export const corpusPageId = writable('');
 
 // Match browser has its own search
 export const matchSearch = writable('');
@@ -47,6 +48,9 @@ function stateToHash() {
     if (f.sort_by !== 'year') params.set('sort_by', f.sort_by);
     if (f.sort_dir !== 'asc') params.set('sort_dir', f.sort_dir);
     if (f.page > 1) params.set('page', f.page);
+  } else if (tab === 'corpus') {
+    const cid = get(corpusPageId);
+    if (cid) params.set('id', cid);
   } else if (tab === 'matches') {
     const ms = get(matchSearch);
     if (ms) params.set('search', ms);
@@ -65,14 +69,16 @@ function hashToState(hash) {
   const [tab, qs] = raw.split('?', 2);
   const params = new URLSearchParams(qs || '');
 
-  const validTabs = ['dashboard', 'texts', 'ngrams', 'matches', 'corpora', 'overlap'];
+  const validTabs = ['dashboard', 'texts', 'ngrams', 'matches', 'corpora', 'corpus', 'overlap'];
   const resolvedTab = validTabs.includes(tab) ? tab : 'dashboard';
 
   suppressHashUpdate = true;
 
   activeTab.set(resolvedTab);
 
-  if (resolvedTab === 'texts') {
+  if (resolvedTab === 'corpus') {
+    corpusPageId.set(params.get('id') || '');
+  } else if (resolvedTab === 'texts') {
     filters.set({
       ...DEFAULT_FILTERS,
       search: params.get('search') || '',
@@ -148,6 +154,14 @@ export function closeDetail() {
 export function switchTab(tab) {
   activeTab.set(tab);
   // Clear detail when switching tabs
+  detailOpen.set(false);
+  selectedTextId.set(null);
+  pushState();
+}
+
+export function openCorpusPage(id) {
+  corpusPageId.set(id);
+  activeTab.set('corpus');
   detailOpen.set(false);
   selectedTextId.set(null);
   pushState();

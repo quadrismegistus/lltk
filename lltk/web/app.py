@@ -401,8 +401,20 @@ def create_app():
                 GROUP BY author ORDER BY n DESC LIMIT 20
             """, [corpus_id]).fetchdf().to_dict('records')
 
+            # Manifest info
+            from lltk.corpus.utils import load_manifest
+            manifest = load_manifest()
+            minfo = {}
+            for section, vals in manifest.items():
+                if vals.get('id', '') == corpus_id:
+                    minfo = {'name': vals.get('name', section), 'desc': vals.get('desc', ''), 'link': vals.get('link', '')}
+                    break
+
             return {
                 'corpus': corpus_id,
+                'name': minfo.get('name', corpus_id),
+                'desc': minfo.get('desc', ''),
+                'link': minfo.get('link', ''),
                 'n_texts': stats[0],
                 'year_min': stats[1],
                 'year_max': stats[2],
