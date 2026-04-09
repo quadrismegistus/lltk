@@ -154,4 +154,14 @@
     line-height: 1;
   }
   .close-btn:hover { color: #1e293b; }
+
+  @media (max-width: 640px) {
+    header { flex-direction: column; height: auto; padding: 8px 12px; gap: 4px; }
+    .header-left { width: 100%; justify-content: center; }
+    .header-stats { display: none; }
+    nav { width: 100%; overflow-x: auto; justify-content: center; }
+    .tab { padding: 8px 10px; font-size: 12px; }
+    .content { padding: 12px; }
+    .detail-panel { width: 100%; position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 50; }
+  }
 </style>

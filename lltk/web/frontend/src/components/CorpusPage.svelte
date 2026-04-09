@@ -58,7 +58,7 @@
   {:else}
     <div class="hero">
       <div class="hero-main">
-        <h2>{detail.corpus}</h2>
+        <h2>{detail.name || detail.corpus}</h2>
         <p class="desc">{detail.desc || ''}</p>
         <div class="stat-row">
           <div class="stat">
@@ -103,6 +103,11 @@
         </div>
       {/if}
 
+      <div class="panel panel-wide">
+        <h3>Genre Timeline</h3>
+        <GenreTimeline corpus={corpusId} />
+      </div>
+
       {#if detail.authors.length}
         <div class="panel">
           <h3>Top Authors</h3>
@@ -116,11 +121,6 @@
           </div>
         </div>
       {/if}
-    </div>
-
-    <div class="timeline-section">
-      <h3>Genre Timeline</h3>
-      <GenreTimeline corpus={corpusId} />
     </div>
   {/if}
 </div>
@@ -159,16 +159,8 @@
   .btn-secondary { background: white; color: #374151; border: 1px solid #d1d5db; }
   .btn-secondary:hover { background: #f3f4f6; }
 
-  .timeline-section {
-    background: white;
-    border-radius: 8px;
-    padding: 20px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-    margin-bottom: 16px;
-  }
-  .timeline-section h3 { font-size: 14px; font-weight: 600; color: #475569; margin-bottom: 12px; }
-
   .panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .panel-wide { grid-column: 1 / -1; }
   .panel {
     background: white;
     border-radius: 8px;
@@ -189,4 +181,13 @@
   .author-list { display: flex; flex-direction: column; gap: 2px; }
   .author-row { display: flex; justify-content: space-between; font-size: 12px; padding: 2px 0; }
   .author-count { color: #94a3b8; }
+
+  @media (max-width: 640px) {
+    .hero { padding: 20px 16px; }
+    h2 { font-size: 18px; }
+    .stat-row { gap: 16px; flex-wrap: wrap; }
+    .stat-value { font-size: 16px; }
+    .actions { flex-wrap: wrap; }
+    .panels { grid-template-columns: 1fr; }
+  }
 </style>

@@ -220,4 +220,11 @@
   .title-cell { font-weight: 500; }
   .num-cell { text-align: right; font-variant-numeric: tabular-nums; }
   .loading-cell { text-align: center; padding: 40px; color: #94a3b8; }
+
+  @media (max-width: 640px) {
+    .filter-bar input[type="text"] { min-width: 100%; }
+    .filter-bar select { min-width: 0; flex: 1; }
+    .corpus-cell { display: none; }
+    th:first-child { display: none; }
+  }
 </style>
