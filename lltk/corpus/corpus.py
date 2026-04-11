@@ -1454,9 +1454,15 @@ class SectionCorpus(BaseCorpus):
         if section_i: self._init = True
 
     def _find_div_tag(self, dom):
-        for tag in ['div5', 'div4', 'div3', 'div2', 'div1', 'div0']:
-            if dom(tag): return tag
-        return None
+        # Pick the div level with the most elements — avoids selecting a rare
+        # embedded sub-section (e.g. a single div4 "Provençal Tale" inside
+        # Udolpho's 57 div3 chapters).  Ties broken toward deeper levels.
+        best_tag, best_count = None, 0
+        for tag in ['div0', 'div1', 'div2', 'div3', 'div4', 'div5']:
+            n = len(dom(tag))
+            if n >= best_count and n > 0:
+                best_tag, best_count = tag, n
+        return best_tag
 
     def _extract_title(self, div_dom):
         for tag_name in ['comhd5','comhd4','comhd3','comhd2','comhd1','head','caption']:

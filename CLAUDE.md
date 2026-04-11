@@ -572,6 +572,82 @@ result = task.run(prompt)  # or task.run(prompt, model=GEMINI_FLASH)
 - Tested with Claude Sonnet and Gemini Flash — both excellent
 - Results cached via hashstash (pay once per text per model)
 
+## LLM Frye classification (narrative mode/mythos)
+
+Frye mode/mythos classification task at `~/github/largeliterarymodels/largeliterarymodels/tasks/classify_frye.py`.
+
+```python
+from largeliterarymodels.tasks import FryeTask, format_text_for_frye
+task = FryeTask()
+prompt = format_text_for_frye(text_obj=t)  # or format_text_for_frye(txt=raw_text, title='...', author='...')
+result = task.run(prompt)
+```
+
+Based on Northrop Frye's *Anatomy of Criticism* (1957) and Gallagher/Paige's referential theory.
+
+### Schema fields
+
+| Field | Values | Description |
+|-------|--------|-------------|
+| `mode` | myth, romance, high_mimetic, low_mimetic, ironic | Hero's power relative to others and environment |
+| `mythos` | comedy, romance, tragedy, irony | Narrative archetype / plot shape (independent of mode) |
+| `narration` | first_person, third_person_omniscient, third_person_limited, epistolary, frame_narrative, dialogue, mixed | Narrative voice |
+| `referential_mode` | nobody, somebody, pseudo_referential, ambiguous | Gallagher/Paige: fictional status of characters |
+| `mode_signals` | free text | Textual evidence for mode, with quotes |
+| `mythos_signals` | free text | Evidence for mythos/plot shape |
+| `referential_signals` | free text | Evidence for referential status |
+| `modal_shifts` | free text | If mode changes between passages |
+| `displacement` | free text | Mythic patterns beneath realistic surface |
+| `mode_confidence` | 0.0–1.0 | |
+| `mythos_confidence` | 0.0–1.0 | |
+
+### Frye's modes (First Essay: Historical Criticism)
+
+1. **Myth**: hero is divine, superior in kind (gods, creation, metamorphosis)
+2. **Romance**: hero superior in degree to people and nature (quests, enchantment, marvels)
+3. **High mimetic**: hero superior in degree to people but not nature (kings, tragic heroes, epic)
+4. **Low mimetic**: hero is one of us (realistic fiction, comedy of manners — the "novel")
+5. **Ironic**: hero inferior to us (bondage, frustration, absurdity, pharmakos figures)
+
+Frye argues Western literature descends this scale over time. Confirmed computationally: romance dominates pre-1650, low_mimetic dominates post-1680.
+
+### Frye's mythoi (Third Essay: Archetypal Criticism)
+
+- **Comedy** (spring): confusion → order, bondage → freedom, marriage/feast
+- **Romance** (summer): quest — agon, pathos, anagnorisis. Good triumphs.
+- **Tragedy** (autumn): fall from prosperity, hamartia, isolation, catastrophe
+- **Irony** (winter): patterns deflated, mocked, unresolved. Anti-quest, pharmakos.
+
+Mode and mythos are independent axes: ironic comedy (Fielding), romantic tragedy (Webster), low mimetic romance (adventure novel).
+
+### Referential mode (Gallagher/Paige)
+
+- **Nobody**: explicitly fictional characters — the novel proper (Pamela, Tom Jones). Post-1740 norm.
+- **Somebody**: claims to be about real people (secret histories, scandal narratives, memoirs of real persons)
+- **Pseudo-referential**: invented stories claiming truth (found manuscripts, "authentic memoirs" of fictional people, Crusoe, Gulliver). Pre-1740 dominant mode.
+- **Ambiguous**: genuinely unclear (texts mixing real and fictional persons)
+
+### Input format
+
+Three passages per text: OPENING (2K words), MIDDLE (1K words), CLOSING (2K words). The opening establishes mode, the middle reveals texture, the closing reveals mythos (how the story resolves).
+
+```python
+prompt = format_text_for_frye(text_obj=t, n_opening=2000, n_middle=1000, n_closing=2000)
+```
+
+### Results (pilot: 66 texts, 60 CE – 2011)
+
+Tested on 1 random fiction text per decade across canon_fiction, earlyprint, chadwyck, litlab, chicago. Key findings:
+- Modal descent confirmed: romance → low_mimetic transition visible 1600s–1700s
+- Referential shift confirmed: pseudo_referential/somebody → nobody transition ~1740–1780
+- Mythos diversity persists across all periods (comedy, tragedy, irony coexist)
+- Irony as mythos clusters in 1680s–1760s (satirical age)
+- Cost: ~$2–3 for 6K texts at 5K words each via Gemini Flash
+
+### Relation to genre_raw
+
+`genre_raw` (Novel, Romance, etc.) captures what the text is *called*. Frye mode/mythos captures how it *works* narratively. They correlate but don't collapse — a text labeled "Novel" can be romance in mode (C.S. Lewis) or ironic in mythos (Smollett).
+
 ## ESTC corpus
 
 481K bibliographic records from the English Short Title Catalogue. Metadata-only (no full text) — serves as the genre/metadata authority for linked corpora (ECCO, EEBO_TCP, ECCO_TCP).
@@ -723,10 +799,10 @@ All read-only JSON, auto-documented at `/docs`:
 
 ## Word index (metadb_wordindex.duckdb)
 
-Per-word frequency index built from freqs files. Enables ngram queries, example text lookup, and collocate analysis via SQL.
+Pre-aggregated word frequency tables for fast ngram queries. No per-text detail table — aggregated at build time.
 
 ```bash
-lltk db-wordindex [-j 32] [--vocab-size 100000]    # ~1.5h for 1.6M texts
+lltk db-wordindex [-j 8] [--vocab-size 50000]    # ~3.5h for 1.6M texts
 ```
 
 ### Schema
@@ -734,17 +810,23 @@ lltk db-wordindex [-j 32] [--vocab-size 100000]    # ~1.5h for 1.6M texts
 Separate DuckDB file attached as `wi_db`:
 
 ```sql
-wi_db.word_index(_id TEXT, word TEXT, count INTEGER)
--- Indexes on word and _id after bulk load
+wi_db.word_year_corpus(word TEXT, year INT, corpus TEXT, genre TEXT,
+    word_count BIGINT, n_texts INT, word_count_dedup BIGINT, n_texts_dedup INT)
+wi_db.year_corpus_totals(year INT, corpus TEXT, genre TEXT,
+    n_texts INT, total_words BIGINT, n_texts_dedup INT, total_words_dedup BIGINT)
 ```
+
+- 418M aggregate rows, 20K totals rows, 4.3GB total
+- `_dedup` columns: only preferred match group texts (rank=0), built at index time
+- Vocabulary: 50K words, lowercased, alpha-only, saved as frequency-ordered TSV
 
 ### Build process
 
-Two-pass with bounded thread pool (`_bounded_map`, max `num_proc*4` pending futures):
-- **Pass 1**: Scan all freqs files, count document frequency per word into a Counter (~1GB for 15M unique words). Uses orjson for fast JSON parsing.
-- **Pass 2**: Re-scan, insert only words in top N vocabulary (default 100K). Batch insert 500K rows at a time into DuckDB.
+Two-pass:
+- **Pass 1**: Scan all freqs files, build vocabulary (top N words by document frequency). Lowercased, alpha-only filter. Saved to TSV for reuse with different vocab sizes.
+- **Pass 2**: Stream all texts through single ProcessPoolExecutor, accumulate `(word, year, corpus, genre)` aggregates in Python dict, write to DuckDB at end. Both regular and dedup counts tracked simultaneously.
 
-Incremental: re-running skips texts already indexed.
+Key design: no per-text detail table (was 5.2B rows / 31GB / 40s queries). Aggregate in Python during build, not as post-hoc GROUP BY.
 
 ### Python API
 
@@ -753,11 +835,45 @@ lltk.db.ngram('virtue', genre='Fiction')                    # time series DataFr
 lltk.db.ngram(['virtue', 'honor'], year_min=1700)           # comparative
 lltk.db.ngram('virtue', dedup=True)                          # one representative per match group
 lltk.db.ngram('virtue', by_corpus=True)                      # separate line per corpus
-lltk.db.ngram_examples('virtue', genre='Fiction', year_min=1750, year_max=1759)
-lltk.db.ngram_collocates('virtue', genre='Fiction')
 lltk.db.has_word_index()                                     # check if built
-lltk.db.drop_word_index()                                    # clear and rebuild
 ```
+
+### Web app ngram operators
+
+The `/api/ngram` endpoint supports `+` and `-` operators:
+- `virtue+vertue` — merges spelling variants into one line (sum)
+- `virtue-vice` — virtue minus vice (subtraction)
+- `virtue+vertue, honor+honour` — two merged series compared
+- Commas still separate independent series
+
+## Freqs DB (metadb_freqs.duckdb)
+
+Per-text word frequencies stored as DuckDB MAP type. Enables per-text queries without reading JSON files from disk.
+
+```sql
+text_freqs(_id TEXT PRIMARY KEY, corpus TEXT, freqs MAP(VARCHAR, INTEGER))
+```
+
+- Currently: 380K pre-1800 texts, 15.8GB
+- Queryable: `SELECT _id, freqs['virtue'] FROM text_freqs WHERE freqs['virtue'] > 0`
+- Used for MinHash matching (word set extraction via `map_keys(freqs)`)
+- Future: extend to all 1.6M texts with freqs
+
+## MinHash matching
+
+Finds near-duplicate texts by word frequency overlap. Adds `match_type='minhash'` to existing match system.
+
+```bash
+python scripts/minhash_match.py [--threshold 0.7] [--num-perm 128]
+```
+
+- Uses `datasketch` library (MinHash + LSH)
+- Input: word sets from freqs DB (`map_keys(freqs)`)
+- Parameters: 128 permutations, Jaccard threshold 0.7, minimum 5K words
+- Results: 13,470 new matches integrated into match groups
+- Catches: cross-corpus duplicates with different titles, collected works vs individual novels, spelling variants
+- False positive mitigation: threshold 0.7 (not 0.5), min 5K words (excludes proclamations/sermons)
+- Future: MinHash on character n-gram shingles from FTS5 DB (better for OCR variants)
 
 ## App development roadmap
 
