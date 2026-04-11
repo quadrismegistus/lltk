@@ -31,12 +31,15 @@
     loading = false;
   }
 
-  function onSearch(e) {
-    search = e.target.value;
+  function submitSearch() {
     matchSearch.set(search);
     page = 1;
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => { loadMatches(); replaceState(); }, 400);
+    loadMatches();
+    replaceState();
+  }
+
+  function onKeydown(e) {
+    if (e.key === 'Enter') submitSearch();
   }
 
   onMount(async () => {
@@ -59,9 +62,10 @@
     <input
       type="text"
       placeholder="Search by title (e.g. Pamela, Robinson Crusoe)..."
-      value={search}
-      oninput={onSearch}
+      bind:value={search}
+      onkeydown={onKeydown}
     />
+    <button class="search-btn" onclick={submitSearch}>Search</button>
   </div>
 
   {#if loading}
@@ -117,14 +121,29 @@
     font-size: 12px;
   }
 
+  .search-bar {
+    display: flex;
+    gap: 8px;
+  }
   .search-bar input {
-    width: 100%;
+    flex: 1;
     padding: 10px 14px;
     border: 1px solid #d1d5db;
     border-radius: 6px;
     font-size: 14px;
     background: white;
   }
+  .search-btn {
+    padding: 10px 20px;
+    background: #2563eb;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .search-btn:hover { background: #1d4ed8; }
 
   .loading { padding: 40px; text-align: center; color: #94a3b8; }
 
