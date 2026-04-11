@@ -494,45 +494,92 @@ def create_app():
         if not db.has_word_index():
             return JSONResponse({'error': 'Word index not built. Run: lltk db-wordindex'}, status_code=404)
         try:
+            # Parse expressions: commas separate series, + merges words, - subtracts
+            # e.g. "virtue+vertue, honor" → series 1 sums virtue+vertue, series 2 is honor
+            import re
+            raw_terms = [t.strip() for t in words.split(',') if t.strip()]
+            # Collect all individual words needed
+            all_words = set()
+            parsed_series = []  # [(label, [(sign, word), ...]), ...]
+            for term in raw_terms:
+                parts = re.split(r'(?=[+-])', term)
+                components = []
+                for p in parts:
+                    p = p.strip()
+                    if not p:
+                        continue
+                    if p.startswith('-'):
+                        w = p[1:].strip().lower()
+                        if w:
+                            components.append((-1, w))
+                            all_words.add(w)
+                    elif p.startswith('+'):
+                        w = p[1:].strip().lower()
+                        if w:
+                            components.append((1, w))
+                            all_words.add(w)
+                    else:
+                        w = p.lower()
+                        if w:
+                            components.append((1, w))
+                            all_words.add(w)
+                if components:
+                    parsed_series.append((term.strip().lower(), components))
+
+            # Query all individual words at once
             df = db.ngram(
-                words, genre=genre or None, corpus=corpus or None,
+                list(all_words), genre=genre or None, corpus=corpus or None,
                 year_min=year_min, year_max=year_max, normalize=normalize,
                 dedup=dedup, dedup_by=dedup_by, by_corpus=by_corpus,
             )
-            if df.empty:
-                return {'data': [], 'words': [w.strip() for w in words.split(',')], 'series': []}
 
-            word_list = [w.strip().lower() for w in words.split(',')]
+            series_labels = [label for label, _ in parsed_series]
+            if df.empty:
+                return {'data': [], 'words': series_labels, 'series': []}
+
+            # Build lookup: (period, word) → value, raw_count, n_texts
+            # (optionally keyed by corpus too)
+            lookup = {}
+            for _, r in df.iterrows():
+                key = (int(r['period']), r['word'])
+                if by_corpus:
+                    key = (int(r['period']), r['word'], r['corpus'])
+                lookup[key] = (
+                    float(r['value']) if r['value'] is not None else 0,
+                    int(r['raw_count']),
+                    int(r['n_texts']),
+                )
+
+            periods = sorted(df['period'].unique())
 
             if by_corpus:
-                # Series are word:corpus combinations
-                series = sorted(set(
-                    f"{r['word']}:{r['corpus']}" for _, r in df.iterrows()
-                ))
-                periods = sorted(df['period'].unique())
+                corpora = sorted(df['corpus'].unique())
+                series = [f"{label}:{c}" for label, _ in parsed_series for c in corpora]
                 rows = []
                 for p in periods:
                     row = {'period': int(p)}
-                    pdf = df[df['period'] == p]
-                    for _, r in pdf.iterrows():
-                        key = f"{r['word']}:{r['corpus']}"
-                        row[key] = float(r['value']) if r['value'] is not None else 0
-                        row[f'{key}_count'] = int(r['raw_count'])
-                        row[f'{key}_texts'] = int(r['n_texts'])
+                    for label, components in parsed_series:
+                        for c in corpora:
+                            val = sum(sign * lookup.get((int(p), w, c), (0,0,0))[0] for sign, w in components)
+                            cnt = sum(sign * lookup.get((int(p), w, c), (0,0,0))[1] for sign, w in components)
+                            key = f"{label}:{c}"
+                            row[key] = val
+                            row[f'{key}_count'] = cnt
                     rows.append(row)
-                return {'data': rows, 'words': word_list, 'series': series}
+                return {'data': rows, 'words': series_labels, 'series': series}
             else:
-                periods = sorted(df['period'].unique())
                 rows = []
                 for p in periods:
                     row = {'period': int(p)}
-                    pdf = df[df['period'] == p]
-                    for _, r in pdf.iterrows():
-                        row[r['word']] = float(r['value']) if r['value'] is not None else 0
-                        row[f'{r["word"]}_count'] = int(r['raw_count'])
-                        row[f'{r["word"]}_texts'] = int(r['n_texts'])
+                    for label, components in parsed_series:
+                        val = sum(sign * lookup.get((int(p), w), (0,0,0))[0] for sign, w in components)
+                        cnt = sum(sign * lookup.get((int(p), w), (0,0,0))[1] for sign, w in components)
+                        ntx = sum(lookup.get((int(p), w), (0,0,0))[2] for _, w in components)
+                        row[label] = val
+                        row[f'{label}_count'] = cnt
+                        row[f'{label}_texts'] = ntx
                     rows.append(row)
-                return {'data': rows, 'words': word_list, 'series': word_list}
+                return {'data': rows, 'words': series_labels, 'series': series_labels}
         except Exception as e:
             return JSONResponse({'error': str(e)}, status_code=500)
 
