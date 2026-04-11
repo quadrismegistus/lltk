@@ -77,7 +77,7 @@
       {#each groups as group}
         <div class="group-card">
           <div class="group-header">
-            Group #{group.group_id} &middot; {group.members.length} texts
+            Group #{group.group_id} &middot; {group.total_members} texts
           </div>
           <div class="group-members">
             {#each group.members as m}
@@ -89,6 +89,11 @@
                 <span class="member-year">{m.year || ''}</span>
               </button>
             {/each}
+            {#if group.total_members > group.members.length}
+              <div class="truncated">
+                + {group.total_members - group.members.length} more texts
+              </div>
+            {/if}
           </div>
         </div>
       {/each}
@@ -185,4 +190,5 @@
   .member-title { flex: 1; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .member-author { color: #64748b; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .member-year { color: #94a3b8; min-width: 40px; text-align: right; }
+  .truncated { padding: 6px 14px; font-size: 12px; color: #94a3b8; font-style: italic; }
 </style>

@@ -598,12 +598,15 @@ def create_app():
             if df.empty:
                 return {'groups': [], 'total_groups': 0}
 
-            # Group by group_id
+            # Group by group_id, cap members at 20
+            MAX_MEMBERS = 20
             groups = []
             for gid, gdf in df.groupby('group_id'):
+                members = gdf.to_dict('records')
                 groups.append({
                     'group_id': int(gid),
-                    'members': gdf.to_dict('records'),
+                    'members': members[:MAX_MEMBERS],
+                    'total_members': len(members),
                 })
 
             total = len(groups)
