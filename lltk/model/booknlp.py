@@ -406,6 +406,299 @@ class ModelBookNLP(CharacterSystem):
 
 
 
+    # ── Resolved character data ─────────────────────────────────────
+
+    @property
+    def _resolution_path(self):
+        return os.path.join(self.path, 'characters_resolved.json')
+
+    @property
+    def _intros_path(self):
+        return os.path.join(self.path, 'llm_anno.char_intros.json')
+
+    def resolved_characters(self):
+        """Load LLM-resolved character list from characters_resolved.json.
+
+        Returns:
+            list[dict]: Each with name, ids, type, gender, notes.
+            None if not yet resolved.
+        """
+        if not os.path.exists(self._resolution_path):
+            return None
+        with open(self._resolution_path) as f:
+            return json.load(f).get('characters', [])
+
+    def character_intros(self):
+        """Load LLM character introduction annotations from llm_anno.char_intros.json.
+
+        Returns:
+            list[dict]: Each with character_name, intro_mode, social_class, etc.
+            None if not yet annotated.
+        """
+        if not os.path.exists(self._intros_path):
+            return None
+        with open(self._intros_path) as f:
+            return json.load(f).get('characters', [])
+
+    @property
+    def is_resolved(self):
+        return os.path.exists(self._resolution_path)
+
+    @property
+    def has_intros(self):
+        return os.path.exists(self._intros_path)
+
+    # ── LLM wrappers (require largeliterarymodels) ───────────────
+
+    def resolve_characters(self, model=None, max_chars=30, force=False):
+        """Run LLM character resolution. Requires largeliterarymodels.
+
+        Args:
+            model: LLM model to use (default: GEMINI_FLASH).
+            max_chars: Maximum clusters to send to LLM.
+            force: Re-resolve even if characters_resolved.json exists.
+
+        Returns:
+            list[dict]: Resolved characters.
+        """
+        if not force and self.is_resolved:
+            return self.resolved_characters()
+        from largeliterarymodels.tasks import CharacterTask, format_character_roster
+        from largeliterarymodels.llm import GEMINI_FLASH
+        task = CharacterTask()
+        prompt = format_character_roster(self.text, max_chars=max_chars)
+        results = task.run(prompt, model=model or GEMINI_FLASH,
+                           metadata={'_id': self.text.addr}, force=force)
+        result_data = {
+            '_id': self.text.addr,
+            'characters': [r.model_dump() for r in results],
+        }
+        os.makedirs(self.path, exist_ok=True)
+        with open(self._resolution_path, 'w') as f:
+            json.dump(result_data, f, indent=2)
+        return result_data['characters']
+
+    def annotate_intros(self, model=None, force=False):
+        """Run LLM character introduction annotation. Requires largeliterarymodels.
+
+        Args:
+            model: LLM model to use (default: GEMINI_FLASH).
+            force: Re-annotate even if llm_anno.char_intros.json exists.
+
+        Returns:
+            list[dict]: Character introduction annotations.
+        """
+        if not force and self.has_intros:
+            return self.character_intros()
+        if not self.is_resolved:
+            self.resolve_characters(model=model)
+        from largeliterarymodels.tasks import CharacterIntroTask, format_all_character_intros
+        from largeliterarymodels.llm import GEMINI_FLASH
+        task = CharacterIntroTask()
+        prompts_and_meta = format_all_character_intros(self.text)
+        results = []
+        for prompt, meta in prompts_and_meta:
+            result = task.run(prompt, model=model or GEMINI_FLASH,
+                              metadata=meta, force=force)
+            results.append(result.model_dump())
+        result_data = {
+            '_id': self.text.addr,
+            'characters': results,
+        }
+        os.makedirs(self.path, exist_ok=True)
+        with open(self._intros_path, 'w') as f:
+            json.dump(result_data, f, indent=2)
+        return results
+
+    # ── Co-mention network ───────────────────────────────────────
+
+    def comention_network(self, window=200, min_edge_count=5, exclude_generic=True):
+        """Build a character co-mention network from BookNLP entities + resolved characters.
+
+        Args:
+            window: Token window for co-mention (200 ≈ 1 paragraph).
+            min_edge_count: Minimum co-mentions to include an edge.
+            exclude_generic: Drop unresolved generic clusters ('the king', 'his son', etc.).
+
+        Returns:
+            networkx.Graph with character nodes and weighted co-mention edges.
+        """
+        import networkx as nx
+
+        resolution_path = os.path.join(self.path, 'characters_resolved.json')
+        if not os.path.exists(resolution_path):
+            raise FileNotFoundError(
+                f"No characters_resolved.json for {self.text.addr}. "
+                "Run CharacterTask from largeliterarymodels first."
+            )
+
+        with open(resolution_path) as f:
+            resolved = json.load(f)
+
+        # Build cluster ID -> canonical name mapping
+        id_to_name = {}
+        char_meta = {}  # name -> {type, gender, ids, notes}
+        for char in resolved['characters']:
+            if char['type'] in ('noise', 'abstraction'):
+                continue
+            name = char['name']
+            if exclude_generic:
+                if char['type'] == 'collective':
+                    continue
+                nl = name.lower()
+                if (nl.startswith(('generic', 'unknown', 'unnamed', 'a man',
+                                   'a woman', 'the one', 'noise',
+                                   'unspecified', 'most of', 'one '))
+                    or nl.startswith(('the ', 'a ', 'his ', 'her ', 'my ',
+                                     'your ', 'some ', 'every '))
+                    or nl in ('men', 'people', 'everyone', 'some', 'one')
+                    or '(generic' in nl or 'unnamed' in nl
+                ):
+                    continue
+            char_meta[name] = char
+            for cid in char['ids']:
+                id_to_name[int(cid.lstrip('C'))] = name
+
+        # Load entities and map to resolved names
+        entities = pd.read_csv(
+            self.path_entities, sep='\t', quoting=3, on_bad_lines='skip'
+        )
+        entities['name'] = entities['COREF'].map(id_to_name)
+        entities = entities.dropna(subset=['name'])
+
+        mentions = entities[['start_token', 'name']].sort_values('start_token').values.tolist()
+
+        # Count co-mentions within window
+        from collections import Counter
+        edges = Counter()
+        for i, (pos_i, name_i) in enumerate(mentions):
+            for j in range(i + 1, len(mentions)):
+                pos_j, name_j = mentions[j]
+                if pos_j - pos_i > window:
+                    break
+                if name_i != name_j:
+                    edge = tuple(sorted([name_i, name_j]))
+                    edges[edge] += 1
+
+        # Build graph
+        G = nx.Graph()
+        # Add all resolved characters as nodes (even if no edges)
+        for name, meta in char_meta.items():
+            total_mentions = sum(
+                len(entities[entities.name == name])
+                for _ in [1]  # just count once
+            )
+            G.add_node(name, type=meta['type'], gender=meta.get('gender', ''),
+                       mentions=int((entities.name == name).sum()))
+
+        for (a, b), count in edges.items():
+            if count >= min_edge_count:
+                G.add_edge(a, b, weight=count)
+
+        # Remove isolated nodes
+        G.remove_nodes_from(list(nx.isolates(G)))
+
+        return G
+
+    def plot_network(self, save_path=None, window=200, min_edge_count=5,
+                     exclude_generic=True, figsize=(12, 10), max_nodes=25,
+                     title=None, **kwargs):
+        """Plot the character co-mention network.
+
+        Args:
+            save_path: Path to save the figure (PNG/PDF/SVG). If None, shows interactively.
+            window: Token window for co-mention.
+            min_edge_count: Minimum co-mentions to include an edge.
+            exclude_generic: Drop unresolved generic clusters.
+            figsize: Figure size tuple.
+            max_nodes: Maximum number of nodes to display (by mention count).
+            title: Plot title. Defaults to text title + year.
+
+        Returns:
+            networkx.Graph (the underlying graph).
+        """
+        import networkx as nx
+        import matplotlib
+        if save_path:
+            matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+
+        G = self.comention_network(
+            window=window, min_edge_count=min_edge_count,
+            exclude_generic=exclude_generic
+        )
+
+        if len(G) == 0:
+            log.warning(f'Empty network for {self.text.addr}')
+            return G
+
+        # Trim to top N nodes by mention count
+        if len(G) > max_nodes:
+            mention_counts = nx.get_node_attributes(G, 'mentions')
+            top_nodes = sorted(mention_counts, key=mention_counts.get, reverse=True)[:max_nodes]
+            G = G.subgraph(top_nodes).copy()
+
+        # Layout
+        weights = [G[u][v]['weight'] for u, v in G.edges()]
+        max_w = max(weights) if weights else 1
+
+        pos = nx.spring_layout(G, k=2.0, iterations=80, seed=42,
+                               weight='weight')
+
+        fig, ax = plt.subplots(1, 1, figsize=figsize)
+
+        # Edge widths scaled by weight
+        edge_widths = [0.5 + 4.0 * (w / max_w) for w in weights]
+        edge_alphas = [0.2 + 0.6 * (w / max_w) for w in weights]
+
+        # Node sizes scaled by mention count
+        mentions = [G.nodes[n].get('mentions', 10) for n in G.nodes()]
+        max_m = max(mentions) if mentions else 1
+        node_sizes = [200 + 2000 * (m / max_m) for m in mentions]
+
+        # Color by type
+        type_colors = {
+            'character': '#4A90D9',
+            'collective': '#82B366',
+            'place': '#D4A574',
+        }
+        node_colors = [type_colors.get(G.nodes[n].get('type', 'character'), '#4A90D9')
+                       for n in G.nodes()]
+
+        # Draw edges
+        for (u, v), w, alpha in zip(G.edges(), edge_widths, edge_alphas):
+            nx.draw_networkx_edges(G, pos, edgelist=[(u, v)], width=w,
+                                   alpha=alpha, edge_color='#555555', ax=ax)
+
+        # Draw nodes
+        nx.draw_networkx_nodes(G, pos, node_size=node_sizes, node_color=node_colors,
+                               edgecolors='#333333', linewidths=0.8, alpha=0.9, ax=ax)
+
+        # Labels
+        nx.draw_networkx_labels(G, pos, font_size=9, font_weight='bold', ax=ax)
+
+        # Title
+        if title is None:
+            text_title = getattr(self.text, 'title', '')
+            if len(text_title) > 60:
+                text_title = text_title[:57] + '...'
+            year = getattr(self.text, 'year', '')
+            title = f'{text_title} ({year})'
+        ax.set_title(title, fontsize=14, pad=20)
+        ax.axis('off')
+        plt.tight_layout()
+
+        if save_path:
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            fig.savefig(save_path, dpi=150, bbox_inches='tight',
+                        facecolor='white', edgecolor='none')
+            plt.close(fig)
+        else:
+            plt.show()
+
+        return G
+
+
 BOOKNLPD = {}
 
 def get_booknlp(

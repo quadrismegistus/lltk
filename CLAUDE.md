@@ -875,6 +875,93 @@ python scripts/minhash_match.py [--threshold 0.7] [--num-perm 128]
 - False positive mitigation: threshold 0.7 (not 0.5), min 5K words (excludes proclamations/sermons)
 - Future: MinHash on character n-gram shingles from FTS5 DB (better for OCR variants)
 
+## BookNLP character analysis
+
+### Overview
+
+`lltk/model/booknlp.py` wraps [BookNLP](https://github.com/booknlp/booknlp) for character extraction, coreference resolution, quote attribution, and character network construction. BookNLP parses a text and produces token-level NLP annotations, entity coreference chains, quote attributions, supersense tags, and character summaries.
+
+### Usage
+
+```python
+t = lltk.load('canon_fiction').text('Chaucer.Canterbury_Tales.02.Knights_Tale')
+t.booknlp.parse()           # run BookNLP (writes to corpus/booknlp/en_small/{text_id}/)
+t.booknlp.chardata()        # DataFrame of characters with mentions, agent/patient words, gender
+t.booknlp.quotes()          # DataFrame of quotes with attributed speakers
+t.booknlp.tokens()          # full token-level DataFrame with character annotations
+```
+
+### BookNLP output files
+
+| File | Contents |
+|------|----------|
+| `text.tokens` | Every token: POS, lemma, dependency parse, byte offsets, paragraph/sentence IDs |
+| `text.entities` | Coreference chains: mention span → COREF cluster ID, proper/common/pronoun, PER/LOC |
+| `text.quotes` | Quote spans with attributed speaker (char_id) and mention phrase |
+| `text.supersense` | WordNet supersense tags per span |
+| `text.book` | JSON: per-character summary — mention counts, agent/patient/possessive words, gender |
+| `text.book.html` | Visual annotation view — character list + color-coded text |
+
+### LLM character resolution
+
+BookNLP's NER/coreference is noisy on early modern English: discourse markers ("Certes", "Thenne") misidentified as proper nouns, single characters split across multiple clusters, places tagged as persons. An LLM resolution task in `~/github/largeliterarymodels/largeliterarymodels/tasks/resolve_characters.py` cleans this up.
+
+```python
+from largeliterarymodels.tasks import CharacterTask, format_character_roster
+task = CharacterTask()
+prompt = format_character_roster(t, max_chars=30)  # top 30 clusters by mention count
+results = task.run(prompt, model=GEMINI_FLASH, metadata={'_id': t.addr})
+# results: list[CharacterResolution] with name, ids (merged clusters), type, gender, notes
+```
+
+**Input**: Character roster (~1K words) with cluster IDs, mention counts, proper/common names, gender, agent/patient verbs. No paragraph text needed for first pass.
+
+**Output schema**: `name` (canonical), `ids` (merged BookNLP cluster IDs), `type` (character/collective/place/abstraction/noise), `gender`, `notes`.
+
+**Results saved to**: `{corpus}/booknlp/en_small/{text_id}/characters_resolved.json`
+
+**Performance** (pilot on 51 texts from Frye sample, Gemini Flash): 0 errors, avg 18.4 characters identified per text, 3.5 cluster merges, 1.9 noise clusters filtered. Cost: ~$0.002/text.
+
+### Character co-mention networks
+
+```python
+G = t.booknlp.comention_network(window=200, min_edge_count=5)
+# returns networkx.Graph — nodes are resolved characters, edges weighted by co-mention count
+
+t.booknlp.plot_network(save_path='network.png', title='Knight\'s Tale')
+# saves matplotlib visualization with node size ∝ mentions, edge width ∝ co-mentions
+```
+
+**Co-mention window**: 200 tokens (~1 paragraph). Two characters co-mentioned within this window increment their edge weight. Window=100 too tight, 500+ too loose — 200 is the sweet spot.
+
+**Filtering**: `exclude_generic=True` (default) removes collectives ("the ladies", "his men"), generic references ("the king", "his son"), noise, abstractions. Named characters only.
+
+**Network statistics computed**: `n_nodes`, `n_edges`, `density`, `avg_clustering`, `transitivity`, `protagonist_dominance` (top node's share of total weighted degree), `dyad_dominance` (top 2 nodes' share), `degree_centralization`, `n_communities` (greedy modularity), `modularity`.
+
+### Network × Frye classification results (pilot, n=49)
+
+Cross-referencing character network structure with Frye mode/mythos classifications from the LLM Frye task:
+
+**By Frye mode:**
+- High mimetic: most communities (3.2), highest modularity (0.26), lowest density (0.41) — dispersed casts with distinct social clusters (court/battlefield/foreign)
+- Romance + low mimetic: high density (~0.6), tight social worlds
+- Myth: highest protagonist dominance (0.45) and dyad dominance (0.75) — narratives centered on 1-2 figures
+
+**By mythos:**
+- Comedy: lowest modularity (0.13), fewest communities (2.0), highest clustering (0.80) — everyone ends up in the same social world (comic reconciliation)
+- Irony: highest modularity (0.23) — fragmented social worlds, failed communication
+- Tragedy: more edges but lower clustering — many connections without triadic closure
+
+**By narration:**
+- First person: lowest density (0.48) — narrator filters who appears together
+- Third person omniscient: higher density (0.62) — can cut between any characters
+- Frame narratives: most communities (3.0) — frame cast + embedded story casts
+
+**Concreteness**: no significant correlations with any network statistic. Network structure and lexical concreteness are independent dimensions.
+
+**Data saved to**: `~/Dropbox/Prof/Books/AbsLitHist/data/llm_annotations/network_x_frye.csv`
+**Figures**: `~/Dropbox/Prof/Books/AbsLitHist/book/figures/network_x_frye.png`, `network_communities_x_frye.png`, `character_networks/*.png`
+
 ## App development roadmap
 
 ### Planned features (roughly ordered by priority)
