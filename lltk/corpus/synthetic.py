@@ -335,98 +335,107 @@ class CuratedCorpus(SyntheticCorpus):
         if not annotations:
             return df
 
-        # Ensure _id is accessible as a column
         has_id_col = '_id' in df.columns
-        if not has_id_col and df.index.name == 'id':
-            # _id might not be in columns if index was set
-            pass
+        if not has_id_col:
+            return self._filter_excluded(df)
 
-        # Whitelist: fetch annotated _ids not already in DataFrame
-        if has_id_col:
-            existing_ids = set(df['_id'])
-            missing_ids = [
-                _id for _id in annotations
-                if _id not in existing_ids
-                and not annotations[_id].get('exclude')
-            ]
-            if missing_ids:
-                try:
-                    import lltk
-                    placeholders = ', '.join(f"'{_id}'" for _id in missing_ids)
-                    extra = lltk.db.query(f"SELECT * FROM texts WHERE _id IN ({placeholders})")
-                    if extra is not None and len(extra):
-                        # Drop meta JSON column for consistency
-                        if 'meta' in extra.columns:
-                            extra = extra.drop(columns=['meta'])
-                        # Align columns and index
-                        if df.index.name == 'id' and 'id' in extra.columns:
-                            extra = extra.set_index('id')
-                        df = pd.concat([df, extra], ignore_index=False)
-                except Exception:
-                    pass
-
-        # Apply direct overrides
-        for _id, overrides in annotations.items():
-            if has_id_col:
-                mask = df['_id'] == _id
-            else:
-                continue
-            if not mask.any():
-                continue
-            for col, val in overrides.items():
-                if col not in df.columns:
-                    df[col] = None
-                # __none__ means explicitly set to null
-                if val == '__none__':
-                    df.loc[mask, col] = None
-                else:
-                    # Cast value to match column dtype (e.g. str '1619' → Int32)
-                    if col in df.columns:
-                        try:
-                            val = df[col].dtype.type(val)
-                        except (TypeError, ValueError):
-                            pass
-                    df.loc[mask, col] = val
-
-        # Propagate annotations across match groups:
-        # if any member of a match group is annotated, apply to the representative
-        if has_id_col:
+        # Whitelist: fetch annotated _ids not already in the DataFrame.
+        # Uses DuckDB register (avoids SQL-injection risk from ids with apostrophes).
+        existing_ids = set(df['_id'])
+        missing_ids = [
+            _id for _id in annotations
+            if _id not in existing_ids
+            and not annotations[_id].get('exclude')
+        ]
+        if missing_ids:
             try:
                 import lltk
-                # Build lookup: _id → annotations (including propagated)
-                annotated_ids = set(annotations.keys())
-                if annotated_ids:
-                    # Get match groups for annotated texts
-                    mg = lltk.db.match_conn.execute(
-                        "SELECT _id, group_id FROM match_db.match_groups"
+                ids_df = pd.DataFrame({'_id': missing_ids})
+                lltk.db.conn.register('_ann_missing', ids_df)
+                try:
+                    extra = lltk.db.conn.execute(
+                        "SELECT t.* FROM texts t JOIN _ann_missing m ON t._id = m._id"
                     ).fetchdf()
-                    if len(mg):
-                        # Map group_id → list of annotated _ids in that group
-                        id_to_group = dict(zip(mg['_id'], mg['group_id']))
-                        group_to_annotated = {}
-                        for _id, ann in annotations.items():
-                            gid = id_to_group.get(_id)
-                            if gid is not None:
-                                group_to_annotated[gid] = ann
-
-                        # For each row in df, if its group has an annotation but it doesn't, propagate
-                        df_ids = set(df['_id'])
-                        for _, row in mg.iterrows():
-                            _id = row['_id']
-                            gid = row['group_id']
-                            if _id in df_ids and _id not in annotated_ids and gid in group_to_annotated:
-                                # Propagate — direct annotations already applied above take priority
-                                propagated = group_to_annotated[gid]
-                                mask = df['_id'] == _id
-                                for col, val in propagated.items():
-                                    if col not in df.columns:
-                                        df[col] = None
-                                    if val == '__none__':
-                                        df.loc[mask, col] = None
-                                    else:
-                                        df.loc[mask, col] = val
+                finally:
+                    lltk.db.conn.unregister('_ann_missing')
+                if extra is not None and len(extra):
+                    if 'meta' in extra.columns:
+                        extra = extra.drop(columns=['meta'])
+                    if df.index.name == 'id' and 'id' in extra.columns:
+                        extra = extra.set_index('id')
+                    df = pd.concat([df, extra], ignore_index=False)
             except Exception:
-                pass  # match DB not available, skip propagation
+                pass
+
+        # Build a consolidated {_id: {col: val}} override map.
+        # Start with propagated (match-group siblings), then let direct
+        # annotations override propagated values per _id.
+        overrides_by_id = {}
+
+        # Match-group propagation: SQL self-join restricted to (annotated source,
+        # df target) pairs in the same group — avoids scanning all match_groups.
+        try:
+            import lltk
+            conn = lltk.db.match_conn
+            src_df = pd.DataFrame({'_id': list(annotations.keys())})
+            tgt_df = pd.DataFrame({'_id': df['_id'].tolist()})
+            conn.register('_ann_src', src_df)
+            conn.register('_ann_tgt', tgt_df)
+            try:
+                pairs = conn.execute("""
+                    SELECT mg_tgt._id AS target_id, mg_src._id AS source_id
+                    FROM match_db.match_groups mg_src
+                    JOIN match_db.match_groups mg_tgt
+                        ON mg_src.group_id = mg_tgt.group_id
+                    JOIN _ann_src s ON mg_src._id = s._id
+                    JOIN _ann_tgt t ON mg_tgt._id = t._id
+                    WHERE mg_src._id <> mg_tgt._id
+                """).fetchdf()
+            finally:
+                conn.unregister('_ann_src')
+                conn.unregister('_ann_tgt')
+            # First pair per target wins (all group members are interchangeable).
+            for tgt, src in zip(pairs['target_id'], pairs['source_id']):
+                if tgt not in overrides_by_id:
+                    overrides_by_id[tgt] = dict(annotations.get(src, {}))
+        except Exception:
+            pass  # match DB not available, skip propagation
+
+        # Direct annotations override any propagated values.
+        df_ids_set = set(df['_id'])
+        for _id, vals in annotations.items():
+            if _id in df_ids_set:
+                overrides_by_id[_id] = dict(vals)
+
+        # Vectorized per-column update via Series.map (one pass per column
+        # instead of one full-column mask per annotation).
+        if overrides_by_id:
+            from collections import defaultdict
+            per_col = defaultdict(dict)
+            for _id, vals in overrides_by_id.items():
+                for col, val in vals.items():
+                    per_col[col][_id] = val
+
+            id_series = df['_id']
+            for col, id_val_map in per_col.items():
+                if col not in df.columns:
+                    df[col] = None
+                update_series = id_series.map(id_val_map)
+                mask = update_series.notna()
+                if not mask.any():
+                    continue
+                vals = update_series[mask].where(lambda s: s != '__none__', None)
+                # Best-effort cast to column dtype (e.g. string '1619' → Int year).
+                try:
+                    target_dtype = df[col].dtype
+                    type_fn = getattr(target_dtype, 'type', None)
+                    if type_fn is not None:
+                        vals = vals.map(
+                            lambda v: v if v is None else type_fn(v)
+                        )
+                except (TypeError, ValueError):
+                    pass
+                df.loc[mask, col] = vals
 
         return self._filter_excluded(df)
 
