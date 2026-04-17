@@ -58,8 +58,98 @@ class TextDTA(BaseText):
 	def path_xml_meta(self):
 		return os.path.join(self.corpus.path_xml_meta, self.id + '.xml')
 
+DTA_GENRE_MAP = {
+	# Belletristik → Fiction
+	'roman': ('Fiction', 'Roman'),
+	'novelle': ('Fiction', 'Novelle'),
+	'prosa': ('Fiction', 'Prosa'),
+	'märchen': ('Fiction', 'Märchen'),
+	'briefroman': ('Fiction', 'Briefroman'),
+	'schäferdichtung': ('Fiction', 'Schäferdichtung'),
+	'religiöse reimpaarerzählung': ('Fiction', 'Religiöse Reimpaarerzählung'),
+	'kolportageliteratur': ('Fiction', 'Kolportageliteratur'),
+	# Poetry
+	'lyrik': ('Poetry', 'Lyrik'),
+	'lied': ('Poetry', 'Lied'),
+	'epigramm': ('Poetry', 'Epigramm'),
+	'epik': ('Poetry', 'Epik'),
+	'städtelob': ('Poetry', 'Städtelob'),
+	# Drama
+	'drama': ('Drama', 'Drama'),
+	'dialog': ('Drama', 'Dialog'),
+	# Letters
+	'briefe': ('Letters', 'Briefe'),
+	'brief': ('Letters', 'Brief'),
+	# Periodical
+	'zeitung': ('Periodical', 'Zeitung'),
+	# Sermon
+	'leichenpredigt': ('Sermon', 'Leichenpredigt'),
+	'erbauungsliteratur': ('Sermon', 'Erbauungsliteratur'),
+	'theologie': ('Sermon', 'Theologie'),
+	'bibelübersetzung': ('Sermon', 'Bibelübersetzung'),
+	# History
+	'historiographie': ('History', 'Historiographie'),
+	'autobiographie': ('Biography', 'Autobiographie'),
+	'biographie': ('Biography', 'Biographie'),
+	'reiseliteratur': ('Nonfiction', 'Reiseliteratur'),
+	# Academic
+	'philosophie': ('Academic', 'Philosophie'),
+	'geographie': ('Academic', 'Geographie'),
+	'jura': ('Academic', 'Jura'),
+	'biologie': ('Academic', 'Biologie'),
+	'medizin': ('Academic', 'Medizin'),
+	'psychologie': ('Academic', 'Psychologie'),
+	'kunstgeschichte': ('Academic', 'Kunstgeschichte'),
+	'physik': ('Academic', 'Physik'),
+	'literaturwissenschaft': ('Academic', 'Literaturwissenschaft'),
+	'ökonomie': ('Academic', 'Ökonomie'),
+	'technik': ('Academic', 'Technik'),
+	'sprachwissenschaft': ('Academic', 'Sprachwissenschaft'),
+	'mathematik': ('Academic', 'Mathematik'),
+	'naturgeschichte': ('Academic', 'Naturgeschichte'),
+	'philologie': ('Academic', 'Philologie'),
+	'astronomie': ('Academic', 'Astronomie'),
+	'chemie': ('Academic', 'Chemie'),
+	'archäologie': ('Academic', 'Archäologie'),
+	'alchemie': ('Academic', 'Alchemie'),
+	'politik': ('Academic', 'Politik'),
+	'wissenschaft': ('Academic', None),
+	# Nonfiction catch-alls
+	'gesellschaft': ('Nonfiction', 'Gesellschaft'),
+	'gelegenheitsschrift': ('Nonfiction', 'Gelegenheitsschrift'),
+	'rezension': ('Criticism', 'Rezension'),
+}
+
+
+def _classify_dta_subject(subject):
+	"""Map DTA subject string to (genre, genre_raw) using GENRE_VOCAB."""
+	if not subject or str(subject) == 'nan':
+		return None, None
+	sl = str(subject).lower()
+	# Check each keyword against the subject string
+	for kw, (genre, raw) in DTA_GENRE_MAP.items():
+		if kw in sl:
+			return genre, raw
+	return None, None
+
+
 class DTA(BaseCorpus):
 	TEXT_CLASS=TextDTA
+
+	def load_metadata(self):
+		meta = super().load_metadata()
+		if not len(meta):
+			return meta
+		if 'date' in meta.columns and 'year' not in meta.columns:
+			meta['year'] = pd.to_numeric(meta['date'], errors='coerce')
+		if 'creator' in meta.columns and 'author' not in meta.columns:
+			meta['author'] = meta['creator']
+		meta['lang'] = 'de'
+		if 'subject' in meta.columns:
+			classified = meta['subject'].apply(_classify_dta_subject)
+			meta['genre'] = classified.apply(lambda x: x[0])
+			meta['genre_raw'] = classified.apply(lambda x: x[1])
+		return meta
 
 	def compile(self,**attrs):
 		self.download_raw_metadata()

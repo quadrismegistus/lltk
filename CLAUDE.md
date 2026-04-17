@@ -174,6 +174,12 @@ lltk db-enrich-genres                    # propagate genre from bibliographies (
 lltk db-wordcounts [-j 8]               # compute word counts from freqs (persistent cache)
 lltk db-matches "Incognita"              # search matches by title
 lltk db-match-stats                      # show matching statistics
+lltk db-detect-translations              # detect translations via cross-language match groups
+lltk db-detect-langs [--apply]           # detect per-text language from freqs (stopword intersection)
+lltk prosodic-parse <corpus> [-j N]      # metrical scansion per text (prosodic package; optional dep)
+lltk prosodic-aggregate <corpus>         # concatenate per-text parsed.parquet into corpus-level file
+lltk db-passages [corpora...] [-n 500]   # build passages DB (SQLite + FTS5)
+lltk search "virtue" [--genre Fiction]   # full-text search across passages
 ```
 
 ### Python API
@@ -743,6 +749,9 @@ lltk preprocess earlyprint --parts freqs   # txt→freqs
 - `corpus.zip()` rewritten to avoid `os.chdir()` (broke imports on macOS SIP). Uses `os.path.abspath()` + `os.path.relpath()` for arcnames.
 - `corpus.publish(public=, private=)` zips, uploads to Dropbox via bundled `bin/dropbox_uploader.sh`, gets share links, updates manifest. Public URLs go to package manifest, private URLs to user manifest only.
 - `PATH_CORPUS` now wrapped in `os.path.expanduser()` to handle `~` from config files.
+- `C.t` (random text picker): sampling chain is MetaDB → RO DuckDB → `metadata.csv` id column → `_textd` → full load. Avoids loading 336K texts for a one-off pick, and survives cross-process DuckDB write-lock contention. Cached id list stored as `_cached_ids` per instance.
+- `BaseText.__init__` unconditionally calls `self.corpus.add_text(self)` → any freshly constructed text lands in `_textd`. Code paths that sample texts must not gate on `_textd` being empty alone (it won't be, after one pick).
+- `get_txt(force_xml=False)` only forwards `force_xml` to subclass `text_plain()` when truthy, with a `TypeError` fallback. Keeps legacy corpora (chadwyck_poetry, chadwyck_drama, ecco, dialogues, coha) working without kwarg churn.
 - Log file rotation wrapped in try/except for PermissionError resilience (macOS SIP).
 
 ## Web app (`lltk app`)
@@ -802,7 +811,8 @@ All read-only JSON, auto-documented at `/docs`:
 Pre-aggregated word frequency tables for fast ngram queries. No per-text detail table — aggregated at build time.
 
 ```bash
-lltk db-wordindex [-j 8] [--vocab-size 50000]    # ~3.5h for 1.6M texts
+lltk db-wordindex --sql [--vocab-size 50000]     # ~30-60 min, uses freqs_db
+lltk db-wordindex [-j 8] [--vocab-size 50000]    # legacy: ~3.5h for 1.6M texts
 ```
 
 ### Schema
@@ -816,17 +826,26 @@ wi_db.year_corpus_totals(year INT, corpus TEXT, genre TEXT,
     n_texts INT, total_words BIGINT, n_texts_dedup INT, total_words_dedup BIGINT)
 ```
 
-- 418M aggregate rows, 20K totals rows, 4.3GB total
+- 317M aggregate rows (50K vocab), 21K totals rows, 19GB (as of 2026-04-15 rebuild)
 - `_dedup` columns: only preferred match group texts (rank=0), built at index time
-- Vocabulary: 50K words, lowercased, alpha-only, saved as frequency-ordered TSV
+- Vocabulary: saved as frequency-ordered TSV (`wordindex_vocab_{N}.tsv`), reusable across builds
 
-### Build process
+### Build process (--sql mode, preferred)
 
-Two-pass:
-- **Pass 1**: Scan all freqs files, build vocabulary (top N words by document frequency). Lowercased, alpha-only filter. Saved to TSV for reuse with different vocab sizes.
-- **Pass 2**: Stream all texts through single ProcessPoolExecutor, accumulate `(word, year, corpus, genre)` aggregates in Python dict, write to DuckDB at end. Both regular and dedup counts tracked simultaneously.
+Requires `db-freqs` to have populated `freqs_db.text_freqs`. Two passes, each using 10 parallel Python workers reading from freqs_db and writing parquet shards:
 
-Key design: no per-text detail table (was 5.2B rows / 31GB / 40s queries). Aggregate in Python during build, not as post-hoc GROUP BY.
+- **Pass 1 (vocab)**: workers iterate MAP entries in Python, build per-chunk Counters, write vocab parquet shards. DuckDB merges shards with `GROUP BY word SUM(cnt) ORDER BY cnt DESC LIMIT N`. ~30 min (often skippable if vocab TSV already exists).
+- **Pass 2 (aggregates)**: workers aggregate `(word, year, corpus, genre) → [wc, nt, wc_d, nt_d]` locally, write parquet shards. DuckDB merges via batched staging (`_wyc_stage`) + final `GROUP BY` into `word_year_corpus`. Batched merge (50 shards per batch) avoids OOM on hundreds of shards.
+- **Shards preserved on failure**: `lltk.db.merge_wi_shards(path)` retries just the merge step.
+
+Key design lessons:
+- DuckDB's `UNNEST(map_entries(freqs))` is slow and memory-hungry at scale (spilled 70GB for a single-query vocab build). Python workers iterating MAPs directly are much faster.
+- Single-query merge of 800+ parquet shards OOMs. Batched staging + final GROUP BY stays within memory limits.
+- Aggregation in workers (not a central dict) removes the single-thread bottleneck of the old design.
+
+### Build process (legacy, JSON-files mode)
+
+`lltk db-wordindex` (without `--sql`) uses the original Python+JSON workers — fallback if `freqs_db` isn't populated.
 
 ### Python API
 
@@ -846,18 +865,37 @@ The `/api/ngram` endpoint supports `+` and `-` operators:
 - `virtue+vertue, honor+honour` — two merged series compared
 - Commas still separate independent series
 
+### Chart display options (client-side)
+
+`NgramExplorer.svelte` supports client-side display tweaks in a second options row:
+- **Bin** (1/5/10/25 yr): aggregates per-year rows into bigger bins, weighted by n_texts. When bin < 10, re-fetches with `?by=year` (backend default is decade-bucketed).
+- **Smooth** (0/3/5/11/21): centered moving average window over binned values.
+- **Lines / Points**: toggle SVG `<path>` and `<circle>` rendering.
+- **Relative to max**: normalize each series to its own [0, 1] range — useful for comparing word trajectories regardless of absolute frequency.
+
+`paths` is a Svelte 5 `$derived` that re-runs when any of these toggle. Finer-than-decade needs a re-fetch; everything else is pure client-side transform of cached data.
+
 ## Freqs DB (metadb_freqs.duckdb)
 
-Per-text word frequencies stored as DuckDB MAP type. Enables per-text queries without reading JSON files from disk.
+Per-text word frequencies stored as DuckDB MAP type. Complete coverage of all texts with freqs on disk — enables per-text queries and bulk aggregations without reading JSON files.
 
 ```sql
 text_freqs(_id TEXT PRIMARY KEY, corpus TEXT, freqs MAP(VARCHAR, INTEGER))
 ```
 
-- Currently: 380K pre-1800 texts, 15.8GB
+- **1,637,147 texts, 48GB** (as of 2026-04-15)
 - Queryable: `SELECT _id, freqs['virtue'] FROM text_freqs WHERE freqs['virtue'] > 0`
-- Used for MinHash matching (word set extraction via `map_keys(freqs)`)
-- Future: extend to all 1.6M texts with freqs
+- Used for MinHash matching, abstraction scoring, word index rebuild
+- Build/extend: `lltk db-freqs` (~10 min via parquet-shard architecture)
+
+### Build architecture (`build_freqs_db`)
+
+Parallel workers read freqs JSONs, write native-MAP parquet shards via pyarrow. Main does batched `INSERT FROM read_parquet` (200 shards per batch) — avoids OOM on 2500-shard single-INSERT.
+
+- Picklable worker: `_freqs_read_batch` in metadb.py
+- Uses `pa.map_(pa.string(), pa.int32())` for native parquet MAP encoding
+- Incremental: LEFT JOIN pre-filter so reruns only ingest missing texts
+- Shards preserved on failure — can retry merge without redoing worker phase
 
 ## MinHash matching
 
@@ -874,6 +912,249 @@ python scripts/minhash_match.py [--threshold 0.7] [--num-perm 128]
 - Catches: cross-corpus duplicates with different titles, collected works vs individual novels, spelling variants
 - False positive mitigation: threshold 0.7 (not 0.5), min 5K words (excludes proclamations/sermons)
 - Future: MinHash on character n-gram shingles from FTS5 DB (better for OCR variants)
+
+## Language normalization
+
+`lang` is a core column on the `texts` table, normalized to ISO 639-1 two-letter codes (`en`, `fr`, `de`, etc.).
+
+### Resolution order (in `ingest_df`)
+
+1. **Metadata column**: `lang`, `language`, `language_1`, or `estc_lang` from `load_metadata()`, normalized via `normalize_lang()`
+2. **Manifest fallback**: `lang = en` in `manifest.txt` fills NULLs when metadata column is absent or blank
+3. **None**: if neither source provides a value
+
+### `normalize_lang()`
+
+Maps ISO 639-2/B (`eng`, `fre`, `ger`), ISO 639-2/T (`fra`, `deu`), full names (`German`, `English`, `French`), and pass-through of ISO 639-1. Defined in `metadb.py`.
+
+### `t.lang` property (BaseText)
+
+Checks `_meta` dict for keys `lang`, `language`, `language_1`, `estc_lang`, `language1` in order, normalizes to ISO 639-1. Returns `None` if not found. Used by `t.sents()` and `t.passages()` for language-specific sentence tokenization.
+
+### Sentence tokenization
+
+`t.sents()` and `PassageSectionCorpus.parse_sections()` use `_lang_to_punkt(lang)` to select the correct NLTK punkt model (English, French, German, etc.). Falls back to English.
+
+## Translation detection (`db-detect-translations`)
+
+Detects translations via cross-language match groups. Standalone command, separate from `db-enrich-genres`.
+
+```bash
+lltk db-detect-translations    # run after db-match
+```
+
+### Algorithm
+
+1. Find match groups containing texts in 2+ languages
+2. For each group, find earliest year per language
+3. Original language = language with earliest text (ties broken by text count)
+4. Texts in other languages: `is_translated=True`, `original_lang` set
+
+### Results (as of 2026-04-16)
+
+711 cross-language groups, 8,644 texts. 1,879 marked as translations.
+
+| Flow | Groups | Example |
+|------|--------|---------|
+| en ↔ la | 454 | Latin originals + English translations (Terence, Epictetus) |
+| en ↔ fr | 162 | French editions of English novels (Fielding, Dickens, Austen) |
+| el ↔ la | 46 | Greek/Latin bilingual editions |
+
+### Columns written
+
+- `is_translated` (BOOLEAN): only sets `True` on translations; doesn't overwrite existing `True` on originals (may come from MARC)
+- `original_lang` (TEXT): ISO 639-1 code of the source language
+
+### Use case
+
+Abstraction project: `arc_fiction_fr` filters `lang='fr' AND (is_translated IS NULL OR is_translated=FALSE)` to exclude translated English novels from the French fiction arc.
+
+## Prosodic integration (`prosodic-parse`, `prosodic-aggregate`)
+
+Wrapper around [`prosodic`](https://github.com/quadrismegistus/prosodic)'s batch helpers for corpus-level metrical parsing. Prosodic is an **optional dependency** (requires `prosodic>=3.1` for `parse_corpus` / `TextModel`) — imported lazily inside the CLI and accessor functions.
+
+### Per-text layout
+
+```
+{corpus.path}/prosodic/{text.id}/
+    syll.parquet     flat syllable-level DataFrame
+    parsed.parquet   per-line best parse + violations (if parsed)
+    meta.json        prosodic's config/metadata (resumability marker)
+```
+
+The directory is a `path_prosodic` attribute on both corpus and text, resolved through the standard `get_path` chain (manifest `path_prosodic = ...` or instance `_path_prosodic` overrides the default `{corpus.path}/prosodic`).
+
+### CLI
+
+```bash
+lltk prosodic-parse <corpus> [-j N] [--device cpu|gpu|auto]
+                             [--no-resume] [--syntax] [--limit N]
+lltk prosodic-aggregate <corpus>
+```
+
+- `-j, --jobs`: parallel workers (default: 1; `prosodic.parse_corpus` handles the pool)
+- `--device`: `auto` picks GPU if available (MPS/CUDA), else CPU. GPU forces `n_workers=1`.
+- `--no-resume`: force re-parse of already-parsed texts (default skips via meta.json marker)
+- `--syntax`: run syntactic parsing too (slower)
+- `--limit`: cap number of texts (for testing)
+
+Aggregate builds `{corpus.path}/prosodic.parquet` by streaming per-text `parsed.parquet` files through a single `pyarrow.parquet.ParquetWriter` (incremental, Hathi-scale safe). Each row carries a `text_id` column.
+
+### Python API
+
+`t.prosodic()` returns a `prosodic.TextModel` two ways:
+
+- **Cached** (default): if a corpus-level parse exists under `{corpus.path_prosodic}/{t.id}/`, load it — includes full metrical scansion.
+- **Ad-hoc fallback**: otherwise, build a fresh TextModel from `t.txt` — has syllable/line structure but no metrical parse. Call `.parse()` on it to scan meter on the fly.
+
+```python
+import lltk
+C = lltk.load('test_fixture')
+
+# Cached path (after `lltk prosodic-parse`)
+t = list(C.texts())[0]
+tm = t.prosodic()                  # loads from disk if parsed, else builds from txt
+tm._syll_df                        # syllable-level DataFrame
+tm._cached_parsed_df               # parsed lines + violations (if a parse ran)
+
+# Ad-hoc path (no corpus pass needed)
+tm = t.prosodic(cached=False)      # always fresh from t.txt
+tm.parse()                          # scan meter on the fly
+
+# Path attributes resolve regardless of whether a parse exists
+C.path_prosodic                     # {corpus.path}/prosodic
+t.path_prosodic                     # {corpus.path}/prosodic/{t.id}
+```
+
+The aggregator and parser live in `lltk/tools/prosodic_tools.py`. They are deliberately thin — `prosodic.parse_corpus` owns multiprocessing, resume logic, file format, and error handling; LLTK just feeds it the texts and points it at `path_prosodic`.
+
+### Notes
+
+- `text.txt` may be empty for some texts; the parser skips those silently.
+- Per-text dirs mean hundreds of thousands of inodes for Hathi-scale corpora. Acceptable for now; may add a sharded-parquet mode later if inode pressure becomes an issue.
+- Nothing is registered in MetaDB yet — prosodic output is file-backed only. Aggregation into a DB table is a separate future step.
+
+## Per-text language detection (`db-detect-langs`)
+
+Per-text language detection via stopword intersection against `freqs_db.text_freqs`. Complements the `lang` column populated from corpus metadata + manifest defaults at ingest, which mislabels French/Latin/German texts lurking inside English-defaulted corpora (ECCO, EEBO, Chadwyck, etc.).
+
+```bash
+lltk db-detect-langs              # writes lang_detected, lang_coverage, lang_confidence
+lltk db-detect-langs --apply      # also overwrite `lang` with confident detections
+```
+
+### Algorithm
+
+1. Group function words by language from NLTK stopwords (en/fr/de/it/es/pt/nl) + curated Latin (~150) and Greek (~50) lists. ~1,700 words total across 9 languages.
+2. For each text in `freqs_db.text_freqs`, sum stopword hits per language.
+3. Assign to `argmax(hits)` if:
+   - coverage (top_hits / total_tokens) ≥ `--coverage` (default 0.05)
+   - confidence (top_hits / second_hits) ≥ `--confidence` (default 2.0)
+4. Below threshold → `lang_detected = 'unknown'`.
+5. Below `--min-tokens` (default 50) → `lang_detected = NULL`.
+
+### Columns written
+
+- `lang_metadata` (TEXT): one-shot snapshot of the `lang` column value at first run — preserves the original metadata/manifest assignment
+- `lang_detected` (TEXT): freqs-based detection result, one of en/fr/de/la/it/es/pt/nl/el/unknown/NULL
+- `lang_coverage` (DOUBLE): share of tokens hitting top-lang stopwords (typically 0.3–0.5 for clean text)
+- `lang_confidence` (DOUBLE): ratio of top-lang hits to runner-up (999 if runner-up is 0)
+
+### Use cases
+
+- **Cleanup of manifest-default corpora**: English-defaulted corpora (ECCO, EEBO, Chadwyck, Hathi) contain French/Latin extracts that should be scored against the correct norm dictionary.
+- **Cross-check metadata**: compare `lang_metadata` vs `lang_detected` to find corpus metadata bugs.
+- **Per-language scoring**: abstraction project uses `lang_detected` to route each text to the correct language's norms DB.
+
+Runtime: ~5–10 min for 1.6M texts (single-threaded cursor over freqs_db, pure Python dict lookups).
+
+## Passages DB (metadb_passages.sqlite)
+
+SQLite + FTS5 database of ~500-word text passages for full-text search and passage-level analysis.
+
+```bash
+lltk db-passages                          # all corpora, 500w passages
+lltk db-passages chadwyck ecco_tcp        # specific corpora
+lltk db-passages -n 300                   # 300w passages
+lltk db-passages -j 8 --force             # 8 workers, rebuild
+```
+
+### Schema
+
+```sql
+passages(_id TEXT, seq INTEGER, text TEXT, n_words INTEGER, lang TEXT, PRIMARY KEY (_id, seq))
+passages_meta(_id TEXT PRIMARY KEY, corpus TEXT, n_passages INTEGER)
+passages_fts USING fts5(_id, text, content='passages')  -- FTS5 virtual table
+```
+
+### Build process
+
+- Iterates corpora from manifest (no DuckDB dependency)
+- Sentence-aware chunking using language-specific NLTK punkt tokenizer
+- Threaded parallel workers via `pmap(use_threads=True)`
+- Incremental: skips already-processed `_id`s (tracked in `passages_meta`)
+- FTS5 index built at the end
+
+### Full-text search
+
+```python
+# Python API
+lltk.db.search('virtue', genre='Fiction', year_min=1700, limit=20)
+lltk.db.search('"virtue and honor"', corpus='chadwyck')
+lltk.db.search('NEAR(virtue vice, 5)', lang='en')
+lltk.db.search_count('virtue')
+```
+
+```bash
+# CLI
+lltk search "virtue" --genre Fiction --year-min 1700 -n 10
+lltk search '"virtue and honor"' --corpus chadwyck
+```
+
+```
+# Web API
+GET /api/search?q=virtue&genre=Fiction&year_min=1700&limit=20
+```
+
+Filters (genre, corpus, lang, year) use DuckDB to get matching `_id`s, then SQLite FTS5 searches within that set.
+
+### Scale estimate
+
+~112K fiction texts with txt files → ~25-35GB passages DB. Hathi corpora excluded (freqs only, no txt).
+
+## Non-English corpora
+
+### French corpora
+
+| Corpus | ID | Texts | Source | Genre |
+|--------|-----|-------|--------|-------|
+| ARTFL | `artfl` | 3,558 | Frantext | From metadata + keyword fallback |
+| French PD Books | `french_pd_books` | 289,517 | PleIAs/Gallica via HuggingFace | Keyword (roman only) |
+| Gallica Literary Fictions | `gallica_literary_fictions` | 15,483 | Zenodo/Gallica Y2 classification | All Fiction |
+| Paige (French) | `paige` | 3,236 | Zenodo (Gallagher/Paige) | All Fiction |
+
+### German corpora
+
+| Corpus | ID | Texts | Source | Genre |
+|--------|-----|-------|--------|-------|
+| DTA | `dta` | 3,295 | Deutsches Textarchiv | From subject classification (40+ categories) |
+| German PD | `german_pd` | 274,563 | PleIAs via HuggingFace | Keyword (roman/novelle) |
+| German Fiction | `german_fiction` | 3,219 | Figshare/Gutenberg-DE | All Fiction, `is_translated` for 484 translations |
+
+### Compile patterns
+
+- **HuggingFace streaming** (french_pd_books): `load_dataset(streaming=True)`, row per book
+- **HuggingFace pyarrow** (german_pd): `HfFileSystem` + `pyarrow.parquet` to handle schema differences across shards
+- **Zenodo API** (gallica_literary_fictions, paige): download zips/CSVs via REST API
+- **Figshare API** (german_fiction): get download URL from API, download zip
+
+### Conservative genre keywords (precision over recall)
+
+French: `roman/romans` → Fiction, `poème/poèmes/poésie/poésies` → Poetry, `comédie/tragédie/opéra` → Drama.
+
+German: `roman/romane/novelle/novellen` → Fiction, `gedicht/gedichte/lyrik` → Poetry, `komödie/tragödie/trauerspiel/lustspiel/schauspiel` → Drama.
+
+Excluded noisy keywords: histoire/Geschichte (often fiction), nouvelle (means "new" in French), mémoires, conte, vers, discours, lettre, erzählung, märchen, brief.
 
 ## BookNLP character analysis
 

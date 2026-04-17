@@ -69,6 +69,27 @@ class ArcFiction(CuratedCorpus):
         return meta
 
 
+class ArcFictionFr(CuratedCorpus):
+    ID = 'arc_fiction_fr'
+    NAME = 'ArcFictionFr'
+    SOURCES = {
+        'french_pd_books': {'genre': 'Fiction', 'lang': 'fr'},
+        'artfl': {'genre': 'Fiction', 'lang': 'fr'},
+        'gallica_literary_fictions': {'genre': 'Fiction', 'lang': 'fr'},
+        'txtlab': {'genre': 'Fiction', 'lang': 'fr'},
+    }
+    DEDUP = True
+    DEDUP_BY = 'oldest'
+
+    def load_metadata(self, **kwargs):
+        meta = super().load_metadata(**kwargs)
+        if meta is None or not len(meta):
+            return meta
+        if 'is_translated' in meta.columns:
+            meta = meta[meta.is_translated.fillna(False) == False]
+        return meta
+
+
 class ArcPoetry(CuratedCorpus):
     ID = 'arc_poetry'
     NAME = 'ArcPoetry'

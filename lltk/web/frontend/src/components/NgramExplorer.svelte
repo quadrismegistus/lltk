@@ -14,6 +14,13 @@
   let dedup = $state(false);
   let byCorpus = $state(false);
 
+  // Chart display options (client-side only — no backend change)
+  let bucket = $state(10);           // 1, 5, 10 (year bin width)
+  let showLines = $state(true);
+  let showPoints = $state(true);
+  let relativeToMax = $state(false); // normalize each series to [0, 1]
+  let smoothWindow = $state(0);      // 0=off, 3/5/11 = moving-average window
+
   let data = $state([]);
   let wordList = $state([]);
   let seriesList = $state([]);
@@ -46,8 +53,10 @@
     loading = true;
     error = '';
     try {
+      // Finer-than-decade bins need per-year data from backend
+      const by = Number(bucket) < 10 ? 'year' : 'decade';
       const res = await getNgram({
-        words, genre, corpus, year_min: yearMin, year_max: yearMax, normalize,
+        words, genre, corpus, year_min: yearMin, year_max: yearMax, normalize, by,
         dedup: dedup ? true : undefined,
         by_corpus: byCorpus ? true : undefined,
       });
@@ -98,47 +107,107 @@
   const plotW = W - PAD.left - PAD.right;
   const plotH = H - PAD.top - PAD.bottom;
 
-  function chartPaths() {
-    if (!data.length || !seriesList.length) return [];
-    const periods = data.map(d => d.period);
-    const minP = Math.min(...periods), maxP = Math.max(...periods);
-    const rangeP = maxP - minP || 1;
-
-    // Find max value across all series
-    let maxVal = 0;
+  // Aggregate backend's per-year rows into bins of `bucket` years.
+  // Within a bin, values are averaged (weighted by n_texts when available);
+  // counts and text counts are summed.
+  function bucketedData() {
+    const b = Number(bucket) || 1;
+    if (!data.length || b <= 1) return data;
+    const bins = new Map();
     for (const row of data) {
+      const p = Math.floor(row.period / b) * b;
+      if (!bins.has(p)) bins.set(p, { period: p, _wsum: {}, _wden: {} });
+      const agg = bins.get(p);
       for (const s of seriesList) {
-        if (row[s] > maxVal) maxVal = row[s];
+        const v = row[s], cnt = row[`${s}_count`], txt = row[`${s}_texts`];
+        if (v == null) continue;
+        // Weight per-million values by text count so averages are fair
+        const w = txt || 1;
+        agg._wsum[s] = (agg._wsum[s] || 0) + v * w;
+        agg._wden[s] = (agg._wden[s] || 0) + w;
+        agg[`${s}_count`] = (agg[`${s}_count`] || 0) + (cnt || 0);
+        agg[`${s}_texts`] = (agg[`${s}_texts`] || 0) + (txt || 0);
       }
     }
-    if (!maxVal) maxVal = 1;
+    const out = [];
+    for (const [p, agg] of [...bins.entries()].sort((x, y) => x[0] - y[0])) {
+      const row = { period: p };
+      for (const s of seriesList) {
+        row[s] = agg._wden[s] ? agg._wsum[s] / agg._wden[s] : null;
+        row[`${s}_count`] = agg[`${s}_count`] || 0;
+        row[`${s}_texts`] = agg[`${s}_texts`] || 0;
+      }
+      out.push(row);
+    }
+    return out;
+  }
 
-    return seriesList.map((s, i) => {
-      const points = data
-        .filter(d => d[s] != null)
-        .map(d => {
-          const x = PAD.left + ((d.period - minP) / rangeP) * plotW;
-          const y = PAD.top + plotH - (d[s] / maxVal) * plotH;
-          return { x, y, period: d.period, value: d[s], count: d[`${s}_count`], texts: d[`${s}_texts`] };
-        });
-      const pathD = points.map((p, j) => `${j === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
-      // Display label: for "virtue:chadwyck" show "chadwyck", for "virtue" show "virtue"
-      const label = s.includes(':') ? s : s;
-      return { word: s, label, color: COLORS[i % COLORS.length], pathD, points };
+  // Centered moving average across a fixed odd window.
+  function smoothSeries(values, win) {
+    const w = Number(win) || 0;
+    if (!w || w < 2) return values;
+    const half = Math.floor(w / 2);
+    return values.map((_, i) => {
+      let sum = 0, n = 0;
+      for (let j = Math.max(0, i - half); j <= Math.min(values.length - 1, i + half); j++) {
+        if (values[j] != null) { sum += values[j]; n++; }
+      }
+      return n ? sum / n : null;
     });
   }
 
+  const paths = $derived.by(() => {
+    // eslint-disable-next-line no-unused-vars
+    const [_b, _s, _r] = [bucket, smoothWindow, relativeToMax]; // track deps
+    const rows = bucketedData();
+    if (!rows.length || !seriesList.length) return [];
+    const periods = rows.map(d => d.period);
+    const minP = Math.min(...periods), maxP = Math.max(...periods);
+    const rangeP = maxP - minP || 1;
+
+    // Compute per-series values (with optional smoothing) and per-series max
+    const seriesValues = seriesList.map(s => {
+      const raw = rows.map(r => r[s]);
+      const smoothed = smoothSeries(raw, smoothWindow);
+      const maxV = Math.max(0, ...smoothed.filter(v => v != null));
+      return { s, vals: smoothed, maxV: maxV || 1 };
+    });
+
+    // Global max (for shared axis when relativeToMax is off)
+    const globalMax = Math.max(1, ...seriesValues.map(sv => sv.maxV));
+
+    return seriesValues.map(({ s, vals, maxV }, i) => {
+      const scale = relativeToMax ? maxV : globalMax;
+      const points = rows.map((r, j) => {
+        const v = vals[j];
+        if (v == null) return null;
+        const x = PAD.left + ((r.period - minP) / rangeP) * plotW;
+        const y = PAD.top + plotH - (v / scale) * plotH;
+        return { x, y, period: r.period, value: v, count: r[`${s}_count`], texts: r[`${s}_texts`] };
+      }).filter(Boolean);
+      const pathD = points.map((p, j) => `${j === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+      return { word: s, label: s, color: COLORS[i % COLORS.length], pathD, points };
+    });
+  });
+
   function yTicks() {
     if (!data.length || !seriesList.length) return [];
-    let maxVal = 0;
-    for (const row of data) {
-      for (const s of seriesList) { if (row[s] > maxVal) maxVal = row[s]; }
+    // Axis scale depends on relativeToMax mode
+    if (relativeToMax) {
+      const ticks = [];
+      for (let i = 0; i <= 4; i++) {
+        const frac = i / 4;
+        const y = PAD.top + plotH - frac * plotH;
+        ticks.push({ y, label: frac.toFixed(2) });
+      }
+      return ticks;
     }
+    let maxVal = 0;
+    for (const p of paths) for (const pt of p.points) if (pt.value > maxVal) maxVal = pt.value;
     if (!maxVal) return [];
     const ticks = [];
-    const step = maxVal / 4;
     for (let i = 0; i <= 4; i++) {
-      const val = step * i;
+      const val = (maxVal / 4) * i;
       const y = PAD.top + plotH - (val / maxVal) * plotH;
       ticks.push({ y, label: val < 10 ? val.toFixed(1) : Math.round(val) });
     }
@@ -196,6 +265,38 @@
     </label>
   </div>
 
+  <div class="search-row options-row">
+    <label class="opt-label">Bin:
+      <select bind:value={bucket} onchange={search}>
+        <option value={1}>1 yr</option>
+        <option value={5}>5 yr</option>
+        <option value={10}>10 yr</option>
+        <option value={25}>25 yr</option>
+      </select>
+    </label>
+    <label class="opt-label">Smooth:
+      <select bind:value={smoothWindow}>
+        <option value={0}>off</option>
+        <option value={3}>3</option>
+        <option value={5}>5</option>
+        <option value={11}>11</option>
+        <option value={21}>21</option>
+      </select>
+    </label>
+    <label class="checkbox-label">
+      <input type="checkbox" bind:checked={showLines} />
+      Lines
+    </label>
+    <label class="checkbox-label">
+      <input type="checkbox" bind:checked={showPoints} />
+      Points
+    </label>
+    <label class="checkbox-label">
+      <input type="checkbox" bind:checked={relativeToMax} />
+      Relative to max
+    </label>
+  </div>
+
   {#if error}
     <div class="error">{error}</div>
   {/if}
@@ -214,20 +315,24 @@
         {#each xTicks() as tick}
           <text x={tick.x} y={H - 5} text-anchor="middle" class="tick-label">{tick.label}</text>
         {/each}
-        <!-- Lines -->
-        {#each chartPaths() as path}
-          <path d={path.pathD} fill="none" stroke={path.color} stroke-width="2" />
-          {#each path.points as pt}
-            <circle cx={pt.x} cy={pt.y} r="4" fill={path.color} class="data-point"
-              onclick={() => showExamples(path.word, pt.period)}
-            >
-              <title>{path.label} {pt.period}s: {pt.value?.toFixed?.(1)} ({formatNumber(pt.count)} in {pt.texts} texts)</title>
-            </circle>
-          {/each}
+        <!-- Series -->
+        {#each paths as path}
+          {#if showLines}
+            <path d={path.pathD} fill="none" stroke={path.color} stroke-width="2" />
+          {/if}
+          {#if showPoints}
+            {#each path.points as pt}
+              <circle cx={pt.x} cy={pt.y} r="4" fill={path.color} class="data-point"
+                onclick={() => showExamples(path.word, pt.period)}
+              >
+                <title>{path.label} {pt.period}{Number(bucket)>1?`–${pt.period+Number(bucket)-1}`:''}: {pt.value?.toFixed?.(1)} ({formatNumber(pt.count)} in {pt.texts} texts)</title>
+              </circle>
+            {/each}
+          {/if}
         {/each}
       </svg>
       <div class="legend">
-        {#each chartPaths() as path}
+        {#each paths as path}
           <span class="legend-item">
             <span class="legend-dot" style="background: {path.color}"></span>
             {path.label}
@@ -290,6 +395,13 @@
   }
   .checkbox-label {
     font-size: 13px; display: flex; align-items: center; gap: 4px; color: #475569;
+  }
+  .options-row { padding-top: 8px; padding-bottom: 8px; background: #f8fafc; }
+  .opt-label {
+    font-size: 13px; color: #475569; display: flex; align-items: center; gap: 4px;
+  }
+  .opt-label select {
+    padding: 4px 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px;
   }
 
   .error {

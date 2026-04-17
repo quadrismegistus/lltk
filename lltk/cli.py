@@ -64,6 +64,38 @@ def main():
 	# db enrich-genres
 	p_db_enrich = subparsers.add_parser('db-enrich-genres', help='Propagate genre from bibliography corpora via match groups')
 
+	# db-detect-translations
+	p_db_trans = subparsers.add_parser('db-detect-translations', help='Detect translations via cross-language match groups')
+
+	# db-detect-langs
+	p_db_lang = subparsers.add_parser('db-detect-langs', help='Detect per-text language via stopword intersection against freqs_db')
+	p_db_lang.add_argument('-j', '--jobs', type=int, default=None, help='Number of parallel workers (default: cpu_count - 2)')
+	p_db_lang.add_argument('--batch-size', type=int, default=5000, help='Texts per worker batch (default: 5000)')
+	p_db_lang.add_argument('--min-tokens', type=int, default=50, help='Skip texts with fewer total tokens (default: 50)')
+	p_db_lang.add_argument('--coverage', type=float, default=0.05, help='Min fraction of tokens hitting top-lang stopwords (default: 0.05)')
+	p_db_lang.add_argument('--confidence', type=float, default=2.0, help='Min ratio of top-lang hits to runner-up (default: 2.0)')
+	p_db_lang.add_argument('--apply', action='store_true', help='Overwrite `lang` column with confident detections in both directions (default: only write lang_detected/coverage/confidence)')
+	p_db_lang.add_argument('--apply-conservative', action='store_true', help='Overwrite `lang` only where lang_metadata=en (likely manifest default) AND lang_detected is a confident non-English language')
+	p_db_lang.add_argument('--only-apply', action='store_true', help='Skip detection; just run the selected --apply / --apply-conservative update using existing lang_detected values')
+
+	# search
+	p_search = subparsers.add_parser('search', help='Full-text search across passages')
+	p_search.add_argument('query', help='FTS5 query (word, "phrase", NEAR(a b, 5))')
+	p_search.add_argument('--genre', default=None)
+	p_search.add_argument('--corpus', default=None)
+	p_search.add_argument('--lang', default=None)
+	p_search.add_argument('--year-min', type=int, default=None)
+	p_search.add_argument('--year-max', type=int, default=None)
+	p_search.add_argument('-n', '--limit', type=int, default=20)
+	p_search.add_argument('--offset', type=int, default=0)
+
+	# db-passages
+	p_db_passages = subparsers.add_parser('db-passages', help='Build passages DB (SQLite + FTS5) from txt files')
+	p_db_passages.add_argument('-j', '--jobs', type=int, default=None, help='Number of parallel workers')
+	p_db_passages.add_argument('-n', '--passage-size', type=int, default=500, help='Target words per passage (default: 500)')
+	p_db_passages.add_argument('--force', action='store_true', help='Rebuild from scratch')
+	p_db_passages.add_argument('corpora', nargs='*', default=None, help='Corpus IDs (default: all)')
+
 	# db wordcounts
 	p_db_wc = subparsers.add_parser('db-wordcounts', help='Compute word counts from freqs files')
 	p_db_wc.add_argument('-j', '--jobs', type=int, default=None, help='Number of parallel workers')
@@ -73,13 +105,35 @@ def main():
 	p_db_wi.add_argument('-j', '--jobs', type=int, default=None, help='Number of parallel workers')
 	p_db_wi.add_argument('--min-count', type=int, default=1, help='Min word count to include (default: 1)')
 	p_db_wi.add_argument('--vocab-size', type=int, default=100_000, help='Top N words by document frequency (default: 100000)')
+	p_db_wi.add_argument('--sql', action='store_true', help='Use SQL-only build against freqs_db (requires db-freqs first; faster)')
+	p_db_wi.add_argument('--memory-limit', default='32GB', help='DuckDB memory limit for --sql build (default: 32GB)')
 	p_db_wi.add_argument('corpora', nargs='*', help='Specific corpora (default: all)')
+
+	# db-freqs
+	p_db_fq = subparsers.add_parser('db-freqs', help='Ingest per-text freqs JSONs into freqs_db.text_freqs')
+	p_db_fq.add_argument('-j', '--jobs', type=int, default=None, help='Number of parallel workers')
+	p_db_fq.add_argument('--batch-size', type=int, default=200, help='Texts per worker batch (default: 200)')
+	p_db_fq.add_argument('--force', action='store_true', help='Drop and re-ingest all')
+	p_db_fq.add_argument('corpora', nargs='*', help='Specific corpora (default: all)')
 
 	# db-wordagg
 	p_db_wa = subparsers.add_parser('db-wordagg', help='Build word aggregate tables from existing word index')
 
 	# db match-stats
 	p_db_match_stats = subparsers.add_parser('db-match-stats', help='Show matching statistics')
+
+	# prosodic-parse
+	p_pros = subparsers.add_parser('prosodic-parse', help='Parse a corpus with prosodic (metrical scansion)')
+	p_pros.add_argument('corpus', help='Corpus ID')
+	p_pros.add_argument('-j', '--jobs', type=int, default=1, help='Parallel workers (default: 1)')
+	p_pros.add_argument('--device', default='auto', choices=['auto', 'cpu', 'gpu'], help='Compute device (default: auto)')
+	p_pros.add_argument('--no-resume', action='store_true', help='Re-parse all texts (default: skip texts already parsed)')
+	p_pros.add_argument('--syntax', action='store_true', help='Run syntactic parsing too (slower)')
+	p_pros.add_argument('--limit', type=int, default=None, help='Parse only first N texts (testing)')
+
+	# prosodic-aggregate
+	p_pros_agg = subparsers.add_parser('prosodic-aggregate', help='Build {corpus.path}/prosodic.parquet from per-text parsed.parquet files')
+	p_pros_agg.add_argument('corpus', help='Corpus ID')
 
 	# annotate
 	p_annotate = subparsers.add_parser('annotate', help='Launch annotation web app for a corpus')
@@ -124,6 +178,8 @@ def main():
 			kwargs['tar_path'] = args.tar_path
 		if args.repos:
 			kwargs['repos'] = [r.strip() for r in args.repos.split(',')]
+		if args.force:
+			kwargs['force'] = True
 		corpus.compile(**kwargs)
 
 	elif args.cmd == 'preprocess':
@@ -231,16 +287,72 @@ def main():
 			print('\nGenre enrichment source distribution:')
 			print(stats.to_string(index=False))
 
-	elif args.cmd == 'db-wordindex':
-		lltk.db.build_word_index(
+	elif args.cmd == 'db-detect-translations':
+		lltk.db.detect_translations()
+
+	elif args.cmd == 'db-detect-langs':
+		lltk.db.detect_langs(
+			batch_size=args.batch_size,
+			min_tokens=args.min_tokens,
+			coverage_threshold=args.coverage,
+			confidence_threshold=args.confidence,
+			apply=args.apply,
+			apply_conservative=args.apply_conservative,
+			only_apply=args.only_apply,
 			num_proc=args.jobs,
-			min_count=args.min_count,
-			vocab_size=args.vocab_size,
-			corpora=args.corpora or None,
 		)
+
+	elif args.cmd == 'search':
+		results = lltk.db.search(
+			args.query,
+			genre=args.genre, corpus=args.corpus, lang=args.lang,
+			year_min=args.year_min, year_max=args.year_max,
+			limit=args.limit, offset=args.offset,
+		)
+		if not results:
+			print('No results.')
+		else:
+			n_total = lltk.db.search_count(args.query)
+			print(f'{n_total} passages match "{args.query}" (showing {len(results)})\n')
+			for r in results:
+				print(f'[{r["corpus"]}] [{r.get("year","")}] {r["title"][:60]}  | {r["author"][:30]}')
+				print(f'  {r["snippet"]}')
+				print()
+
+	elif args.cmd == 'db-passages':
+		lltk.db.build_passages_db(
+			n=args.passage_size,
+			num_proc=args.jobs,
+			corpora=args.corpora or None,
+			force=args.force,
+		)
+
+	elif args.cmd == 'db-wordindex':
+		if args.sql:
+			lltk.db.build_word_index_sql(
+				vocab_size=args.vocab_size,
+				min_count=args.min_count,
+				corpora=args.corpora or None,
+				memory_limit=args.memory_limit,
+			)
+		else:
+			lltk.db.build_word_index(
+				num_proc=args.jobs,
+				min_count=args.min_count,
+				vocab_size=args.vocab_size,
+				corpora=args.corpora or None,
+			)
 
 	elif args.cmd == 'db-wordagg':
 		lltk.db.build_word_aggregates()
+
+	elif args.cmd == 'db-freqs':
+		lltk.db.build_freqs_db(
+			num_proc=args.jobs,
+			batch_size=args.batch_size,
+			corpora=args.corpora or None,
+			force=args.force,
+		)
 
 	elif args.cmd == 'db-match-stats':
 		stats = lltk.db.match_stats()
@@ -251,6 +363,21 @@ def main():
 		print(f"\nGroup size distribution:")
 		print(stats['group_sizes'].to_string(index=False))
 
+
+	elif args.cmd == 'prosodic-parse':
+		from lltk.tools.prosodic_tools import parse_corpus
+		parse_corpus(
+			args.corpus,
+			n_workers=args.jobs,
+			device=args.device,
+			resume=not args.no_resume,
+			syntax=args.syntax,
+			limit=args.limit,
+		)
+
+	elif args.cmd == 'prosodic-aggregate':
+		from lltk.tools.prosodic_tools import aggregate_corpus
+		aggregate_corpus(args.corpus)
 
 	elif args.cmd == 'annotate':
 		from lltk.web.annotate import run_annotate

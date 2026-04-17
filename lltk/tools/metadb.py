@@ -34,6 +34,8 @@ PATH_METADB = os.path.join(PATH_LLTK_DATA, 'metadb.duckdb')
 PATH_MATCHDB = os.path.join(PATH_LLTK_DATA, 'metadb_matches.duckdb')
 PATH_WORDCOUNTDB = os.path.join(PATH_LLTK_DATA, 'metadb_wordcounts.duckdb')
 PATH_WORDINDEXDB = os.path.join(PATH_LLTK_DATA, 'metadb_wordindex.duckdb')
+PATH_FREQSDB = os.path.join(PATH_LLTK_DATA, 'metadb_freqs.duckdb')
+PATH_PASSAGESDB = os.path.join(PATH_LLTK_DATA, 'metadb_passages.sqlite')
 
 # Standard genre vocabulary — harmonized across corpora
 GENRE_VOCAB = {
@@ -57,13 +59,43 @@ GENRE_VOCAB = {
     'Reference',
 }
 
+# Normalize language codes to ISO 639-1 two-letter codes
+LANG_NORMALIZE = {
+    # ISO 639-2/B (bibliographic)
+    'eng': 'en', 'fre': 'fr', 'ger': 'de', 'spa': 'es', 'ita': 'it',
+    'por': 'pt', 'rus': 'ru', 'lat': 'la', 'grc': 'el', 'dut': 'nl',
+    'swe': 'sv', 'dan': 'da', 'nor': 'no', 'pol': 'pl', 'hun': 'hu',
+    'cze': 'cs', 'rum': 'ro', 'fin': 'fi',
+    # ISO 639-2/T (terminological)
+    'fra': 'fr', 'deu': 'de', 'nld': 'nl', 'ces': 'cs', 'ron': 'ro',
+    # Full names (lowercase)
+    'english': 'en', 'french': 'fr', 'german': 'de', 'spanish': 'es',
+    'italian': 'it', 'portuguese': 'pt', 'russian': 'ru', 'latin': 'la',
+    'greek': 'el', 'dutch': 'nl', 'swedish': 'sv', 'danish': 'da',
+    'norwegian': 'no', 'polish': 'pl', 'hungarian': 'hu',
+    'czech': 'cs', 'romanian': 'ro', 'finnish': 'fi',
+    # Already ISO 639-1 — pass through
+    'en': 'en', 'fr': 'fr', 'de': 'de', 'es': 'es', 'it': 'it',
+    'pt': 'pt', 'ru': 'ru', 'la': 'la', 'el': 'el', 'nl': 'nl',
+    'sv': 'sv', 'da': 'da', 'no': 'no', 'pl': 'pl', 'hu': 'hu',
+    'cs': 'cs', 'ro': 'ro', 'fi': 'fi',
+}
+
+
+def normalize_lang(lang):
+    """Normalize a language code/name to ISO 639-1 two-letter code."""
+    if not lang or not isinstance(lang, str) or lang.strip() == '' or lang == 'nan':
+        return None
+    return LANG_NORMALIZE.get(lang.strip().lower())
+
+
 # Corpora excluded from DB ingest (too large, not useful as standalone)
 DB_BLACKLIST = {'hathi', 'bighist'}
 
 # Core columns stored as real columns; everything else goes in meta JSON
-CORE_COLS = ['_id', 'corpus', 'id', 'title', 'author', 'year', 'genre', 'genre_raw', 'is_translated', 'title_norm', 'author_norm', 'path_freqs']
+CORE_COLS = ['_id', 'corpus', 'id', 'title', 'author', 'year', 'genre', 'genre_raw', 'lang', 'is_translated', 'title_norm', 'author_norm', 'path_freqs']
 STANDARD_COLS = ['id', 'title', 'author', 'year', 'genre', 'genre_raw']
-TEXT_COLS = ['_id', 'corpus', 'id', 'title', 'author', 'genre', 'genre_raw', 'title_norm', 'author_norm', 'path_freqs']  # cols stored as TEXT (not is_translated — that's BOOLEAN)
+TEXT_COLS = ['_id', 'corpus', 'id', 'title', 'author', 'genre', 'genre_raw', 'lang', 'title_norm', 'author_norm', 'path_freqs']  # cols stored as TEXT (not is_translated — that's BOOLEAN)
 
 # Genre authority corpora — metadata-only corpora whose genre labels propagate
 # to digitized corpora via match groups. Higher priority = trusted more.
@@ -421,7 +453,254 @@ def _wi_get_word_set(args):
         return set()
     return set(w.lower() for w, c in d.items() if c >= min_count and _wi_is_word(w))
 
+def _detect_langs_worker(args):
+    """Worker: detect language for a batch of _ids by reading freqs_db directly.
+
+    args: (freqs_db_path, ids, word_to_langs, min_tokens,
+           coverage_threshold, confidence_threshold)
+    Returns: list of (_id, lang_detected, coverage, confidence)
+    """
+    import duckdb
+    freqs_db_path, ids, word_to_langs, min_tokens, cov_th, conf_th = args
+    conn = duckdb.connect(freqs_db_path, read_only=True)
+    placeholders = ','.join('?' * len(ids))
+    reader = conn.execute(
+        f"SELECT _id, freqs FROM text_freqs WHERE _id IN ({placeholders})",
+        ids,
+    ).fetch_record_batch(10000)
+    results = []
+    for batch in reader:
+        ids_out = batch.column('_id').to_pylist()
+        freqs_col = batch.column('freqs').to_pylist()
+        for _id, entries in zip(ids_out, freqs_col):
+            if entries is None:
+                results.append((_id, None, None, None))
+                continue
+            total_tokens = 0
+            lang_hits = {}
+            for w, n in entries:
+                total_tokens += n
+                lgs = word_to_langs.get(w)
+                if lgs:
+                    for lg in lgs:
+                        lang_hits[lg] = lang_hits.get(lg, 0) + n
+            if total_tokens < min_tokens:
+                results.append((_id, None, None, None))
+                continue
+            if not lang_hits:
+                results.append((_id, 'unknown', 0.0, 0.0))
+                continue
+            top_lang = None
+            top_hits = 0
+            second_hits = 0
+            for lg, h in lang_hits.items():
+                if h > top_hits:
+                    second_hits = top_hits
+                    top_hits = h
+                    top_lang = lg
+                elif h > second_hits:
+                    second_hits = h
+            coverage = top_hits / total_tokens
+            confidence = top_hits / second_hits if second_hits > 0 else 999.0
+            if coverage < cov_th or confidence < conf_th:
+                results.append((_id, 'unknown', coverage, confidence))
+            else:
+                results.append((_id, top_lang, coverage, confidence))
+    conn.close()
+    return results
+
+
+def _wi_agg_batch_from_db(args):
+    """Read a batch of (_id, year, corpus, genre, is_preferred) from the freqs DB,
+    aggregate (word, year, corpus, genre) → (wc, nt, wc_d, nt_d) locally, and
+    (optionally) also aggregate a per-chunk vocab Counter. Writes two parquet shards.
+
+    args: (freqs_db_path, batch, min_count, shard_dir, shard_idx, vocab_set_or_None)
+      batch: list[(_id, year, corpus, genre, is_preferred)]
+      vocab_set: frozenset of words to keep for Pass 2; None for Pass 1 (vocab build)
+
+    Returns (n_texts_processed, word_shard_path, vocab_shard_path).
+    """
+    import re
+    from collections import defaultdict, Counter
+    import duckdb
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    freqs_db_path, batch, min_count, shard_dir, shard_idx, vocab_set = args
+
+    conn = duckdb.connect(freqs_db_path, read_only=True)
+    ids = [b[0] for b in batch]
+    # Fetch freqs for this batch. DuckDB "_id IN (?, ?, ...)" with many params works but
+    # constructing a VALUES list is cleaner for 10K ids.
+    placeholders = ','.join('?' * len(ids))
+    rows = conn.execute(
+        f"SELECT _id, freqs FROM text_freqs WHERE _id IN ({placeholders})",
+        ids,
+    ).fetchall()
+    conn.close()
+
+    # Python lookup: _id → (year, corpus, genre, is_preferred)
+    meta = {b[0]: (b[1], b[2], b[3], b[4]) for b in batch}
+
+    word_re = re.compile(r"^[a-zA-Z][a-zA-Z'\-]*$")
+
+    if vocab_set is None:
+        # Pass 1: collect word → total count (filter by regex)
+        vocab_counter = Counter()
+        for _id, freqs in rows:
+            for w, c in freqs.items():
+                if c < min_count:
+                    continue
+                wl = w.lower()
+                if word_re.match(wl):
+                    vocab_counter[wl] += c
+        vocab_path = os.path.join(shard_dir, f'vocab_{shard_idx:06d}.parquet')
+        if vocab_counter:
+            pq.write_table(pa.table({
+                'word': list(vocab_counter.keys()),
+                'cnt': list(vocab_counter.values()),
+            }), vocab_path, compression='zstd')
+        else:
+            vocab_path = None
+        return (len(batch), None, vocab_path)
+    else:
+        # Pass 2: aggregate (word, year, corpus, genre) → [wc, nt, wc_d, nt_d]
+        agg = defaultdict(lambda: [0, 0, 0, 0])
+        for _id, freqs in rows:
+            if _id not in meta:
+                continue
+            year, corpus, genre, is_pref = meta[_id]
+            for w, c in freqs.items():
+                if c < min_count:
+                    continue
+                wl = w.lower()
+                if wl not in vocab_set:
+                    continue
+                key = (wl, year, corpus, genre)
+                cell = agg[key]
+                cell[0] += c
+                cell[1] += 1
+                if is_pref:
+                    cell[2] += c
+                    cell[3] += 1
+        word_path = os.path.join(shard_dir, f'wyc_{shard_idx:06d}.parquet')
+        if agg:
+            words, years, corpora, genres, wcs, nts, wcds, ntds = [], [], [], [], [], [], [], []
+            for (w, y, c, g), (wc, nt, wcd, ntd) in agg.items():
+                words.append(w); years.append(y); corpora.append(c); genres.append(g)
+                wcs.append(wc); nts.append(nt); wcds.append(wcd); ntds.append(ntd)
+            pq.write_table(pa.table({
+                'word': words, 'year': years, 'corpus': corpora, 'genre': genres,
+                'word_count': wcs, 'n_texts': nts,
+                'word_count_dedup': wcds, 'n_texts_dedup': ntds,
+            }), word_path, compression='zstd')
+        else:
+            word_path = None
+        return (len(batch), word_path, None)
+
+def _chunk_text_to_passages(args):
+    """Chunk a single text file into ~n-word passages using sentence splitting."""
+    _id, corpus_id, txt_path, lang, n = args
+    try:
+        from lltk.text.text import _open_file, _lang_to_punkt
+        import nltk
+        with _open_file(txt_path) as f:
+            txt = f.read()
+        if not txt or not txt.strip():
+            return (_id, corpus_id, [])
+
+        punkt_lang = _lang_to_punkt(lang)
+        sents = nltk.sent_tokenize(txt, language=punkt_lang)
+
+        passages = []
+        chunk_sents = []
+        chunk_word_count = 0
+        seq = 0
+
+        for sent in sents:
+            sent_n = len(sent.split())
+            chunk_sents.append(sent)
+            chunk_word_count += sent_n
+
+            if chunk_word_count >= n:
+                passages.append((_id, seq, ' '.join(chunk_sents), chunk_word_count, lang))
+                seq += 1
+                chunk_sents = []
+                chunk_word_count = 0
+
+        if chunk_sents:
+            passages.append((_id, seq, ' '.join(chunk_sents), chunk_word_count, lang))
+
+        return (_id, corpus_id, passages)
+    except Exception:
+        return (_id, corpus_id, [])
+
+
+def _freqs_read_batch(args):
+    """Read a batch of freqs JSONs and write them as a parquet shard with MAP type.
+
+    Writes one parquet file per batch to shard_dir, returns (n_rows, path).
+    Uses pyarrow's native MAP type so DuckDB can ingest via read_parquet with
+    zero per-row MAP construction overhead.
+    """
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    corpus_root, batch, shard_dir, shard_idx = args
+
+    ids, corpora, freqs_data = [], [], []
+    for _id, corpus, rel_path in batch:
+        d = _wi_read_freqs((corpus_root, rel_path))
+        if d is None:
+            continue
+        ids.append(_id)
+        corpora.append(corpus)
+        # pyarrow MapArray takes list of lists of (key, value) tuples
+        freqs_data.append([(str(k), int(v)) for k, v in d.items()])
+
+    if not ids:
+        return (0, None)
+
+    path = os.path.join(shard_dir, f'freqs_{shard_idx:06d}.parquet')
+    map_type = pa.map_(pa.string(), pa.int32())
+    table = pa.Table.from_arrays(
+        [pa.array(ids), pa.array(corpora), pa.array(freqs_data, type=map_type)],
+        names=['_id', 'corpus', 'freqs'],
+    )
+    pq.write_table(table, path, compression='zstd')
+    return (len(ids), path)
+
+def _wi_pass1_batch(args):
+    """Pass 1 worker: aggregate doc frequencies for a batch of texts locally.
+
+    Returns (n_texts_processed, Counter) where Counter[word] = # of texts in batch
+    containing word (each incremented once per text, regardless of token count).
+    """
+    from collections import Counter
+    corpus_root, batch, min_count = args
+    local = Counter()
+    n = 0
+    for rel_path in batch:
+        d = _wi_read_freqs((corpus_root, rel_path))
+        n += 1
+        if d is None:
+            continue
+        seen = set()
+        for w, c in d.items():
+            if c >= min_count and _wi_is_word(w):
+                wl = w.lower()
+                if wl not in seen:
+                    local[wl] += 1
+                    seen.add(wl)
+    return (n, local)
+
 _wi_vocab = None  # set by parent before ProcessPoolExecutor fork
+
+def _wi_init(vocab):
+    """ProcessPoolExecutor initializer: set vocab in each worker once."""
+    global _wi_vocab
+    _wi_vocab = vocab
 
 def _wi_read_filtered(args):
     """Read freqs, filter to vocabulary, lowercase and merge counts."""
@@ -437,14 +716,77 @@ def _wi_read_filtered(args):
                 merged[wl] = merged.get(wl, 0) + c
     return [(_id, w, c) for w, c in merged.items()]
 
+def _wi_aggregate_batch(args):
+    """Aggregate a batch of texts locally and write parquet shards.
+
+    Returns (n_texts_processed, word_shard_path or None, totals_shard_path or None).
+    """
+    from collections import defaultdict
+    corpus_root, batch, min_count, shard_dir, shard_idx = args
+
+    agg = defaultdict(lambda: [0, 0, 0, 0])     # (word, year, corpus, genre) → [wc, nt, wc_d, nt_d]
+    totals = defaultdict(lambda: [0, 0, 0, 0])  # (year, corpus, genre) → [nt, tw, nt_d, tw_d]
+
+    for _id, rel_path, year, corpus, genre, n_words, is_pref in batch:
+        d = _wi_read_freqs((corpus_root, rel_path))
+        if d is None:
+            continue
+
+        merged = {}
+        for w, c in d.items():
+            if c >= min_count and _wi_is_word(w):
+                wl = w.lower()
+                if wl in _wi_vocab:
+                    merged[wl] = merged.get(wl, 0) + c
+
+        grp = (year, corpus, genre)
+        tot = totals[grp]
+        tot[0] += 1
+        tot[1] += n_words
+        if is_pref:
+            tot[2] += 1
+            tot[3] += n_words
+
+        for word, count in merged.items():
+            key = (word, year, corpus, genre)
+            wc = agg[key]
+            wc[0] += count
+            wc[1] += 1
+            if is_pref:
+                wc[2] += count
+                wc[3] += 1
+
+    import pandas as pd
+    word_path = None
+    tot_path = None
+    if agg:
+        word_path = os.path.join(shard_dir, f'words_{shard_idx:06d}.parquet')
+        word_rows = [(w, y, c, g, wc, nt, wcd, ntd)
+                     for (w, y, c, g), (wc, nt, wcd, ntd) in agg.items()]
+        pd.DataFrame(word_rows, columns=[
+            'word', 'year', 'corpus', 'genre',
+            'word_count', 'n_texts', 'word_count_dedup', 'n_texts_dedup'
+        ]).to_parquet(word_path, index=False)
+    if totals:
+        tot_path = os.path.join(shard_dir, f'totals_{shard_idx:06d}.parquet')
+        tot_rows = [(y, c, g, nt, tw, ntd, twd)
+                    for (y, c, g), (nt, tw, ntd, twd) in totals.items()]
+        pd.DataFrame(tot_rows, columns=[
+            'year', 'corpus', 'genre', 'n_texts', 'total_words',
+            'n_texts_dedup', 'total_words_dedup'
+        ]).to_parquet(tot_path, index=False)
+
+    return (len(batch), word_path, tot_path)
+
 
 class MetaDB:
     def __init__(self, path=None, match_path=None, wordcount_path=None, wordindex_path=None,
-                 read_only=False):
+                 freqs_path=None, read_only=False):
         self.path = path or PATH_METADB
         self.match_path = match_path or PATH_MATCHDB
         self.wordcount_path = wordcount_path or PATH_WORDCOUNTDB
         self.wordindex_path = wordindex_path or PATH_WORDINDEXDB
+        self.freqs_path = freqs_path or PATH_FREQSDB
         self.read_only = read_only
         self._conn = None
         self._col_cache = None
@@ -482,6 +824,14 @@ class MetaDB:
                 pass
             if not self.read_only:
                 self._ensure_wordindex_tables()
+            # Attach freqs DB
+            try:
+                os.makedirs(os.path.dirname(self.freqs_path), exist_ok=True)
+                self._conn.execute(f"ATTACH '{self.freqs_path}' AS freqs_db{ro}")
+            except Exception:
+                pass
+            if not self.read_only:
+                self._ensure_freqs_tables()
         return self._conn
 
     @property
@@ -509,7 +859,10 @@ class MetaDB:
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_corpus ON texts(corpus)")
         # Add columns if upgrading from older schema
         for col, dtype in [('title_norm', 'TEXT'), ('author_norm', 'TEXT'), ('is_translated', 'BOOLEAN'), ('path_freqs', 'TEXT'),
-                           ('genre_enriched_source', 'TEXT'), ('genre_corpus', 'TEXT')]:
+                           ('genre_enriched_source', 'TEXT'), ('genre_corpus', 'TEXT'), ('lang', 'TEXT'),
+                           ('original_lang', 'TEXT'),
+                           ('lang_metadata', 'TEXT'), ('lang_detected', 'TEXT'),
+                           ('lang_coverage', 'DOUBLE'), ('lang_confidence', 'DOUBLE')]:
             try:
                 self._conn.execute(f"ALTER TABLE texts ADD COLUMN {col} {dtype}")
             except Exception:
@@ -566,6 +919,20 @@ class MetaDB:
         """No-op — aggregate tables don't need indexes."""
         pass
 
+    def _ensure_freqs_tables(self):
+        try:
+            self._conn.execute("""
+                CREATE TABLE IF NOT EXISTS freqs_db.text_freqs (
+                    _id    TEXT PRIMARY KEY,
+                    corpus TEXT NOT NULL,
+                    freqs  MAP(VARCHAR, INTEGER)
+                )
+            """)
+        except Exception:
+            # freqs_db ATTACH may have failed silently (e.g., file lock held
+            # by another process); don't cascade-fail initialization.
+            pass
+
     def ingest(self, corpus_id, force=True):
         """Ingest a corpus's load_metadata() output into the DB."""
         if corpus_id in DB_BLACKLIST:
@@ -595,7 +962,10 @@ class MetaDB:
         # Resolve freqs paths (relative to PATH_CORPUS)
         df = self._resolve_freqs_paths(df, corpus)
 
-        return self.ingest_df(df, corpus_id, force=force)
+        # Pass manifest lang as fallback for corpora without a lang column
+        manifest_lang = getattr(corpus, 'lang', None)
+
+        return self.ingest_df(df, corpus_id, force=force, default_lang=manifest_lang)
 
     def _resolve_freqs_paths(self, df, corpus):
         """Add path_freqs column with paths relative to PATH_CORPUS."""
@@ -643,7 +1013,7 @@ class MetaDB:
             log(f'  {n_found}/{len(df)} texts have freqs')
         return df
 
-    def ingest_df(self, df, corpus_id, force=True):
+    def ingest_df(self, df, corpus_id, force=True, default_lang=None):
         """Ingest a DataFrame into the DB for a given corpus."""
         df = df.copy()
 
@@ -704,6 +1074,19 @@ class MetaDB:
             df['year'] = df['year'].apply(_parse_year)
         else:
             df['year'] = None
+
+        # Normalize language codes to ISO 639-1 (before TEXT_COLS loop)
+        if 'lang' in df.columns:
+            df['lang'] = df['lang'].apply(normalize_lang)
+        elif 'language' in df.columns:
+            df['lang'] = df['language'].apply(normalize_lang)
+        else:
+            df['lang'] = normalize_lang(default_lang) if default_lang else None
+        # Fill remaining NULLs with manifest default_lang
+        if default_lang and 'lang' in df.columns:
+            norm_default = normalize_lang(default_lang)
+            if norm_default:
+                df['lang'] = df['lang'].fillna(norm_default)
 
         # Convert text core cols to string (except keep NaN as None)
         for col in TEXT_COLS:
@@ -1498,6 +1881,340 @@ class MetaDB:
 
         return stats
 
+    # ── Translation detection ─────────────────────────────────────
+
+    def detect_translations(self):
+        """Detect translations via cross-language match groups.
+
+        For each match group containing texts in multiple languages:
+        1. Find the earliest year per language in the group
+        2. The language with the earliest text is the original language
+        3. Texts in other languages get is_translated=True, original_lang set
+
+        Title keywords ("traduit", "translated", "übersetzt") confirm direction
+        but are not required — year priority is the primary signal.
+
+        Writes to: is_translated (BOOLEAN), original_lang (TEXT) on texts table.
+        Only touches texts in cross-language match groups — leaves other
+        is_translated values (e.g. from ESTC MARC data) untouched.
+        """
+        _ = self.conn  # ensure connection + schema migrations
+
+        # Find cross-language match groups
+        cross = self.conn.execute("""
+            WITH group_langs AS (
+                SELECT mg.group_id,
+                       COUNT(DISTINCT t.lang) as n_langs
+                FROM match_db.match_groups mg
+                JOIN texts t ON mg._id = t._id
+                WHERE t.lang IS NOT NULL
+                GROUP BY mg.group_id
+                HAVING COUNT(DISTINCT t.lang) >= 2
+            )
+            SELECT mg.group_id, t._id, t.lang, t.year, t.title, t.corpus
+            FROM match_db.match_groups mg
+            JOIN texts t ON mg._id = t._id
+            WHERE mg.group_id IN (SELECT group_id FROM group_langs)
+              AND t.lang IS NOT NULL
+            ORDER BY mg.group_id, t.year NULLS LAST
+        """).fetchdf()
+
+        if cross.empty:
+            if log: log('No cross-language match groups found.')
+            return {}
+
+        n_groups = cross['group_id'].nunique()
+        if log: log(f'Found {n_groups} cross-language match groups ({len(cross)} texts)')
+
+        # Translation title signals (confirms but doesn't determine)
+        import re as _re
+        _translation_re = _re.compile(
+            r'traduit|traduction|übersetzt|übersetzung|translated|translation',
+            _re.IGNORECASE,
+        )
+
+        updates = []  # (_id, is_translated, original_lang)
+
+        for gid, group in cross.groupby('group_id'):
+            # Earliest year per language
+            lang_min_year = (
+                group.dropna(subset=['year'])
+                .groupby('lang')['year']
+                .min()
+            )
+            if lang_min_year.empty:
+                continue
+
+            # Original language = language with earliest text
+            orig_lang = lang_min_year.idxmin()
+            orig_year = lang_min_year.min()
+
+            # Tie-breaking: if two languages share the same earliest year,
+            # prefer the one with more texts in the group
+            tied = lang_min_year[lang_min_year == orig_year]
+            if len(tied) > 1:
+                lang_counts = group[group['lang'].isin(tied.index)].groupby('lang').size()
+                orig_lang = lang_counts.idxmax()
+
+            for _, row in group.iterrows():
+                if row['lang'] == orig_lang:
+                    # Original language text — not a translation (from this signal)
+                    # But don't clear is_translated if already set from MARC data
+                    updates.append((row['_id'], False, None))
+                else:
+                    # Translation
+                    updates.append((row['_id'], True, orig_lang))
+
+        # Apply updates
+        if updates:
+            import tempfile
+            update_df = pd.DataFrame(updates, columns=['_id', '_is_trans', '_orig_lang'])
+
+            # Only set is_translated=True for translations; don't overwrite
+            # existing is_translated=True on originals (may come from MARC)
+            self.conn.execute("""
+                UPDATE texts SET
+                    is_translated = CASE
+                        WHEN u._is_trans THEN TRUE
+                        ELSE texts.is_translated
+                    END,
+                    original_lang = u._orig_lang
+                FROM update_df u
+                WHERE texts._id = u._id
+            """)
+
+        # Stats
+        n_translated = sum(1 for _, t, _ in updates if t)
+        n_originals = sum(1 for _, t, _ in updates if not t)
+        lang_pairs = cross.groupby('group_id')['lang'].apply(
+            lambda x: ' → '.join(sorted(x.unique()))
+        ).value_counts().head(10)
+
+        stats = {
+            'n_groups': n_groups,
+            'n_texts': len(updates),
+            'n_translated': n_translated,
+            'n_originals': n_originals,
+        }
+        if log:
+            log(f'Marked {n_translated} texts as translations, '
+                f'{n_originals} as originals across {n_groups} groups')
+            log(f'Top language pairs:\n{lang_pairs.to_string()}')
+        return stats
+
+    # ── Per-text language detection ───────────────────────────────
+
+    def _apply_detected_langs(self, apply=False, apply_conservative=False):
+        """Apply the selected lang_detected → lang rule. Returns stats dict."""
+        if apply and apply_conservative:
+            raise ValueError("Pass only one of apply or apply_conservative, not both")
+        conn = self.conn
+        if apply:
+            applied = conn.execute("""
+                UPDATE texts SET lang = lang_detected
+                WHERE lang_detected IS NOT NULL
+                  AND lang_detected != 'unknown'
+                  AND (lang IS NULL OR lang != lang_detected)
+                RETURNING _id, lang_detected
+            """).fetchdf()
+            rule = 'symmetric'
+        elif apply_conservative:
+            applied = conn.execute("""
+                UPDATE texts SET lang = lang_detected
+                WHERE lang_metadata = 'en'
+                  AND lang_detected IS NOT NULL
+                  AND lang_detected NOT IN ('en', 'unknown')
+                RETURNING _id, lang_detected
+            """).fetchdf()
+            rule = 'conservative (default-en → non-en)'
+        else:
+            return {'n_applied': 0}
+        if log:
+            log(f'Applied lang_detected to lang for {len(applied)} texts ({rule})')
+            if len(applied):
+                breakdown = applied.groupby('lang_detected').size().sort_values(ascending=False)
+                log(f'Breakdown by new lang:\n{breakdown.to_string()}')
+        return {'n_applied': len(applied)}
+
+    def detect_langs(self, batch_size=5000, min_tokens=50,
+                     coverage_threshold=0.05, confidence_threshold=2.0,
+                     apply=False, apply_conservative=False, only_apply=False,
+                     num_proc=None, progress=True):
+        """Detect per-text language via stopword intersection against freqs_db.
+
+        For each text with freqs, computes per-language hit counts against
+        function-word lists (NLTK stopwords + curated Latin/Greek). Assigns
+        to the language with the highest coverage if it dominates the
+        runner-up by the configured factor.
+
+        Writes four columns on the texts table:
+          - lang_metadata   : snapshot of current `lang` value (taken once)
+          - lang_detected   : argmax language from freqs detection
+          - lang_coverage   : share of tokens captured by top language's stopwords
+          - lang_confidence : ratio of top language hits to runner-up hits
+
+        By default `lang` is NOT modified. Pass apply=True to overwrite
+        `lang` with `lang_detected` for high-confidence detections
+        (lang_detected is a real language, not 'unknown' or NULL).
+
+        Args:
+            batch_size: texts per fetch chunk (memory trade-off)
+            min_tokens: skip texts with fewer total tokens than this
+            coverage_threshold: min share of tokens hitting top lang's stopwords
+            confidence_threshold: min ratio of top hits to second-place hits
+            apply: if True, also update the `lang` column with detected values
+            progress: show a tqdm progress bar
+
+        Returns a dict with distribution stats.
+        """
+        from lltk.tools.lang_detect import function_words_table
+        from lltk.tools.tools import get_tqdm
+        from collections import defaultdict
+
+        conn = self.conn  # ensure schema migrations
+
+        # Fast path: skip detection, just run the selected apply-update using
+        # whatever lang_detected values are already stored.
+        if only_apply:
+            if not (apply or apply_conservative):
+                raise ValueError("--only-apply requires --apply or --apply-conservative")
+            return self._apply_detected_langs(
+                apply=apply, apply_conservative=apply_conservative,
+            )
+
+        # Verify freqs_db is populated
+        n_freqs = conn.execute("SELECT COUNT(*) FROM freqs_db.text_freqs").fetchone()[0]
+        if n_freqs == 0:
+            if log: log('freqs_db.text_freqs is empty — run `lltk db-freqs` first')
+            return {}
+
+        # Snapshot lang → lang_metadata (one-shot; only fills NULLs so re-runs
+        # don't clobber a prior snapshot)
+        conn.execute("UPDATE texts SET lang_metadata = lang WHERE lang_metadata IS NULL AND lang IS NOT NULL")
+
+        # Invert function-word list: word → tuple of langs (most words belong to 1 lang)
+        word_to_langs = {}
+        for w, lg in function_words_table():
+            word_to_langs.setdefault(w, []).append(lg)
+        word_to_langs = {w: tuple(lgs) for w, lgs in word_to_langs.items()}
+        langs = sorted({lg for lgs in word_to_langs.values() for lg in lgs})
+        if log: log(f'Detecting against {len(langs)} languages: {", ".join(langs)} ({len(word_to_langs)} distinct words)')
+
+        # Stream via a dedicated read-only DuckDB connection to freqs_db.
+        # This is ~5× faster than going through the main conn's ATTACHed freqs_db
+        # (which seems to carry index/catalog contention overhead during scans).
+        import duckdb as _duckdb
+        try:
+            conn.execute("DETACH freqs_db")
+        except Exception:
+            pass
+
+        results = []
+        pbar = get_tqdm(total=n_freqs, desc='Detecting languages', disable=not progress)
+        try:
+            ro_conn = _duckdb.connect(PATH_FREQSDB, read_only=True)
+            reader = ro_conn.execute(
+                "SELECT _id, freqs FROM text_freqs"
+            ).fetch_record_batch(batch_size)
+
+            for arrow_batch in reader:
+                ids = arrow_batch.column('_id').to_pylist()
+                freqs_col = arrow_batch.column('freqs').to_pylist()
+                for _id, entries in zip(ids, freqs_col):
+                    if entries is None:
+                        results.append((_id, None, None, None))
+                        continue
+                    total_tokens = 0
+                    lang_hits = {}
+                    for w, n in entries:
+                        total_tokens += n
+                        lgs = word_to_langs.get(w)
+                        if lgs:
+                            for lg in lgs:
+                                lang_hits[lg] = lang_hits.get(lg, 0) + n
+                    if total_tokens < min_tokens:
+                        results.append((_id, None, None, None))
+                        continue
+                    if not lang_hits:
+                        results.append((_id, 'unknown', 0.0, 0.0))
+                        continue
+                    top_lang = None
+                    top_hits = 0
+                    second_hits = 0
+                    for lg, h in lang_hits.items():
+                        if h > top_hits:
+                            second_hits = top_hits
+                            top_hits = h
+                            top_lang = lg
+                        elif h > second_hits:
+                            second_hits = h
+                    coverage = top_hits / total_tokens
+                    confidence = top_hits / second_hits if second_hits > 0 else 999.0
+                    if coverage < coverage_threshold or confidence < confidence_threshold:
+                        results.append((_id, 'unknown', coverage, confidence))
+                    else:
+                        results.append((_id, top_lang, coverage, confidence))
+                pbar.update(len(ids))
+            ro_conn.close()
+            pbar.close()
+        finally:
+            # Re-attach freqs_db for any downstream use
+            ro_flag = ' (READ_ONLY)' if getattr(self, 'read_only', False) else ''
+            try:
+                conn.execute(f"ATTACH '{PATH_FREQSDB}' AS freqs_db{ro_flag}")
+            except Exception:
+                pass
+
+        if not results:
+            if log: log('No texts processed')
+            return {}
+
+        # Bulk-write results back
+        result_df = pd.DataFrame(results, columns=['_id', 'lang_detected', 'lang_coverage', 'lang_confidence'])
+        conn.register('_ld_tmp', result_df)
+        conn.execute("""
+            UPDATE texts SET
+                lang_detected = u.lang_detected,
+                lang_coverage = u.lang_coverage,
+                lang_confidence = u.lang_confidence
+            FROM _ld_tmp u WHERE texts._id = u._id
+        """)
+        conn.unregister('_ld_tmp')
+
+        # Optionally apply detected lang → lang column
+        if apply or apply_conservative:
+            self._apply_detected_langs(apply=apply, apply_conservative=apply_conservative)
+
+        # Stats
+        dist = conn.execute("""
+            SELECT lang_detected, COUNT(*) n
+            FROM texts WHERE lang_detected IS NOT NULL
+            GROUP BY 1 ORDER BY n DESC
+        """).fetchdf()
+        disagree = conn.execute("""
+            SELECT lang_metadata, lang_detected, COUNT(*) n
+            FROM texts
+            WHERE lang_metadata IS NOT NULL
+              AND lang_detected IS NOT NULL
+              AND lang_detected != 'unknown'
+              AND lang_metadata != lang_detected
+            GROUP BY 1, 2
+            ORDER BY n DESC
+            LIMIT 20
+        """).fetchdf()
+
+        if log:
+            log('Detection distribution:')
+            log(dist.to_string(index=False))
+            log('\nTop metadata ↔ detected disagreements:')
+            log(disagree.to_string(index=False) if len(disagree) else '  (none)')
+
+        return {
+            'n_detected': len(results),
+            'distribution': dist.set_index('lang_detected')['n'].to_dict(),
+            'disagreements': disagree.to_dict(orient='records'),
+        }
+
     # ── Word counts ────────────────────────────────────────────────
 
     def wordcounts(self, num_proc=None, progress=True):
@@ -1586,7 +2303,550 @@ class MetaDB:
             SELECT path_freqs, n_words FROM df
         """)
 
+    # ── Freqs DB ──────────────────────────────────────────────────
+
+    def build_freqs_db(self, num_proc=None, progress=True, corpora=None,
+                       batch_size=500, force=False):
+        """Ingest per-text freqs JSONs into freqs_db.text_freqs as MAP(word→count).
+
+        Workers read freqs in parallel and write parquet shards with native MAP type.
+        Main process does a single INSERT FROM read_parquet at the end — avoids
+        per-row MAP construction via pandas.
+
+            lltk.db.build_freqs_db()                   # all texts with path_freqs
+            lltk.db.build_freqs_db(corpora=['ecco'])   # one corpus
+            lltk.db.build_freqs_db(force=True)         # drop existing, re-ingest all
+        """
+        from lltk.tools.tools import get_tqdm
+        from concurrent.futures import ProcessPoolExecutor
+        import concurrent.futures
+        import tempfile, shutil
+
+        if num_proc is None:
+            num_proc = max(1, os.cpu_count() - 2)
+
+        from lltk.imports import PATH_CORPUS
+        corpus_root = os.path.expanduser(PATH_CORPUS)
+
+        conn = self.conn
+
+        if force:
+            print('Deleting existing rows (force=True)')
+            conn.execute("DELETE FROM freqs_db.text_freqs")
+
+        corpus_filter = ''
+        if corpora:
+            corpus_list = ', '.join(f"'{c}'" for c in corpora)
+            corpus_filter = f'AND t.corpus IN ({corpus_list})'
+
+        todo = conn.execute(f"""
+            SELECT t._id, t.corpus, t.path_freqs
+            FROM texts t
+            LEFT JOIN freqs_db.text_freqs f ON t._id = f._id
+            WHERE t.path_freqs IS NOT NULL AND f._id IS NULL {corpus_filter}
+        """).fetchall()
+
+        if not todo:
+            print('Nothing to do — freqs DB already complete')
+            return
+
+        print(f'Ingesting {len(todo):,} texts ({num_proc} processes, batch={batch_size})...')
+
+        shard_dir = tempfile.mkdtemp(prefix='freqs_shards_',
+                                     dir=os.path.dirname(self.freqs_path))
+        print(f'Writing parquet shards to {shard_dir}')
+
+        try:
+            batches = [todo[i:i+batch_size] for i in range(0, len(todo), batch_size)]
+            pass_args = [(corpus_root, b, shard_dir, i) for i, b in enumerate(batches)]
+
+            pbar = get_tqdm(total=len(todo), desc='freqs → parquet') if progress else None
+            with ProcessPoolExecutor(max_workers=num_proc) as pool:
+                pending = set()
+                items_iter = iter(pass_args)
+                max_pending = num_proc * 4
+                exhausted = False
+                while pending or not exhausted:
+                    while len(pending) < max_pending and not exhausted:
+                        try:
+                            pending.add(pool.submit(_freqs_read_batch, next(items_iter)))
+                        except StopIteration:
+                            exhausted = True
+                    if pending:
+                        done, pending = concurrent.futures.wait(
+                            pending, return_when=concurrent.futures.FIRST_COMPLETED
+                        )
+                        for f in done:
+                            n, _ = f.result()
+                            if pbar:
+                                pbar.update(n)
+            if pbar:
+                pbar.close()
+
+            import glob as _glob
+            shard_paths = sorted(_glob.glob(os.path.join(shard_dir, 'freqs_*.parquet')))
+            print(f'Merging {len(shard_paths):,} shards into text_freqs (batched)...')
+
+            # Tighten memory settings on the current connection for the merge
+            try:
+                conn.execute("SET memory_limit='32GB'")
+                conn.execute("SET preserve_insertion_order=false")
+            except Exception:
+                pass
+
+            merge_batch = 200
+            merged = 0
+            for i in range(0, len(shard_paths), merge_batch):
+                chunk = shard_paths[i:i+merge_batch]
+                file_list = ', '.join(f"'{p}'" for p in chunk)
+                conn.execute(f"""
+                    INSERT OR IGNORE INTO freqs_db.text_freqs
+                    SELECT _id, corpus, freqs FROM read_parquet([{file_list}])
+                """)
+                merged += len(chunk)
+                if log and (merged % (merge_batch * 5) == 0 or merged == len(shard_paths)):
+                    log(f'  merged {merged:,}/{len(shard_paths):,} shards')
+        finally:
+            shutil.rmtree(shard_dir, ignore_errors=True)
+
+        total = conn.execute("SELECT COUNT(*) FROM freqs_db.text_freqs").fetchone()[0]
+        print(f'text_freqs now has {total:,} rows')
+
+    # ── Passages DB ────────────────────────────────────────────────
+
+    def build_passages_db(self, n=500, num_proc=None, corpora=None, force=False):
+        """Build SQLite passages DB with FTS5 from corpus txt files.
+
+        Chunks each text into ~n-word passages using sentence-aware splitting
+        (language-specific punkt tokenizer). No DuckDB dependency — reads
+        directly from corpus txt files.
+
+        Args:
+            n: target words per passage (default 500)
+            num_proc: parallel workers (default cpu_count - 2)
+            corpora: list of corpus IDs to process (default: all with txt)
+            force: rebuild from scratch
+        """
+        import sqlite3
+        import time
+
+        if num_proc is None:
+            num_proc = max(1, os.cpu_count() - 2)
+
+        db_path = PATH_PASSAGESDB
+        if force and os.path.exists(db_path):
+            os.remove(db_path)
+
+        conn = sqlite3.connect(db_path)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS passages (
+                _id     TEXT NOT NULL,
+                seq     INTEGER NOT NULL,
+                text    TEXT NOT NULL,
+                n_words INTEGER NOT NULL,
+                lang    TEXT,
+                PRIMARY KEY (_id, seq)
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS passages_meta (
+                _id         TEXT PRIMARY KEY,
+                corpus      TEXT NOT NULL,
+                n_passages  INTEGER NOT NULL
+            )
+        """)
+        conn.commit()
+
+        # Gather texts to process
+        from lltk.corpus.utils import load as load_corpus
+        from lltk.corpus.synthetic import SyntheticCorpus
+
+        if corpora is None:
+            from lltk.corpus.utils import get_inducted_corpus_ids
+            corpora = get_inducted_corpus_ids()
+
+        # Find already-processed _ids
+        done_ids = set(
+            r[0] for r in conn.execute("SELECT _id FROM passages_meta").fetchall()
+        )
+        if done_ids and not force:
+            if log: log(f'{len(done_ids)} texts already in passages DB')
+
+        all_tasks = []  # (corpus_id, text_id, txt_path, lang)
+        for cid in corpora:
+            if cid in DB_BLACKLIST:
+                continue
+            try:
+                corpus = load_corpus(cid)
+            except Exception:
+                continue
+            if isinstance(corpus, SyntheticCorpus):
+                continue
+            if not hasattr(corpus, 'path_txt') or not os.path.isdir(getattr(corpus, 'path_txt', '')):
+                continue
+
+            manifest_lang = getattr(corpus, 'lang', None)
+            try:
+                meta = corpus.load_metadata()
+            except Exception:
+                continue
+            if meta is None or not len(meta):
+                continue
+
+            for text_id in meta.index:
+                _id = f'_{cid}/{text_id}'
+                if _id in done_ids:
+                    continue
+                t = corpus.text(text_id)
+                txt_path = getattr(t, 'path_txt', None)
+                if not txt_path or not os.path.exists(txt_path):
+                    continue
+                # Get lang from text meta
+                lang = None
+                if t._meta:
+                    for key in ('lang', 'language', 'language_1', 'estc_lang'):
+                        val = t._meta.get(key)
+                        if val and str(val).strip() and str(val) != 'nan':
+                            lang = normalize_lang(str(val).strip())
+                            if lang:
+                                break
+                if not lang and manifest_lang:
+                    lang = normalize_lang(manifest_lang)
+
+                all_tasks.append((_id, cid, txt_path, lang, n))
+
+        if not all_tasks:
+            if log: log('No new texts to process.')
+            return
+
+        if log: log(f'{len(all_tasks)} texts to chunk into passages (n={n}, workers={num_proc})')
+
+        t0 = time.time()
+        from lltk.tools.tools import pmap
+
+        batch_size = 200
+        total_passages = 0
+        for i in range(0, len(all_tasks), batch_size):
+            batch = all_tasks[i:i + batch_size]
+            results = pmap(
+                _chunk_text_to_passages,
+                batch,
+                num_proc=num_proc,
+                desc=f'[passages] {i}/{len(all_tasks)}',
+                use_threads=True,
+            )
+            # Insert batch
+            for _id, corpus_id, passages_list in results:
+                if not passages_list:
+                    continue
+                conn.executemany(
+                    "INSERT OR IGNORE INTO passages (_id, seq, text, n_words, lang) VALUES (?, ?, ?, ?, ?)",
+                    passages_list,
+                )
+                conn.execute(
+                    "INSERT OR IGNORE INTO passages_meta (_id, corpus, n_passages) VALUES (?, ?, ?)",
+                    (_id, corpus_id, len(passages_list)),
+                )
+                total_passages += len(passages_list)
+            conn.commit()
+
+        elapsed = time.time() - t0
+        if log: log(f'Built {total_passages:,} passages from {len(all_tasks)} texts in {elapsed:.0f}s')
+
+        # Build FTS5 index
+        if log: log('Building FTS5 index...')
+        t1 = time.time()
+        conn.execute("DROP TABLE IF EXISTS passages_fts")
+        conn.execute("""
+            CREATE VIRTUAL TABLE passages_fts USING fts5(
+                _id, text,
+                content='passages', content_rowid='rowid'
+            )
+        """)
+        conn.execute("""
+            INSERT INTO passages_fts (rowid, _id, text)
+            SELECT rowid, _id, text FROM passages
+        """)
+        conn.commit()
+        if log: log(f'FTS5 index built in {time.time() - t1:.0f}s')
+
+        total = conn.execute("SELECT COUNT(*) FROM passages").fetchone()[0]
+        if log: log(f'passages DB: {total:,} passages total')
+        conn.close()
+
     # ── Word Index ────────────────────────────────────────────────
+
+    def build_word_index_sql(self, vocab_size=50_000, min_count=1, corpora=None,
+                             memory_limit='24GB', threads=None):
+        """Build word_year_corpus + year_corpus_totals tables from freqs_db.text_freqs
+        using pure DuckDB SQL. Requires `build_freqs_db()` to have populated the freqs DB.
+
+            lltk.db.build_word_index_sql()                     # all texts, top 50K words
+            lltk.db.build_word_index_sql(vocab_size=100_000)
+            lltk.db.build_word_index_sql(corpora=['ecco_tcp'])
+        """
+        import time
+        wi_conn = duckdb.connect(self.wordindex_path)
+        wi_conn.execute(f"SET memory_limit='{memory_limit}'")
+        wi_conn.execute("SET preserve_insertion_order=false")
+        if threads:
+            wi_conn.execute(f"SET threads={threads}")
+        wi_conn.execute(f"ATTACH '{self.path}' AS main_db (READ_ONLY)")
+        wi_conn.execute(f"ATTACH '{self.match_path}' AS match_db (READ_ONLY)")
+        wi_conn.execute(f"ATTACH '{self.freqs_path}' AS freqs_db (READ_ONLY)")
+
+        corpus_filter_sql = ''
+        if corpora:
+            cl = ', '.join(f"'{c}'" for c in corpora)
+            corpus_filter_sql = f"AND t.corpus IN ({cl})"
+
+        # Texts with both metadata (year/corpus) AND freqs in DB. Adds is_preferred for dedup.
+        # Valid-word filter: first char alpha, rest alpha or in [-']. Done in SQL via regex.
+        word_regex = r"^[a-zA-Z][a-zA-Z''\-]*$"
+
+        print('Building texts view (joining metadata + match_groups)...')
+        wi_conn.execute(f"""
+            CREATE OR REPLACE TEMP VIEW _texts AS
+            SELECT t._id, t.year, t.corpus, t.genre, COALESCE(t.n_words, 0) AS n_words,
+                   CASE WHEN mg.rank IS NULL OR mg.rank = 0 THEN TRUE ELSE FALSE END AS is_preferred
+            FROM main_db.texts t
+            LEFT JOIN match_db.match_groups mg ON t._id = mg._id
+            WHERE t.year IS NOT NULL
+              AND t._id IN (SELECT _id FROM freqs_db.text_freqs)
+              {corpus_filter_sql}
+        """)
+        n_texts = wi_conn.execute("SELECT COUNT(*) FROM _texts").fetchone()[0]
+        n_pref = wi_conn.execute("SELECT COUNT(*) FROM _texts WHERE is_preferred").fetchone()[0]
+        print(f'{n_texts:,} texts ({n_pref:,} preferred)')
+        if not n_texts:
+            wi_conn.close()
+            return
+
+        # Load all text metadata into Python for chunking (1.6M rows ≈ 120MB)
+        all_texts = wi_conn.execute("""
+            SELECT _id, year, corpus, genre, is_preferred FROM _texts
+        """).fetchall()
+
+        import tempfile, shutil
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+
+        num_proc = max(1, os.cpu_count() - 2)
+        chunk_size = 2_000   # ~50M word/count pairs, ~few hundred MB per worker
+
+        batches = [all_texts[i:i+chunk_size] for i in range(0, len(all_texts), chunk_size)]
+        n_chunks = len(batches)
+        print(f'Partitioned into {n_chunks} chunks of up to {chunk_size:,} texts')
+
+        shard_dir = tempfile.mkdtemp(prefix='wi_sql_shards_',
+                                     dir=os.path.dirname(self.wordindex_path))
+        print(f'Writing parquet shards to {shard_dir}')
+
+        try:
+            # ── Pass 1: vocabulary (top N by total occurrences) ──
+            vocab_full_path = os.path.join(os.path.dirname(self.wordindex_path),
+                                           f'wordindex_vocab_{vocab_size}.tsv')
+            if os.path.exists(vocab_full_path):
+                print(f'Loading vocab from {vocab_full_path}')
+                vocab = []
+                with open(vocab_full_path) as fp:
+                    for line in fp:
+                        parts = line.rstrip('\n').split('\t')
+                        if len(parts) == 2:
+                            vocab.append(parts[0])
+                        if len(vocab) >= vocab_size:
+                            break
+                vocab_set = frozenset(vocab)
+            else:
+                from lltk.tools.tools import get_tqdm
+                print(f'Pass 1: vocabulary build ({num_proc} workers, {n_chunks} chunks)...')
+                t0 = time.time()
+                args_list = [
+                    (self.freqs_path, b, min_count, shard_dir, i, None)
+                    for i, b in enumerate(batches)
+                ]
+                with ProcessPoolExecutor(max_workers=num_proc) as pool:
+                    futures = [pool.submit(_wi_agg_batch_from_db, a) for a in args_list]
+                    pbar = get_tqdm(total=len(all_texts), desc='Pass 1: vocab')
+                    for fut in as_completed(futures):
+                        n, _, _ = fut.result()
+                        pbar.update(n)
+                    pbar.close()
+
+                # Merge vocab shards via DuckDB and pick top-N
+                vocab_glob = os.path.join(shard_dir, 'vocab_*.parquet')
+                print(f'  merging vocab shards...')
+                top = wi_conn.execute(f"""
+                    SELECT word, SUM(cnt)::BIGINT AS cnt
+                    FROM read_parquet('{vocab_glob}')
+                    GROUP BY word
+                    ORDER BY cnt DESC
+                    LIMIT {vocab_size}
+                """).fetchall()
+                with open(vocab_full_path, 'w') as fp:
+                    for w, c in top:
+                        fp.write(f'{w}\t{c}\n')
+                vocab_set = frozenset(w for w, _ in top)
+                print(f'  vocab built in {time.time()-t0:.1f}s; saved {len(top):,} words')
+
+                # Clean vocab shards (big); keep only Pass 2 wyc shards
+                import glob as _glob
+                for vp in _glob.glob(vocab_glob):
+                    os.remove(vp)
+
+            # ── Pass 2: word_year_corpus ──
+            wi_conn.execute("DROP TABLE IF EXISTS word_year_corpus")
+            wi_conn.execute("DROP TABLE IF EXISTS year_corpus_totals")
+
+            from lltk.tools.tools import get_tqdm
+            print(f'Pass 2: word_year_corpus ({num_proc} workers, {n_chunks} chunks)...')
+            t0 = time.time()
+            args_list = [
+                (self.freqs_path, b, min_count, shard_dir, i, vocab_set)
+                for i, b in enumerate(batches)
+            ]
+            with ProcessPoolExecutor(max_workers=num_proc) as pool:
+                futures = [pool.submit(_wi_agg_batch_from_db, a) for a in args_list]
+                pbar = get_tqdm(total=len(all_texts), desc='Pass 2: agg')
+                for fut in as_completed(futures):
+                    n, _, _ = fut.result()
+                    pbar.update(n)
+                pbar.close()
+
+            # Batched merge: SUM-reduce shards into a staging table in groups of N,
+            # then final SUM-reduce into word_year_corpus. Keeps peak memory bounded.
+            import glob as _glob
+            shard_paths = sorted(_glob.glob(os.path.join(shard_dir, 'wyc_*.parquet')))
+            if not shard_paths:
+                raise RuntimeError(f'No Pass 2 shards found in {shard_dir}')
+            print(f'  merging {len(shard_paths)} shards (batched)...')
+            tm = time.time()
+
+            wi_conn.execute("DROP TABLE IF EXISTS _wyc_stage")
+            wi_conn.execute("""
+                CREATE TABLE _wyc_stage (
+                    word TEXT, year INTEGER, corpus TEXT, genre TEXT,
+                    word_count BIGINT, n_texts INTEGER,
+                    word_count_dedup BIGINT, n_texts_dedup INTEGER
+                )
+            """)
+
+            merge_batch = 50
+            for i in range(0, len(shard_paths), merge_batch):
+                chunk = shard_paths[i:i+merge_batch]
+                file_list = ', '.join(f"'{p}'" for p in chunk)
+                wi_conn.execute(f"""
+                    INSERT INTO _wyc_stage
+                    SELECT word, year, corpus, genre,
+                           SUM(word_count)::BIGINT,
+                           SUM(n_texts)::INTEGER,
+                           SUM(word_count_dedup)::BIGINT,
+                           SUM(n_texts_dedup)::INTEGER
+                    FROM read_parquet([{file_list}])
+                    GROUP BY word, year, corpus, genre
+                """)
+                print(f'    merged {min(i+merge_batch, len(shard_paths))}/{len(shard_paths)} shards '
+                      f'({time.time()-tm:.0f}s)')
+
+            print(f'  final GROUP BY to word_year_corpus...')
+            wi_conn.execute("""
+                CREATE TABLE word_year_corpus AS
+                SELECT word, year, corpus, genre,
+                       SUM(word_count)::BIGINT AS word_count,
+                       SUM(n_texts)::INTEGER AS n_texts,
+                       SUM(word_count_dedup)::BIGINT AS word_count_dedup,
+                       SUM(n_texts_dedup)::INTEGER AS n_texts_dedup
+                FROM _wyc_stage
+                GROUP BY word, year, corpus, genre
+            """)
+            wi_conn.execute("DROP TABLE IF EXISTS _wyc_stage")
+            print(f'  merge: {time.time()-tm:.1f}s; pass 2 total {time.time()-t0:.1f}s')
+
+            # Clean up shards only on success. Failures (OOM, Ctrl+C) keep the
+            # shards so we can retry just the merge instead of redoing Pass 2.
+            shutil.rmtree(shard_dir, ignore_errors=True)
+            shard_dir_cleaned = True
+        except Exception:
+            print(f'\nFAILED — parquet shards preserved at {shard_dir}')
+            print(f'To retry just the merge, call lltk.db.merge_wi_shards("{shard_dir}")')
+            raise
+        finally:
+            pass  # no unconditional cleanup — preserved on failure for retry
+
+        print('Aggregating year_corpus_totals...')
+        t0 = time.time()
+        wi_conn.execute("""
+            CREATE TABLE year_corpus_totals AS
+            SELECT t.year, t.corpus, t.genre,
+                   COUNT(*)::INTEGER AS n_texts,
+                   SUM(t.n_words)::BIGINT AS total_words,
+                   SUM(CASE WHEN t.is_preferred THEN 1 ELSE 0 END)::INTEGER AS n_texts_dedup,
+                   SUM(CASE WHEN t.is_preferred THEN t.n_words ELSE 0 END)::BIGINT AS total_words_dedup
+            FROM _texts t
+            GROUP BY t.year, t.corpus, t.genre
+        """)
+        print(f'  year_corpus_totals built in {time.time()-t0:.1f}s')
+
+    def merge_wi_shards(self, shard_dir, memory_limit='24GB', merge_batch=50):
+        """Retry just the batched merge of preserved Pass 2 shards.
+
+        Use after build_word_index_sql fails in the merge step — avoids redoing
+        the 30-60 min Pass 2 worker phase.
+        """
+        import time, glob as _glob
+        shard_paths = sorted(_glob.glob(os.path.join(shard_dir, 'wyc_*.parquet')))
+        if not shard_paths:
+            raise RuntimeError(f'No wyc_*.parquet shards in {shard_dir}')
+        print(f'Merging {len(shard_paths)} shards from {shard_dir} (batch={merge_batch})')
+        wi_conn = duckdb.connect(self.wordindex_path)
+        wi_conn.execute(f"SET memory_limit='{memory_limit}'")
+        wi_conn.execute("SET preserve_insertion_order=false")
+        wi_conn.execute("DROP TABLE IF EXISTS word_year_corpus")
+        wi_conn.execute("DROP TABLE IF EXISTS _wyc_stage")
+        wi_conn.execute("""
+            CREATE TABLE _wyc_stage (
+                word TEXT, year INTEGER, corpus TEXT, genre TEXT,
+                word_count BIGINT, n_texts INTEGER,
+                word_count_dedup BIGINT, n_texts_dedup INTEGER
+            )
+        """)
+        t0 = time.time()
+        for i in range(0, len(shard_paths), merge_batch):
+            chunk = shard_paths[i:i+merge_batch]
+            file_list = ', '.join(f"'{p}'" for p in chunk)
+            wi_conn.execute(f"""
+                INSERT INTO _wyc_stage
+                SELECT word, year, corpus, genre,
+                       SUM(word_count)::BIGINT, SUM(n_texts)::INTEGER,
+                       SUM(word_count_dedup)::BIGINT, SUM(n_texts_dedup)::INTEGER
+                FROM read_parquet([{file_list}])
+                GROUP BY word, year, corpus, genre
+            """)
+            print(f'  merged {min(i+merge_batch, len(shard_paths))}/{len(shard_paths)} '
+                  f'({time.time()-t0:.0f}s)')
+        print('Final GROUP BY to word_year_corpus...')
+        wi_conn.execute("""
+            CREATE TABLE word_year_corpus AS
+            SELECT word, year, corpus, genre,
+                   SUM(word_count)::BIGINT AS word_count,
+                   SUM(n_texts)::INTEGER AS n_texts,
+                   SUM(word_count_dedup)::BIGINT AS word_count_dedup,
+                   SUM(n_texts_dedup)::INTEGER AS n_texts_dedup
+            FROM _wyc_stage
+            GROUP BY word, year, corpus, genre
+        """)
+        wi_conn.execute("DROP TABLE IF EXISTS _wyc_stage")
+        n = wi_conn.execute("SELECT COUNT(*) FROM word_year_corpus").fetchone()[0]
+        print(f'word_year_corpus: {n:,} rows ({time.time()-t0:.1f}s total)')
+        wi_conn.close()
+
+        n_agg = wi_conn.execute("SELECT COUNT(*) FROM word_year_corpus").fetchone()[0]
+        n_tot = wi_conn.execute("SELECT COUNT(*) FROM year_corpus_totals").fetchone()[0]
+        print(f'word_year_corpus: {n_agg:,} rows')
+        print(f'year_corpus_totals: {n_tot:,} rows')
+
+        wi_conn.close()
 
     def build_word_index(self, num_proc=None, progress=True, min_count=1,
                          vocab_size=50_000, corpora=None):
@@ -1689,11 +2949,37 @@ class MetaDB:
             if log: log(f'Pass 1: Building vocabulary from {len(all_pairs):,} texts ({num_proc} processes)...')
 
             doc_freq = Counter()
-            pass1_args = [(corpus_root, _id, rp, min_count) for _id, rp in all_pairs]
+            pass1_batch_size = 500
+            pass1_batches = [
+                [rp for _, rp in all_pairs[i:i+pass1_batch_size]]
+                for i in range(0, len(all_pairs), pass1_batch_size)
+            ]
+            pass1_args = [(corpus_root, b, min_count) for b in pass1_batches]
 
+            from lltk.tools.tools import get_tqdm
             with ProcessPoolExecutor(max_workers=num_proc) as pool:
-                for word_set in _bounded_map(pool, _wi_get_word_set, pass1_args, desc='Pass 1: vocabulary'):
-                    doc_freq.update(word_set)
+                pbar = get_tqdm(total=len(all_pairs), desc='Pass 1: vocabulary') if progress else None
+                pending = set()
+                items_iter = iter(pass1_args)
+                max_pending = num_proc * 4
+                exhausted = False
+                while pending or not exhausted:
+                    while len(pending) < max_pending and not exhausted:
+                        try:
+                            pending.add(pool.submit(_wi_pass1_batch, next(items_iter)))
+                        except StopIteration:
+                            exhausted = True
+                    if pending:
+                        done, pending = concurrent.futures.wait(
+                            pending, return_when=concurrent.futures.FIRST_COMPLETED
+                        )
+                        for f in done:
+                            n, local = f.result()
+                            doc_freq.update(local)
+                            if pbar:
+                                pbar.update(n)
+                if pbar:
+                    pbar.close()
 
             ranked = doc_freq.most_common(vocab_size)
             vocab = frozenset(w for w, _ in ranked)
@@ -1708,20 +2994,10 @@ class MetaDB:
             if log: log(f'Saved vocabulary to {vocab_full_path}')
             del doc_freq
 
-        # ── Pass 2: Stream all texts, accumulate into group aggregates ───────
+        # ── Pass 2: Batched per-worker aggregation → parquet shards → DuckDB merge ───
         if log: log(f'Pass 2: Aggregating {len(all_texts):,} texts ({num_proc} processes)...')
 
-        global _wi_vocab
-        _wi_vocab = frozenset(vocab)
-
-        # Build lookup: _id → (year, corpus, genre, n_words, is_preferred)
-        text_info = {}
-        for _, row in all_texts.iterrows():
-            text_info[row['_id']] = (
-                int(row['year']), row['corpus'], row['genre'],
-                int(row['n_words']) if pd.notna(row['n_words']) else 0,
-                bool(row['is_preferred'])
-            )
+        vocab_set = frozenset(vocab)
 
         # Create tables (with dedup columns)
         wi_conn.execute("DROP TABLE IF EXISTS word_year_corpus")
@@ -1744,75 +3020,81 @@ class MetaDB:
             )
         """)
 
-        # Prepare args: (_id, corpus_root, path_freqs, min_count) — shuffled
-        pass2_args = [(corpus_root, _id, rp, min_count)
-                      for _id, rp in zip(all_texts['_id'], all_texts['path_freqs'])]
-        random.shuffle(pass2_args)
+        # Assemble self-contained batches (everything each worker needs)
+        text_records = [
+            (row['_id'], row['path_freqs'],
+             int(row['year']), row['corpus'], row['genre'],
+             int(row['n_words']) if pd.notna(row['n_words']) else 0,
+             bool(row['is_preferred']))
+            for _, row in all_texts.iterrows()
+        ]
+        random.shuffle(text_records)
 
-        # Accumulate: (word, year, corpus, genre) → [wc, nt, wc_d, nt_d]
-        agg = defaultdict(lambda: [0, 0, 0, 0])
-        # Totals: (year, corpus, genre) → [n_texts, total_words, n_texts_d, total_words_d]
-        totals = defaultdict(lambda: [0, 0, 0, 0])
+        batch_size = 500
+        batches = [text_records[i:i+batch_size]
+                   for i in range(0, len(text_records), batch_size)]
 
-        with ProcessPoolExecutor(max_workers=num_proc) as pool:
-            for result in _bounded_map(pool, _wi_read_filtered, pass2_args, desc='Pass 2: aggregating'):
-                if not result:
-                    continue
-                _id = result[0][0]
-                info = text_info.get(_id)
-                if not info:
-                    continue
-                year, corpus, genre, n_words, is_pref = info
-                grp = (year, corpus, genre)
+        import tempfile, shutil
+        shard_dir = tempfile.mkdtemp(prefix='wi_shards_',
+                                     dir=os.path.dirname(self.wordindex_path))
+        if log: log(f'Writing parquet shards to {shard_dir}')
 
-                # Update totals (once per text)
-                tot = totals[grp]
-                tot[0] += 1
-                tot[1] += n_words
-                if is_pref:
-                    tot[2] += 1
-                    tot[3] += n_words
+        try:
+            pass2_args = [(corpus_root, b, min_count, shard_dir, i)
+                          for i, b in enumerate(batches)]
 
-                # Accumulate word counts
-                seen = set()
-                for _, word, count in result:
-                    key = (word, year, corpus, genre)
-                    wc = agg[key]
-                    wc[0] += count
-                    if word not in seen:
-                        wc[1] += 1
-                        seen.add(word)
-                if is_pref:
-                    seen_d = set()
-                    for _, word, count in result:
-                        key = (word, year, corpus, genre)
-                        wc = agg[key]
-                        wc[2] += count
-                        if word not in seen_d:
-                            wc[3] += 1
-                            seen_d.add(word)
+            with ProcessPoolExecutor(max_workers=num_proc,
+                                     initializer=_wi_init,
+                                     initargs=(vocab_set,)) as pool:
+                # Process results as they arrive; batched progress (texts, not batches)
+                from lltk.tools.tools import get_tqdm
+                pbar = get_tqdm(total=len(text_records), desc='Pass 2: aggregating') if progress else None
+                pending = set()
+                items_iter = iter(pass2_args)
+                max_pending = num_proc * 4
+                exhausted = False
+                while pending or not exhausted:
+                    while len(pending) < max_pending and not exhausted:
+                        try:
+                            pending.add(pool.submit(_wi_aggregate_batch, next(items_iter)))
+                        except StopIteration:
+                            exhausted = True
+                    if pending:
+                        done, pending = concurrent.futures.wait(
+                            pending, return_when=concurrent.futures.FIRST_COMPLETED
+                        )
+                        for f in done:
+                            n, _, _ = f.result()
+                            if pbar:
+                                pbar.update(n)
+                if pbar:
+                    pbar.close()
 
-        # Write aggregate table
-        if log: log(f'Writing {len(agg):,} aggregate rows...')
-        agg_rows = [(w, y, c, g, wc, nt, wcd, ntd)
-                    for (w, y, c, g), (wc, nt, wcd, ntd) in agg.items()]
-        for i in range(0, len(agg_rows), 500_000):
-            batch = agg_rows[i:i+500_000]
-            agg_df = pd.DataFrame(batch, columns=[
-                'word', 'year', 'corpus', 'genre',
-                'word_count', 'n_texts', 'word_count_dedup', 'n_texts_dedup'
-            ])
-            wi_conn.execute("INSERT INTO word_year_corpus SELECT * FROM agg_df")
-        del agg, agg_rows
+            # ── Final merge via DuckDB (parallel GROUP BY across shards) ──
+            words_glob = os.path.join(shard_dir, 'words_*.parquet')
+            totals_glob = os.path.join(shard_dir, 'totals_*.parquet')
 
-        # Write totals
-        tot_rows = [(y, c, g, nt, tw, ntd, twd)
-                    for (y, c, g), (nt, tw, ntd, twd) in totals.items()]
-        tot_df = pd.DataFrame(tot_rows, columns=[
-            'year', 'corpus', 'genre', 'n_texts', 'total_words',
-            'n_texts_dedup', 'total_words_dedup'
-        ])
-        wi_conn.execute("INSERT INTO year_corpus_totals SELECT * FROM tot_df")
+            if log: log('Merging word shards via DuckDB GROUP BY...')
+            wi_conn.execute(f"""
+                INSERT INTO word_year_corpus
+                SELECT word, year, corpus, genre,
+                       SUM(word_count)::BIGINT, SUM(n_texts)::INTEGER,
+                       SUM(word_count_dedup)::BIGINT, SUM(n_texts_dedup)::INTEGER
+                FROM read_parquet('{words_glob}')
+                GROUP BY word, year, corpus, genre
+            """)
+
+            if log: log('Merging totals shards via DuckDB GROUP BY...')
+            wi_conn.execute(f"""
+                INSERT INTO year_corpus_totals
+                SELECT year, corpus, genre,
+                       SUM(n_texts)::INTEGER, SUM(total_words)::BIGINT,
+                       SUM(n_texts_dedup)::INTEGER, SUM(total_words_dedup)::BIGINT
+                FROM read_parquet('{totals_glob}')
+                GROUP BY year, corpus, genre
+            """)
+        finally:
+            shutil.rmtree(shard_dir, ignore_errors=True)
 
         n_agg = wi_conn.execute("SELECT COUNT(*) FROM word_year_corpus").fetchone()[0]
         n_tot = wi_conn.execute("SELECT COUNT(*) FROM year_corpus_totals").fetchone()[0]
@@ -2286,6 +3568,122 @@ class MetaDB:
         """Return a SyntheticCorpus from a MetaDB query."""
         from lltk.corpus.synthetic import SyntheticCorpus
         return SyntheticCorpus(id=id, _query_kwargs={'where': where, **kwargs})
+
+    # ── Passage search ─────────────────────────────────────────────
+
+    def search(self, query, genre=None, corpus=None, lang=None,
+               year_min=None, year_max=None, limit=20, offset=0,
+               snippet_words=30):
+        """Full-text search across passages via FTS5.
+
+        Args:
+            query: FTS5 query (word, "phrase", NEAR(a b, 5), bool)
+            genre/corpus/lang/year_min/year_max: filter via metadb texts table
+            limit/offset: pagination
+            snippet_words: words of context around match
+
+        Returns:
+            list of dicts with _id, seq, snippet, n_words, title, author, year, corpus, lang
+        """
+        import sqlite3
+
+        if not os.path.exists(PATH_PASSAGESDB):
+            raise FileNotFoundError(f'Passages DB not found at {PATH_PASSAGESDB}. Run lltk db-passages first.')
+
+        # Build metadata filter via DuckDB
+        where_parts = []
+        if genre:
+            where_parts.append(f"t.genre = '{genre}'")
+        if corpus:
+            where_parts.append(f"t.corpus = '{corpus}'")
+        if lang:
+            where_parts.append(f"t.lang = '{lang}'")
+        if year_min is not None:
+            where_parts.append(f't.year >= {int(year_min)}')
+        if year_max is not None:
+            where_parts.append(f't.year <= {int(year_max)}')
+
+        filtered_ids = None
+        if where_parts:
+            where_sql = ' AND '.join(where_parts)
+            id_df = self.conn.execute(f"SELECT _id FROM texts t WHERE {where_sql}").fetchdf()
+            filtered_ids = set(id_df['_id'].tolist())
+            if not filtered_ids:
+                return []
+
+        pconn = sqlite3.connect(PATH_PASSAGESDB)
+        pconn.row_factory = sqlite3.Row
+
+        if filtered_ids is not None:
+            # Create temp table for ID filter
+            pconn.execute("CREATE TEMP TABLE _filter_ids (_id TEXT PRIMARY KEY)")
+            pconn.executemany("INSERT INTO _filter_ids VALUES (?)",
+                              [(i,) for i in filtered_ids])
+            sql = f"""
+                SELECT p._id, p.seq, p.n_words, p.lang,
+                       snippet(passages_fts, 1, '**', '**', '...', {int(snippet_words)}) as snippet
+                FROM passages_fts
+                JOIN passages p ON passages_fts.rowid = p.rowid
+                JOIN _filter_ids f ON p._id = f._id
+                WHERE passages_fts MATCH ?
+                ORDER BY rank
+                LIMIT ? OFFSET ?
+            """
+        else:
+            sql = f"""
+                SELECT p._id, p.seq, p.n_words, p.lang,
+                       snippet(passages_fts, 1, '**', '**', '...', {int(snippet_words)}) as snippet
+                FROM passages_fts
+                JOIN passages p ON passages_fts.rowid = p.rowid
+                WHERE passages_fts MATCH ?
+                ORDER BY rank
+                LIMIT ? OFFSET ?
+            """
+
+        rows = pconn.execute(sql, (query, limit, offset)).fetchall()
+        pconn.close()
+
+        # Enrich with metadata from DuckDB
+        result_ids = list(set(r['_id'] for r in rows))
+        meta_map = {}
+        if result_ids:
+            id_list = ', '.join(f"'{i}'" for i in result_ids)
+            meta_df = self.conn.execute(f"""
+                SELECT _id, title, author, year, corpus, genre, lang
+                FROM texts WHERE _id IN ({id_list})
+            """).fetchdf()
+            for _, r in meta_df.iterrows():
+                meta_map[r['_id']] = r.to_dict()
+
+        results = []
+        for r in rows:
+            _id = r['_id']
+            meta = meta_map.get(_id, {})
+            results.append({
+                '_id': _id,
+                'seq': r['seq'],
+                'snippet': r['snippet'],
+                'n_words': r['n_words'],
+                'title': meta.get('title', ''),
+                'author': meta.get('author', ''),
+                'year': meta.get('year'),
+                'corpus': meta.get('corpus', ''),
+                'genre': meta.get('genre', ''),
+                'lang': r['lang'] or meta.get('lang', ''),
+            })
+        return results
+
+    def search_count(self, query):
+        """Count total FTS5 matches for a query."""
+        import sqlite3
+        if not os.path.exists(PATH_PASSAGESDB):
+            return 0
+        pconn = sqlite3.connect(PATH_PASSAGESDB)
+        n = pconn.execute(
+            "SELECT COUNT(*) FROM passages_fts WHERE passages_fts MATCH ?", (query,)
+        ).fetchone()[0]
+        pconn.close()
+        return n
 
     def close(self):
         if self._conn is not None:

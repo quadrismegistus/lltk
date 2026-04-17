@@ -488,6 +488,7 @@ def create_app():
         dedup: bool = Query(False),
         dedup_by: str = Query('rank', description='rank or oldest'),
         by_corpus: bool = Query(False, description='Break down by corpus'),
+        by: str = Query('decade', description='year or decade (time granularity)'),
     ):
         if not words.strip():
             return {'data': [], 'words': [], 'series': []}
@@ -530,7 +531,7 @@ def create_app():
             df = db.ngram(
                 list(all_words), genre=genre or None, corpus=corpus or None,
                 year_min=year_min, year_max=year_max, normalize=normalize,
-                dedup=dedup, dedup_by=dedup_by, by_corpus=by_corpus,
+                dedup=dedup, dedup_by=dedup_by, by_corpus=by_corpus, by=by,
             )
 
             series_labels = [label for label, _ in parsed_series]
@@ -539,15 +540,22 @@ def create_app():
 
             # Build lookup: (period, word) → value, raw_count, n_texts
             # (optionally keyed by corpus too)
+            import math
+            def _safe_float(x):
+                try:
+                    v = float(x) if x is not None else 0.0
+                    return v if math.isfinite(v) else 0.0
+                except (TypeError, ValueError):
+                    return 0.0
             lookup = {}
             for _, r in df.iterrows():
                 key = (int(r['period']), r['word'])
                 if by_corpus:
                     key = (int(r['period']), r['word'], r['corpus'])
                 lookup[key] = (
-                    float(r['value']) if r['value'] is not None else 0,
-                    int(r['raw_count']),
-                    int(r['n_texts']),
+                    _safe_float(r['value']),
+                    int(r['raw_count']) if r['raw_count'] is not None else 0,
+                    int(r['n_texts']) if r['n_texts'] is not None else 0,
                 )
 
             periods = sorted(df['period'].unique())
@@ -699,6 +707,35 @@ def create_app():
                 ORDER BY n DESC
             """).fetchdf()
             return {'overlaps': df.to_dict('records')}
+        except Exception as e:
+            return JSONResponse({'error': str(e)}, status_code=500)
+
+    @app.get('/api/search')
+    async def search_passages(
+        q: str = Query(..., description='FTS5 query'),
+        genre: str = Query('', description='Filter by genre'),
+        corpus: str = Query('', description='Filter by corpus'),
+        lang: str = Query('', description='Filter by language (ISO 639-1)'),
+        year_min: Optional[int] = Query(None),
+        year_max: Optional[int] = Query(None),
+        limit: int = Query(20, ge=1, le=100),
+        offset: int = Query(0, ge=0),
+    ):
+        try:
+            results = db.search(
+                q,
+                genre=genre or None,
+                corpus=corpus or None,
+                lang=lang or None,
+                year_min=year_min,
+                year_max=year_max,
+                limit=limit,
+                offset=offset,
+            )
+            total = db.search_count(q)
+            return {'query': q, 'total': total, 'results': results}
+        except FileNotFoundError as e:
+            return JSONResponse({'error': str(e)}, status_code=404)
         except Exception as e:
             return JSONResponse({'error': str(e)}, status_code=500)
 

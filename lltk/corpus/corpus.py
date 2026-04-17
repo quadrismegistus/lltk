@@ -29,6 +29,9 @@ class BaseCorpus(TextList):
     REMOTE_SOURCES = REMOTE_SOURCES
     LINKS = {}
     LINK_TRANSFORMS = {}
+    # Per-text prosodic output dir lives under {corpus.path}/prosodic/{text.id}/
+    # (override via manifest `path_prosodic = ...` or instance `_path_prosodic`)
+    _path_prosodic = 'prosodic'
 
 
 
@@ -641,8 +644,76 @@ class BaseCorpus(TextList):
     
     @property
     def t(self):
-        ol=list(self.texts(progress=False))
-        return random.choice(ol) if len(ol) else None
+        """Return a random text, sampling from the full corpus via MetaDB
+        (or metadata.csv if the DB is locked). Avoids loading the whole
+        corpus when you just want a quick sample.
+
+        Sampling order:
+          1. Main MetaDB connection (fast, ~ms)
+          2. Fresh read-only DuckDB connection (if main conn is locked)
+          3. metadata.csv id column (DB-free, ~1s for 300K rows)
+          4. In-memory `_textd` (only useful if already iterated)
+          5. Full corpus load (last resort)
+        """
+        # 1. Main MetaDB
+        row = None
+        try:
+            from lltk.tools.metadb import metadb
+            row = metadb.conn.execute(
+                "SELECT id FROM texts WHERE corpus = ? ORDER BY random() LIMIT 1",
+                [self.id],
+            ).fetchone()
+        except Exception:
+            # 2. RO DuckDB fallback — helps when another process in this
+            # same Python holds the write lock; cross-process writer locks
+            # will still block, handled by the CSV path below.
+            try:
+                import duckdb
+                from lltk.tools.metadb import PATH_METADB
+                ro = duckdb.connect(PATH_METADB, read_only=True)
+                try:
+                    row = ro.execute(
+                        "SELECT id FROM texts WHERE corpus = ? ORDER BY random() LIMIT 1",
+                        [self.id],
+                    ).fetchone()
+                finally:
+                    ro.close()
+            except Exception:
+                pass
+        if row and row[0]:
+            return self.TEXT_CLASS(id=row[0], _corpus=self)
+        # 3. CSV — works even when DB is fully locked across processes.
+        # Cached across calls so we don't re-parse a 300K-row file every time.
+        try:
+            ids = self._cached_id_list()
+            if ids:
+                return self.TEXT_CLASS(id=random.choice(ids), _corpus=self)
+        except Exception:
+            pass
+        # 4. Memory, if already populated by prior iteration
+        loaded = [t for t in self._textd.values() if t is not None]
+        if loaded and len(loaded) > 1:
+            return random.choice(loaded)
+        # 5. Full load (last resort)
+        ol = list(self.texts(progress=False))
+        return random.choice(ol) if ol else None
+
+    def _cached_id_list(self):
+        """Return a list of text ids from metadata.csv, cached per instance."""
+        cached = self.__dict__.get('_cached_ids')
+        if cached is not None:
+            return cached
+        path = self.path_metadata
+        if not path or not os.path.exists(path):
+            self._cached_ids = []
+            return self._cached_ids
+        import pandas as _pd
+        try:
+            ids = _pd.read_csv(path, usecols=['id'], dtype=str)['id'].dropna().tolist()
+        except Exception:
+            ids = []
+        self._cached_ids = ids
+        return ids
 
 
 
@@ -1596,7 +1667,8 @@ class PassageSectionCorpus(SectionCorpus):
         n = self._passage_n
 
         import nltk
-        sents = nltk.sent_tokenize(txt)
+        from lltk.text.text import _lang_to_punkt
+        sents = nltk.sent_tokenize(txt, language=_lang_to_punkt(source.lang))
 
         chunk_sents = []
         chunk_word_count = 0

@@ -3,9 +3,12 @@ id = artfl
 name = ARTFL
 desc = American and French Research on the Treasury of the French Language
 link = https://artfl-project.uchicago.edu
-public = 
+path_python = artfl/artfl.py
+class_name = ARTFL
+public =
 private = metadata,freqs
 license_type = Academic
+lang = fr
 
 [BLBooks]
 id = blbooks
@@ -16,6 +19,57 @@ path_python = blbooks/blbooks.py
 class_name = BLBooks
 public = metadata,txt
 license_type = Free
+lang = en
+
+[FrenchPDBooks]
+id = french_pd_books
+name = FrenchPDBooks
+desc = French public domain books from Gallica / BnF (via HuggingFace, PleIAs)
+link = https://huggingface.co/datasets/PleIAs/French-PD-Books
+path_python = french_pd_books/french_pd_books.py
+class_name = FrenchPDBooks
+public = metadata,txt
+license_type = Public Domain
+
+[GallicaLiteraryFictions]
+id = gallica_literary_fictions
+name = GallicaLiteraryFictions
+desc = Fictions littéraires de Gallica — 19,240 French public-domain novels 1600-1996 (Y2/Ybis classification, via Zenodo)
+link = https://zenodo.org/record/4751204
+path_python = gallica_literary_fictions/gallica_literary_fictions.py
+class_name = GallicaLiteraryFictions
+public = metadata,txt
+license_type = CC0
+
+[Paige]
+id = paige
+name = Paige
+desc = Nicholas Paige's referential-mode dataset of English, French, and French epistolary novels 1600-1830 (via Zenodo)
+link = https://zenodo.org/records/3939066
+path_python = paige/paige.py
+class_name = Paige
+public = metadata
+license_type = Open
+
+[GermanPD]
+id = german_pd
+name = GermanPD
+desc = German public domain books from Internet Archive and European libraries (via HuggingFace, PleIAs)
+link = https://huggingface.co/datasets/PleIAs/German-PD
+path_python = german_pd/german_pd.py
+class_name = GermanPD
+public = metadata,txt
+license_type = Public Domain
+
+[GermanFiction]
+id = german_fiction
+name = GermanFiction
+desc = Corpus of German-Language Fiction — 2,735 originals + 484 translations from Gutenberg-DE (via Figshare)
+link = https://figshare.com/articles/dataset/Corpus_of_German-Language_Fiction_txt_/4524680
+path_python = german_fiction/german_fiction.py
+class_name = GermanFiction
+public = metadata,txt
+license_type = Research
 
 [BPO]
 id = bpo
@@ -25,6 +79,7 @@ link = https://proquest.libguides.com/britishperiodicals
 public = 
 private = raw,metadata
 license_type = Commercial
+lang = en
 
 [BigHist]
 desc = --
@@ -45,6 +100,7 @@ license = https://ota.bodleian.ox.ac.uk/repository/xmlui/page/licence-ota
 license_type = Academic
 url_freqs = https://www.dropbox.com/s/lnvwnbzskvqsu9p/clmet_freqs.zip?dl=1
 url_metadata = https://www.dropbox.com/s/m1jxj45al7b17cv/clmet_metadata.zip?dl=1
+lang = en
 
 [COCA]
 id = coca
@@ -54,6 +110,7 @@ link = https://www.english-corpora.org/coca/
 public = 
 private = metadata,raw,freqs,txt
 license_type = Commercial
+lang = en
 
 [COHA]
 id = coha
@@ -64,6 +121,7 @@ public =
 private = metadata,raw,freqs,txt
 license_type = Commercial
 mfw_n = 10000
+lang = en
 
 [CanonFiction]
 id = canon_fiction
@@ -76,6 +134,7 @@ path_metadata = metadata.xls
 license_type = Mixed
 url_freqs = https://www.dropbox.com/s/i5byh4cxmo5x3pr/canon_fiction_freqs.zip?dl=1
 url_metadata = https://www.dropbox.com/s/1bmvz17pcjpqnab/canon_fiction_metadata.zip?dl=1
+lang = en
 
 [Chadwyck]
 id = chadwyck
@@ -88,6 +147,7 @@ license_type = Mixed
 url_freqs = https://www.dropbox.com/s/syluxyz1mcx5495/chadwyck_freqs.zip?dl=1
 url_metadata = https://www.dropbox.com/s/byqbi8sik255469/chadwyck_metadata.zip?dl=1
 is_ocr = 0
+lang = en
 
 [ChadwyckDrama]
 id = chadwyck_drama
@@ -96,6 +156,7 @@ desc = Chadwyck-Healey Drama Collections
 link = http://collections.chadwyck.co.uk/marketing/list_of_all.jsp
 license_type = Mixed
 private = raw,txt,xml,metadata,freqs
+lang = en
 
 [ChadwyckPoetry]
 id = chadwyck_poetry
@@ -104,6 +165,7 @@ desc = Chadwyck-Healey Poetry Collections
 link = http://collections.chadwyck.co.uk/marketing/list_of_all.jsp
 private = raw,txt,xml,metadata,freqs
 license_type = Mixed
+lang = en
 
 [Chicago]
 id = chicago
@@ -115,6 +177,7 @@ private = txt
 license_type = Academic
 url_freqs = https://www.dropbox.com/s/w29o1urthijbxgn/chicago_freqs.zip?dl=1
 url_metadata = https://www.dropbox.com/s/oba29ymlg7arhdu/chicago_metadata.zip?dl=1
+lang = en
 
 [DTA]
 id = dta
@@ -142,6 +205,7 @@ private = txt
 license_type = Academic
 url_metadata = https://www.dropbox.com/s/jw53k1mba6eumna/dialnarr_metadata.zip?dl=1
 url_freqs = https://www.dropbox.com/s/rgduzqatl4j0x5s/dialnarr_freqs.zip?dl=1
+lang = en
 
 [ECCO]
 id = ecco
@@ -152,6 +216,7 @@ public =
 private = raw,txt,xml,metadata,freqs
 license_type = Commercial
 ext_xml = .xml.gz
+lang = en
 
 [ECCO_TCP]
 id = ecco_tcp
@@ -165,6 +230,7 @@ url_xml = https://www.dropbox.com/s/vtv2iw7ujtivqss/ecco_tcp_xml.zip?dl=1
 url_raw = https://www.dropbox.com/s/aubdaixvc59d8o9/ecco_tcp_raw.zip?dl=1
 public = raw,metadata,freqs,txt,xml
 license_type = Free
+lang = en
 
 [EarlyPrint]
 id = earlyprint
@@ -176,6 +242,7 @@ class_name = EarlyPrint
 ext_xml = .xml.gz
 public = xml,metadata
 license_type = Free
+lang = en
 
 [EEBO_TCP]
 id = eebo_tcp
@@ -188,6 +255,7 @@ url_txt = https://www.dropbox.com/s/otgqbs0vdli3gvb/eebo_tcp_txt.zip?dl=1
 url_xml = https://www.dropbox.com/s/1wui9qjhkzy8fnm/eebo_tcp_xml.zip?dl=1
 public = raw,metadata,freqs,txt,xml
 license_type = Free
+lang = en
 
 [ESTC]
 id = estc
@@ -198,6 +266,7 @@ path_txt = json
 public = 
 private = metadata
 license_type = Academic
+lang = en
 
 [EnglishDialogues]
 id = dialogues
@@ -210,6 +279,7 @@ url_xml = https://www.dropbox.com/s/u07u3mrrom3i9f5/dialogues_xml.zip?dl=1
 public = metadata,freqs,xml,raw
 license_type = Academic
 license = https://ota.bodleian.ox.ac.uk/repository/xmlui/page/licence-ota
+lang = en
 
 [EvansTCP]
 desc = Early American Fiction
@@ -226,6 +296,7 @@ url_xml = https://www.dropbox.com/s/yg7hjf536klg04c/evans_tcp_xml.zip?dl=1
 license_type = Free
 year_start = 1640
 year_end = 1810
+lang = en
 
 [FanFic]
 id = fanfic
@@ -234,6 +305,7 @@ desc = Corpus of Harry Potter Fan Fiction
 link = 
 public = 
 private = 
+lang = en
 
 [GaleAmericanFiction]
 id = gale_amfic
@@ -245,6 +317,7 @@ url_metadata = https://www.dropbox.com/s/9ysabqrrx05832u/gale_amfic_metadata.zip
 public = metadata,freqs
 private = txt,raw
 license_type = Academic
+lang = en
 
 [GildedAge]
 id = gildedage
@@ -255,6 +328,7 @@ url_metadata = https://www.dropbox.com/s/fg605k0cnebf70i/gildedage_metadata.zip?
 url_freqs = https://www.dropbox.com/s/i5zjhil743rm907/gildedage_freqs.zip?dl=1
 public = metadata,txt,freqs
 license_type = Academic
+lang = en
 
 [Hathi]
 id = hathi
@@ -278,6 +352,7 @@ public = metadata,freqs
 license_type = Academic
 url_metadata = https://www.dropbox.com/s/el2hc45tauwzskc/hathi_almanacs_metadata.zip?dl=1
 url_freqs = https://www.dropbox.com/s/xihowiox9lu7cc9/hathi_almanacs_freqs.zip?dl=1
+lang = en
 
 [HathiBio]
 id = hathi_bio
@@ -288,6 +363,7 @@ url_metadata = https://www.dropbox.com/s/wth2i53gg0tq18a/hathi_bio_metadata.zip?
 public = metadata,freqs
 license_type = Academic
 url_freqs = https://www.dropbox.com/s/3jq8rjtpec4a6g9/hathi_bio_freqs.zip?dl=1
+lang = en
 
 [HathiEngLit]
 id = hathi_englit
@@ -299,6 +375,7 @@ url_metadata = https://www.dropbox.com/s/gnwuwkpy4jybr5r/hathi_englit_metadata.z
 public = metadata,freqs
 license_type = Academic
 path_freqs = ../hathi/freqs
+lang = en
 
 [HathiEssays]
 id = hathi_essays
@@ -311,6 +388,7 @@ public = metadata,freqs
 license_type = Academic
 url_metadata = https://www.dropbox.com/s/9s7vpe7bhqo86ic/hathi_essays_metadata.zip?dl=1
 url_freqs = https://www.dropbox.com/s/j1kppdj2h9t20fp/hathi_essays_freqs.zip?dl=1
+lang = en
 
 [HathiLetters]
 id = hathi_letters
@@ -323,6 +401,7 @@ public = metadata,freqs
 license_type = Academic
 url_metadata = https://www.dropbox.com/s/11lajafcunypul2/hathi_letters_metadata.zip?dl=1
 url_freqs = https://www.dropbox.com/s/e7b07d5tlkfj9sw/hathi_letters_freqs.zip?dl=1
+lang = en
 
 [HathiNovels]
 id = hathi_novels
@@ -335,6 +414,7 @@ public = metadata,freqs
 license_type = Academic
 url_metadata = https://www.dropbox.com/s/hurtnwujziwusqz/hathi_novels_metadata.zip?dl=1
 url_freqs = https://www.dropbox.com/s/yxpur1zvvbp7cwp/hathi_novels_freqs.zip?dl=1
+lang = en
 
 [HathiRomances]
 id = hathi_romances
@@ -345,6 +425,7 @@ path_freqs = ../hathi/freqs
 path_python = hathi/hathi.py
 public = metadata,freqs
 license_type = Academic
+lang = en
 
 [HathiProclamations]
 id = hathi_proclamations
@@ -357,6 +438,7 @@ public = metadata,freqs
 license_type = Academic
 url_metadata = https://www.dropbox.com/s/enksc8u5bqukc24/hathi_proclamations_metadata.zip?dl=1
 url_freqs = https://www.dropbox.com/s/0wzzfcd4qeb17ed/hathi_proclamations_freqs.zip?dl=1
+lang = en
 
 [HathiSermons]
 id = hathi_sermons
@@ -369,6 +451,7 @@ public = metadata,freqs
 license_type = Academic
 url_metadata = https://www.dropbox.com/s/9s70xbcwrqad88c/hathi_sermons_metadata.zip?dl=1
 url_freqs = https://www.dropbox.com/s/gchqmnt1yhhephz/hathi_sermons_freqs.zip?dl=1
+lang = en
 
 [HathiStories]
 id = hathi_stories
@@ -381,6 +464,7 @@ public = metadata,freqs
 license_type = Academic
 url_metadata = https://www.dropbox.com/s/sfzs0t1hodb9r9d/hathi_stories_metadata.zip?dl=1
 url_freqs = https://www.dropbox.com/s/g004z8lgyxxhwip/hathi_stories_freqs.zip?dl=1
+lang = en
 
 [HathiTales]
 id = hathi_tales
@@ -393,6 +477,7 @@ public = metadata,freqs
 url_metadata = https://www.dropbox.com/s/hig9r9igcxp95sy/hathi_tales_metadata.zip?dl=1
 license_type = Academic
 url_freqs = https://www.dropbox.com/s/b31o13d6l5do1kk/hathi_tales_freqs.zip?dl=1
+lang = en
 
 [HathiTreatises]
 id = hathi_treatises
@@ -405,6 +490,7 @@ public = metadata,freqs
 license_type = Academic
 url_metadata = https://www.dropbox.com/s/az903wuhx1b8zu1/hathi_treatises_metadata.zip?dl=1
 url_freqs = https://www.dropbox.com/s/hafinhgc8u77vpz/hathi_treatises_freqs.zip?dl=1
+lang = en
 
 [InternetArchive]
 id = internet_archive
@@ -418,6 +504,7 @@ url_freqs = https://www.dropbox.com/s/eofh9npy5x7qn5o/internet_archive_freqs.zip
 url_data = https://www.dropbox.com/s/3yi0zcj6w5eehko/internet_archive_data.zip?dl=1
 public = metadata,freqs,txt,data
 license_type = Free
+lang = en
 
 [LitLab]
 id = litlab
@@ -429,6 +516,7 @@ url_freqs = https://www.dropbox.com/s/itoj9a8n4vrjot9/litlab_freqs.zip?dl=1
 public = metadata,freqs
 private = txt
 license_type = Academic
+lang = en
 
 [LongArcPrestige]
 desc = --
@@ -438,6 +526,7 @@ name = LongArcPrestige
 path_root = long_arc_prestige
 url_freqs = https://www.dropbox.com/s/wtduaflbx7n2933/long_arc_prestige_freqs.zip?dl=1
 url_metadata = https://www.dropbox.com/s/9d9zqmx11ru9s1v/long_arc_prestige_metadata.zip?dl=1
+lang = en
 
 [MarkMark]
 id = markmark
@@ -449,6 +538,7 @@ url_metadata = https://www.dropbox.com/s/y5r316u8fzorx3g/markmark_metadata.zip?d
 public = metadata,freqs
 private = txt
 license_type = Academic
+lang = en
 
 [NewYorker]
 id = new_yorker
@@ -458,6 +548,7 @@ link =
 public = 
 private = 
 license_type = Academic
+lang = en
 
 [OldBailey]
 id = oldbailey
@@ -471,6 +562,7 @@ url_xml = https://www.dropbox.com/s/90bsbu7re5tnbtp/oldbailey_xml.zip?dl=1
 public = metadata,freqs,txt,xml
 license_type = Free
 license = https://creativecommons.org/licenses/by-nc/4.0/
+lang = en
 
 [PMLA]
 id = pmla
@@ -489,6 +581,7 @@ desc = Early English fiction from 6 scholarly bibliographies: Mish (1475-1700), 
 public = metadata
 private = 
 url_metadata = https://www.dropbox.com/scl/fi/10emibpmwbzweh7kigd4n/fiction_biblio_metadata.zip?rlkey=dvv16r5ce6i3l45duzarwbcrw&dl=1
+lang = en
 
 [END]
 id = end
@@ -497,6 +590,7 @@ desc = Early Novels Database: 2,002 MARCXML records of early English novels 1660
 link = https://github.com/earlynovels/end-dataset
 public = 
 private = metadata
+lang = en
 
 [RavenGarside]
 id = ravengarside
@@ -507,6 +601,7 @@ public =
 private = metadata
 path_metadata = metadata.xlsx
 license_type = Academic
+lang = en
 
 [SOTU]
 id = sotu
@@ -518,6 +613,7 @@ url_txt = https://www.dropbox.com/s/w73qio0thhfzdpx/sotu_txt.zip?dl=1
 url_metadata = https://www.dropbox.com/s/6gyueael6smbxyg/sotu_metadata.zip?dl=1
 public = metadata,freqs,txt
 license_type = Free
+lang = en
 
 [Sellers]
 id = sellers
@@ -529,6 +625,7 @@ url_metadata = https://www.dropbox.com/s/7mos2k5qx8bdc1l/sellers_metadata.zip?dl
 url_txt = https://www.dropbox.com/s/j7e5my3s20n3xq4/sellers_txt.zip?dl=1
 public = metadata,freqs,txt
 license_type = Free
+lang = en
 
 [SemanticCohort]
 id = semantic_cohort
@@ -539,6 +636,7 @@ url_data = https://www.dropbox.com/s/tnqna3bdsiovtnt/semantic_cohort_data.zip?dl
 url_metadata = https://www.dropbox.com/s/f6imhtfzgpf7tvz/semantic_cohort_metadata.zip?dl=1
 public = metadata,data
 license_type = Free
+lang = en
 
 [Spectator]
 id = spectator
@@ -550,6 +648,7 @@ url_metadata = https://www.dropbox.com/s/3cw2lcza68djzj1/spectator_metadata.zip?
 url_txt = https://www.dropbox.com/s/goj6xbom3qnv5u5/spectator_txt.zip?dl=1
 public = metadata,freqs,txt
 license_type = Free
+lang = en
 
 [TedJDH]
 id = tedjdh
@@ -562,6 +661,7 @@ url_metadata = https://www.dropbox.com/s/ibjl7x0eyyz5zm6/tedjdh_metadata.zip?dl=
 url_txt = https://www.dropbox.com/s/8ug3h24h5bggnx7/tedjdh_txt.zip?dl=1
 public = metadata,freqs,txt,data
 license_type = Free
+lang = en
 
 [TxtLab]
 id = txtlab
@@ -581,6 +681,13 @@ name = ArcFiction
 desc = Synthetic corpus: all fiction across LLTK, deduplicated
 path_python = arc_corpora/arc_corpora.py
 class_name = ArcFiction
+
+[ArcFictionFr]
+id = arc_fiction_fr
+name = ArcFictionFr
+desc = Synthetic corpus: French fiction (artfl, french_pd_books, gallica_literary_fictions, txtlab), deduplicated, translations excluded
+path_python = arc_corpora/arc_corpora.py
+class_name = ArcFictionFr
 
 [ArcPoetry]
 id = arc_poetry
@@ -623,6 +730,7 @@ name = TestFixture
 desc = Test fixture corpus for LLTK testing
 path_python = test_fixture/test_fixture.py
 class_name = TestFixture
+lang = en
 
 [TestFixtureLinked]
 id = test_fixture_linked
@@ -630,4 +738,4 @@ name = TestFixtureLinked
 desc = Test fixture for cross-corpus linking
 path_python = test_fixture_linked/test_fixture_linked.py
 class_name = TestFixtureLinked
-
+lang = en

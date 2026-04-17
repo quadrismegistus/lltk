@@ -10,6 +10,21 @@ def _open_file(path, **kwargs):
     return open(path, encoding='utf-8', errors='ignore', **kwargs)
 
 
+_PUNKT_LANG = {
+    'en': 'english', 'fr': 'french', 'de': 'german', 'es': 'spanish',
+    'it': 'italian', 'pt': 'portuguese', 'nl': 'dutch', 'da': 'danish',
+    'sv': 'swedish', 'no': 'norwegian', 'fi': 'finnish', 'pl': 'polish',
+    'cs': 'czech', 'el': 'greek', 'ru': 'russian', 'tr': 'turkish',
+    'et': 'estonian', 'sl': 'slovene',
+}
+
+def _lang_to_punkt(lang):
+    """Map ISO 639-1 lang code to NLTK punkt language name."""
+    if not lang:
+        return 'english'
+    return _PUNKT_LANG.get(lang, 'english')
+
+
 class BaseText(BaseObject):
     BAD_TAGS={'note','footnote','greek','latin'}
     # BODY_TAG=None
@@ -389,6 +404,33 @@ class BaseText(BaseObject):
 
     @property
     def path_meta_json(self): return os.path.join(self.path,'meta.json')
+
+    def prosodic(self, cached=True, **kwargs):
+        """Return a prosodic TextModel for this text.
+
+        If `cached` is True (default) and a pre-parsed copy exists under
+        `{corpus.path_prosodic}/{text.id}/`, load it — this is fast and
+        includes all parsed/scanned state from `lltk prosodic-parse`.
+
+        Otherwise (or if `cached=False`), build a fresh TextModel from
+        `self.txt`. The fresh model has syllable/line structure but no
+        metrical parse — call `.parse()` on it to scan meter on the fly.
+
+        Returns None if the text has no `.txt` and no cached parse.
+
+        kwargs are forwarded to `prosodic.Text(...)` for fresh construction
+        (e.g. `lang='en'`, `syntax=False`).
+        """
+        from lltk.tools.prosodic_tools import _load_prosodic
+        prosodic = _load_prosodic()
+        if cached:
+            d = self.path_prosodic
+            if d and os.path.exists(os.path.join(d, 'meta.json')):
+                return prosodic.TextModel.load(d)
+        txt = self.txt
+        if not txt:
+            return None
+        return prosodic.Text(txt, **kwargs)
     
     def get_path_xml(self):
         if not os.path.exists(self.path_xml):
@@ -1143,9 +1185,19 @@ with lltk.online: self.get_remote_sources()
         return ''
 
     def get_txt(self,force=False,prefer_sections=False,section_type=None,force_xml=False):
+        # Subclass text_plain overrides may not accept `force_xml`; only pass
+        # it when it's set so legacy corpora (chadwyck_poetry, chadwyck_drama,
+        # ecco, dialogues, etc.) keep working.
+        def _call_text_plain():
+            if force_xml:
+                try:
+                    return self.text_plain(force_xml=force_xml)
+                except TypeError:
+                    pass  # subclass override doesn't accept force_xml
+            return self.text_plain()
         if force or not self._txt:
             if not prefer_sections:
-                self._txt=self.text_plain(force_xml=force_xml)
+                self._txt=_call_text_plain()
                 self._txt_offsets={}
             else:
                 secs=self.sections(section_type)
@@ -1153,7 +1205,7 @@ with lltk.online: self.get_remote_sources()
                     self._txt=secs.txt
                     self._txt_offsets=secs._txt_offsets
                 else:
-                    self._txt=self.text_plain(force_xml=force_xml)
+                    self._txt=_call_text_plain()
                     self._txt_offsets={}
         return clean_text(self._txt) if self._txt else ''
 
@@ -1184,9 +1236,22 @@ with lltk.online: self.get_remote_sources()
     def words(self,lower=False):
         tokens=[noPunc(w) for w in self.tokens(lower=lower)]
         return [w for w in tokens if w]
-    def sents(self):
+    @property
+    def lang(self):
+        """Best-effort language as ISO 639-1 two-letter code."""
+        from lltk.tools.metadb import normalize_lang
+        meta = self._meta or {}
+        for key in ('lang', 'language', 'language_1', 'estc_lang', 'language1'):
+            val = meta.get(key)
+            if val and str(val).strip() and str(val) != 'nan':
+                result = normalize_lang(str(val).strip())
+                if result:
+                    return result
+        return None
+
+    def sents(self, lang=None):
         import nltk
-        return nltk.sent_tokenize(self.txt)
+        return nltk.sent_tokenize(self.txt, language=_lang_to_punkt(lang or self.lang))
     @property
     def counts(self,*x,**y): return self.freqs(*x,**y)
     def len():
