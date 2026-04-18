@@ -322,3 +322,41 @@ class TestRejectLegacyKwargs:
         m._adapter = None
         with pytest.raises(TypeError, match='legacy kwargs no longer supported'):
             m.build_word_index_sql(jobs=4)
+
+
+# ── dedup_frame validation (pure-Python, no CH) ────────────────────
+
+class TestDedupFrameValidation:
+    def _make_bare(self):
+        from lltk.tools.metadb_ch import MetaDBCH
+        m = MetaDBCH.__new__(MetaDBCH)
+        m.url = 'clickhouse://test'
+        m._adapter = None
+        return m
+
+    def test_bad_by(self):
+        m = self._make_bare()
+        df = pd.DataFrame({'_id': ['_estc/T1'], 'x': [1.0]})
+        with pytest.raises(ValueError, match="by must be"):
+            m.dedup_frame(df, by='mean')
+
+    def test_missing_id_col(self):
+        m = self._make_bare()
+        df = pd.DataFrame({'other': ['_estc/T1']})
+        with pytest.raises(KeyError, match='id_col'):
+            m.dedup_frame(df, id_col='_id')
+
+    def test_empty_df_passthrough(self):
+        # Empty df returns copy — never touches CH
+        m = self._make_bare()
+        df = pd.DataFrame({'_id': [], 'x': []})
+        out = m.dedup_frame(df)
+        assert len(out) == 0
+        assert out is not df   # is a copy
+
+    def test_all_null_ids_passthrough(self):
+        # df with only NaN ids — never touches CH
+        m = self._make_bare()
+        df = pd.DataFrame({'_id': [None, None], 'x': [1.0, 2.0]})
+        out = m.dedup_frame(df)
+        assert len(out) == 2

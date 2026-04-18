@@ -208,6 +208,7 @@ lltk.db.match(fuzzy=False)             # → lltk.matches, lltk.match_groups
 lltk.db.get('_estc/T012345')           # dict
 lltk.db.query("SELECT * FROM texts WHERE year<1700 AND genre='Fiction'")
 lltk.db.read_freqs(ids=[...])          # per-text freqs for a batch (abstraction)
+lltk.db.dedup_frame(df, by='rank')     # reduce any _id-keyed frame via match groups
 lltk.db.ngram(['virtue', 'honor'], genre='Fiction', dedup=True)
 lltk.db.find_matches('Incognita')
 lltk.db.get_group('_estc/T012345')
@@ -229,6 +230,8 @@ df = ch.query_df("SELECT _id, corpus, freqs FROM lltk.text_freqs WHERE _id IN (�
 ```
 
 Or `lltk.db.read_freqs(ids=[...])` for the same thing, MetaDBCH-wrapped. `lltk.db.corpus_info()` exposes `ingested_at` for staleness tracking.
+
+**Talk to abstraction-claude directly.** Another Claude Code session typically runs at `~/github/abslithists/abstraction` working on the sibling project. If you get stuck on something that project would know (scoring pipeline, allnorms shapes, their scores DB schema, how they consume lltk's CH), or you want a second opinion on a design call that affects both codebases, use the `send-peer` skill to message them rather than guessing or pinging the user. Prefix messages with `[from lltk-claude via send-peer]`. Same applies the other direction — they may ping you about CH schemas, `text_freqs` / `text_words` behavior, or migration status.
 
 ## Genre classification (per-corpus)
 

@@ -360,6 +360,63 @@ class MetaDBCH:
             num_proc=num_proc, truncate_first=truncate_first,
         )
 
+    def dedup_frame(self, df, by='rank', id_col='_id'):
+        """Reduce a DataFrame to one row per match group using lltk.match_groups.
+
+        Singletons (rows whose _id has no match group) always pass through —
+        most texts in most corpora are singletons, so this is the common case.
+
+            by='rank'   — keep rank=0 representatives (corpus-priority source).
+            by='oldest' — within the rows present in df, keep the earliest-year
+                          member per group; ties broken by _id ascending.
+
+        Returns a new DataFrame with the same columns, fewer rows. The input
+        is not mutated. Requires `lltk db-match` to have populated
+        lltk.match_groups — if empty, df is returned unchanged (everything
+        treated as a singleton).
+
+        Generic over any _id-keyed frame: scores, norms, stats, embeddings.
+        Book-specific aggregation (averaging within groups) should happen in
+        the caller — this only resolves which _ids to keep.
+        """
+        if by not in ('rank', 'oldest'):
+            raise ValueError(f"by must be 'rank' or 'oldest', got {by!r}")
+        if id_col not in df.columns:
+            raise KeyError(f"id_col {id_col!r} not in df.columns")
+        if len(df) == 0:
+            return df.copy()
+
+        df_ids = set(df[id_col].dropna().astype(str))
+        if not df_ids:
+            return df.copy()
+
+        if by == 'rank':
+            # Pull all non-representatives, intersect locally. match_groups is
+            # ~1M non-rep rows even at corpus scale — cheap enough to pull whole.
+            rows = self.adapter.query(
+                "SELECT _id FROM lltk.match_groups FINAL WHERE rank > 0"
+            )
+            drop = {r[0] for r in rows} & df_ids
+        else:  # oldest
+            # Pull (group_id, _id, year) and resolve argmin-in-batch per group.
+            grp = self.adapter.query_df("""
+                SELECT mg._id AS _id, mg.group_id AS group_id, t.year AS year
+                FROM (SELECT _id, group_id FROM lltk.match_groups FINAL) AS mg
+                INNER JOIN (SELECT _id, year FROM lltk.texts FINAL) AS t
+                    ON t._id = mg._id
+            """)
+            grp = grp[grp['_id'].isin(df_ids)]
+            if len(grp) == 0:
+                return df.copy()
+            grp = grp.sort_values(['year', '_id'], na_position='last')
+            keepers = set(grp.groupby('group_id')['_id'].first())
+            grouped_ids = set(grp['_id'])
+            drop = grouped_ids - keepers
+
+        if not drop:
+            return df.copy()
+        return df[~df[id_col].astype(str).isin(drop)].copy()
+
     def read_freqs(self, ids=None, corpora=None, as_df=True):
         """Read rows from lltk.text_freqs. Returns DataFrame or list of tuples.
 
