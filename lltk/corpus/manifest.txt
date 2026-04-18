@@ -71,6 +71,16 @@ class_name = GermanFiction
 public = metadata,txt
 license_type = Research
 
+[DeCorp]
+id = de_corp
+name = DeCorp
+desc = de-Corp — ~5,000 German fiction + non-fiction texts (1780–1940) from Project Gutenberg DE/US (via Zenodo)
+link = https://zenodo.org/records/15714828
+path_python = de_corp/de_corp.py
+class_name = DeCorp
+public = metadata,txt
+license_type = CC-BY-NC-SA-4.0
+
 [BPO]
 id = bpo
 name = BPO
