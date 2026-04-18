@@ -90,12 +90,24 @@ def _worker_read_and_insert(args):
         names=['_id', 'corpus', 'freqs'],
     )
 
-    try:
-        client = _worker_get_client(ch_url)
-        client.insert_arrow('text_freqs', table)
-        return (batch_idx, len(ids), None)
-    except Exception as e:
-        return (batch_idx, 0, f'{type(e).__name__}: {str(e)[:150]}')
+    # Retry on transient HTTP / ClickHouse errors. A 30-min ingest losing
+    # 2K rows to one TCP blip is the failure mode we're guarding against.
+    last_err = None
+    for attempt in range(3):
+        try:
+            client = _worker_get_client(ch_url)
+            client.insert_arrow('text_freqs', table)
+            return (batch_idx, len(ids), None)
+        except Exception as e:
+            last_err = e
+            # Reset the worker client on failure — connection may be poisoned
+            global _WORKER_CH_CLIENT
+            _WORKER_CH_CLIENT = None
+            # Exponential backoff: 0.5s, 1s, 2s
+            import time as _time
+            _time.sleep(0.5 * (2 ** attempt))
+    return (batch_idx, 0,
+            f'{type(last_err).__name__} after 3 retries: {str(last_err)[:150]}')
 
 
 def ingest_freqs_from_jsons(ch_adapter, corpora=None, batch_size=2000,

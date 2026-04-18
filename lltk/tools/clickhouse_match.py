@@ -420,7 +420,9 @@ def find_matches_ch(ch_adapter, query):
 
 def get_group_ch(ch_adapter, _id):
     """Return all texts in the same match group as `_id`."""
-    _id_esc = _id.replace("'", "''")
+    from lltk.tools.metadb_ch import _validate_id, _sql_str
+    _validate_id(_id)
+    _id_esc = _sql_str(_id)
     return ch_adapter.query_df(f"""
         SELECT t._id, t.title, t.author, t.year, t.corpus, m.rank
         FROM (SELECT _id, group_id, rank FROM lltk.match_groups FINAL) AS m

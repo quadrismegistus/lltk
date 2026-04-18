@@ -18,8 +18,7 @@ import pyarrow as pa
 def detect_langs_clickhouse(ch_adapter, min_tokens=50,
                              coverage_threshold=0.05,
                              confidence_threshold=2.0,
-                             skip_existing=True, progress=True,
-                             **unused):
+                             skip_existing=True, progress=True):
     """Server-side stopword-intersection language detection via text_words.
 
     Prerequisites: lltk.text_words + lltk.text_stats populated (via

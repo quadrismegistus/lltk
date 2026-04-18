@@ -18,6 +18,7 @@ Phase C (later): info, validate, validate_genres, virtual texts/corpus,
 
 import os
 import json
+import re
 import time
 import pandas as pd
 
@@ -25,7 +26,68 @@ from lltk.tools.db_adapter import get_adapter
 from lltk.tools.clickhouse_schema import create_all_tables
 
 
-DEFAULT_CH_URL = 'clickhouse://lltk:lltk@localhost:8123/lltk'
+# Default ClickHouse URL for local-development. Production deployments
+# should set LLTK_CLICKHOUSE_URL explicitly so credentials aren't sourced
+# from this hardcoded value. See README / CLAUDE.md for setup.
+_DEV_FALLBACK_CH_URL = 'clickhouse://lltk:lltk@localhost:8123/lltk'
+
+# _id format: '_{corpus}/{text_id}'. corpus = manifest-controlled lowercase
+# alphanumeric+underscore. text_id can be very broad — markmark/txtlab IDs
+# contain apostrophes, commas, spaces, even combining diacritics. We
+# validate only that:
+#   - it starts with `_{corpus}/`
+#   - it contains no control chars / NULs (those would let an attacker
+#     break out of contexts other than SQL string literals)
+# Single-quote escaping is applied separately at the SQL-build site.
+_VALID_ID_PREFIX_RE = re.compile(r'^_[a-z0-9_]+/.+$')
+_VALID_CORPUS_RE = re.compile(r'^[a-z0-9_]+$')
+_FORBIDDEN_ID_CHARS_RE = re.compile(r'[\x00-\x1f\x7f]')  # control chars + DEL
+
+
+def _validate_id(_id):
+    """Reject _ids that don't match the canonical `_{corpus}/{text_id}` form
+    or that contain control characters.
+
+    Defense-in-depth against SQL injection via untrusted _id values. The
+    actual SQL escape (`'` → `''`) happens at the call site via _sql_str().
+    Public API methods call this at their entry points.
+    """
+    if not isinstance(_id, str):
+        raise TypeError(f'_id must be a string, got {type(_id).__name__}')
+    if not _VALID_ID_PREFIX_RE.match(_id):
+        raise ValueError(
+            f'Invalid _id {_id!r}: expected `_{{corpus}}/{{text_id}}`'
+        )
+    if _FORBIDDEN_ID_CHARS_RE.search(_id):
+        raise ValueError(
+            f'Invalid _id {_id!r}: contains control characters'
+        )
+    return _id
+
+
+def _validate_corpus(corpus):
+    """Reject corpus names that don't match manifest convention.
+
+    Corpus names ARE used in SQL with bare interpolation (no single-quote
+    escape) in some places, so this regex must stay strict.
+    """
+    if not isinstance(corpus, str):
+        raise TypeError(f'corpus must be a string, got {type(corpus).__name__}')
+    if not _VALID_CORPUS_RE.match(corpus):
+        raise ValueError(
+            f'Invalid corpus {corpus!r}: expected lowercase alphanumeric + underscore'
+        )
+    return corpus
+
+
+def _sql_str(s):
+    """Escape a string for safe inclusion in a single-quoted SQL literal.
+
+    Doubles `'` per SQL standard. Use after _validate_id has rejected
+    control characters. Returns the escaped value WITHOUT surrounding quotes
+    (caller wraps in '...').
+    """
+    return s.replace("'", "''")
 
 
 # Mapping of legacy DuckDB-style table references → ClickHouse equivalents.
@@ -147,7 +209,14 @@ class _LegacyConnShim:
 
 class MetaDBCH:
     def __init__(self, url=None):
-        self.url = url or os.environ.get('LLTK_CLICKHOUSE_URL', DEFAULT_CH_URL)
+        # Resolution: explicit arg > LLTK_CLICKHOUSE_URL env > localhost dev fallback.
+        # The dev fallback assumes `docker compose up -d` or local brew install.
+        # In production set LLTK_CLICKHOUSE_URL with real credentials.
+        self.url = (
+            url
+            or os.environ.get('LLTK_CLICKHOUSE_URL')
+            or _DEV_FALLBACK_CH_URL
+        )
         self._adapter = None
 
     @property
@@ -175,12 +244,16 @@ class MetaDBCH:
         if len(args) == 1:
             _id = args[0]
         elif len(args) == 2:
+            _validate_corpus(args[0])
             _id = f'_{args[0]}/{args[1]}'
         else:
             raise ValueError('get() takes 1 or 2 arguments')
+        _validate_id(_id)
+        _id_esc = _sql_str(_id)
 
-        _id_esc = _id.replace("'", "''")
-        rows = self.adapter.query(f"SELECT * FROM lltk.texts WHERE _id = '{_id_esc}' LIMIT 1")
+        rows = self.adapter.query(
+            f"SELECT * FROM lltk.texts WHERE _id = '{_id_esc}' LIMIT 1"
+        )
         if not rows:
             return None
 
@@ -242,23 +315,22 @@ class MetaDBCH:
         TRUNCATE for full drops (fast); ALTER TABLE DELETE for per-corpus.
         """
         if corpus_id:
-            cid_esc = corpus_id.replace("'", "''")
+            _validate_corpus(corpus_id)
             self.adapter.execute(
-                f"ALTER TABLE lltk.texts DELETE WHERE corpus = '{cid_esc}' "
+                f"ALTER TABLE lltk.texts DELETE WHERE corpus = '{corpus_id}' "
                 f"SETTINGS mutations_sync=1"
             )
             self.adapter.execute(
-                f"ALTER TABLE lltk.corpus_info DELETE WHERE corpus = '{cid_esc}' "
+                f"ALTER TABLE lltk.corpus_info DELETE WHERE corpus = '{corpus_id}' "
                 f"SETTINGS mutations_sync=1"
             )
-            # Also clean up downstream tables scoped to this corpus
             self.adapter.execute(
-                f"ALTER TABLE lltk.text_freqs DELETE WHERE corpus = '{cid_esc}' "
+                f"ALTER TABLE lltk.text_freqs DELETE WHERE corpus = '{corpus_id}' "
                 f"SETTINGS mutations_sync=1"
             )
             self.adapter.execute(
                 f"ALTER TABLE lltk.matches DELETE "
-                f"WHERE _id_a LIKE '_{cid_esc}/%' OR _id_b LIKE '_{cid_esc}/%' "
+                f"WHERE _id_a LIKE '_{corpus_id}/%' OR _id_b LIKE '_{corpus_id}/%' "
                 f"SETTINGS mutations_sync=1"
             )
         else:
@@ -289,13 +361,22 @@ class MetaDBCH:
         )
 
     def read_freqs(self, ids=None, corpora=None, as_df=True):
-        """Read rows from lltk.text_freqs. Returns DataFrame or list of tuples."""
+        """Read rows from lltk.text_freqs. Returns DataFrame or list of tuples.
+
+        Validates each id and corpus name before interpolation — these come
+        from external callers (the abstraction project, web requests).
+        """
         wheres = []
         if corpora:
+            for c in corpora:
+                _validate_corpus(c)
             cl = ', '.join(f"'{c}'" for c in corpora)
             wheres.append(f"corpus IN ({cl})")
         if ids is not None:
-            il = ', '.join(f"'{i}'" for i in list(ids))
+            id_list = list(ids)
+            for i in id_list:
+                _validate_id(i)
+            il = ', '.join(f"'{_sql_str(i)}'" for i in id_list)
             wheres.append(f"_id IN ({il})")
         where_sql = f"WHERE {' AND '.join(wheres)}" if wheres else ''
         sql = f"SELECT _id, corpus, freqs FROM lltk.text_freqs {where_sql}"
@@ -334,7 +415,16 @@ class MetaDBCH:
         from lltk.tools.clickhouse_enrich import detect_translations_ch
         return detect_translations_ch(self.adapter)
     def build_word_index_sql(self, vocab_size=50_000, min_count=1,
-                             corpora=None, **unused):
+                             corpora=None,
+                             # Legacy kwargs from the old DuckDB --sql path
+                             jobs=None, memory_limit=None):
+        rejected = {k: v for k, v in dict(jobs=jobs, memory_limit=memory_limit).items()
+                    if v is not None}
+        if rejected:
+            raise TypeError(
+                f'build_word_index_sql(): legacy kwargs no longer supported: '
+                f'{sorted(rejected)} (CH manages parallelism + memory)'
+            )
         from lltk.tools.clickhouse_wordindex import build_word_index_ch
         return build_word_index_ch(
             self.adapter, vocab_size=vocab_size, min_count=min_count,
@@ -369,20 +459,42 @@ class MetaDBCH:
         return has_word_index_ch(self.adapter)
 
     def detect_langs(self, min_tokens=50, coverage_threshold=0.05,
-                     confidence_threshold=2.0, batch_size=5000, progress=True,
-                     **unused):
-        """Run stopword-intersection language detection over lltk.text_freqs.
-        Results land in lltk.text_langs (one row per _id, ReplacingMergeTree
-        on _id so re-runs overwrite).
+                     confidence_threshold=2.0, progress=True,
+                     skip_existing=True,
+                     # Legacy DuckDB-era kwargs that no longer apply. Caught
+                     # explicitly so a stale --apply on the CLI raises rather
+                     # than silently no-ops.
+                     apply=None, apply_conservative=None, only_apply=None,
+                     num_proc=None, batch_size=None):
+        """Run stopword-intersection language detection. Writes to
+        lltk.text_langs (ReplacingMergeTree dedups on _id).
+
+        The legacy `apply` / `apply_conservative` / `only_apply` flags
+        wrote results back to texts.lang directly. With CH that step
+        belongs in a separate "promote text_langs to texts" function;
+        passing those flags here raises explicitly rather than silently
+        succeeding.
         """
+        rejected = {
+            k: v for k, v in dict(
+                apply=apply, apply_conservative=apply_conservative,
+                only_apply=only_apply, num_proc=num_proc, batch_size=batch_size,
+            ).items() if v is not None
+        }
+        if rejected:
+            raise TypeError(
+                f'detect_langs(): legacy DuckDB-era kwargs no longer supported: '
+                f'{sorted(rejected)}. The new pipeline writes results to '
+                f'lltk.text_langs; promote to texts.lang with a follow-up step.'
+            )
         from lltk.tools.clickhouse_detect_langs import detect_langs_clickhouse
         return detect_langs_clickhouse(
             self.adapter,
             min_tokens=min_tokens,
             coverage_threshold=coverage_threshold,
             confidence_threshold=confidence_threshold,
-            batch_size=batch_size,
             progress=progress,
+            skip_existing=skip_existing,
         )
 
     # ── Legacy compatibility shim ────────────────────────────────────
