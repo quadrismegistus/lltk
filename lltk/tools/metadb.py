@@ -453,69 +453,16 @@ def _wi_get_word_set(args):
         return set()
     return set(w.lower() for w, c in d.items() if c >= min_count and _wi_is_word(w))
 
-def _detect_langs_worker(args):
-    """Worker: detect language for a batch of _ids by reading freqs_db directly.
-
-    args: (freqs_db_path, ids, word_to_langs, min_tokens,
-           coverage_threshold, confidence_threshold)
-    Returns: list of (_id, lang_detected, coverage, confidence)
-    """
-    import duckdb
-    freqs_db_path, ids, word_to_langs, min_tokens, cov_th, conf_th = args
-    conn = duckdb.connect(freqs_db_path, read_only=True)
-    placeholders = ','.join('?' * len(ids))
-    reader = conn.execute(
-        f"SELECT _id, freqs FROM text_freqs WHERE _id IN ({placeholders})",
-        ids,
-    ).fetch_record_batch(10000)
-    results = []
-    for batch in reader:
-        ids_out = batch.column('_id').to_pylist()
-        freqs_col = batch.column('freqs').to_pylist()
-        for _id, entries in zip(ids_out, freqs_col):
-            if entries is None:
-                results.append((_id, None, None, None))
-                continue
-            total_tokens = 0
-            lang_hits = {}
-            for w, n in entries:
-                total_tokens += n
-                lgs = word_to_langs.get(w)
-                if lgs:
-                    for lg in lgs:
-                        lang_hits[lg] = lang_hits.get(lg, 0) + n
-            if total_tokens < min_tokens:
-                results.append((_id, None, None, None))
-                continue
-            if not lang_hits:
-                results.append((_id, 'unknown', 0.0, 0.0))
-                continue
-            top_lang = None
-            top_hits = 0
-            second_hits = 0
-            for lg, h in lang_hits.items():
-                if h > top_hits:
-                    second_hits = top_hits
-                    top_hits = h
-                    top_lang = lg
-                elif h > second_hits:
-                    second_hits = h
-            coverage = top_hits / total_tokens
-            confidence = top_hits / second_hits if second_hits > 0 else 999.0
-            if coverage < cov_th or confidence < conf_th:
-                results.append((_id, 'unknown', coverage, confidence))
-            else:
-                results.append((_id, top_lang, coverage, confidence))
-    conn.close()
-    return results
-
-
 def _wi_agg_batch_from_db(args):
-    """Read a batch of (_id, year, corpus, genre, is_preferred) from the freqs DB,
-    aggregate (word, year, corpus, genre) → (wc, nt, wc_d, nt_d) locally, and
-    (optionally) also aggregate a per-chunk vocab Counter. Writes two parquet shards.
+    """Read a batch of (_id, year, corpus, genre, is_preferred) from per-corpus
+    freqs parquets, aggregate (word, year, corpus, genre) → (wc, nt, wc_d, nt_d)
+    locally, and (optionally) also aggregate a per-chunk vocab Counter. Writes
+    two parquet shards.
 
-    args: (freqs_db_path, batch, min_count, shard_dir, shard_idx, vocab_set_or_None)
+    args: (parquet_paths_for_batch_corpora, batch, min_count, shard_dir,
+           shard_idx, vocab_set_or_None)
+      parquet_paths_for_batch_corpora: list of freqs.parquet paths covering
+        all corpora present in `batch` (caller pre-filters for efficiency)
       batch: list[(_id, year, corpus, genre, is_preferred)]
       vocab_set: frozenset of words to keep for Pass 2; None for Pass 1 (vocab build)
 
@@ -527,15 +474,15 @@ def _wi_agg_batch_from_db(args):
     import pyarrow as pa
     import pyarrow.parquet as pq
 
-    freqs_db_path, batch, min_count, shard_dir, shard_idx, vocab_set = args
+    parquet_paths, batch, min_count, shard_dir, shard_idx, vocab_set = args
 
-    conn = duckdb.connect(freqs_db_path, read_only=True)
+    conn = duckdb.connect()
     ids = [b[0] for b in batch]
-    # Fetch freqs for this batch. DuckDB "_id IN (?, ?, ...)" with many params works but
-    # constructing a VALUES list is cleaner for 10K ids.
+    # DuckDB predicate pushdown on _id IN (...) prunes parquet row groups.
     placeholders = ','.join('?' * len(ids))
+    file_list = ', '.join(f"'{p}'" for p in parquet_paths)
     rows = conn.execute(
-        f"SELECT _id, freqs FROM text_freqs WHERE _id IN ({placeholders})",
+        f"SELECT _id, freqs FROM read_parquet([{file_list}]) WHERE _id IN ({placeholders})",
         ids,
     ).fetchall()
     conn.close()
@@ -2082,10 +2029,22 @@ class MetaDB:
                 apply=apply, apply_conservative=apply_conservative,
             )
 
-        # Verify freqs_db is populated
-        n_freqs = conn.execute("SELECT COUNT(*) FROM freqs_db.text_freqs").fetchone()[0]
+        # Resolve per-corpus freqs parquets
+        parquet_paths = self.freqs_parquet_paths()
+        if not parquet_paths:
+            if log: log('No per-corpus freqs parquets found — run `lltk db-freqs` '
+                        'or `lltk.db.export_freqs_to_parquets()` first')
+            return {}
+
+        import duckdb as _duckdb
+        _count_conn = _duckdb.connect()
+        file_list_sql = ', '.join(f"'{p}'" for p in parquet_paths)
+        n_freqs = _count_conn.execute(
+            f"SELECT COUNT(*) FROM read_parquet([{file_list_sql}])"
+        ).fetchone()[0]
+        _count_conn.close()
         if n_freqs == 0:
-            if log: log('freqs_db.text_freqs is empty — run `lltk db-freqs` first')
+            if log: log('Per-corpus freqs parquets are empty — run `lltk db-freqs` first')
             return {}
 
         # Snapshot lang → lang_metadata (one-shot; only fills NULLs so re-runs
@@ -2100,21 +2059,12 @@ class MetaDB:
         langs = sorted({lg for lgs in word_to_langs.values() for lg in lgs})
         if log: log(f'Detecting against {len(langs)} languages: {", ".join(langs)} ({len(word_to_langs)} distinct words)')
 
-        # Stream via a dedicated read-only DuckDB connection to freqs_db.
-        # This is ~5× faster than going through the main conn's ATTACHed freqs_db
-        # (which seems to carry index/catalog contention overhead during scans).
-        import duckdb as _duckdb
-        try:
-            conn.execute("DETACH freqs_db")
-        except Exception:
-            pass
-
         results = []
         pbar = get_tqdm(total=n_freqs, desc='Detecting languages', disable=not progress)
         try:
-            ro_conn = _duckdb.connect(PATH_FREQSDB, read_only=True)
+            ro_conn = _duckdb.connect()
             reader = ro_conn.execute(
-                "SELECT _id, freqs FROM text_freqs"
+                f"SELECT _id, freqs FROM read_parquet([{file_list_sql}])"
             ).fetch_record_batch(batch_size)
 
             for arrow_batch in reader:
@@ -2158,12 +2108,7 @@ class MetaDB:
             ro_conn.close()
             pbar.close()
         finally:
-            # Re-attach freqs_db for any downstream use
-            ro_flag = ' (READ_ONLY)' if getattr(self, 'read_only', False) else ''
-            try:
-                conn.execute(f"ATTACH '{PATH_FREQSDB}' AS freqs_db{ro_flag}")
-            except Exception:
-                pass
+            pass
 
         if not results:
             if log: log('No texts processed')
@@ -2307,20 +2252,24 @@ class MetaDB:
 
     def build_freqs_db(self, num_proc=None, progress=True, corpora=None,
                        batch_size=500, force=False):
-        """Ingest per-text freqs JSONs into freqs_db.text_freqs as MAP(word→count).
+        """Ingest per-text freqs JSONs into per-corpus parquet files.
 
-        Workers read freqs in parallel and write parquet shards with native MAP type.
-        Main process does a single INSERT FROM read_parquet at the end — avoids
-        per-row MAP construction via pandas.
+        Output: `{PATH_CORPUS}/{corpus}/data/freqs.parquet` per corpus, with
+        columns (_id, corpus, freqs). No central DuckDB file involved.
+
+        Workers read freqs in parallel and write flat parquet shards. After
+        workers complete, main process COPYs per-corpus subsets (UNIONed with
+        any existing per-corpus parquet) into the final file.
 
             lltk.db.build_freqs_db()                   # all texts with path_freqs
             lltk.db.build_freqs_db(corpora=['ecco'])   # one corpus
-            lltk.db.build_freqs_db(force=True)         # drop existing, re-ingest all
+            lltk.db.build_freqs_db(force=True)         # rewrite per-corpus parquets
         """
         from lltk.tools.tools import get_tqdm
         from concurrent.futures import ProcessPoolExecutor
         import concurrent.futures
-        import tempfile, shutil
+        import tempfile, shutil, glob as _glob
+        import duckdb as _duckdb
 
         if num_proc is None:
             num_proc = max(1, os.cpu_count() - 2)
@@ -2330,27 +2279,49 @@ class MetaDB:
 
         conn = self.conn
 
-        if force:
-            print('Deleting existing rows (force=True)')
-            conn.execute("DELETE FROM freqs_db.text_freqs")
-
+        # Compute todo list. For each corpus with texts that have path_freqs,
+        # skip texts whose _id is already in `{corpus}/data/freqs.parquet`
+        # (unless force=True).
         corpus_filter = ''
         if corpora:
             corpus_list = ', '.join(f"'{c}'" for c in corpora)
             corpus_filter = f'AND t.corpus IN ({corpus_list})'
 
-        todo = conn.execute(f"""
+        all_texts = conn.execute(f"""
             SELECT t._id, t.corpus, t.path_freqs
             FROM texts t
-            LEFT JOIN freqs_db.text_freqs f ON t._id = f._id
-            WHERE t.path_freqs IS NOT NULL AND f._id IS NULL {corpus_filter}
+            WHERE t.path_freqs IS NOT NULL {corpus_filter}
         """).fetchall()
 
-        if not todo:
-            print('Nothing to do — freqs DB already complete')
+        if not all_texts:
+            print('No texts with path_freqs found')
             return
 
-        print(f'Ingesting {len(todo):,} texts ({num_proc} processes, batch={batch_size})...')
+        # Per-corpus anti-join against existing parquets
+        if force:
+            todo = all_texts
+        else:
+            existing_paths = self.freqs_parquet_paths(
+                corpora=list({r[1] for r in all_texts})
+            )
+            existing_ids = set()
+            if existing_paths:
+                file_list = ', '.join(f"'{p}'" for p in existing_paths)
+                _c = _duckdb.connect()
+                existing_ids = set(r[0] for r in _c.execute(
+                    f"SELECT _id FROM read_parquet([{file_list}])"
+                ).fetchall())
+                _c.close()
+            todo = [r for r in all_texts if r[0] not in existing_ids]
+
+        if not todo:
+            print('Nothing to do — all texts already in per-corpus freqs parquets')
+            return
+
+        # Corpora actually being ingested (may be a subset of requested)
+        todo_corpora = sorted({r[1] for r in todo})
+        print(f'Ingesting {len(todo):,} texts across {len(todo_corpora)} corpora '
+              f'({num_proc} processes, batch={batch_size})...')
 
         shard_dir = tempfile.mkdtemp(prefix='freqs_shards_',
                                      dir=os.path.dirname(self.freqs_path))
@@ -2383,34 +2354,325 @@ class MetaDB:
             if pbar:
                 pbar.close()
 
-            import glob as _glob
-            shard_paths = sorted(_glob.glob(os.path.join(shard_dir, 'freqs_*.parquet')))
-            print(f'Merging {len(shard_paths):,} shards into text_freqs (batched)...')
+            self._consolidate_shards_to_parquets(
+                shard_dir, todo_corpora, force=force
+            )
+            shutil.rmtree(shard_dir, ignore_errors=True)
+        except Exception:
+            print(f'\nFAILED — parquet shards preserved at {shard_dir}')
+            print(f'To retry the consolidate step, call '
+                  f'lltk.db._consolidate_shards_to_parquets("{shard_dir}", corpora=[...])')
+            raise
 
-            # Tighten memory settings on the current connection for the merge
+    def _consolidate_shards_to_parquets(self, shard_dir, corpora, force=False,
+                                         memory_limit='32GB'):
+        """For each corpus in `corpora`, union shards (+ existing parquet) into
+        `{corpus}/data/freqs.parquet`, dedup by _id.
+
+        Uses a fresh DuckDB connection per corpus to keep peak memory bounded.
+        """
+        import duckdb as _duckdb
+        import glob as _glob, gc, time
+        from lltk.imports import PATH_CORPUS
+
+        shards = sorted(_glob.glob(os.path.join(shard_dir, 'freqs_*.parquet')))
+        if not shards:
+            print('No shards to consolidate')
+            return
+
+        shard_glob = os.path.join(shard_dir, 'freqs_*.parquet')
+        root = os.path.expanduser(PATH_CORPUS)
+
+        print(f'Consolidating {len(shards)} shards into {len(corpora)} per-corpus parquets...')
+        t0 = time.time()
+        for i, c in enumerate(corpora, 1):
+            out_path = os.path.join(root, c, 'data', 'freqs.parquet')
+            os.makedirs(os.path.dirname(out_path), exist_ok=True)
+            tc = time.time()
+            c_esc = c.replace("'", "''")
+            out_esc = out_path.replace("'", "''")
+
+            existing_union = ''
+            if not force and os.path.exists(out_path):
+                existing_union = f"""
+                    UNION ALL
+                    SELECT _id, corpus, freqs FROM read_parquet('{out_esc}')
+                """
+
+            con = _duckdb.connect()
             try:
-                conn.execute("SET memory_limit='32GB'")
-                conn.execute("SET preserve_insertion_order=false")
+                con.execute(f"SET memory_limit='{memory_limit}'")
+                con.execute("SET preserve_insertion_order=false")
             except Exception:
                 pass
 
-            merge_batch = 200
-            merged = 0
-            for i in range(0, len(shard_paths), merge_batch):
-                chunk = shard_paths[i:i+merge_batch]
-                file_list = ', '.join(f"'{p}'" for p in chunk)
-                conn.execute(f"""
-                    INSERT OR IGNORE INTO freqs_db.text_freqs
-                    SELECT _id, corpus, freqs FROM read_parquet([{file_list}])
+            # Write to a temp file first, then rename — never clobber target
+            # until successful write.
+            tmp_path = out_path + '.tmp'
+            tmp_esc = tmp_path.replace("'", "''")
+            try:
+                con.execute(f"""
+                    COPY (
+                        SELECT _id, ANY_VALUE(corpus) AS corpus, ANY_VALUE(freqs) AS freqs
+                        FROM (
+                            SELECT _id, corpus, freqs FROM read_parquet('{shard_glob}')
+                            WHERE corpus = '{c_esc}'
+                            {existing_union}
+                        )
+                        GROUP BY _id
+                    ) TO '{tmp_esc}'
+                    (FORMAT PARQUET, COMPRESSION ZSTD, ROW_GROUP_SIZE 50000)
                 """)
-                merged += len(chunk)
-                if log and (merged % (merge_batch * 5) == 0 or merged == len(shard_paths)):
-                    log(f'  merged {merged:,}/{len(shard_paths):,} shards')
-        finally:
+            finally:
+                con.close()
+            gc.collect()
+
+            os.replace(tmp_path, out_path)
+            vcon = _duckdb.connect()
+            n = vcon.execute(
+                f"SELECT COUNT(*) FROM read_parquet('{out_esc}')"
+            ).fetchone()[0]
+            vcon.close()
+            size_mb = os.path.getsize(out_path) / 1e6
+            print(f'  [{i}/{len(corpora)}] {c}: {n:,} rows, {size_mb:.1f} MB '
+                  f'({time.time()-tc:.1f}s)', flush=True)
+        print(f'Consolidation done in {time.time()-t0:.0f}s')
+
+    def merge_freqs_shards(self, shard_dir, corpora=None, cleanup=True):
+        """Consolidate preserved freqs parquet shards into per-corpus parquets.
+
+        Kept for recovery after an interrupted `build_freqs_db`. Reads shards,
+        groups by corpus, writes `{corpus}/data/freqs.parquet` per corpus.
+        Thin wrapper over `_consolidate_shards_to_parquets`.
+        """
+        import glob as _glob, shutil
+        shard_paths = sorted(_glob.glob(os.path.join(shard_dir, 'freqs_*.parquet')))
+        if not shard_paths:
+            raise RuntimeError(f'No freqs_*.parquet shards in {shard_dir}')
+        if corpora is None:
+            import duckdb as _duckdb
+            _c = _duckdb.connect()
+            corpora = sorted(r[0] for r in _c.execute(
+                f"SELECT DISTINCT corpus FROM read_parquet('{shard_dir}/freqs_*.parquet')"
+            ).fetchall())
+            _c.close()
+        self._consolidate_shards_to_parquets(shard_dir, corpora, force=False)
+        if cleanup:
             shutil.rmtree(shard_dir, ignore_errors=True)
 
-        total = conn.execute("SELECT COUNT(*) FROM freqs_db.text_freqs").fetchone()[0]
-        print(f'text_freqs now has {total:,} rows')
+    # ── Per-corpus freqs parquets ─────────────────────────────────
+
+    def freqs_parquet_path(self, corpus):
+        """Canonical per-corpus freqs parquet path."""
+        from lltk.imports import PATH_CORPUS
+        return os.path.join(os.path.expanduser(PATH_CORPUS), corpus,
+                            'data', 'freqs.parquet')
+
+    def _batch_freqs_paths(self, batch):
+        """Return per-corpus freqs parquet paths covering the corpora in `batch`.
+
+        `batch` is a list of rows from `_texts` with `corpus` at index 2.
+        Used by word-index workers to avoid passing a full glob every call.
+        """
+        corpora = sorted({b[2] for b in batch if b[2]})
+        return self.freqs_parquet_paths(corpora=corpora)
+
+    def freqs_parquet_paths(self, corpora=None):
+        """Return list of existing per-corpus freqs parquet paths.
+
+        Pass corpora=[...] to filter. Missing files are silently skipped.
+        """
+        from lltk.imports import PATH_CORPUS
+        root = os.path.expanduser(PATH_CORPUS)
+        if corpora is None:
+            import glob as _glob
+            return sorted(_glob.glob(os.path.join(root, '*', 'data', 'freqs.parquet')))
+        out = []
+        for c in corpora:
+            p = os.path.join(root, c, 'data', 'freqs.parquet')
+            if os.path.exists(p):
+                out.append(p)
+        return out
+
+    def read_freqs(self, ids=None, corpora=None, as_df=True):
+        """Read text_freqs rows from per-corpus parquets.
+
+        Args:
+            ids: iterable of _id strings. Auto-infers corpora from `_{corpus}/{id}`.
+            corpora: list of corpus ids to scan. If None and ids is None, scans all.
+            as_df: return DataFrame (True) or DuckDB relation (False).
+
+        Returns rows of (_id, corpus, freqs). `freqs` is a dict (MAP→dict in
+        pandas) when as_df=True, or DuckDB MAP when as_df=False.
+        """
+        import duckdb as _duckdb
+        if ids is not None and corpora is None:
+            # Infer corpora from _id = '_{corpus}/{id}'
+            inferred = set()
+            for i in ids:
+                if isinstance(i, str) and i.startswith('_') and '/' in i:
+                    inferred.add(i[1:].split('/', 1)[0])
+            corpora = sorted(inferred)
+
+        paths = self.freqs_parquet_paths(corpora)
+        if not paths:
+            if as_df:
+                import pandas as pd
+                return pd.DataFrame(columns=['_id', 'corpus', 'freqs'])
+            return None
+
+        con = _duckdb.connect()
+        file_list = ', '.join(f"'{p}'" for p in paths)
+        if ids is not None:
+            id_list = list(ids)
+            placeholders = ','.join('?' * len(id_list))
+            rel = con.execute(
+                f"SELECT _id, corpus, freqs FROM read_parquet([{file_list}]) "
+                f"WHERE _id IN ({placeholders})",
+                id_list,
+            )
+        else:
+            rel = con.execute(
+                f"SELECT _id, corpus, freqs FROM read_parquet([{file_list}])"
+            )
+        if as_df:
+            df = rel.fetchdf()
+            con.close()
+            return df
+        return rel  # caller must close con when done
+
+    def export_freqs_to_parquets(self, shard_dir=None, corpora=None,
+                                  overwrite=False, delete_central=False,
+                                  memory_limit='32GB'):
+        """Export freqs from central DB (+ optional shard dir) to per-corpus parquets.
+
+        For each corpus, writes `{PATH_CORPUS}/{corpus}/data/freqs.parquet`
+        with columns (_id, corpus, freqs). Rows from the central DB and shards
+        are UNIONed with dedup by _id.
+
+        Uses a fresh DuckDB connection per corpus to prevent cross-corpus
+        buffer-pool accumulation that otherwise OOMs on large corpora.
+
+        Args:
+            shard_dir: optional path to in-progress freqs_shards_*/ dir; rows
+                there are unioned with central DB per corpus.
+            corpora: restrict to these corpus ids (default: all found).
+            overwrite: replace existing per-corpus parquet (default: skip).
+            delete_central: after success, drop central text_freqs table.
+            memory_limit: DuckDB setting per-corpus COPY operation.
+        """
+        import duckdb as _duckdb
+        import glob as _glob, gc, time
+        from lltk.imports import PATH_CORPUS
+
+        root = os.path.expanduser(PATH_CORPUS)
+
+        # Close main conn to avoid write-lock contention on central DB
+        if self._conn is not None:
+            try:
+                self._conn.close()
+            except Exception:
+                pass
+            self._conn = None
+
+        central_path = self.freqs_path
+
+        shard_glob = None
+        if shard_dir and os.path.isdir(shard_dir):
+            shards = sorted(_glob.glob(os.path.join(shard_dir, 'freqs_*.parquet')))
+            if shards:
+                shard_glob = os.path.join(shard_dir, 'freqs_*.parquet')
+
+        # Discover corpora using a throwaway connection
+        _disc = _duckdb.connect()
+        _disc.execute(f"ATTACH '{central_path}' AS central (READ_ONLY)")
+        cset = set(r[0] for r in _disc.execute(
+            "SELECT DISTINCT corpus FROM central.text_freqs"
+        ).fetchall())
+        if shard_glob:
+            cset.update(r[0] for r in _disc.execute(
+                f"SELECT DISTINCT corpus FROM read_parquet('{shard_glob}')"
+            ).fetchall())
+        _disc.close()
+        if corpora:
+            cset = cset & set(corpora)
+        cset = sorted(cset)
+
+        print(f'Exporting {len(cset)} corpora to per-corpus parquets '
+              f'(mem={memory_limit}/corpus)...')
+        if shard_glob:
+            print(f'  including shards from {shard_dir}')
+
+        t0 = time.time()
+        for i, c in enumerate(cset, 1):
+            out_path = os.path.join(root, c, 'data', 'freqs.parquet')
+            os.makedirs(os.path.dirname(out_path), exist_ok=True)
+            if os.path.exists(out_path) and not overwrite:
+                print(f'  [{i}/{len(cset)}] {c}: skip (exists)')
+                continue
+
+            tc = time.time()
+            c_esc = c.replace("'", "''")
+
+            # Fresh connection per corpus — releases all memory between
+            # corpora, preventing buffer-pool accumulation.
+            con = _duckdb.connect()
+            try:
+                con.execute(f"SET memory_limit='{memory_limit}'")
+                con.execute("SET preserve_insertion_order=false")
+            except Exception:
+                pass
+            con.execute(f"ATTACH '{central_path}' AS central (READ_ONLY)")
+
+            if shard_glob:
+                select_sql = f"""
+                    SELECT _id, ANY_VALUE(corpus) AS corpus, ANY_VALUE(freqs) AS freqs
+                    FROM (
+                        SELECT _id, corpus, freqs FROM central.text_freqs
+                        WHERE corpus = '{c_esc}'
+                        UNION ALL
+                        SELECT _id, corpus, freqs FROM read_parquet('{shard_glob}')
+                        WHERE corpus = '{c_esc}'
+                    )
+                    GROUP BY _id
+                """
+            else:
+                select_sql = f"""
+                    SELECT _id, corpus, freqs FROM central.text_freqs
+                    WHERE corpus = '{c_esc}'
+                """
+
+            out_esc = out_path.replace("'", "''")
+            try:
+                con.execute(f"""
+                    COPY ({select_sql}) TO '{out_esc}'
+                    (FORMAT PARQUET, COMPRESSION ZSTD, ROW_GROUP_SIZE 50000)
+                """)
+            finally:
+                con.close()
+            gc.collect()
+
+            # Verify via another throwaway conn
+            vcon = _duckdb.connect()
+            n = vcon.execute(
+                f"SELECT COUNT(*) FROM read_parquet('{out_esc}')"
+            ).fetchone()[0]
+            vcon.close()
+            size_mb = os.path.getsize(out_path) / 1e6
+            print(f'  [{i}/{len(cset)}] {c}: {n:,} rows, {size_mb:.1f} MB '
+                  f'({time.time()-tc:.1f}s)', flush=True)
+
+        print(f'Done in {time.time()-t0:.0f}s')
+
+        if delete_central:
+            print(f'\nDropping central text_freqs table...')
+            dc = _duckdb.connect(central_path)
+            dc.execute("DROP TABLE IF EXISTS text_freqs")
+            dc.execute("CHECKPOINT")
+            dc.close()
+            # Optional: reclaim disk by VACUUM via CLI (keeping file for now)
+            print(f'Central text_freqs dropped. File still at {central_path} '
+                  f'(manually delete if desired).')
 
     # ── Passages DB ────────────────────────────────────────────────
 
@@ -2580,8 +2842,8 @@ class MetaDB:
 
     def build_word_index_sql(self, vocab_size=50_000, min_count=1, corpora=None,
                              memory_limit='24GB', threads=None):
-        """Build word_year_corpus + year_corpus_totals tables from freqs_db.text_freqs
-        using pure DuckDB SQL. Requires `build_freqs_db()` to have populated the freqs DB.
+        """Build word_year_corpus + year_corpus_totals tables from per-corpus
+        freqs.parquet files. Requires `build_freqs_db()` to have populated them.
 
             lltk.db.build_word_index_sql()                     # all texts, top 50K words
             lltk.db.build_word_index_sql(vocab_size=100_000)
@@ -2607,6 +2869,13 @@ class MetaDB:
         word_regex = r"^[a-zA-Z][a-zA-Z''\-]*$"
 
         print('Building texts view (joining metadata + match_groups)...')
+        # Filter to texts with freqs via per-corpus parquets.
+        _freqs_paths = self.freqs_parquet_paths(corpora=corpora)
+        if not _freqs_paths:
+            print('No per-corpus freqs parquets found — run `lltk db-freqs` first')
+            wi_conn.close()
+            return
+        _freqs_file_list = ', '.join(f"'{p}'" for p in _freqs_paths)
         wi_conn.execute(f"""
             CREATE OR REPLACE TEMP VIEW _texts AS
             SELECT t._id, t.year, t.corpus, t.genre, COALESCE(t.n_words, 0) AS n_words,
@@ -2614,7 +2883,7 @@ class MetaDB:
             FROM main_db.texts t
             LEFT JOIN match_db.match_groups mg ON t._id = mg._id
             WHERE t.year IS NOT NULL
-              AND t._id IN (SELECT _id FROM freqs_db.text_freqs)
+              AND t._id IN (SELECT _id FROM read_parquet([{_freqs_file_list}]))
               {corpus_filter_sql}
         """)
         n_texts = wi_conn.execute("SELECT COUNT(*) FROM _texts").fetchone()[0]
@@ -2663,7 +2932,7 @@ class MetaDB:
                 print(f'Pass 1: vocabulary build ({num_proc} workers, {n_chunks} chunks)...')
                 t0 = time.time()
                 args_list = [
-                    (self.freqs_path, b, min_count, shard_dir, i, None)
+                    (self._batch_freqs_paths(b), b, min_count, shard_dir, i, None)
                     for i, b in enumerate(batches)
                 ]
                 with ProcessPoolExecutor(max_workers=num_proc) as pool:
@@ -2703,7 +2972,7 @@ class MetaDB:
             print(f'Pass 2: word_year_corpus ({num_proc} workers, {n_chunks} chunks)...')
             t0 = time.time()
             args_list = [
-                (self.freqs_path, b, min_count, shard_dir, i, vocab_set)
+                (self._batch_freqs_paths(b), b, min_count, shard_dir, i, vocab_set)
                 for i, b in enumerate(batches)
             ]
             with ProcessPoolExecutor(max_workers=num_proc) as pool:

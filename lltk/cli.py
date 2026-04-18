@@ -110,7 +110,7 @@ def main():
 	p_db_wi.add_argument('corpora', nargs='*', help='Specific corpora (default: all)')
 
 	# db-freqs
-	p_db_fq = subparsers.add_parser('db-freqs', help='Ingest per-text freqs JSONs into freqs_db.text_freqs')
+	p_db_fq = subparsers.add_parser('db-freqs', help='Ingest per-text freqs JSONs into per-corpus freqs.parquet files')
 	p_db_fq.add_argument('-j', '--jobs', type=int, default=None, help='Number of parallel workers')
 	p_db_fq.add_argument('--batch-size', type=int, default=200, help='Texts per worker batch (default: 200)')
 	p_db_fq.add_argument('--force', action='store_true', help='Drop and re-ingest all')

@@ -6,9 +6,9 @@ Usage:
     python scripts/minhash_match.py [--threshold 0.5] [--num-perm 128]
 """
 import duckdb, os, sys, time, argparse
+import lltk
 from datasketch import MinHash, MinHashLSH
 
-FREQS_PATH = os.path.expanduser('~/lltk_data/data/metadb_freqs.duckdb')
 MATCH_PATH = os.path.expanduser('~/lltk_data/data/metadb_matches.duckdb')
 
 def main():
@@ -18,14 +18,20 @@ def main():
     parser.add_argument('--corpus', type=str, default=None, help='Limit to one corpus')
     args = parser.parse_args()
 
-    # Load word sets from freqs DB
-    print('Loading word sets from freqs DB...', flush=True)
+    # Load word sets from per-corpus freqs parquets
+    print('Loading word sets from per-corpus freqs parquets...', flush=True)
     t0 = time.time()
-    freqs_conn = duckdb.connect(FREQS_PATH, read_only=True)
+    corpora = [args.corpus] if args.corpus else None
+    parquet_paths = lltk.db.freqs_parquet_paths(corpora=corpora)
+    if not parquet_paths:
+        print('No per-corpus freqs parquets found. Run `lltk db-freqs` first.', flush=True)
+        sys.exit(1)
 
-    corpus_filter = f"WHERE corpus = '{args.corpus}'" if args.corpus else ""
+    file_list = ', '.join(f"'{p}'" for p in parquet_paths)
+    freqs_conn = duckdb.connect()
     rows = freqs_conn.execute(f"""
-        SELECT _id, map_keys(freqs) as words FROM text_freqs {corpus_filter}
+        SELECT _id, map_keys(freqs) as words
+        FROM read_parquet([{file_list}])
     """).fetchall()
     freqs_conn.close()
     print(f'Loaded {len(rows):,} texts in {time.time()-t0:.1f}s', flush=True)
