@@ -202,14 +202,21 @@ class MetaDBCH:
     def ngram(self, *a, **kw):            return self._phase_b('ngram')
     def has_word_index(self):             return False
 
-    # ── detect_langs stays on the old MetaDB for now; it writes to the
-    #    DuckDB `texts` table's lang_detected columns, which haven't been
-    #    ported to CH yet. Will get rewritten in Phase B.
-
-    def detect_langs(self, *a, **kw):
-        raise NotImplementedError(
-            'detect_langs() needs CH port — the underlying UPDATE to '
-            'lltk.texts lang_detected columns is not yet wired up. Phase B.'
+    def detect_langs(self, min_tokens=50, coverage_threshold=0.05,
+                     confidence_threshold=2.0, batch_size=5000, progress=True,
+                     **unused):
+        """Run stopword-intersection language detection over lltk.text_freqs.
+        Results land in lltk.text_langs (one row per _id, ReplacingMergeTree
+        on _id so re-runs overwrite).
+        """
+        from lltk.tools.clickhouse_detect_langs import detect_langs_clickhouse
+        return detect_langs_clickhouse(
+            self.adapter,
+            min_tokens=min_tokens,
+            coverage_threshold=coverage_threshold,
+            confidence_threshold=confidence_threshold,
+            batch_size=batch_size,
+            progress=progress,
         )
 
     def __repr__(self):

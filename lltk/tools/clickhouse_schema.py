@@ -123,6 +123,18 @@ CLICKHOUSE_SCHEMA = {
         ENGINE = ReplacingMergeTree()
         ORDER BY _id
     """,
+
+    'text_langs': """
+        CREATE TABLE IF NOT EXISTS {db}.text_langs (
+            _id              String,
+            lang_detected    LowCardinality(String),
+            lang_coverage    Float32,
+            lang_confidence  Float32,
+            detected_at      DateTime DEFAULT now()
+        )
+        ENGINE = ReplacingMergeTree(detected_at)
+        ORDER BY _id
+    """,
 }
 
 
