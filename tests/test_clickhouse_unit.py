@@ -10,6 +10,18 @@ instance live elsewhere (or in CI with a service container).
 import pytest
 import pandas as pd
 
+# clickhouse-connect is an optional dependency. Tests that monkey-patch its
+# get_client to avoid network calls still need the module to exist. CI
+# containers and casual installs may not have it.
+try:
+    import clickhouse_connect  # noqa: F401
+    _HAS_CH = True
+except ImportError:
+    _HAS_CH = False
+needs_ch = pytest.mark.skipif(
+    not _HAS_CH, reason='clickhouse-connect not installed (optional dep)'
+)
+
 
 # ── _validate_id / _validate_corpus ────────────────────────────────
 
@@ -99,6 +111,7 @@ class TestGetAdapter:
         assert isinstance(a, DuckDBAdapter)
         a.close()
 
+    @needs_ch
     def test_clickhouse_url_parses(self):
         # Don't actually connect; just verify URL parsing returns the right class.
         # We monkey-patch get_client to avoid network.
