@@ -135,6 +135,30 @@ CLICKHOUSE_SCHEMA = {
         ENGINE = ReplacingMergeTree(detected_at)
         ORDER BY _id
     """,
+
+    'text_genres': """
+        CREATE TABLE IF NOT EXISTS {db}.text_genres (
+            _id                     String,
+            genre                   LowCardinality(String),
+            genre_raw               String,
+            genre_corpus            LowCardinality(String),
+            genre_enriched_source   LowCardinality(String),
+            enriched_at             DateTime DEFAULT now()
+        )
+        ENGINE = ReplacingMergeTree(enriched_at)
+        ORDER BY _id
+    """,
+
+    'text_translations': """
+        CREATE TABLE IF NOT EXISTS {db}.text_translations (
+            _id              String,
+            is_translated    UInt8,
+            original_lang    LowCardinality(String),
+            detected_at      DateTime DEFAULT now()
+        )
+        ENGINE = ReplacingMergeTree(detected_at)
+        ORDER BY _id
+    """,
 }
 
 

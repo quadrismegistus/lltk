@@ -208,11 +208,32 @@ class MetaDBCH:
         from lltk.tools.clickhouse_match import match_stats_ch
         return match_stats_ch(self.adapter)
     def wordcounts(self, *a, **kw):       return self._phase_b('wordcounts')
-    def enrich_genres(self, *a, **kw):    return self._phase_b('enrich_genres')
-    def detect_translations(self, *a, **kw): return self._phase_b('detect_translations')
-    def build_word_index_sql(self, *a, **kw): return self._phase_b('build_word_index_sql')
-    def ngram(self, *a, **kw):            return self._phase_b('ngram')
-    def has_word_index(self):             return False
+
+    def enrich_genres(self, progress=True):
+        from lltk.tools.clickhouse_enrich import enrich_genres_ch
+        return enrich_genres_ch(self.adapter, progress=progress)
+
+    def detect_translations(self):
+        from lltk.tools.clickhouse_enrich import detect_translations_ch
+        return detect_translations_ch(self.adapter)
+    def build_word_index_sql(self, vocab_size=50_000, min_count=1,
+                             corpora=None, **unused):
+        from lltk.tools.clickhouse_wordindex import build_word_index_ch
+        return build_word_index_ch(
+            self.adapter, vocab_size=vocab_size, min_count=min_count,
+            corpora=corpora,
+        )
+
+    def ngram(self, words, genre=None, corpus=None, year_min=None,
+              year_max=None, dedup=False, by_corpus=False):
+        from lltk.tools.clickhouse_wordindex import ngram_ch
+        return ngram_ch(self.adapter, words, genre=genre, corpus=corpus,
+                        year_min=year_min, year_max=year_max,
+                        dedup=dedup, by_corpus=by_corpus)
+
+    def has_word_index(self):
+        from lltk.tools.clickhouse_wordindex import has_word_index_ch
+        return has_word_index_ch(self.adapter)
 
     def detect_langs(self, min_tokens=50, coverage_threshold=0.05,
                      confidence_threshold=2.0, batch_size=5000, progress=True,
