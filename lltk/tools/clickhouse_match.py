@@ -230,30 +230,34 @@ def _containment_pass(ch_adapter, corpora=None, corpus_where='', progress=True):
         tbl = pa.Table.from_pandas(df, preserve_index=False)
         ch_adapter.client.insert_arrow('matches', tbl)
 
-    # (a) Within author blocks
+    # (a) Within author blocks — one big SQL pull, group in Python
     print('Containment (by author)...')
-    authors = ch_adapter.query(f"""
-        SELECT author_norm, count() AS n
+    print('  fetching all eligible (author, title, _id, corpus) rows...')
+    rows_all = ch_adapter.query(f"""
+        SELECT author_norm, _id, title_norm, corpus
         FROM lltk.texts
         WHERE author_norm != '' AND title_norm != ''
           AND length(title_norm) > 3
+          AND author_norm IN (
+              SELECT author_norm FROM lltk.texts
+              WHERE author_norm != '' AND title_norm != ''
+                AND length(title_norm) > 3
+              GROUP BY author_norm
+              HAVING count() > 1 AND count() <= 500
+          )
           {corpus_where}
-        GROUP BY author_norm
-        HAVING n > 1 AND n <= 500
     """)
-    it = get_tqdm(authors, desc='containment by author') if progress else authors
-    for author_norm, _ in it:
-        rows = ch_adapter.query(f"""
-            SELECT _id, title_norm, corpus FROM lltk.texts
-            WHERE author_norm = {{a:String}} AND title_norm != ''
-              AND length(title_norm) > 3
-              {corpus_where}
-        """) if False else ch_adapter.client.query(
-            f"SELECT _id, title_norm, corpus FROM lltk.texts "
-            f"WHERE author_norm = {{a:String}} AND title_norm != '' "
-            f"AND length(title_norm) > 3 {corpus_where}",
-            parameters={'a': author_norm},
-        ).result_rows
+    print(f'  fetched {len(rows_all):,} rows; grouping...')
+
+    # Group by author in Python
+    from collections import defaultdict
+    groups = defaultdict(list)
+    for author, _id, title, corp in rows_all:
+        groups[author].append((_id, title, corp))
+
+    it = (get_tqdm(groups.items(), desc='containment by author', total=len(groups))
+          if progress else groups.items())
+    for author, rows in it:
         _check(rows)
         if len(batch) >= 10000:
             _flush(batch); batch = []
@@ -265,27 +269,33 @@ def _containment_pass(ch_adapter, corpora=None, corpus_where='', progress=True):
     )[0][0]
     print(f'  By author: {n:,} pairs')
 
-    # (b) Authorless: match by year
+    # (b) Authorless: match by year — same one-query-then-group pattern
     print('Containment (by year, authorless)...')
-    years = ch_adapter.query(f"""
-        SELECT year, count() AS n
+    rows_all = ch_adapter.query(f"""
+        SELECT year, _id, title_norm, corpus
         FROM lltk.texts
         WHERE (author_norm IS NULL OR author_norm = '')
           AND title_norm != ''
           AND year IS NOT NULL AND length(title_norm) > 5
+          AND year IN (
+              SELECT year FROM lltk.texts
+              WHERE (author_norm IS NULL OR author_norm = '')
+                AND title_norm != ''
+                AND year IS NOT NULL AND length(title_norm) > 5
+              GROUP BY year
+              HAVING count() > 1 AND count() <= 500
+          )
           {corpus_where}
-        GROUP BY year
-        HAVING n > 1 AND n <= 500
     """)
-    it = get_tqdm(years, desc='containment by year') if progress else years
-    for year, _ in it:
-        rows = ch_adapter.client.query(
-            f"SELECT _id, title_norm, corpus FROM lltk.texts "
-            f"WHERE (author_norm IS NULL OR author_norm = '') "
-            f"AND title_norm != '' AND year = {{y:Int32}} "
-            f"AND length(title_norm) > 5 {corpus_where}",
-            parameters={'y': year},
-        ).result_rows
+    print(f'  fetched {len(rows_all):,} rows; grouping...')
+
+    year_groups = defaultdict(list)
+    for year, _id, title, corp in rows_all:
+        year_groups[year].append((_id, title, corp))
+
+    it = (get_tqdm(year_groups.items(), desc='containment by year',
+                   total=len(year_groups)) if progress else year_groups.items())
+    for year, rows in it:
         _check(rows, match_type='containment_year', min_short=15)
         if len(batch) >= 10000:
             _flush(batch); batch = []
@@ -305,14 +315,25 @@ def _fuzzy_pass(ch_adapter, corpora=None, corpus_where='', progress=True):
     import pyarrow as pa
 
     print('Fuzzy title matching within author blocks...')
-    authors = ch_adapter.query(f"""
-        SELECT author_norm, count() AS n
+    rows_all = ch_adapter.query(f"""
+        SELECT author_norm, _id, title_norm, corpus, year
         FROM lltk.texts
-        WHERE author_norm != '' AND length(title_norm) > 3
+        WHERE author_norm != '' AND title_norm != ''
+          AND length(title_norm) > 3
+          AND author_norm IN (
+              SELECT author_norm FROM lltk.texts
+              WHERE author_norm != '' AND title_norm != ''
+                AND length(title_norm) > 3
+              GROUP BY author_norm
+              HAVING count() > 1 AND count() <= 200
+          )
           {corpus_where}
-        GROUP BY author_norm
-        HAVING n > 1 AND n <= 200
     """)
+    from collections import defaultdict
+    fuzzy_groups = defaultdict(list)
+    for author, _id, title, corp, year in rows_all:
+        fuzzy_groups[author].append((_id, title, corp, year))
+
     batch = []
 
     def _flush(rows):
@@ -323,14 +344,9 @@ def _fuzzy_pass(ch_adapter, corpora=None, corpus_where='', progress=True):
         tbl = pa.Table.from_pandas(df, preserve_index=False)
         ch_adapter.client.insert_arrow('matches', tbl)
 
-    it = get_tqdm(authors, desc='fuzzy by author') if progress else authors
-    for author_norm, _ in it:
-        rows = ch_adapter.client.query(
-            f"SELECT _id, title_norm, corpus, year FROM lltk.texts "
-            f"WHERE author_norm = {{a:String}} AND title_norm != '' "
-            f"AND length(title_norm) > 3 {corpus_where}",
-            parameters={'a': author_norm},
-        ).result_rows
+    it = (get_tqdm(fuzzy_groups.items(), desc='fuzzy by author',
+                   total=len(fuzzy_groups)) if progress else fuzzy_groups.items())
+    for author, rows in it:
         for i in range(len(rows)):
             for j in range(i + 1, len(rows)):
                 a_id, a_title, a_corp, a_year = rows[i]
