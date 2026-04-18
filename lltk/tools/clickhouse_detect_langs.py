@@ -70,9 +70,8 @@ def detect_langs_clickhouse(ch_adapter, min_tokens=50,
         return {}
     print(f'  {n_freqs:,} texts remaining')
 
-    # Build the big SELECT. One arraySum + arrayMap per language.
+    # Build per-language stopword-hits SELECT fragment. One arraySum per lang.
     def _sql_str_array(ws):
-        # quote + escape single quotes in stopwords
         parts = ["'" + w.replace("'", "''") + "'" for w in ws]
         return '[' + ', '.join(parts) + ']'
 
@@ -82,19 +81,24 @@ def detect_langs_clickhouse(ch_adapter, min_tokens=50,
         for lg in langs
     )
 
-    where = ("WHERE _id NOT IN (SELECT _id FROM lltk.text_langs)"
-             if skip_existing else "")
+    # Chunk by corpus — the whole-table single-query blew 55GB. Per-corpus
+    # keeps the arrayMap intermediate bounded.
+    if skip_existing:
+        corpora_rows = ch_adapter.query("""
+            SELECT corpus, count() AS n
+            FROM lltk.text_freqs
+            WHERE _id NOT IN (SELECT _id FROM lltk.text_langs)
+            GROUP BY corpus ORDER BY n
+        """)
+    else:
+        corpora_rows = ch_adapter.query("""
+            SELECT corpus, count() AS n
+            FROM lltk.text_freqs GROUP BY corpus ORDER BY n
+        """)
+    corpora_todo = [(c, n) for c, n in corpora_rows if n]
+    print(f'  across {len(corpora_todo)} corpora')
 
-    sql = f"""
-        SELECT _id,
-               {lang_exprs},
-               arraySum(mapValues(freqs)) AS total_tokens
-        FROM lltk.text_freqs
-        {where}
-    """
-
-    # Streaming read; no writes on this client (held-open session stays read-only).
-    # Writes go through a dedicated client.
+    # Writes on a dedicated client (streaming reads hold the primary session).
     from lltk.tools.db_adapter import get_adapter
     import os as _os
     ch_url = _os.environ.get(
@@ -104,47 +108,61 @@ def detect_langs_clickhouse(ch_adapter, min_tokens=50,
     )
     write_adapter = get_adapter(ch_url)
 
-    results = []
     pbar = get_tqdm(total=n_freqs, desc='detect_langs',
                     unit='text', unit_scale=True) if progress else None
-
     t0 = time.time()
-    with ch_adapter.client.query_arrow_stream(sql) as stream:
-        for arrow_batch in stream:
-            ids = arrow_batch.column('_id').to_pylist()
-            lang_hits_arrays = {lg: arrow_batch.column(f'{lg}_hits').to_pylist()
-                                for lg in langs}
-            totals = arrow_batch.column('total_tokens').to_pylist()
+    results = []
 
-            for i, (_id, total) in enumerate(zip(ids, totals)):
-                if total < min_tokens:
-                    results.append((_id, 'null', 0.0, 0.0))
-                    continue
-                hits = {lg: lang_hits_arrays[lg][i] for lg in langs}
-                # argmax + runner-up
-                top_lang, top_hits, second_hits = None, 0, 0
-                for lg, h in hits.items():
-                    if h > top_hits:
-                        second_hits = top_hits
-                        top_hits = h
-                        top_lang = lg
-                    elif h > second_hits:
-                        second_hits = h
-                if top_hits == 0:
-                    results.append((_id, 'unknown', 0.0, 0.0))
-                    continue
-                coverage = top_hits / total
-                confidence = top_hits / second_hits if second_hits > 0 else 999.0
-                if coverage < coverage_threshold or confidence < confidence_threshold:
-                    results.append((_id, 'unknown', coverage, confidence))
-                else:
-                    results.append((_id, top_lang, coverage, confidence))
+    for corpus, n_corpus in corpora_todo:
+        c_esc = corpus.replace("'", "''")
+        where_parts = [f"corpus = '{c_esc}'"]
+        if skip_existing:
+            where_parts.append("_id NOT IN (SELECT _id FROM lltk.text_langs)")
+        sql = f"""
+            SELECT _id,
+                   {lang_exprs},
+                   arraySum(mapValues(freqs)) AS total_tokens
+            FROM lltk.text_freqs
+            WHERE {' AND '.join(where_parts)}
+        """
 
-            if pbar:
-                pbar.update(len(ids))
-            if len(results) >= batch_size:
-                _flush_langs(write_adapter, results)
-                results.clear()
+        with ch_adapter.client.query_arrow_stream(sql) as stream:
+            for arrow_batch in stream:
+                ids = arrow_batch.column('_id').to_pylist()
+                lang_hits_arrays = {lg: arrow_batch.column(f'{lg}_hits').to_pylist()
+                                    for lg in langs}
+                totals = arrow_batch.column('total_tokens').to_pylist()
+
+                for i, (_id, total) in enumerate(zip(ids, totals)):
+                    if total < min_tokens:
+                        results.append((_id, 'null', 0.0, 0.0))
+                        continue
+                    # argmax + runner-up across per-lang hit counts
+                    top_lang, top_hits, second_hits = None, 0, 0
+                    for lg in langs:
+                        h = lang_hits_arrays[lg][i]
+                        if h > top_hits:
+                            second_hits = top_hits
+                            top_hits = h
+                            top_lang = lg
+                        elif h > second_hits:
+                            second_hits = h
+                    if top_hits == 0:
+                        results.append((_id, 'unknown', 0.0, 0.0))
+                        continue
+                    coverage = top_hits / total
+                    confidence = top_hits / second_hits if second_hits > 0 else 999.0
+                    if coverage < coverage_threshold or confidence < confidence_threshold:
+                        results.append((_id, 'unknown', coverage, confidence))
+                    else:
+                        results.append((_id, top_lang, coverage, confidence))
+
+                if pbar:
+                    pbar.update(len(ids))
+                if len(results) >= batch_size:
+                    _flush_langs(write_adapter, results)
+                    results.clear()
+
     if pbar:
         pbar.close()
     if results:
