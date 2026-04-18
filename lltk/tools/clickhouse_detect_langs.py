@@ -132,8 +132,54 @@ def detect_langs_clickhouse(ch_adapter, min_tokens=50,
         FROM ranked
     """
 
+    # Tag the INSERT with a query_id so we can watch its progress.
+    import uuid, threading
+    from lltk.tools.tools import get_tqdm
+    qid = str(uuid.uuid4())
+
+    pbar = get_tqdm(total=total_remaining, desc='detect_langs',
+                    unit='text', unit_scale=True) if progress else None
+    stop_flag = {'done': False}
+
+    def _watch():
+        # Use a dedicated client — the primary one is blocked running INSERT.
+        from lltk.tools.db_adapter import get_adapter
+        import os as _os
+        url = _os.environ.get(
+            'LLTK_CLICKHOUSE_URL',
+            f'clickhouse://{ch_adapter.username}:{ch_adapter._password}'
+            f'@{ch_adapter.host}:{ch_adapter.port}/{ch_adapter.database}',
+        )
+        watcher = get_adapter(url)
+        last = 0
+        while not stop_flag['done']:
+            try:
+                rows = watcher.query(
+                    f"SELECT read_rows FROM system.processes "
+                    f"WHERE query_id = '{qid}'"
+                )
+                if rows:
+                    now = rows[0][0]
+                    if pbar and now > last:
+                        pbar.update(min(now - last, total_remaining - last))
+                        last = now
+            except Exception:
+                pass
+            time.sleep(0.5)
+        watcher.close()
+
+    thread = threading.Thread(target=_watch, daemon=True)
+    thread.start()
+
     print('Running single server-side INSERT...')
-    ch_adapter.execute(sql)
+    try:
+        ch_adapter.client.command(sql, settings={'query_id': qid})
+    finally:
+        stop_flag['done'] = True
+        thread.join(timeout=2)
+        if pbar:
+            pbar.close()
+
     elapsed = time.time() - t0
     print(f'  done in {elapsed:.1f}s ({total_remaining/max(elapsed, 1):.0f}/s)')
 
