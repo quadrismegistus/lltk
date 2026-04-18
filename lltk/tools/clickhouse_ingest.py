@@ -39,13 +39,30 @@ def _read_freqs_json(path):
         return None
 
 
-def _worker_read_batch(args):
-    """Worker: read N freqs JSONs, return an arrow Table of (_id, corpus, freqs).
+# Per-worker persistent ClickHouse client, lazily initialized on first call.
+# ProcessPoolExecutor reuses worker processes across submissions, so we avoid
+# reconnecting per batch.
+_WORKER_CH_CLIENT = None
 
-    Returns (batch_idx, arrow_table_or_none, n_read).
+
+def _worker_get_client(ch_url):
+    global _WORKER_CH_CLIENT
+    if _WORKER_CH_CLIENT is None:
+        from lltk.tools.db_adapter import get_adapter
+        _WORKER_CH_CLIENT = get_adapter(ch_url).client
+    return _WORKER_CH_CLIENT
+
+
+def _worker_read_and_insert(args):
+    """Worker: read N freqs JSONs, build an Arrow Table, and INSERT into
+    ClickHouse directly. Running the insert in the worker parallelizes it
+    across N workers' HTTP connections — the main thread is only a
+    scheduler, not a bottleneck.
+
+    Returns (batch_idx, n_inserted, error_or_none).
     """
     import pyarrow as pa
-    batch_idx, corpus_root, entries = args
+    batch_idx, ch_url, corpus_root, entries = args
     ids, corpora, freqs = [], [], []
     for _id, corpus, rel_path in entries:
         abs_path = os.path.join(corpus_root, rel_path)
@@ -54,18 +71,23 @@ def _worker_read_batch(args):
             continue
         ids.append(_id)
         corpora.append(corpus)
-        # Arrow map type: list of (key, value) tuples per row
         freqs.append(list(d.items()))
 
     if not ids:
-        return (batch_idx, None, 0)
+        return (batch_idx, 0, None)
 
     map_type = pa.map_(pa.string(), pa.uint32())
     table = pa.Table.from_arrays(
         [pa.array(ids), pa.array(corpora), pa.array(freqs, type=map_type)],
         names=['_id', 'corpus', 'freqs'],
     )
-    return (batch_idx, table, len(ids))
+
+    try:
+        client = _worker_get_client(ch_url)
+        client.insert_arrow('text_freqs', table)
+        return (batch_idx, len(ids), None)
+    except Exception as e:
+        return (batch_idx, 0, f'{type(e).__name__}: {str(e)[:150]}')
 
 
 def ingest_freqs_from_jsons(ch_adapter, corpora=None, batch_size=500,
@@ -101,15 +123,23 @@ def ingest_freqs_from_jsons(ch_adapter, corpora=None, batch_size=500,
         where = f"AND t.corpus IN ({cl})"
 
     if truncate_first:
+        # Use SYNC mode so the delete completes before we query for the todo list.
+        # Without SETTINGS mutations_sync=1, ALTER TABLE DELETE is async and the
+        # subsequent LEFT ANTI JOIN could see rows still pending removal.
         if corpora:
             cl = ', '.join(f"'{c}'" for c in corpora)
-            ch_adapter.execute(f"ALTER TABLE lltk.text_freqs DELETE WHERE corpus IN ({cl})")
+            ch_adapter.execute(
+                f"ALTER TABLE lltk.text_freqs DELETE WHERE corpus IN ({cl}) "
+                f"SETTINGS mutations_sync=1"
+            )
             print(f'Deleted existing rows for corpora: {sorted(corpora)}')
         else:
             ch_adapter.execute('TRUNCATE TABLE lltk.text_freqs')
             print('Truncated lltk.text_freqs')
 
-    # Fetch todo list: skip rows already in text_freqs (resumable)
+    # Fetch todo list: skip rows already in text_freqs (resumable default).
+    # After a truncate_first run the table is empty for the relevant corpora,
+    # so the anti-join reduces to a plain scan.
     todo = ch_adapter.query(f"""
         SELECT t._id, t.corpus, t.path_freqs
         FROM lltk.texts t
@@ -131,8 +161,16 @@ def ingest_freqs_from_jsons(ch_adapter, corpora=None, batch_size=500,
     print(f'Ingesting {len(todo):,} freqs JSONs into ClickHouse '
           f'({num_proc} workers, batch={batch_size}){already_msg}...')
 
+    # Pass ClickHouse URL to workers so each can open its own connection.
+    # Parallel worker inserts remove the main-thread serialization bottleneck.
+    ch_url = os.environ.get(
+        'LLTK_CLICKHOUSE_URL',
+        f'clickhouse://{ch_adapter.username}:{ch_adapter._password}'
+        f'@{ch_adapter.host}:{ch_adapter.port}/{ch_adapter.database}',
+    )
+
     batches = [todo[i:i+batch_size] for i in range(0, len(todo), batch_size)]
-    args_list = [(i, corpus_root, b) for i, b in enumerate(batches)]
+    args_list = [(i, ch_url, corpus_root, b) for i, b in enumerate(batches)]
 
     from lltk.tools.tools import get_tqdm
 
@@ -144,20 +182,15 @@ def ingest_freqs_from_jsons(ch_adapter, corpora=None, batch_size=500,
                     unit='text', unit_scale=True, smoothing=0.1)
     try:
         with ProcessPoolExecutor(max_workers=num_proc) as pool:
-            futures = {pool.submit(_worker_read_batch, a): a[0] for a in args_list}
+            futures = [pool.submit(_worker_read_and_insert, a) for a in args_list]
             for fut in as_completed(futures):
-                batch_idx, table, n_read = fut.result()
-                if table is None:
+                batch_idx, n, err = fut.result()
+                if err:
+                    n_failed += batch_size
+                    pbar.write(f'  batch {batch_idx}: insert failed: {err}')
                     continue
-                try:
-                    ch_adapter.client.insert_arrow('text_freqs', table)
-                    n_inserted += n_read
-                    pbar.update(n_read)
-                except Exception as e:
-                    n_failed += n_read
-                    pbar.write(f'  batch {batch_idx}: insert failed: '
-                               f'{type(e).__name__}: {str(e)[:120]}')
-                    continue
+                n_inserted += n
+                pbar.update(n)
     finally:
         pbar.close()
 

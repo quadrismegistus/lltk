@@ -131,6 +131,7 @@ class ClickHouseAdapter(DBAdapter):
         self.host = host
         self.port = port
         self.username = username
+        self._password = password
 
     @property
     def engine(self):
