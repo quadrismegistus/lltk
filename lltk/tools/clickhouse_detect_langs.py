@@ -17,11 +17,15 @@ from lltk.tools.db_adapter import get_adapter
 def detect_langs_clickhouse(ch_adapter, min_tokens=50,
                              coverage_threshold=0.05,
                              confidence_threshold=2.0,
-                             batch_size=5000, progress=True):
+                             batch_size=5000, progress=True,
+                             skip_existing=True):
     """Score every row in lltk.text_freqs, write lang_detected to lltk.text_langs.
 
-    Returns a dict with distribution stats (lang_counts, n_texts,
-    n_unknown, n_below_min_tokens).
+    With skip_existing=True (default), only processes _ids not already in
+    text_langs — safe resumable default after a crash or Ctrl+C. Pass
+    skip_existing=False for a full recompute.
+
+    Returns distribution stats as a dict lang → row count.
     """
     from lltk.tools.lang_detect import function_words_table
     from lltk.tools.tools import get_tqdm
@@ -39,9 +43,20 @@ def detect_langs_clickhouse(ch_adapter, min_tokens=50,
         ORDER BY _id
     """)
 
-    n_freqs = ch_adapter.query("SELECT count() FROM lltk.text_freqs")[0][0]
+    if skip_existing:
+        n_freqs = ch_adapter.query("""
+            SELECT count() FROM lltk.text_freqs
+            LEFT ANTI JOIN lltk.text_langs USING _id
+        """)[0][0]
+        already = ch_adapter.query("SELECT count() FROM lltk.text_langs FINAL")[0][0]
+        if already:
+            print(f'Skipping {already:,} already-processed texts '
+                  f'(use skip_existing=False to recompute)')
+    else:
+        n_freqs = ch_adapter.query("SELECT count() FROM lltk.text_freqs")[0][0]
     if n_freqs == 0:
-        print('lltk.text_freqs is empty — run `lltk db-freqs` first')
+        print('Nothing to do — all texts already have detected lang '
+              '(or lltk.text_freqs is empty)')
         return {}
 
     # Invert function-word list: word → tuple of langs
@@ -62,9 +77,12 @@ def detect_langs_clickhouse(ch_adapter, min_tokens=50,
     pbar = get_tqdm(total=n_freqs, desc='detect_langs',
                     unit='text', unit_scale=True) if progress else None
 
-    with ch_adapter.client.query_arrow_stream(
+    stream_sql = (
+        "SELECT _id, freqs FROM lltk.text_freqs LEFT ANTI JOIN lltk.text_langs USING _id"
+        if skip_existing else
         "SELECT _id, freqs FROM lltk.text_freqs"
-    ) as stream:
+    )
+    with ch_adapter.client.query_arrow_stream(stream_sql) as stream:
         for arrow_batch in stream:
             ids = arrow_batch.column('_id').to_pylist()
             freqs_col = arrow_batch.column('freqs').to_pylist()
