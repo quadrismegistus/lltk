@@ -137,6 +137,24 @@ def main():
 	p_pros.add_argument('--no-resume', action='store_true', help='Re-parse all texts (default: skip texts already parsed)')
 	p_pros.add_argument('--syntax', action='store_true', help='Run syntactic parsing too (slower)')
 	p_pros.add_argument('--limit', type=int, default=None, help='Parse only first N texts (testing)')
+	# Output-shape knobs (TextModel.save in prosodic >= 3.2)
+	p_pros.add_argument('--save-parses', default='unbounded',
+		choices=['best', 'unbounded', 'all'],
+		help='best=1 parse/line | unbounded=Pareto front (default) | all=every parse incl. dominated')
+	p_pros.add_argument('--no-compression', action='store_true',
+		help='Write uncompressed parquet + plain text.txt (default: gzip)')
+	# Common meter knobs
+	p_pros.add_argument('--max-s', type=int, default=None, help='Max strong positions per foot (default 2)')
+	p_pros.add_argument('--max-w', type=int, default=None, help='Max weak positions per foot (default 2)')
+	p_pros.add_argument('--combine-by', default=None, choices=['line', 'sent'],
+		help='Parse-and-combine granularity (default: line)')
+	p_pros.add_argument('--constraints', default=None,
+		help='JSON dict overriding constraint weights, e.g. \'{"w_peak":2.0}\'')
+	# Escape hatches
+	p_pros.add_argument('--meter-kwargs', default=None,
+		help='JSON dict of additional kwargs forwarded to text.parse(...)')
+	p_pros.add_argument('--text-kwargs', default=None,
+		help='JSON dict of additional kwargs forwarded to prosodic.Text(...)')
 
 	# prosodic-aggregate
 	p_pros_agg = subparsers.add_parser('prosodic-aggregate', help='Build {corpus.path}/prosodic.parquet from per-text parsed.parquet files')
@@ -378,6 +396,14 @@ def main():
 
 	elif args.cmd == 'prosodic-parse':
 		from lltk.tools.prosodic_tools import parse_corpus
+		import json as _json
+		def _parse_json(arg, name):
+			if arg is None:
+				return None
+			try:
+				return _json.loads(arg)
+			except _json.JSONDecodeError as e:
+				raise SystemExit(f'--{name}: invalid JSON ({e})')
 		parse_corpus(
 			args.corpus,
 			n_workers=args.jobs,
@@ -385,6 +411,14 @@ def main():
 			resume=not args.no_resume,
 			syntax=args.syntax,
 			limit=args.limit,
+			save_parses=args.save_parses,
+			compression=None if args.no_compression else 'gzip',
+			max_s=args.max_s,
+			max_w=args.max_w,
+			combine_by=args.combine_by,
+			constraints=_parse_json(args.constraints, 'constraints'),
+			meter_kwargs=_parse_json(args.meter_kwargs, 'meter-kwargs'),
+			text_kwargs=_parse_json(args.text_kwargs, 'text-kwargs'),
 		)
 
 	elif args.cmd == 'prosodic-aggregate':

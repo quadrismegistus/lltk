@@ -4,24 +4,31 @@ then optionally aggregate into a single corpus-level parquet for analysis.
 
 Layout under {corpus.path_prosodic}/{text.id}/:
     syll.parquet     flat syllable-level DataFrame
-    parsed.parquet   per-line best parse + violations
+    parsed.parquet   parsed lines + violations (rows depend on save_parses)
+    text.txt[.gz]    source text
     meta.json        config/metadata for resumability
 
 The per-text format and loading is owned by the `prosodic` package
 (TextModel.save / TextModel.load). This module only orchestrates.
+
+`prosodic.parse_corpus` does not yet propagate `save_parses` /
+`compression` to its inner `t.save()` call, so we monkey-patch
+`TextModel.save`'s defaults for the duration of the batch run when the
+caller wants non-default behaviour.
 """
 from __future__ import annotations
 
+import contextlib
 import os
 
 
-def _load_prosodic(min_version=(3, 1)):
-    """Import prosodic. Requires >=3.1 for parse_corpus / TextModel."""
+def _load_prosodic(min_version=(3, 2)):
+    """Import prosodic. Requires >=3.2 for save_parses parameter."""
     try:
         import prosodic
     except ImportError as e:
         raise ImportError(
-            "prosodic is an optional dep; install with `pip install prosodic>=3.1`"
+            "prosodic is an optional dep; install with `pip install prosodic>=3.2`"
         ) from e
     if not hasattr(prosodic, 'parse_corpus') or not hasattr(prosodic, 'TextModel'):
         raise ImportError(
@@ -31,22 +38,95 @@ def _load_prosodic(min_version=(3, 1)):
     return prosodic
 
 
+_VALID_SAVE_PARSES = ('best', 'unbounded', 'all')
+
+
+@contextlib.contextmanager
+def _patched_save_defaults(prosodic, save_parses, compression):
+    """Temporarily override TextModel.save's defaults so parse_corpus's
+    inner `t.save(text_dir)` calls pick them up. Restored on exit even if
+    parse_corpus raises.
+    """
+    if save_parses == 'unbounded' and compression == 'gzip':
+        # Both at prosodic's defaults — no patch needed.
+        yield
+        return
+
+    save = prosodic.TextModel.save
+    orig_defaults = save.__defaults__  # (None, 'unbounded', 'gzip')
+    if orig_defaults is None or len(orig_defaults) < 3:
+        # Defensive: signature changed in a future prosodic version.
+        # Fall back to no-patch and let parse_corpus run as-is.
+        yield
+        return
+    new_defaults = (orig_defaults[0], save_parses, compression) + orig_defaults[3:]
+    save.__defaults__ = new_defaults
+    try:
+        yield
+    finally:
+        save.__defaults__ = orig_defaults
+
+
 def parse_corpus(corpus_id, n_workers=1, device='auto', resume=True,
-                 syntax=False, limit=None):
+                 syntax=False, limit=None,
+                 # Output-shape knobs
+                 save_parses='unbounded', compression='gzip',
+                 # Common meter knobs (forwarded to text.parse() via meter_kwargs)
+                 max_s=None, max_w=None, combine_by=None, constraints=None,
+                 # Escape hatches: arbitrary kwargs forwarded down
+                 meter_kwargs=None, text_kwargs=None):
     """Batch-parse a corpus's texts with prosodic. Writes per-text dirs under
     {corpus.path_prosodic}/{text.id}/.
+
+    Args:
+      save_parses: 'best' (1 parse/line), 'unbounded' (all Pareto-optimal —
+        prosodic's default), or 'all' (every parse including dominated).
+        On Shakespeare's sonnets: best ≈ 22K rows, unbounded ≈ 53K, all ≈ 4.3M.
+      compression: parquet compression. 'gzip' (default) or None for raw.
+      max_s, max_w: max strong / weak positions per foot (Meter knobs).
+      combine_by: 'line' (default) or 'sent' — parse-and-combine granularity.
+      constraints: dict overriding any of {w_peak, w_stress, s_unstress,
+        unres_across, unres_within, foot_size}; defaults all 1.0.
+      meter_kwargs / text_kwargs: escape hatches forwarded to text.parse(...)
+        and prosodic.Text(...) respectively. CLI-style flags above merge into
+        these dicts.
 
     Resume is on by default: texts whose meta.json already exists are skipped.
     Empty texts (no .txt content) are skipped silently.
     """
+    if save_parses not in _VALID_SAVE_PARSES:
+        raise ValueError(
+            f"save_parses must be one of {_VALID_SAVE_PARSES}; got {save_parses!r}"
+        )
+
     prosodic = _load_prosodic()
     import lltk
+
+    # Merge convenience flags into meter_kwargs / text_kwargs
+    mk = dict(meter_kwargs or {})
+    if max_s is not None:
+        mk['max_s'] = max_s
+    if max_w is not None:
+        mk['max_w'] = max_w
+    if combine_by is not None:
+        mk['combine_by'] = combine_by
+    if constraints is not None:
+        # Merge with prosodic's defaults so a partial dict overrides only those keys
+        defaults = {'w_peak': 1.0, 'w_stress': 1.0, 's_unstress': 1.0,
+                    'unres_across': 1.0, 'unres_within': 1.0, 'foot_size': 1.0}
+        defaults.update(constraints)
+        mk['constraints'] = defaults
+    meter_kwargs = mk or None
+
+    tk = dict(text_kwargs or {})
+    if syntax:
+        tk['syntax'] = True
+    text_kwargs = tk or None
 
     C = lltk.load(corpus_id)
     out_dir = C.path_prosodic
     os.makedirs(out_dir, exist_ok=True)
 
-    # Lazy generator over texts with non-empty txt
     def _items():
         for i, t in enumerate(C.texts()):
             if limit is not None and i >= limit:
@@ -64,18 +144,24 @@ def parse_corpus(corpus_id, n_workers=1, device='auto', resume=True,
     except Exception:
         total = None
 
-    text_kwargs = {'syntax': True} if syntax else None
+    print(f"prosodic-parse: save_parses={save_parses!r} compression={compression!r}")
+    if meter_kwargs:
+        print(f"  meter_kwargs={meter_kwargs}")
+    if text_kwargs:
+        print(f"  text_kwargs={text_kwargs}")
 
-    stats = prosodic.parse_corpus(
-        _items(), out_dir,
-        n_workers=n_workers,
-        device=device,
-        resume=resume,
-        text_kwargs=text_kwargs,
-        total=total,
-        progress=True,
-        on_error='log',
-    )
+    with _patched_save_defaults(prosodic, save_parses, compression):
+        stats = prosodic.parse_corpus(
+            _items(), out_dir,
+            n_workers=n_workers,
+            device=device,
+            resume=resume,
+            text_kwargs=text_kwargs,
+            meter_kwargs=meter_kwargs,
+            total=total,
+            progress=True,
+            on_error='log',
+        )
     print(
         f"done: {stats.get('n_done', 0)}  "
         f"skipped: {stats.get('n_skipped', 0)}  "
