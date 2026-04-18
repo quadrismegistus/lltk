@@ -28,13 +28,14 @@ STATIC_DIR = WEB_DIR / 'static'
 
 def create_app():
     """Create the LLTK explorer FastAPI app."""
-    from lltk.tools.metadb import MetaDB
+    import lltk
 
     app = FastAPI(title='LLTK Explorer')
     app.mount('/static', StaticFiles(directory=str(STATIC_DIR)), name='static')
 
-    # Read-only DB so the app can run concurrently with db-wordindex/db-rebuild
-    db = MetaDB(read_only=True)
+    # Points at MetaDBCH (ClickHouse-backed). Reads are naturally concurrent
+    # in ClickHouse — no read_only flag needed (no file locks).
+    db = lltk.db
 
     # ── HTML shell ──────────────────────────────────────────────────────
 

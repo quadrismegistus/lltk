@@ -28,6 +28,120 @@ from lltk.tools.clickhouse_schema import create_all_tables
 DEFAULT_CH_URL = 'clickhouse://lltk:lltk@localhost:8123/lltk'
 
 
+# Mapping of legacy DuckDB-style table references → ClickHouse equivalents.
+# Applied by the legacy conn shim for web-app backwards compatibility.
+_LEGACY_TABLE_REWRITES = [
+    ('match_db.matches',         'lltk.matches'),
+    ('match_db.match_groups',    'lltk.match_groups'),
+    ('wc_db.wordcounts',         'lltk.wordcounts'),
+    ('wi_db.word_year_corpus',   'lltk.word_year_corpus'),
+    ('wi_db.year_corpus_totals', 'lltk.year_corpus_totals'),
+    ('freqs_db.text_freqs',      'lltk.text_freqs'),
+]
+
+
+def _rewrite_legacy_sql(sql):
+    """Rewrite DuckDB-specific syntax in a SQL string for ClickHouse.
+
+    - Table name qualifiers (match_db.* → lltk.*, etc.)
+    - `FROM texts` (bare) → `FROM lltk.texts`
+    - `json_extract_string(col, '$.x')` → `JSONExtractString(col, 'x')`
+    - `to_timestamp(x)` → `toDateTime(x)`
+    """
+    import re
+    for old, new in _LEGACY_TABLE_REWRITES:
+        sql = sql.replace(old, new)
+
+    # Bare `texts` / `corpus_info` references → lltk.*.
+    # Only match when the identifier stands alone (whitespace/paren/start-of-line on either side),
+    # and is NOT already prefixed with a database name.
+    sql = re.sub(r'(?<![.\w])(texts|corpus_info)(?![.\w])',
+                 lambda m: f'lltk.{m.group(1)}', sql)
+
+    # Re-undo any double-prefixing that may have occurred
+    sql = sql.replace('lltk.lltk.', 'lltk.')
+
+    # json_extract_string → JSONExtractString, stripping '$.' if present
+    def _json_extract(m):
+        col = m.group(1).strip()
+        path = m.group(2).strip().strip("'\"")
+        if path.startswith('$.'):
+            path = path[2:]
+        return f"JSONExtractString({col}, '{path}')"
+    sql = re.sub(
+        r"json_extract_string\s*\(\s*([^,]+)\s*,\s*('\$\.[^']+'|\"\$\.[^\"]+\")\s*\)",
+        _json_extract, sql,
+    )
+
+    # to_timestamp(x) → toDateTime(x)
+    sql = re.sub(r'\bto_timestamp\s*\(', 'toDateTime(', sql)
+
+    return sql
+
+
+class _LegacyResult:
+    """Mimic DuckDB's result-object surface over ClickHouse query results."""
+
+    def __init__(self, adapter, sql, params=None):
+        self._adapter = adapter
+        self._sql = sql
+        self._params = params
+
+    def _run(self):
+        if self._params:
+            # DuckDB-style positional '?' params aren't natively supported by
+            # clickhouse-connect. Inline them (SQL injection risk is limited
+            # to internal callers — LLTK doesn't accept user SQL here).
+            sql = self._sql
+            for p in self._params:
+                if isinstance(p, str):
+                    p = "'" + p.replace("'", "''") + "'"
+                elif p is None:
+                    p = 'NULL'
+                else:
+                    p = str(p)
+                sql = sql.replace('?', p, 1)
+        else:
+            sql = self._sql
+        return self._adapter.client.query(sql).result_rows
+
+    def fetchone(self):
+        rows = self._run()
+        return rows[0] if rows else None
+
+    def fetchall(self):
+        return self._run()
+
+    def fetchdf(self):
+        sql = self._sql
+        if self._params:
+            for p in self._params:
+                if isinstance(p, str):
+                    p = "'" + p.replace("'", "''") + "'"
+                elif p is None:
+                    p = 'NULL'
+                else:
+                    p = str(p)
+                sql = sql.replace('?', p, 1)
+        return self._adapter.client.query_df(sql)
+
+
+class _LegacyConnShim:
+    """DuckDB-style conn shim over a ClickHouse adapter.
+
+    Use for backward-compat with code that does:
+        db.conn.execute(sql, params).fetchone()/fetchall()/fetchdf()
+
+    New code should call `db.adapter.query(...)` / `db.query_df(...)` directly.
+    """
+
+    def __init__(self, adapter):
+        self._adapter = adapter
+
+    def execute(self, sql, params=None):
+        return _LegacyResult(self._adapter, _rewrite_legacy_sql(sql), params)
+
+
 class MetaDBCH:
     def __init__(self, url=None):
         self.url = url or os.environ.get('LLTK_CLICKHOUSE_URL', DEFAULT_CH_URL)
@@ -251,6 +365,20 @@ class MetaDBCH:
             batch_size=batch_size,
             progress=progress,
         )
+
+    # ── Legacy compatibility shim ────────────────────────────────────
+    # The web app (and some abstraction-project code) expects a DuckDB-style
+    # `.conn.execute(sql).fetchone()/fetchall()/fetchdf()` interface. The
+    # shim routes those calls to ClickHouse after rewriting DuckDB-only
+    # table references (match_db.x → lltk.x, texts → lltk.texts).
+
+    @property
+    def conn(self):
+        return _LegacyConnShim(self.adapter)
+
+    @property
+    def match_conn(self):
+        return _LegacyConnShim(self.adapter)
 
     def __repr__(self):
         try:
