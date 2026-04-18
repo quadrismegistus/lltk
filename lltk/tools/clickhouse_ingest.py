@@ -92,20 +92,13 @@ def ingest_freqs_from_jsons(ch_adapter, corpora=None, batch_size=500,
     if num_proc is None:
         num_proc = max(1, os.cpu_count() - 2)
 
-    # Pull todo list from ClickHouse's texts table
+    # Build todo: texts with path_freqs that aren't yet in text_freqs.
+    # With truncate_first=True we first TRUNCATE/DELETE and then re-ingest all.
+    # Without it, we skip _ids already present (resumable default).
     where = ''
     if corpora:
         cl = ', '.join(f"'{c}'" for c in corpora)
-        where = f"AND corpus IN ({cl})"
-    todo = ch_adapter.query(f"""
-        SELECT _id, corpus, path_freqs
-        FROM lltk.texts
-        WHERE path_freqs IS NOT NULL {where}
-    """)
-
-    if not todo:
-        print('No texts with path_freqs in texts table. Ingest that first.')
-        return 0
+        where = f"AND t.corpus IN ({cl})"
 
     if truncate_first:
         if corpora:
@@ -116,8 +109,27 @@ def ingest_freqs_from_jsons(ch_adapter, corpora=None, batch_size=500,
             ch_adapter.execute('TRUNCATE TABLE lltk.text_freqs')
             print('Truncated lltk.text_freqs')
 
+    # Fetch todo list: skip rows already in text_freqs (resumable)
+    todo = ch_adapter.query(f"""
+        SELECT t._id, t.corpus, t.path_freqs
+        FROM lltk.texts t
+        LEFT ANTI JOIN lltk.text_freqs f ON t._id = f._id
+        WHERE t.path_freqs IS NOT NULL
+          {where}
+    """)
+
+    if not todo:
+        print('Nothing to do — all texts already ingested (or no path_freqs)')
+        return 0
+
+    n_already = ch_adapter.query(f"""
+        SELECT COUNT(*) FROM lltk.text_freqs
+        {"WHERE corpus IN (" + cl + ")" if corpora and not truncate_first else ""}
+    """)[0][0] if not truncate_first else 0
+
+    already_msg = f' (skipping {n_already:,} already ingested)' if n_already else ''
     print(f'Ingesting {len(todo):,} freqs JSONs into ClickHouse '
-          f'({num_proc} workers, batch={batch_size})...')
+          f'({num_proc} workers, batch={batch_size}){already_msg}...')
 
     batches = [todo[i:i+batch_size] for i in range(0, len(todo), batch_size)]
     args_list = [(i, corpus_root, b) for i, b in enumerate(batches)]
