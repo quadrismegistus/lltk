@@ -70,14 +70,26 @@ def detect_langs_clickhouse(ch_adapter, min_tokens=50,
         return {}
     print(f'  {n_freqs:,} texts remaining')
 
-    # Build per-language stopword-hits SELECT fragment. One arraySum per lang.
-    def _sql_str_array(ws):
-        parts = ["'" + w.replace("'", "''") + "'" for w in ws]
-        return '[' + ', '.join(parts) + ']'
+    # Build per-language stopword-hits as a flat sum of freqs[word] lookups.
+    # arrayMap over 1570 elements allocated a per-row intermediate array
+    # that choked CH's allocator at scale; flat + addition compiles to
+    # direct scalar arithmetic in the query plan, no intermediate arrays.
+    def _sum_expr(words, chunk_size=20):
+        # Flat a + b + c + ... hits CH parser's recursion limit at ~100 terms.
+        # Chunk into groups of 20 terms so the expression tree stays shallow:
+        # ( (t1+..+t20) + (t21+..+t40) + ... ).
+        terms = [
+            f"toUInt64(freqs['{w.replace(chr(39), chr(39)*2)}'])"
+            for w in words
+        ]
+        chunks = [
+            '(' + ' + '.join(terms[i:i + chunk_size]) + ')'
+            for i in range(0, len(terms), chunk_size)
+        ]
+        return '(' + ' + '.join(chunks) + ')'
 
     lang_exprs = ',\n           '.join(
-        f"arraySum(arrayMap(w -> freqs[w], {_sql_str_array(lang_to_words[lg])})) "
-        f"AS {lg}_hits"
+        f"{_sum_expr(lang_to_words[lg])} AS {lg}_hits"
         for lg in langs
     )
 
