@@ -10,25 +10,19 @@ Layout under {corpus.path_prosodic}/{text.id}/:
 
 The per-text format and loading is owned by the `prosodic` package
 (TextModel.save / TextModel.load). This module only orchestrates.
-
-`prosodic.parse_corpus` does not yet propagate `save_parses` /
-`compression` to its inner `t.save()` call, so we monkey-patch
-`TextModel.save`'s defaults for the duration of the batch run when the
-caller wants non-default behaviour.
 """
 from __future__ import annotations
 
-import contextlib
 import os
 
 
-def _load_prosodic(min_version=(3, 2)):
-    """Import prosodic. Requires >=3.2 for save_parses parameter."""
+def _load_prosodic(min_version=(3, 2, 1)):
+    """Import prosodic. Requires >=3.2.1 for parse_corpus(save_kwargs=...)."""
     try:
         import prosodic
     except ImportError as e:
         raise ImportError(
-            "prosodic is an optional dep; install with `pip install prosodic>=3.2`"
+            "prosodic is an optional dep; install with `pip install 'prosodic>=3.2.1'`"
         ) from e
     if not hasattr(prosodic, 'parse_corpus') or not hasattr(prosodic, 'TextModel'):
         raise ImportError(
@@ -39,32 +33,6 @@ def _load_prosodic(min_version=(3, 2)):
 
 
 _VALID_SAVE_PARSES = ('best', 'unbounded', 'all')
-
-
-@contextlib.contextmanager
-def _patched_save_defaults(prosodic, save_parses, compression):
-    """Temporarily override TextModel.save's defaults so parse_corpus's
-    inner `t.save(text_dir)` calls pick them up. Restored on exit even if
-    parse_corpus raises.
-    """
-    if save_parses == 'unbounded' and compression == 'gzip':
-        # Both at prosodic's defaults — no patch needed.
-        yield
-        return
-
-    save = prosodic.TextModel.save
-    orig_defaults = save.__defaults__  # (None, 'unbounded', 'gzip')
-    if orig_defaults is None or len(orig_defaults) < 3:
-        # Defensive: signature changed in a future prosodic version.
-        # Fall back to no-patch and let parse_corpus run as-is.
-        yield
-        return
-    new_defaults = (orig_defaults[0], save_parses, compression) + orig_defaults[3:]
-    save.__defaults__ = new_defaults
-    try:
-        yield
-    finally:
-        save.__defaults__ = orig_defaults
 
 
 def parse_corpus(corpus_id, n_workers=1, device='auto', resume=True,
@@ -150,18 +118,19 @@ def parse_corpus(corpus_id, n_workers=1, device='auto', resume=True,
     if text_kwargs:
         print(f"  text_kwargs={text_kwargs}")
 
-    with _patched_save_defaults(prosodic, save_parses, compression):
-        stats = prosodic.parse_corpus(
-            _items(), out_dir,
-            n_workers=n_workers,
-            device=device,
-            resume=resume,
-            text_kwargs=text_kwargs,
-            meter_kwargs=meter_kwargs,
-            total=total,
-            progress=True,
-            on_error='log',
-        )
+    save_kwargs = {'save_parses': save_parses, 'compression': compression}
+    stats = prosodic.parse_corpus(
+        _items(), out_dir,
+        n_workers=n_workers,
+        device=device,
+        resume=resume,
+        text_kwargs=text_kwargs,
+        meter_kwargs=meter_kwargs,
+        save_kwargs=save_kwargs,
+        total=total,
+        progress=True,
+        on_error='log',
+    )
     print(
         f"done: {stats.get('n_done', 0)}  "
         f"skipped: {stats.get('n_skipped', 0)}  "
