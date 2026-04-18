@@ -71,7 +71,13 @@ def detect_langs_clickhouse(ch_adapter, min_tokens=50,
     # read holds the primary client's session open — concurrent inserts on
     # that same session raise SESSION_IS_LOCKED.
     from lltk.tools.db_adapter import get_adapter
-    write_adapter = get_adapter()  # defaults to LLTK_CLICKHOUSE_URL
+    import os as _os
+    ch_url = _os.environ.get(
+        'LLTK_CLICKHOUSE_URL',
+        f'clickhouse://{ch_adapter.username}:{ch_adapter._password}'
+        f'@{ch_adapter.host}:{ch_adapter.port}/{ch_adapter.database}',
+    )
+    write_adapter = get_adapter(ch_url)
 
     results = []
     pbar = get_tqdm(total=n_freqs, desc='detect_langs',
