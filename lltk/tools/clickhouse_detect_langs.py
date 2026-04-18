@@ -52,7 +52,12 @@ def detect_langs_clickhouse(ch_adapter, min_tokens=50,
     langs = sorted({lg for lgs in word_to_langs.values() for lg in lgs})
     print(f'Detecting across {len(langs)} languages ({len(word_to_langs)} distinct stopwords)')
 
-    # Streaming scorer
+    # Streaming scorer. Needs a dedicated write client because the streaming
+    # read holds the primary client's session open — concurrent inserts on
+    # that same session raise SESSION_IS_LOCKED.
+    from lltk.tools.db_adapter import get_adapter
+    write_adapter = get_adapter()  # defaults to LLTK_CLICKHOUSE_URL
+
     results = []
     pbar = get_tqdm(total=n_freqs, desc='detect_langs',
                     unit='text', unit_scale=True) if progress else None
@@ -102,13 +107,13 @@ def detect_langs_clickhouse(ch_adapter, min_tokens=50,
                 pbar.update(len(ids))
             # Flush results to CH periodically to keep memory bounded
             if len(results) >= batch_size * 20:
-                _flush_langs(ch_adapter, results)
+                _flush_langs(write_adapter, results)
                 results.clear()
     if pbar:
         pbar.close()
 
     if results:
-        _flush_langs(ch_adapter, results)
+        _flush_langs(write_adapter, results)
 
     # Stats
     dist = ch_adapter.query("""
