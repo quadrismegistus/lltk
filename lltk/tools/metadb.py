@@ -897,8 +897,13 @@ class MetaDB:
             log(f'  {n_found}/{len(df)} texts have freqs')
         return df
 
-    def ingest_df(self, df, corpus_id, force=True, default_lang=None):
-        """Ingest a DataFrame into the DB for a given corpus."""
+    def prepare_corpus_df(self, df, corpus_id, default_lang=None):
+        """Apply LLTK's standard metadata cleanup for a corpus DataFrame.
+
+        Engine-agnostic — returns a DataFrame with the canonical column set
+        (CORE_COLS + 'meta' JSON) ready to insert into either DuckDB or
+        ClickHouse. See ingest_df() for the DuckDB-specific INSERT path.
+        """
         df = df.copy()
 
         # Dedupe column names (keep last)
@@ -945,7 +950,6 @@ class MetaDB:
                 try:
                     is_valid = pd.notna(v) and str(v) not in ('', 'nan', 'None', '[]')
                 except ValueError:
-                    # v is array-like (e.g. numpy array) — convert to string if non-empty
                     is_valid = len(v) > 0
                 if is_valid:
                     d[col] = str(v)
@@ -959,34 +963,31 @@ class MetaDB:
         else:
             df['year'] = None
 
-        # Normalize language codes to ISO 639-1 (before TEXT_COLS loop)
+        # Normalize language codes to ISO 639-1
         if 'lang' in df.columns:
             df['lang'] = df['lang'].apply(normalize_lang)
         elif 'language' in df.columns:
             df['lang'] = df['language'].apply(normalize_lang)
         else:
             df['lang'] = normalize_lang(default_lang) if default_lang else None
-        # Fill remaining NULLs with manifest default_lang
         if default_lang and 'lang' in df.columns:
             norm_default = normalize_lang(default_lang)
             if norm_default:
                 df['lang'] = df['lang'].fillna(norm_default)
 
-        # Convert text core cols to string (except keep NaN as None)
+        # Convert text core cols to string
         for col in TEXT_COLS:
             if col in df.columns:
                 df[col] = df[col].astype(str).replace({'nan': None, '': None, 'None': None})
             else:
                 df[col] = None
 
-        # Ensure genre/genre_raw/is_translated columns exist
         for col in ('genre', 'genre_raw'):
             if col not in df.columns:
                 df[col] = None
         if 'is_translated' not in df.columns:
             df['is_translated'] = None
         else:
-            # Handle string booleans from CSVs and Python bools in object columns
             col = df['is_translated']
             if col.dtype == object:
                 col = col.map({
@@ -995,21 +996,26 @@ class MetaDB:
                 })
             df['is_translated'] = col.astype('boolean')
 
-        # Normalize genre_raw
         if 'genre_raw' in df.columns:
             df['genre_raw'] = df['genre_raw'].apply(normalize_genre_raw)
 
-        # Compute normalized title and author for matching
         df['title_norm'] = df['title'].apply(normalize_title) if 'title' in df.columns else None
         df['author_norm'] = df['author'].apply(normalize_author) if 'author' in df.columns else None
 
-        # Select only core cols + meta for insert
         insert_cols = CORE_COLS + ['meta']
-        insert_df = df[insert_cols].copy()
+        return df[insert_cols].copy()
+
+    def ingest_df(self, df, corpus_id, force=True, default_lang=None):
+        """Ingest a DataFrame into the DuckDB texts table for a given corpus."""
+        insert_df = self.prepare_corpus_df(df, corpus_id, default_lang=default_lang)
+        if insert_df is None:
+            return None
 
         # Remove old data for this corpus
         if force:
             self.conn.execute("DELETE FROM texts WHERE corpus = ?", [corpus_id])
+
+        insert_cols = CORE_COLS + ['meta']
 
         # Insert with explicit column mapping
         cols_str = ', '.join(f'"{c}"' for c in insert_cols)
@@ -3536,12 +3542,18 @@ class MetaDB:
         return n
 
     def close(self):
-        if self._conn is not None:
-            self._conn.close()
+        # Guard against instances created via __new__ that never ran __init__
+        # (e.g. clickhouse_rebuild reusing prepare_corpus_df without a conn).
+        conn = getattr(self, '_conn', None)
+        if conn is not None:
+            conn.close()
             self._conn = None
 
     def __del__(self):
-        self.close()
+        try:
+            self.close()
+        except Exception:
+            pass
 
     def __repr__(self):
         try:
