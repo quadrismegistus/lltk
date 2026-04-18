@@ -2,1297 +2,471 @@
 
 ## Project overview
 
-LLTK (Literary Language Toolkit) is a Python package for computational literary analysis and digital humanities research. It provides 50+ literary corpora, text processing tools, and analysis methods (word frequencies, document-term matrices, most frequent words).
+LLTK (Literary Language Toolkit) — Python package for computational literary analysis and digital humanities. 60+ literary corpora, text processing, analysis methods.
 
 **Author:** Ryan Heuser
-**Package name:** `lltk-dh` (PyPI)
-**Version:** 0.7.0
-**License:** MIT
-**Python:** >=3.8
+**Package:** `lltk-dh` (PyPI) · **Version:** 0.7.0 · **Python:** >=3.8 · **License:** MIT
 
 ## Architecture
 
 ```
 lltk/
-├── imports.py          # Constants, config, third-party imports, logger setup
-├── __init__.py         # Package entry: from .imports import *; exposes lltk.db (MetaDB)
-├── text/
-│   ├── text.py         # BaseText, TextSection, Text() factory
-│   ├── textlist.py     # TextList collection class
-│   └── utils.py        # Tokenization, XML parsing, text utilities
-├── corpus/
-│   ├── corpus.py       # BaseCorpus, SectionCorpus, Corpus() factory
-│   ├── synthetic.py    # SyntheticCorpus — virtual corpora from DuckDB queries
-│   ├── utils.py        # load_corpus(), manifest loading, corpus discovery
-│   ├── manifest.txt    # Corpus registry (configparser format)
-│   ├── test_fixture/   # Test corpus checked into repo (3 texts + XML)
-│   └── <corpus_name>/  # Per-corpus implementations (50+)
-├── model/
-│   ├── preprocess.py   # Preprocessing (XML→TXT, TXT→freqs)
-│   ├── matcher.py      # Text matching/dedup by title
-│   └── ...             # word2vec, doc2vec, characters, networks, etc.
-└── tools/
-    ├── baseobj.py      # BaseObject (root class)
-    ├── tools.py        # Config, utilities, parallel mapping
-    ├── db.py           # Local DB backends (sqlite, tinydb, etc.)
-    ├── metadb.py       # DuckDB centralized metadata store (lltk.db)
-    └── logs.py         # Logging
+├── imports.py               # constants, config, logger
+├── __init__.py              # re-exports, lltk.db (MetaDBCH singleton)
+├── text/                    # BaseText, TextSection, Text() factory, utils
+├── corpus/                  # BaseCorpus, SectionCorpus, SyntheticCorpus, manifest.txt, per-corpus subpkgs (60+)
+├── model/                   # preprocess.py, matcher.py, word2vec, characters, networks, booknlp
+├── tools/
+│   ├── baseobj.py           # BaseObject root class
+│   ├── tools.py             # config, pmap, utils
+│   ├── metadb.py            # legacy MetaDB (DuckDB, kept as test backend)
+│   ├── metadb_ch.py         # MetaDBCH — the live ClickHouse singleton
+│   ├── db_adapter.py        # DBAdapter + DuckDBAdapter + ClickHouseAdapter
+│   ├── db_migrate.py        # DuckDB → ClickHouse one-shot migrator
+│   ├── clickhouse_schema.py # CH schema (all lltk.* tables)
+│   ├── clickhouse_rebuild.py     # db-rebuild → CH
+│   ├── clickhouse_ingest.py      # db-freqs → CH
+│   ├── clickhouse_text_words.py  # db-text-words → CH
+│   ├── clickhouse_match.py       # db-match → CH
+│   ├── clickhouse_enrich.py      # db-enrich-genres, db-detect-translations → CH
+│   ├── clickhouse_detect_langs.py  # db-detect-langs → CH
+│   └── clickhouse_wordindex.py     # db-wordindex → CH
+└── web/app.py               # FastAPI + Svelte explorer
 ```
 
 ## Key patterns
 
 - **Inheritance:** BaseObject → TextList → BaseCorpus → specific corpus classes
-- **Text factory:** `Text(id)` returns cached text objects; `Corpus(id)` returns cached corpus objects
-- **Lazy loading:** Metadata loaded on first access, texts created on demand
-- **Lazy text hydration:** `C.texts()` constructs bare text shells (just `id` + `_corpus` ref). Metadata is hydrated lazily on first attribute access (`t.author`, `t.year`, `t.get(key)`) via `_hydrate_meta()`, which tries a DuckDB indexed lookup first (`lltk.db.get()`), then falls back to `corpus.load_metadata().loc[id]`. Hydration runs once per text (guarded by `_meta_hydrated` flag).
-- **Path resolution:** `corpus.path_*` attributes resolved via `__getattr__` → `get_path()`, supporting relative and absolute paths
-- **Manifest:** Corpora registered in `manifest.txt` (configparser format). Multiple manifest files merged from package dir, `~/lltk_data/`, and user config.
-- **Metadata loading:** `C.meta` uses `load_metadata()` (fast CSV read) rather than per-text iteration. Results are cached in `_metadfd`. Subclasses override `load_metadata()` to enrich columns.
-- **Cross-corpus linking:** Corpora declare `LINKS = {target_corpus_id: (my_col, their_col)}` for shared-ID relationships. `merge_linked_metadata()` left-joins linked corpus metadata with prefixed columns.
+- **Factories:** `Text(id)` and `Corpus(id)` return cached objects
+- **Lazy hydration:** `C.texts()` yields bare shells; `t.author`, `t.year`, `t.get(k)` trigger `_hydrate_meta()` (CH `lltk.db.get()` first, CSV fallback). One-time per text via `_meta_hydrated` flag.
+- **Path resolution:** `corpus.path_*` via `__getattr__` → `get_path()`; relative + absolute supported.
+- **Manifest:** `manifest.txt` (configparser); merged from package dir + `~/lltk_data/` + user config.
+- **Metadata loading:** `C.meta` uses `load_metadata()` (CSV → parquet cache). Subclasses override to enrich.
+- **Cross-corpus linking:** `LINKS = {target: (my_col, their_col)}` declared per-corpus; `merge_linked_metadata()` left-joins with prefixed columns.
 
-## MetaDB (centralized DuckDB metadata store)
+## Data backend: ClickHouse
 
-`lltk.db` is a DuckDB-backed metadata cache for fast single-row lookups, cross-corpus queries, dedup, and virtual corpus construction. CSV files and `load_metadata()` remain the source of truth; the DB is a read cache that must be explicitly rebuilt when source data or enrichment logic changes.
+`lltk.db` is a `MetaDBCH` instance over a local ClickHouse server. CSV files + freqs JSONs remain the source of truth; CH is the analytical query engine.
 
-### Database files
+### Install (native macOS via brew)
 
-Three separate DuckDB files connected via ATTACH:
+```bash
+brew install clickhouse
+sudo xattr -dr com.apple.quarantine /opt/homebrew/bin/clickhouse
+clickhouse server --config-file=~/lltk_data/data/clickhouse-config/config.xml &
+```
 
-| File | Alias | Contents | Lifecycle |
-|------|-------|----------|-----------|
-| `~/lltk_data/data/metadb.duckdb` | (main) | `texts` table, `corpus_info` table | Rebuilt by `db-rebuild` |
-| `~/lltk_data/data/metadb_matches.duckdb` | `match_db` | `matches` table, `match_groups` table | Rebuilt by `db-match` |
-| `~/lltk_data/data/metadb_wordcounts.duckdb` | `wc_db` | `wordcounts` table (path_freqs → n_words) | Persistent cache, survives rebuilds |
+Config at `~/lltk_data/data/clickhouse-config/config.xml` sets `path=~/lltk_data/data/clickhouse/` (data on 2 TB disk). User `lltk` / password `lltk` on `localhost:8123`.
 
-Single DuckDB connection opens `metadb.duckdb` and ATTACHes both other files. Match tables prefixed `match_db.*`, wordcount table prefixed `wc_db.*`. Texts table is plain `texts`.
+Linux: `apt-get install clickhouse-server clickhouse-client` from the official repo.
 
-The split means matches can be deleted/rebuilt independently. Wordcounts persist across all rebuilds — `ingest_df()` backfills `n_words` from the cache automatically.
+### Core tables (all in database `lltk`)
 
-### Schema
+| Table | Engine | ORDER BY | Purpose |
+|---|---|---|---|
+| `texts` | ReplacingMergeTree | `(corpus, _id)` | corpus-stamped metadata per text |
+| `corpus_info` | ReplacingMergeTree | `corpus` | ingested_at, n_texts |
+| `matches` | ReplacingMergeTree | `(_id_a, _id_b)` | pairwise dedup links |
+| `match_groups` | ReplacingMergeTree | `_id` | `group_id` + `rank` for each _id |
+| `text_freqs` | ReplacingMergeTree | `_id` | `Map(String, UInt32)` per text — fast per-text retrieval |
+| `text_words` | MergeTree | `(word, _id)` | **flat `(word, _id, count, corpus)`** — fast per-word analytics |
+| `text_stats` | ReplacingMergeTree | `_id` | `n_words`, `n_unique_words` (cheap totals for JOINs) |
+| `text_langs` | ReplacingMergeTree | `_id` | lang_detected, coverage, confidence |
+| `text_genres` | ReplacingMergeTree | `_id` | enriched genre / genre_raw / genre_enriched_source |
+| `text_translations` | ReplacingMergeTree | `_id` | `is_translated`, `original_lang` |
+| `stopwords` | MergeTree | `word` | `word → lang` lookup for detect_langs |
+| `word_year_corpus` | MergeTree | `(word, year, corpus)` | pre-aggregated ngram cache (optional) |
+| `year_corpus_totals` | MergeTree | `(year, corpus)` | per-year denominator for normalization |
 
-**`texts` table** (in `metadb.duckdb`):
+**Two representations of per-text word data:**
 
-| Column | Type | Description |
-|--------|------|-------------|
-| `_id` | TEXT PK | `_{corpus}/{id}` — canonical text address |
-| `corpus` | TEXT NOT NULL | corpus identifier, indexed |
-| `id` | TEXT NOT NULL | text id within corpus |
-| `title` | TEXT | |
-| `author` | TEXT | |
-| `year` | INTEGER | parsed to int at ingest (handles ranges, circa dates) |
-| `genre` | TEXT | **Enriched genre** — may differ from corpus original after `db-enrich-genres` |
-| `genre_raw` | TEXT | fine-grained genre (e.g. Novel, Novel epistolary, Romance) — also enriched |
-| `genre_corpus` | TEXT | original genre from corpus `load_metadata()` (pre-enrichment) |
-| `genre_enriched_source` | TEXT | provenance: `corpus`, `form`, `topic`, `title`, `bibliography:fiction_biblio`, etc. |
-| `title_norm` | TEXT | normalized title for matching (indexed) |
-| `author_norm` | TEXT | normalized author last name (indexed) |
-| `path_freqs` | TEXT | freqs file path relative to PATH_CORPUS (NULL if no freqs) |
-| `n_words` | INTEGER | word count from freqs (sum of values). Cached in `wc_db`, backfilled on ingest |
-| `meta` | TEXT (JSON) | all other corpus-specific fields |
+- `text_freqs` (Map per row) — optimized for **per-text retrieval**: `t.freqs()`, abstraction scoring, MinHash `map_keys(freqs)`.
+- `text_words` (flat `(word, _id, count)`) — optimized for **per-word analytics**: `sum(count) WHERE word='virtue'` scans a contiguous index range (sub-second). Any query that aggregates across one word across many texts belongs here.
 
-**`corpus_info` table** (in `metadb.duckdb`): `corpus TEXT PK, ingested_at DOUBLE, n_texts INTEGER`
+Both are derived from `freqs/*.json` on disk. Building both costs ~20 min one-time.
 
-**`wordcounts` table** (in `metadb_wordcounts.duckdb`, accessed as `wc_db.wordcounts`): `path_freqs TEXT PK, n_words INTEGER`. Persistent cache — survives `db-rebuild`.
+### Other storage
 
-**`matches` table** (in `metadb_matches.duckdb`, accessed as `match_db.matches`):
-`_id_a TEXT, _id_b TEXT, similarity FLOAT, match_type TEXT, PRIMARY KEY (_id_a, _id_b)`
+- **`~/lltk_data/data/metadb_passages.sqlite`** — SQLite + FTS5 passage search (~500-word chunks). Built by `lltk db-passages`, queried via `lltk search`. Stays SQLite for its mature `snippet()` / BM25; concurrent readers fine in WAL mode.
+- **freqs JSONs** at `{corpus}/freqs/{id}.json` — source of truth, distributed via `corpus.publish()`.
+- **Legacy DuckDB files** (`~/lltk_data/data/metadb*.duckdb`) — kept during migration; the `MetaDB` class still in `metadb.py` serves as emergency fallback and unit-test backend.
 
-**`match_groups` table** (in `metadb_matches.duckdb`, accessed as `match_db.match_groups`):
-`_id TEXT PK, group_id INTEGER, rank INTEGER`
+### Schema of `texts`
+
+| Column | Type | Notes |
+|---|---|---|
+| `_id` | String | `_{corpus}/{id}` canonical address |
+| `corpus` | LowCardinality(String) | indexed |
+| `id` | String | text id within corpus |
+| `title`, `author` | String | |
+| `year` | Nullable(Int32) | parsed (handles ranges, circa dates) |
+| `genre` | LowCardinality(String) | enriched via `db-enrich-genres` |
+| `genre_raw` | String | specific label (e.g. "Epistolary fiction") |
+| `title_norm`, `author_norm` | String | normalized for matching |
+| `path_freqs` | Nullable(String) | relative to PATH_CORPUS |
+| `n_words` | Nullable(Int32) | backfilled from text_stats |
+| `lang`, `is_translated`, `original_lang` | | language + translation flags |
+| `lang_detected`, `lang_coverage`, `lang_confidence` | | from `db-detect-langs` (joined from text_langs) |
+| `meta` | String | JSON of corpus-specific extras |
 
 ### Title and author normalization
 
-Computed at ingest time, stored as indexed columns for fast matching:
+Computed at ingest, stored as indexed columns.
 
-**`normalize_title(title)`**: HTML entity unescape, Unicode dash normalization, strip `[]` brackets, strip abbreviation periods (Mr., Mrs., Dr., St., Q., single letters), modernize early modern spelling (MorphAdorner, 358K entries: u/v, vv/w, i/j, terminal -e, etc.), lowercase, strip subtitle after first `:;.([,!?`, collapse whitespace. E.g. `"Loues load-starre"` → `"loves loadstar"`, `"Love&hyphen;Letters Between a Noble&hyphen;Man"` → `"loveletters between a nobleman"`, `"The Life and Death of Mr. Badman"` → `"the life and death of mr badman"`. Also strips title-end phrases ("a novel", "by the author", "edited by", etc.).
-
-**`normalize_author(author)`**: lowercase, take text before first comma. E.g. `"Congreve, William, 1670-1729."` → `"congreve"`.
+- **`normalize_title`**: HTML-unescape, Unicode-dash-normalize, strip `[]`, strip abbreviation periods (Mr./Mrs./Dr./St./Q. + single letters), modernize early-modern spelling via MorphAdorner (358K entries: u/v, vv/w, i/j, terminal -e), lowercase, strip subtitle after first `:;.([,!?`, strip title-end phrases ("a novel", "by the author"). `"Loues load-starre"` → `"loves loadstar"`.
+- **`normalize_author`**: lowercase, text before first comma. `"Congreve, William, 1670-1729."` → `"congreve"`.
 
 ### Blacklist
 
-`DB_BLACKLIST = {'hathi', 'bighist'}` — corpora excluded from DB ingest. `hathi` parent corpus has 17M texts (government documents, serial publications) that cause matching explosions. Use subcorpora instead (hathi_englit, hathi_novels, etc.). `bighist` is a composite.
+`DB_BLACKLIST = {'hathi', 'bighist'}` — parent `hathi` has 17M government-document texts causing matching explosions. Use subcorpora (hathi_englit, hathi_novels, …).
 
 ### Standard metadata contract
 
-Every corpus's `load_metadata()` should return a DataFrame with at least: `id` (index), `title`, `author`, `year`, `genre`, `genre_raw`.
+Every `load_metadata()` returns a DataFrame with: `id` (index), `title`, `author`, `year`, `genre`, `genre_raw`.
 
-**`GENRE_VOCAB`**: Fiction, Poetry, Drama, Periodical, Essay, Treatise, Letters, Sermon, Biography, History, Nonfiction, Legal, Speech, Spoken, Criticism, Academic, Almanac, Reference.
+**GENRE_VOCAB**: Fiction, Poetry, Drama, Periodical, Essay, Treatise, Letters, Sermon, Biography, History, Nonfiction, Legal, Speech, Spoken, Criticism, Academic, Almanac, Reference.
 
-`genre` = broad harmonized category. `genre_raw` = most specific true label (e.g. `Novel`, `Epistolary fiction`, `Ballad/Song`).
+### Matching tiers (`db-match`)
 
-### Cross-corpus matching and dedup
+| Tier | match_type | Constraint | Impl |
+|---|---|---|---|
+| 0 | `id_link` | Shared IDs from LINKS/MATCH_LINKS | SQL |
+| 1a | `exact_norm` | title_norm + author_norm | SQL `lead()` chain-linking |
+| 1b | `exact_norm_year` | title_norm + year (authorless, min len 10) | SQL `lead()` |
+| 2a | `containment` | short title ⊆ long title, same author, min_sim=0.3 | Python (batch-pulled then grouped) |
+| 2b | `containment_year` | same but by year (authorless, min len 15) | Python |
+| 3 | `fuzzy_title` | Jaro-Winkler > 0.85 within author blocks (opt-in `--fuzzy`) | Python (rapidfuzz) |
 
-Matching finds duplicate/reprint texts both within and across corpora via multiple tiers:
+**Chain linking**: `lead(_id) OVER (PARTITION BY title_norm, author_norm ORDER BY _id)` — N-1 edges for N duplicates instead of N*(N-1)/2. Connected components via NetworkX produce identical groups.
 
-| Tier | match_type | Constraint | Notes |
-|------|-----------|-----------|-------|
-| 0 | `id_link` | Shared IDs from LINKS/MATCH_LINKS | SQL, instant |
-| 1a | `exact_norm` | title_norm + author_norm | SQL LEAD() chain linking |
-| 1b | `exact_norm_year` | title_norm + year (authorless only) | SQL LEAD(), min title 11 chars |
-| 2a | `containment` | short title `in` long title, same author | Python, min_sim=0.3, min 8 chars |
-| 2b | `containment_year` | short title `in` long title, same year (authorless) | Python, min_sim=0.3, min 15 chars |
-| 3 | `fuzzy_title` | Jaro-Winkler > 0.85, same author (opt-in `--fuzzy`) | Python, slow |
+**Containment**: `min_sim = len(short) / len(long)` filters generic fragments ("the life" matching every biography). 0.3 keeps good matches ("pompey the little" vs "the history of pompey the little", sim=0.53).
 
-**Chain linking**: SQL `LEAD()` window function. For N texts with the same title+author, stores N-1 edges (a chain) instead of N*(N-1)/2 (all pairs). Connected components via NetworkX produce identical groups.
+**Authorless**: year substitutes for author in tiers 1b + 2b with stricter title-length floors.
 
-**Containment**: `min_sim` = `len(short) / len(long)` — filters generic fragments like "the life" matching every biography. 0.3 threshold keeps good matches like "pompey the little" / "the history of pompey the little" (sim=0.53).
+**Match groups**: NetworkX connected components with `rank` by `CORPUS_SOURCE_RANKS` (chadwyck=1, earlyprint=2, eebo_tcp/ecco_tcp=3, hathi_englit=5, internet_archive=7). Rank 0 = preferred representative. `dedup_by='rank'` or `'oldest'`.
 
-**Authorless matching**: 26% of fiction_biblio texts have no author. Year substitutes for author constraint in both exact (tier 1b) and containment (tier 2b) tiers, with stricter min title lengths.
+**Scale**: ~2.8M texts × 60 corpora → ~1.7M match pairs, ~1.3M texts in ~330K groups. Full `db-match` ~2 min (down from ~5 min in DuckDB).
 
-**Match groups**: Each text in a match group gets a `rank` based on `CORPUS_SOURCE_RANKS` (chadwyck=1, earlyprint=2, eebo_tcp/ecco_tcp=3, ... hathi_englit=5, internet_archive=7). Rank 0 = preferred representative.
+### Genre enrichment (`db-enrich-genres`)
 
-**Dedup modes**: `dedup_by='rank'` picks preferred corpus source. `dedup_by='oldest'` picks earliest year, breaking ties by rank.
+Writes to `lltk.text_genres` (separate table, not UPDATE on texts — CH ALTER is expensive). Baseline = corpus genre; authority corpora (`fiction_biblio`, `end`, `ravengarside`) override via match groups, highest-priority authority wins per group. `genre_corpus` preserves original.
 
-**Scale**: ~2.2M texts across 52 corpora → 1.75M match pairs, 1.14M texts in 300K groups. Exact tiers run in seconds; containment ~5 min.
+### Translation detection (`db-detect-translations`)
 
-### Genre enrichment (post-match)
+Writes to `lltk.text_translations`. Finds match groups with 2+ languages; earliest-year language wins (tie → text count), others get `is_translated=1` with `original_lang`. Top flows: en↔la, en↔fr, de↔en.
 
-After matching, `db-enrich-genres` propagates genre labels from bibliography authority corpora across match groups. This adds `genre_enriched` and `genre_enriched_source` columns to the `texts` table.
+### Language detection (`db-detect-langs`)
 
-**Authority corpora**: `fiction_biblio`, `end`, `ravengarside` — metadata-only corpora from scholarly bibliographies whose genre labels are more reliable than ESTC heuristics.
+NLTK stopwords (en/fr/de/it/es/pt/nl) + curated Latin (~150) + Greek (~50) = ~1,700 words, 9 langs. Per text, JOIN `text_words` with `stopwords` + GROUP BY → per-lang hit counts. Argmax in SQL with thresholds (coverage ≥ 0.05, confidence ≥ 2.0). Writes to `lltk.text_langs`. ~minutes for 2.2M texts (vs ~hours via per-row Map lookups before `text_words` existed).
 
-**How it works**:
-1. Saves original corpus genre to `genre_corpus` column
-2. `genre_enriched_source` set from ESTC `genre_source` where available (`form`/`topic`/`title`)
-3. For each match group containing an authority corpus text, all members get `genre` and `genre_raw` updated to the authority's values (bibliography > form > topic > title)
+### Word index / ngrams (`db-wordindex`)
 
-**Query integration**: enrichment writes directly to `genre`, so all existing queries, views, and external consumers (e.g. abstraction web app) see enriched genres with zero code changes. `genre_corpus` preserves the original. `genre_enriched_source` provides provenance.
+Optional pre-aggregated cache. Native CH single INSERT:
 
-**genre_raw enrichment**: END enriches genre_raw from narrative_form (Epistolary→"Novel, epistolary", First/Third-person→"Novel"). fiction_biblio enriches from Raven category codes (E→"Novel, epistolary", N→"Novel"). These propagate across match groups via `enrich_genres()`.
+```sql
+INSERT INTO lltk.word_year_corpus
+SELECT word, year, corpus, genre, sum(count) AS word_count, …
+FROM lltk.text_words tw
+JOIN lltk.texts t ON tw._id = t._id
+GROUP BY word, year, corpus, genre
+```
 
-**Impact** (as of 2026-04-06): ~10K texts reclassified, mostly ESTC-linked corpora gaining Fiction labels from bibliographies. e.g. eebo_tcp 131→621, ecco 7469→10229, earlyprint 268→859.
+`_dedup` columns restrict to rank=0 match-group representatives.
+
+**Often redundant now**: `text_words` alone answers any ngram query in <1 s thanks to the `(word, _id)` index. Only build this cache if you need sub-100-ms ngram UI at high QPS.
 
 ### CLI
 
 ```bash
-lltk db-rebuild                          # drop all + rebuild all corpora (~4 min)
-lltk db-rebuild estc ecco                # re-ingest specific corpora (rest untouched)
-lltk db-info                             # genre × corpus crosstab with totals
-lltk db-match                            # exact + containment matching (~5 min)
-lltk db-match --fuzzy                    # also run fuzzy matching (adds ~15 sec)
-lltk db-enrich-genres                    # propagate genre from bibliographies (~5 sec)
-lltk db-wordcounts [-j 8]               # compute word counts from freqs (persistent cache)
-lltk db-matches "Incognita"              # search matches by title
-lltk db-match-stats                      # show matching statistics
-lltk db-detect-translations              # detect translations via cross-language match groups
-lltk db-detect-langs [--apply]           # detect per-text language from freqs (stopword intersection)
-lltk prosodic-parse <corpus> [-j N]      # metrical scansion per text (prosodic package; optional dep)
-lltk prosodic-aggregate <corpus>         # concatenate per-text parsed.parquet into corpus-level file
-lltk db-passages [corpora...] [-n 500]   # build passages DB (SQLite + FTS5)
-lltk search "virtue" [--genre Fiction]   # full-text search across passages
+lltk db-rebuild                        # corpus CSVs → lltk.texts
+lltk db-freqs                          # freqs/*.json → lltk.text_freqs
+lltk db-text-words                     # text_freqs → text_words (flat) + text_stats
+lltk db-match [--fuzzy]                # dedup tiers 0-3
+lltk db-enrich-genres                  # authority genre propagation
+lltk db-detect-translations            # cross-lang match groups
+lltk db-detect-langs                   # per-text language detection
+lltk db-wordindex [--vocab-size 50000] # optional ngram pre-agg
+lltk db-info                           # genre × corpus crosstab
+lltk db-matches "Incognita"            # search match groups by title
+lltk db-match-stats                    # matching statistics
+lltk db-passages [-n 500]              # SQLite FTS5 passage index
+lltk search "virtue" [--genre Fiction]
+lltk app [--port 8899]                 # web explorer
+lltk annotate <curated_corpus>         # annotation UI
 ```
 
 ### Python API
 
 ```python
 import lltk
+lltk.db.rebuild(['estc'])              # → lltk.texts
+lltk.db.build_freqs_db(corpora=['estc'])  # → lltk.text_freqs
+lltk.db.build_text_words()             # → lltk.text_words + text_stats
+lltk.db.match(fuzzy=False)             # → lltk.matches, lltk.match_groups
 
-# ── Ingest ──
-lltk.db.ingest('estc')                   # one corpus
-lltk.db.rebuild()                         # all corpora from manifest
-lltk.db.rebuild(['estc', 'ecco'])         # specific list
+# Reads
+lltk.db.get('_estc/T012345')           # dict
+lltk.db.query("SELECT * FROM texts WHERE year<1700 AND genre='Fiction'")
+lltk.db.read_freqs(ids=[...])          # per-text freqs for a batch (abstraction)
+lltk.db.ngram(['virtue', 'honor'], genre='Fiction', dedup=True)
+lltk.db.find_matches('Incognita')
+lltk.db.get_group('_estc/T012345')
 
-# ── Genre enrichment ──
-lltk.db.enrich_genres()                   # after match, propagates bibliography genres
-
-# ── Metadata queries ──
-lltk.db.get('_estc/T012345')             # single-row lookup by _id → dict
-lltk.db.get('estc', 'T012345')           # single-row lookup by corpus + id → dict
-lltk.db.query("SELECT * FROM texts WHERE year < 1700 AND genre = 'Fiction'")
-lltk.db.query("SELECT corpus, COUNT(*) as n FROM texts GROUP BY corpus")
-
-# ── Matching ──
-lltk.db.match()                           # exact title+author matching
-lltk.db.match(fuzzy=True)                # + fuzzy matching
-lltk.db.match(corpora=['estc', 'ecco'])  # match specific corpora only
-lltk.db.find_matches('Incognita')        # search match groups by title
-lltk.db.get_group('_estc/T012345')       # all texts in same match group
-lltk.db.match_stats()                    # summary statistics
-lltk.db.drop_matches()                   # clear all matches (keeps texts)
-
-# ── Virtual corpus queries (returns real text objects) ──
-for t in lltk.db.texts(genre='Fiction', dedup=True, dedup_by='oldest'):
-    print(t.corpus.id, t.title, t.year)
-    print(t.txt[:100])     # works — resolves through source corpus
-    print(t.freqs())       # works — resolves through source corpus
-
-# With filters
-for t in lltk.db.texts(genre='Poetry', year_min=1600, year_max=1800):
-    print(t.title)
-
-# As DataFrame (no text objects)
-df = lltk.db.texts_df(genre='Fiction', dedup=True)
-
-# As corpus object (for .mfw, .dtm, .meta)
-fiction = lltk.db.corpus(genre='Fiction', dedup=True)
-fiction.meta
-
-# ── Validation ──
-lltk.db.validate()                        # % non-null for standard cols per corpus
-lltk.db.validate_genres()                 # distinct genre values per corpus
-lltk.db.corpora()                         # list ingested corpora with row counts
-lltk.db.corpus_info()                     # ingest timestamps per corpus
-```
-
-### SyntheticCorpus (virtual corpora from DB queries)
-
-Declarative corpus class backed by DuckDB queries. Pulls texts from multiple source corpora, deduplicated. Text objects retain their original corpus for file access.
-
-```python
-from lltk.corpus.synthetic import SyntheticCorpus
-
+# Virtual corpora
 class BigFiction(SyntheticCorpus):
-    ID = 'big_fiction'
-    NAME = 'BigFiction'
-    SOURCES = {
-        'canon_fiction': {'genre': 'Fiction'},
-        'chadwyck': {'genre': 'Fiction'},
-        'gildedage': {},
-        'hathi_englit': {'genre': 'Fiction'},
-        'estc': {'genre': 'Fiction'},
-    }
-    DEDUP = True
-    DEDUP_BY = 'oldest'   # or 'rank'
-
-C = BigFiction()
-C.meta                    # DataFrame — all fiction, deduplicated
-for t in C.texts():
-    t.corpus.id           # 'chadwyck' (original source, not 'big_fiction')
-    t.txt[:100]           # works — resolves through source corpus paths
+    SOURCES = {'chadwyck': {'genre': 'Fiction'}, 'estc': {'genre': 'Fiction'}, …}
+    DEDUP = True; DEDUP_BY = 'oldest'
 ```
 
-### How text objects work across corpora
-
-Text objects created by `lltk.db.texts()` or `SyntheticCorpus.texts()` keep their original `corpus` reference. This means:
-
-- `t.corpus.id` → the real source corpus (e.g. `'chadwyck'`)
-- `t.path_txt` → resolves through the source corpus's path configuration
-- `t.path_freqs` → resolves through the source corpus (including Hathi freqs index)
-- `t.txt` → reads from the source corpus's txt directory
-- `t.freqs()` → reads from the source corpus's freqs directory
-
-The virtual/synthetic corpus is just a view — it selects which texts to include, the text objects handle their own file access.
-
-### Data flow summary
-
-```
-metadata.csv → load_metadata() → DataFrame (cached in _metadfd)
-                                      ↓
-                                  lltk.db.ingest()         → metadb.duckdb (texts table)
-                                                                 ↓
-                                  lltk.db.match()          → metadb_matches.duckdb
-                                                                 ↓
-                                  lltk.db.enrich_genres()  → genre + genre_raw on texts table
-                                                                 ↓
-                                  lltk.db.wordcounts()     → metadb_wordcounts.duckdb (persistent cache)
-                                                                 ↓
-                                  lltk.db.texts()          → text objects (from source corpora)
-```
-
-`load_metadata()` is the source of truth. The DB caches its output. Matching operates on the DB. Genre enrichment propagates bibliography labels across match groups, writing directly to `genre`. Word counts cached persistently and backfilled on ingest. Virtual corpus queries return real text objects that delegate file access to their source corpus.
+**Text objects keep their source-corpus reference** — `t.path_txt`, `t.freqs()` resolve through the originating corpus regardless of whether retrieved via virtual corpus or `lltk.db.texts()`.
 
 ### For the abstraction project
 
-The abstraction project can:
+```python
+from lltk.tools.db_adapter import get_adapter
+ch = get_adapter('clickhouse://lltk:lltk@localhost:8123/lltk')
+df = ch.query_df("SELECT _id, corpus, freqs FROM lltk.text_freqs WHERE _id IN (…)")
+```
 
-1. **Query LLTK's DuckDB directly** for metadata, genre, year, dedup:
-   ```python
-   df = lltk.db.texts_df(genre='Fiction', dedup=True, dedup_by='oldest')
-   ```
+Or `lltk.db.read_freqs(ids=[...])` for the same thing, MetaDBCH-wrapped. `lltk.db.corpus_info()` exposes `ingested_at` for staleness tracking.
 
-2. **Get text objects with working `.freqs()`** for scoring:
-   ```python
-   for t in lltk.db.texts(genre='Fiction', dedup=True):
-       freqs = t.freqs()  # works — resolves through source corpus
-   ```
+## Genre classification (per-corpus)
 
-3. **Write scores to a separate DuckDB file** (not LLTK's):
-   ```python
-   import duckdb
-   scores_conn = duckdb.connect('abstraction_scores.duckdb')
-   scores_conn.execute("ATTACH '~/lltk_data/data/metadb.duckdb' AS lltk (READ_ONLY)")
-   scores_conn.execute("""
-       SELECT t.*, s.* FROM lltk.texts t
-       JOIN scores s ON t._id = s._id
-       WHERE t.genre = 'Fiction'
-   """)
-   ```
+Three patterns in `load_metadata()`:
 
-4. **Use `_id` as the join key** between LLTK metadata and abstraction scores. The `_id` format is `_{corpus}/{text_id}` (e.g. `_chadwyck/Early_English_Prose_Fiction/ee28010.01`). This matches what LLTK uses internally. For freqs-based scoring, the `text_id` part of `_id` should match the freqs filename (this is what the Hathi ID normalization ensures).
-
-5. **Check staleness** via `lltk.db.corpus_info()` which shows `ingested_at` timestamps per corpus.
-
-## Genre classification
-
-Genre assignment happens in each corpus's `load_metadata()`. The approach varies by corpus type:
-
-### ESTC genre classification (`parse_estc_genre.py`)
-
-`classify_genres(form_terms, subject_terms, title, title_sub)` classifies ESTC records using three tiers:
-1. **form_terms** (MARC 655$a, most reliable — cataloger-assigned)
-2. **subject_terms** (MARC 650$a, cataloger-assigned but noisier)
-3. **title keywords** (last resort fallback, only fires if tiers 1+2 found nothing)
-
-Accepts `list[str]` or pipe-joined strings (backward compat). Returns `{'genres': set, 'source': str}`. Mapped to broad `GENRE_VOCAB` via `_genres_to_harmonized()`.
-
-Key design decisions:
-- `history` removed from title keywords — too many novels use "History of..."
-- Satire maps to `None` — cross-cutting mode, not a genre. When co-occurring with Poetry/Drama/Fiction, those win.
-- `FICTION_GENRES` = {Fiction, Novel, Romance, Tale, Fable, Picaresque, Epistolary fiction, Imaginary voyage}
-
-### ESTC translation detection (`parse_estc_genre.py`)
-
-`detect_translation(rec)` uses three tiers on a parsed MARC bib record:
-1. **MARC structural signals** (strongest): 700$e relator = translator, 240$l uniform title language subfield
-2. **Title/subtitle/notes keyword matching**: "translated", "englished", "done into english", etc.
-3. **Subject topic foreign language indicators**: "french", "latin", etc. in 650$a
-
-~37% more translations detected vs old title-only approach (extrapolates to ~9,500 additional catches across 481K records).
-
-### Linked corpora (ECCO, EEBO_TCP, ECCO_TCP)
-
-Inherit genre from ESTC via `merge_linked_metadata()`:
-- **ECCO**: links via `ESTCID` → `id_estc`. Copies `estc_genre` → `genre`.
-- **EEBO_TCP**: links via `id_stc` → `id_estc` (zero-padding). Own `genre` renamed to `medium`. If medium=Verse → genre=Poetry. If medium=Drama → genre=Drama.
-- **ECCO_TCP**: same pattern as EEBO.
-
-### Simple corpora (all one genre)
-
-Examples: gildedage, chicago, ravengarside, txtlab (Fiction); chadwyck_poetry (Poetry); sotu (Speech); oldbailey (Legal); hathi_novels/stories/tales/romances (Fiction).
-
-### Mapping corpora
-
-- **COCA**: FIC→Fiction, MAG/NEWS→Periodical, ACAD→Academic, SPOK→Spoken
-- **COHA**: Magazine/News→Periodical, Non-Fiction→Nonfiction, Film→Drama
-- **BPO**: Fiction, Poem→Poetry, Correspondence→Letters, Review→Criticism, News→Periodical
-- **canon_fiction**: major_genre Verse/Epic→Poetry, Drama→Drama, History→History, rest→Fiction
-- **litlab**: fine-grained subgenres→Fiction (raw preserved in genre_raw)
-
-### Not yet harmonized
-
-- **dta** (Deutsches Textarchiv, 3K) — German corpus
+- **ESTC heuristic** (`parse_estc_genre.py`): `classify_genres(form_terms, subject_terms, title, title_sub)`. Tiers: form (MARC 655$a, most reliable), topic (650$a), title keywords (fallback). `FICTION_GENRES = {Fiction, Novel, Romance, Tale, Fable, Picaresque, Epistolary fiction, Imaginary voyage}`. `history` removed from title kw (too many novels). `detect_translation` uses MARC 700$e, 240$l, title/notes/subject keywords (~37% more catches than title-only).
+- **Linked corpora** (ECCO, EEBO_TCP, ECCO_TCP): inherit `estc_genre` → `genre` via `merge_linked_metadata()`. EEBO/ECCO TCP rename own `genre`→`medium`; `medium=Verse`→Poetry, `=Drama`→Drama override inherited.
+- **Simple/mapping**: single genre (gildedage/chicago/ravengarside/txtlab=Fiction, chadwyck_poetry=Poetry, sotu=Speech, oldbailey=Legal) or per-value maps (COCA: FIC→Fiction, ACAD→Academic, SPOK→Spoken; COHA: Film→Drama).
 
 ## Hathi ID normalization
 
-`hathi_id_normalize()` collapses all HathiTrust ID variants to canonical flat form `{library}/{volume_id}`:
+`hathi_id_normalize()` collapses all variants to flat `{library}/{volume_id}`:
 
 ```
 mdp/390/15009144422      → mdp/39015009144422       (3-char dir split)
-bc/ark/+=13960=t0bv7v96f → bc/ark+=13960=t0bv7v96f  (3-char split ark)
+bc/ark/+=13960=t0bv7v96f → bc/ark+=13960=t0bv7v96f  (split ark)
 aeu/ark:/13960/t0000ds1j → aeu/ark+=13960=t0000ds1j (colon-slash ark)
 ```
 
-Applied in `load_metadata()` for all Hathi corpora. Freqs index (`_build_freqs_index()`) maps `canonical_id → filepath` on disk. Hathi subcorpora share a freqs pool at `~/lltk_data/corpora/hathi/freqs` via manifest `path_freqs = ../hathi/freqs`.
+Applied in `load_metadata()` for all Hathi corpora. Freqs index (`_build_freqs_index()`) maps `canonical_id → filepath`. Subcorpora share a freqs pool at `~/lltk_data/corpora/hathi/freqs` via manifest `path_freqs = ../hathi/freqs`.
+
+## Corpus data location
+
+- `~/lltk_data/corpora/<corpus_id>/`
+- Each corpus has `metadata.csv`, `txt/`, optionally `xml/`, `freqs/`
+- Text files: `txt/<text_id>.txt` (flat) or `texts/<text_id>/text.txt` (per-text dirs)
+- Manifests searched: package `corpus/manifest.txt` + `~/lltk_data/manifest.txt` + user config
+- ClickHouse data: `~/lltk_data/data/clickhouse/` (2 TB disk)
+- Passages: `~/lltk_data/data/metadb_passages.sqlite`
+
+## Performance
+
+- **Parquet caching**: `BaseCorpus.load_metadata()` caches CSV as `.parquet` next to the CSV. 5-10× faster reads. Auto-regenerated if CSV is newer.
+- **Enriched parquet**: ECCO, EEBO_TCP, ECCO_TCP cache full enrichment as `metadata_enriched.parquet`. `load_metadata(force=True)` bypasses. ESTC does all enrichment in `compile()`.
+- **Pre-populated text metadata**: `iter_init()` passes DataFrame row directly to each text, sets `_meta_hydrated=True`.
+- **pmap**: `concurrent.futures`-backed parallel map. `DEFAULT_NUM_PROC = cpu_count - 2`.
+- **orjson** everywhere for freqs JSON reading (3-10× faster, releases GIL).
 
 ## Running tests
 
 ```bash
 python -m pytest tests/ -v
-python -m pytest tests/ --cov=lltk --cov-report=term   # with coverage
+python -m pytest tests/ --cov=lltk --cov-report=term
 ```
 
-199 tests using the `test_fixture` corpus (3 texts: Blake, Austen, Shelley) checked into the repo — no external data needed. Tests cover: corpus/text path resolution, metadata hydration, MetaDB with temp DuckDB (ingest, get, query, match), normalize_title/author, xml2txt_earlyprint, fiction_biblio ID normalization, pmap, clean_text, tokenize. CI runs on push via GitHub Actions + Codecov.
+206 tests using `test_fixture` corpus (3 texts: Blake, Austen, Shelley) checked into repo — no external data. Tests cover corpus/text path resolution, metadata hydration, legacy MetaDB with temp DuckDB (ingest, get, query, match), normalize_title/author, xml2txt_earlyprint, fiction_biblio ID normalization, pmap, clean_text, tokenize. CI on push via GitHub Actions + Codecov.
 
-## Corpus data location
+## Annotation web app (`lltk annotate`)
 
-- Corpora live at `~/lltk_data/corpora/<corpus_id>/`
-- Each corpus has: `metadata.csv`, `txt/`, optionally `xml/`, `freqs/`
-- Text files: `txt/<text_id>.txt` (flat) or `texts/<text_id>/text.txt` (per-text dirs)
-- Manifest files searched in: package `corpus/manifest.txt`, `~/lltk_data/manifest.txt`, and others
-- Text metadata DB: `~/lltk_data/data/metadb.duckdb`
-- Match/dedup DB: `~/lltk_data/data/metadb_matches.duckdb`
-
-## Performance
-
-- **Parquet caching**: `BaseCorpus.load_metadata()` caches CSV as `.parquet` next to the CSV. 5-10x faster reads. Auto-regenerated if CSV is newer.
-- **Enriched parquet**: ECCO, EEBO_TCP, ECCO_TCP cache full enrichment (linked metadata) as `metadata_enriched.parquet`. Skips all enrichment on subsequent loads. `load_metadata(force=True)` bypasses. ESTC no longer needs this — all enrichment done in `compile()`.
-- **Pre-populated text metadata**: `iter_init()` passes DataFrame row directly to each text constructor, sets `_meta_hydrated=True`. No per-text DuckDB lookups when iterating via `C.texts()`.
-- **pmap**: Built-in parallel map using `concurrent.futures` (replaced yapmap). ThreadPoolExecutor for I/O-bound, ProcessPoolExecutor for CPU-bound. `DEFAULT_NUM_PROC = cpu_count - 2`.
-
-## Annotation web app
-
-```bash
-lltk annotate arc_fiction          # launch on http://0.0.0.0:8989
-lltk annotate arc_fiction --port 9000
-```
-
-FastAPI app for browsing and annotating CuratedCorpus metadata:
-- **Table view**: paginated, filterable (corpus, genre, year, translated, search), deduped
-- **Detail panel**: full metadata, text preview (~10K words), match group with links
-- **Annotation form**: genre (dropdown from GENRE_VOCAB + clear option), genre_raw (autocomplete datalist), is_translated, exclude, notes, dynamic custom fields
-- **Bulk actions**: select multiple → exclude or set genre
-- **Manual duplicate linking**: search + link button in match group panel
-- **Auto-reload**: code changes auto-restart server
-- **Annotations**: saved to `~/lltk_data/corpora/{corpus_id}/annotations.json` as a list of dicts with `_id` and `genre_source`
-- **Propagation**: annotations propagate across match groups at read time in `load_metadata()` (annotate eebo_tcp → earlyprint version inherits)
+FastAPI for browsing/annotating CuratedCorpus metadata: filterable table, detail panel, annotation form (genre dropdown, genre_raw datalist, is_translated/exclude/notes), bulk actions, manual duplicate linking. Saves to `{corpus}/annotations.json`.
 
 ## CuratedCorpus
 
-Extends SyntheticCorpus with annotations.json support:
+Extends `SyntheticCorpus` with `annotations.json`:
 
 ```python
 class ArcFiction(CuratedCorpus):
-    SOURCES = {'chadwyck': {}, 'earlyprint': {'genre': 'Fiction'}, ...}
-    DEDUP = True
-    DEDUP_BY = 'oldest'
+    SOURCES = {'chadwyck': {}, 'earlyprint': {'genre': 'Fiction'}, …}
+    DEDUP = True; DEDUP_BY = 'oldest'
 ```
 
-- `annotations.json`: list of dicts, each with `_id`, `genre_source`, and annotation columns:
-  ```json
-  [
-    {"_id": "_eebo_tcp/A69320", "genre_source": "human", "exclude": true},
-    {"_id": "_eebo_tcp/A07095", "genre_source": "fiction_biblio", "genre": "Fiction"},
-    {"_id": "_eebo_tcp/A07095", "genre_source": "llm:gemini-flash", "genre": "Fiction", "genre_raw": "Novel"}
-  ]
-  ```
-- Multiple entries per `_id` from different sources. Legacy dict format auto-migrated on load.
-- `SOURCE_HIERARCHY = ['human']` — flattening picks highest-priority source per column
-- `exclude` field: any truthy value removes text from corpus
-- `__none__` sentinel: explicitly clears a field (vs no-override)
-- `annotate()`: launches web app
-- Annotations propagate across match groups at read time in `load_metadata()`
-- **Whitelist**: any `_id` in annotations.json (not excluded) is included in the corpus even if it doesn't match SOURCES genre filters. This lets bibliography-corrected texts enter the corpus.
+- `annotations.json` = list of dicts `{_id, genre_source, …}`. Multiple entries per `_id` from different sources.
+- `SOURCE_HIERARCHY = ['human', 'fiction_biblio', 'llm:gemini-2.5-pro', …]` — per-column, highest-priority source wins.
+- `exclude` field: any truthy value removes text. `__none__` sentinel explicitly clears.
+- **Whitelist**: any `_id` in annotations.json is included, even if it doesn't match SOURCES genre filters (bibliography-corrected texts enter).
+- `propagate_from(source)` adds entries from corpus ID / DataFrame / dict list. Idempotent (replaces same-source entries).
+- Annotations propagate across match groups at read time.
 
-### propagate_from()
+## Explorer web app (`lltk app`)
 
-Add annotation entries from a corpus, DataFrame, or list of dicts:
+FastAPI + Svelte 5, reads from `lltk.db` (MetaDBCH via legacy `.conn` shim that rewrites DuckDB SQL to CH on-the-fly).
 
-```python
-# From a corpus (queries DB)
-C.propagate_from('fiction_biblio', columns=['genre'])
+Views: Dashboard (stats, corpus grid, genre timeline, heatmap), Texts (filterable table + detail), Ngrams (requires `db-wordindex` or uses `text_words` live), Matches, Corpora, Overlap.
 
-# From LLM results (list of dicts)
-C.propagate_from(records)  # records have _id, genre_source, genre, genre_raw, etc.
-
-# From a DataFrame
-C.propagate_from(df, columns=['genre', 'genre_raw'])
-
-# Preview
-C.propagate_from(records, dry_run=True)
-```
-
-- Accepts str (corpus ID), DataFrame, or list[dict] as source
-- Re-running is safe: old entries from same source are replaced
-- Match group propagation happens at read time in `load_metadata()`, not at write time
-- `genre_source` from source data is respected (not overwritten)
-
-### Multi-source hierarchy
-
-```python
-class ArcFiction(CuratedCorpus):
-    SOURCE_HIERARCHY = ['human', 'fiction_biblio', 'llm:gemini-2.5-pro', 'llm:gemini-2.5-flash']
-```
-
-For each `_id`, each column is set by the highest-priority source that provides it. Lower-priority sources fill gaps. Raw entries preserved in `_load_annotations_raw()` for provenance analysis.
+Hash-based URL state (`#texts?search=Pamela&genre=Fiction`). JSON API at `/docs`.
 
 ## Fiction bibliography corpus (fiction_biblio)
 
-Metadata-only corpus from parsed scholarly bibliographies of early English fiction.
+Metadata-only corpus from 6 scholarly bibliographies (6,862 entries total):
 
-```python
-C = lltk.load('fiction_biblio')
-C.compile()  # reads sources_parsed/ CSVs, auto-matches to ESTC, writes metadata.csv
-```
+| Bibliography | Period | Entries | ESTC link method | Match % |
+|---|---|---|---|---|
+| Mish 1967 | 1475-1700 | 1,497 | STC/Wing IDs | 85.2 |
+| Odell 1954 | 1475-1700 | 1,024 | STC/Wing IDs | 88.2 |
+| McBurney 1960 | 1700-1739 | 1,089 | Shelfmarks → bL/bO/nMH | 73.6 |
+| Beasley 1972 | 1740-1749 | 494 | McBurney cross-refs | 60.1 |
+| Raven 1987 | 1750-1770 | 1,357 | Direct ESTC IDs | 79.7 |
+| Raven 2000 | 1770-1799 | 1,401 | Direct ESTC IDs | 83.4 |
 
-### Sources (6 bibliographies, 6,862 entries)
+All entries `genre='Fiction'`. No text files — genre reaches digitized texts via match groups + `db-enrich-genres`. `sources_parsed/*.csv` from Gemini Flash-parsed page images; `compile()` assigns `{biblio}_{NNNN}` IDs and auto-matches to ESTC.
 
-| Bibliography | ID | Period | Entries | ESTC matching method | Match rate |
-|---|---|---|---|---|---|
-| Mish 1967 | mish1967 | 1475-1700 | 1,497 | STC/Wing IDs | 85.2% |
-| Odell 1954 | odell1954 | 1475-1700 | 1,024 | STC/Wing IDs | 88.2% |
-| McBurney 1960 | mcburney1960 | 1700-1739 | 1,089 | Shelfmarks (BM→bL etc.) | 73.6% |
-| Beasley 1972 | beasley1972 | 1740-1749 | 494 | McBurney cross-refs | 60.1% |
-| Raven 1987 | raven1987 | 1750-1770 | 1,357 | Direct ESTC IDs | 79.7% |
-| Raven 2000 | raven2000 | 1770-1799 | 1,401 | Direct ESTC IDs | 83.4% |
-
-- Gemini Flash-parsed page images in `sources_parsed/{biblio}.csv`
-- `compile()` assigns IDs (`{biblio}_{NNNN}`), auto-matches to ESTC (STC/Wing + shelfmarks + McBurney xrefs + direct ESTC IDs)
-- `matches_to_verify.csv`: auto-generated with fuzzy scores for human review
-- `matches_verified.csv`: manual overrides (y/n per match)
-- `load_metadata()` enriches genre_raw from Raven category codes (E→"Novel, epistolary", N→"Novel")
-- All entries get `genre='Fiction'`, no text files — genre propagation via match groups + `db-enrich-genres`
-- 1,425 fiction_biblio texts matched to public digitized corpora (earlyprint/TCP); 831 public-only
-
-### ESTC ID normalization in compile()
-
-Multi-step normalization at compile time:
-- Strip `ESTC ` prefix, uppercase first letter (`t068056` → `T068056`)
-- Strip leading zeros (`T068056` → `T68056`) to match ESTC canonical form
-- Parse multi-value IDs (`T90269, t090270`) → `id_estc` (first) + `id_estc_all` (pipe-separated)
-- Strip bracketed qualifiers (`T63646 [vols. 1–4]` → `T63646`)
-- Validate format (letter + digits) — rejects years-as-IDs (`1785`, `1790?`)
-- ESTC linkage gap: 5 remaining (valid IDs not in our ESTC dump)
-
-### fiction_biblio → ESTC linking
-
-| Method | How | Corpora |
-|--------|-----|---------|
-| STC/Wing | `id_stc`/`id_wing` → ESTC `id_stc`/`id_wing` | Mish, Odell |
-| Shelfmarks | Parse references field, map library codes (BM→bL, Bod→bO, H→nMH), lookup in ESTC `holdings` JSON | McBurney |
-| McBurney xrefs | `id_mcburney` → McBurney entry with ESTC ID | Beasley |
-| Direct ESTC IDs | `id_estc` from bibliography | Raven |
-| Title matching | via `db-match` (containment, exact_norm) | All (catches what ID-based misses) |
+**ESTC ID normalization**: strip `ESTC `, uppercase, strip leading zeros (`T068056`→`T68056`), multi-value → `id_estc`+`id_estc_all`, strip `[qualifiers]`, validate letter+digits.
 
 ### Early Novels Database (END)
 
-Source: `~/lltk_data/corpora/fiction_biblio/sources/end-dataset-11282018-full.xml`
-Downloaded from: `github.com/earlynovels/end-dataset`
-
-2,002 MARCXML records of early novels from Penn's Collection of British and American Fiction (1660-1830). Core C18 subset: 1,440 records (all Penn holdings 1700-1797). Penn estimates ~14% coverage of all known English fiction for the 1760s.
-
-**ESTC cross-references:** 1,168/2,002 records have ESTC IDs in MARC 510 field (e.g. `T77338`, `N6875`). Direct matching to ESTC → ECCO/TCP, no fuzzy title matching needed.
-
-**Built from standard bibliographies:** Raven (1750-1770, 155 records), Garside/Raven/Schöwerling (1770-1829, ~520), McBurney (pre-1740, 74), Block (~495), Beasley (1740-1749, 55).
-
-**Rich metadata beyond title/author/date:**
-
-| MARC field | Coverage | Content |
-|-----------|---------|---------|
-| 592 (narrative form) | 95% | Primary: Third-person (951), First-person (508), Epistolary (449). Secondary forms + non-prose (poems, verse, dialogue) |
-| 599 (author gender) | 79% | Male (1,571), Female (820), Indeterminate (1,266) |
-| 520 (paratext) | 83% | Dedication, preface, advertisement, etc. with first-sentence transcriptions |
-| 591 (epigraph) | 42% | Transcription + source author/work identification |
-| 300 (physical) | 100% | Volume count, format (duodecimo, octavo, etc.) |
-| 700/710 (publishers) | 99% | Named publishers and printers, VIAF-authorized |
-| 596 (translation) | 15% | Structured source language, translation claims |
-| 510 (bibliography refs) | 83% | Cross-references to ESTC, Raven, Garside, Block, McBurney |
-
-**Complementary to fiction_biblio:** END covers C18 (1,440 records), fiction_biblio/Mish covers C17 (1,455 records). Together they provide expert-curated fiction identification across 1600-1830.
-
-**Integration plan:** Parse END XML, extract ESTC IDs for direct ESTC→ECCO/TCP matching. Use narrative form (field 592) to test whether epistolary/first-person novels score differently on abstractness. Use author gender (field 599) for gender analysis.
-
-## LLM genre classification
-
-Genre classification task at `~/github/largeliterarymodels/largeliterarymodels/tasks/classify_genre.py`.
-
-```python
-from largeliterarymodels.tasks import GenreTask, format_text_for_classification
-task = GenreTask()
-prompt = format_text_for_classification(title=t.title, author_norm='richardson', year=1740)
-result = task.run(prompt)  # or task.run(prompt, model=GEMINI_FLASH)
-```
-
-- Schema: genre, genre_raw, is_translated, author_first_name, year_estimated, confidence, reasoning
-- **Verification**: sends author last name only + century year range; LLM returns first name + exact year to prove it recognizes the work
-- Few-shot examples cover novels, romances, misclassified non-fiction, allegory, translations
-- Tested with Claude Sonnet and Gemini Flash — both excellent
-- Results cached via hashstash (pay once per text per model)
-
-## LLM Frye classification (narrative mode/mythos)
-
-Frye mode/mythos classification task at `~/github/largeliterarymodels/largeliterarymodels/tasks/classify_frye.py`.
-
-```python
-from largeliterarymodels.tasks import FryeTask, format_text_for_frye
-task = FryeTask()
-prompt = format_text_for_frye(text_obj=t)  # or format_text_for_frye(txt=raw_text, title='...', author='...')
-result = task.run(prompt)
-```
-
-Based on Northrop Frye's *Anatomy of Criticism* (1957) and Gallagher/Paige's referential theory.
-
-### Schema fields
-
-| Field | Values | Description |
-|-------|--------|-------------|
-| `mode` | myth, romance, high_mimetic, low_mimetic, ironic | Hero's power relative to others and environment |
-| `mythos` | comedy, romance, tragedy, irony | Narrative archetype / plot shape (independent of mode) |
-| `narration` | first_person, third_person_omniscient, third_person_limited, epistolary, frame_narrative, dialogue, mixed | Narrative voice |
-| `referential_mode` | nobody, somebody, pseudo_referential, ambiguous | Gallagher/Paige: fictional status of characters |
-| `mode_signals` | free text | Textual evidence for mode, with quotes |
-| `mythos_signals` | free text | Evidence for mythos/plot shape |
-| `referential_signals` | free text | Evidence for referential status |
-| `modal_shifts` | free text | If mode changes between passages |
-| `displacement` | free text | Mythic patterns beneath realistic surface |
-| `mode_confidence` | 0.0–1.0 | |
-| `mythos_confidence` | 0.0–1.0 | |
-
-### Frye's modes (First Essay: Historical Criticism)
-
-1. **Myth**: hero is divine, superior in kind (gods, creation, metamorphosis)
-2. **Romance**: hero superior in degree to people and nature (quests, enchantment, marvels)
-3. **High mimetic**: hero superior in degree to people but not nature (kings, tragic heroes, epic)
-4. **Low mimetic**: hero is one of us (realistic fiction, comedy of manners — the "novel")
-5. **Ironic**: hero inferior to us (bondage, frustration, absurdity, pharmakos figures)
-
-Frye argues Western literature descends this scale over time. Confirmed computationally: romance dominates pre-1650, low_mimetic dominates post-1680.
-
-### Frye's mythoi (Third Essay: Archetypal Criticism)
-
-- **Comedy** (spring): confusion → order, bondage → freedom, marriage/feast
-- **Romance** (summer): quest — agon, pathos, anagnorisis. Good triumphs.
-- **Tragedy** (autumn): fall from prosperity, hamartia, isolation, catastrophe
-- **Irony** (winter): patterns deflated, mocked, unresolved. Anti-quest, pharmakos.
-
-Mode and mythos are independent axes: ironic comedy (Fielding), romantic tragedy (Webster), low mimetic romance (adventure novel).
-
-### Referential mode (Gallagher/Paige)
-
-- **Nobody**: explicitly fictional characters — the novel proper (Pamela, Tom Jones). Post-1740 norm.
-- **Somebody**: claims to be about real people (secret histories, scandal narratives, memoirs of real persons)
-- **Pseudo-referential**: invented stories claiming truth (found manuscripts, "authentic memoirs" of fictional people, Crusoe, Gulliver). Pre-1740 dominant mode.
-- **Ambiguous**: genuinely unclear (texts mixing real and fictional persons)
-
-### Input format
-
-Three passages per text: OPENING (2K words), MIDDLE (1K words), CLOSING (2K words). The opening establishes mode, the middle reveals texture, the closing reveals mythos (how the story resolves).
-
-```python
-prompt = format_text_for_frye(text_obj=t, n_opening=2000, n_middle=1000, n_closing=2000)
-```
-
-### Results (pilot: 66 texts, 60 CE – 2011)
-
-Tested on 1 random fiction text per decade across canon_fiction, earlyprint, chadwyck, litlab, chicago. Key findings:
-- Modal descent confirmed: romance → low_mimetic transition visible 1600s–1700s
-- Referential shift confirmed: pseudo_referential/somebody → nobody transition ~1740–1780
-- Mythos diversity persists across all periods (comedy, tragedy, irony coexist)
-- Irony as mythos clusters in 1680s–1760s (satirical age)
-- Cost: ~$2–3 for 6K texts at 5K words each via Gemini Flash
-
-### Relation to genre_raw
-
-`genre_raw` (Novel, Romance, etc.) captures what the text is *called*. Frye mode/mythos captures how it *works* narratively. They correlate but don't collapse — a text labeled "Novel" can be romance in mode (C.S. Lewis) or ironic in mythos (Smollett).
+2,002 MARCXML records (1660-1830) from Penn, at `~/lltk_data/corpora/fiction_biblio/sources/end-dataset-11282018-full.xml`. 1,168 have ESTC IDs (MARC 510). Rich metadata: narrative_form (592: Third/First-person/Epistolary), gender (599), paratexts (520), epigraphs (591), publishers (700/710), translation (596).
 
 ## ESTC corpus
 
-481K bibliographic records from the English Short Title Catalogue. Metadata-only (no full text) — serves as the genre/metadata authority for linked corpora (ECCO, EEBO_TCP, ECCO_TCP).
+481K bibliographic records — metadata-only, genre/metadata authority for linked corpora. `lltk compile estc` (~3 min) parses raw MARC JSON (`_json_estc/`, `_json_estc_holdings/`) via `estc_json_parser.py` into a wide 42-column pre-enriched `metadata.csv`. Raw data sharded 4096-ways.
 
-### ESTC compile (`estc.py`)
-
-```bash
-lltk compile estc     # ~3 min, writes metadata.csv (42 columns, 481K rows)
-```
-
-Parses raw MARC JSON files from `_json_estc/` (bib) and `_json_estc_holdings/` (holdings) using `estc_json_parser.py`. Produces a wide, pre-enriched `metadata.csv` — all enrichment done at compile time, `load_metadata()` is just a plain CSV read.
-
-### ESTC metadata columns (42)
-
-| Category | Columns |
-|----------|---------|
-| Core | id, id_estc, title, title_sub, author, author_dates, year, year_end, year_type |
-| Language/Place | lang, country, pub_place, publisher, pub_date, pub_nation, pub_region, pub_city |
-| Physical | extent, dimensions, illustrations, format_std, format_modifier, num_pages, num_volumes, has_plates, extent_type |
-| Genre | genre, genre_raw, genre_source, is_fiction, form (655$a), subject_topic (650$a), subject_place, subject_person |
-| Translation | is_translated (enhanced: relator codes + uniform title language + keywords) |
-| References | id_stc, id_wing (from 510), references (all 510 pipe-joined) |
-| Other | added_persons, notes, urls, n_holdings |
-
-### ESTC MARC JSON parser (`estc_json_parser.py`)
-
-- `parse_bib_record(path_or_data)` → structured dict covering all MARC tags (control fields, 1XX authors, 245 title, 260 publication, 300 physical, 5XX notes, 6XX subjects/genres, 7XX added entries, 752 place, 76X-78X linking, 856 URLs)
-- `parse_holdings_record(path_or_data)` → estc_id + list of 852 holdings (institution, shelfmark, provenance)
-- Raw data: `~/lltk_data/corpora/estc/_json_estc/` (4096 shards) and `_json_estc_holdings/` (4096 shards)
-
-### ESTC → linked corpora
-
-ESTC metadata flows to linked corpora via `merge_linked_metadata()`:
-- **ECCO**: `LINKS = {'estc': ('id_estc', 'id_estc')}` → copies estc_genre → genre
-- **EEBO_TCP**: same pattern; own genre renamed to medium; medium overrides (Verse→Poetry, Drama→Drama)
-- **ECCO_TCP**: same pattern as EEBO
-
-All ESTC columns get prefixed as `estc_*` in linked corpora. Linked corpora cherry-pick what they need (genre, is_translated, title).
+Columns: id/title/author/year, language/place, physical (extent/format/volumes), genre (genre, genre_raw, genre_source, is_fiction, form=655$a, subject_topic=650$a), translation, references (id_stc, id_wing, 510 refs), holdings, notes, urls.
 
 ## EarlyPrint corpus
 
-Combined EEBO/ECCO/Evans TCP with linguistic tagging from [EarlyPrint Project](https://earlyprint.org). ~60K texts.
+Combined EEBO/ECCO/Evans TCP with linguistic tagging ([earlyprint.org](https://earlyprint.org)). ~60K texts.
 
 ```bash
-lltk compile earlyprint                    # all repos
-lltk compile earlyprint --repos eccotcp    # one at a time
-lltk preprocess earlyprint --parts txt     # xml→txt with reg spelling (~20GB)
-lltk preprocess earlyprint --parts freqs   # txt→freqs
+lltk compile earlyprint [--repos eccotcp]
+lltk preprocess earlyprint --parts txt   # xml→txt with reg spelling (~20GB)
+lltk preprocess earlyprint --parts freqs
 ```
 
-- Shallow git clones + gzip-compressed XML copies to flat `xml/{ID}.xml.gz` (~10x smaller)
-- Rich TEI header parser: title, author, year, IDs, quality grades, word counts
-- Medium detection from body tag counts (Verse/Drama/Prose)
-- `LINKS` to ESTC for genre. `MATCH_LINKS` to eebo_tcp/ecco_tcp/evans_tcp for dedup.
-- `update()`: git pull + re-gzip + rebuild metadata
-- XML path resolution: `xml/{tcp_id}.xml.gz` (flat directory, TCP ID = text ID)
-- `ep_repo` derived from TCP ID prefix: A/B/E→eebotcp, C/K→eccotcp, N→evanstcp
-- See `lltk/corpus/earlyprint/README.md` for full field reference
+- Shallow git clones, gzipped `xml/{ID}.xml.gz` (~10× smaller)
+- TEI header parser (title, author, year, IDs, quality grades, word counts); medium from body tag counts
+- `LINKS` to ESTC; `MATCH_LINKS` to eebo_tcp/ecco_tcp/evans_tcp
+- `xml2txt_earlyprint(xmlfn, use_reg=True)`: lxml (~0.04-0.12 s/doc). Uses `<w reg="…">` (5-29% coverage by text age), else surface. `<pc>` attached without leading space. Extracts `<p>` + `<l>` within `<body>`.
+- `.gz` transparent via `_open_file` in text.py. Manifest `ext_xml=.xml.gz` / `ext_txt=.txt.gz` selects extension.
 
-### xml2txt_earlyprint
+## Non-English corpora
 
-`xml2txt_earlyprint(xmlfn, use_reg=True)` extracts plain text from EarlyPrint TEI XML:
-- Uses `<w>` element `reg` attribute (regularized/modernized spelling) when available, falls back to surface text
-- Punctuation from `<pc>` elements attached without leading space
-- Extracts from `<p>` (paragraph) and `<l>` (verse line) elements within `<body>`
-- Uses lxml (not BeautifulSoup) — ~0.04-0.12s per document
-- Example: "NOwe sithens we haue declared" → "Now sithence we have declared"
-- `reg` coverage varies by text age: ~5-29% of words have reg (only where spelling differs from modern)
+**French**: `artfl` (Frantext, 3.6K), `french_pd_books` (PleIAs/Gallica, 290K), `gallica_literary_fictions` (Zenodo, 15.5K), `paige` (Zenodo Gallagher/Paige, 3.2K).
 
-### .gz file support
+**German**: `dta` (Deutsches Textarchiv, 3.3K), `german_pd` (PleIAs, 275K), `german_fiction` (Figshare/Gutenberg-DE, 3.2K + 484 translations), `de_corp` (Zenodo, ~5K fiction+non-fiction).
 
-`_open_file(path)` in text.py transparently handles `.gz` files. Applied to `BaseText.xml`, `text_plain()`, and `TextSection.txt`. Corpora can set `ext_xml = .xml.gz` or `ext_txt = .txt.gz` in manifest.
+Compile patterns: HF streaming (`french_pd_books`), HF pyarrow (`german_pd` — schema-differing shards), Zenodo REST (`paige`, `gallica_literary_fictions`, `de_corp`), Figshare API (`german_fiction`).
 
-## Development notes
+Conservative genre keywords (precision over recall):
+- French: `roman(s)`→Fiction, `poème(s)/poésie(s)`→Poetry, `comédie/tragédie/opéra`→Drama
+- German: `roman(e)/novelle(n)`→Fiction, `gedicht(e)/lyrik`→Poetry, `komödie/tragödie/trauerspiel/lustspiel/schauspiel`→Drama
 
-- `__getattr__` on BaseCorpus handles `path_*` attributes; raises `AttributeError` for everything else
-- `BaseText.get(key)` does fuzzy metadata lookup (`ish=True`): searches for keys starting with `key`. Calls `_hydrate_meta()` first.
-- `metadata_initial()` calls `_hydrate_meta()` so `t.meta` works on bare text shells
-- `_corpus_meta_row()` tries DB lookup, then checks cached `_metadfd` before triggering expensive `load_metadata()`
-- `iter_init()` pre-populates text._meta from DataFrame and sets `_meta_hydrated=True`
-- `iter_texts()` uses objects from `_textd` directly (no `Text()` factory wrapping)
-- `get_idx()` preserves spaces, `+`, `$` in IDs (no longer forces snake_case)
-- `CORPUS_SOURCE_RANKS` in `metadb.py` defines preference order for dedup: chadwyck=1, earlyprint=2, eebo_tcp/ecco_tcp/evans_tcp=3, ...
-- `MATCH_LINKS`: ID-based matching without metadata merge (separate from `LINKS`)
-- `is_translated`: ESTC detection via MARC structural signals (relator, uniform title lang) + title/notes/subject keywords; inherited by linked corpora, core DB column
-- `t.match_group_texts`: returns text objects for all match group members (falls back to `[self]`). Enables multi-version scoring.
-- `path_freqs` in DB: relative to PATH_CORPUS, resolved during `ingest()` via `_resolve_freqs_paths()`. Enables bulk DuckDB queries for scoring without text object instantiation.
-- `_open_file(path)` in text.py: helper that returns `gzip.open()` for `.gz` paths, `open()` otherwise. Used by `xml`, `text_plain()`, `TextSection.txt`.
-- `_PmapCaller` class in tools.py: picklable replacement for closures in `pmap()`. Needed because `ProcessPoolExecutor` can't pickle closures.
-- `preprocess_txt` uses `use_threads=True` to avoid pickle issues with corpus modules loaded dynamically via manifest (they get short `__module__` names that workers can't reimport).
-- `ext_xml` manifest field: controls file extension for flat-directory XML path resolution via `get_path_old()`. E.g. earlyprint sets `ext_xml = .xml.gz`.
-- All frequency JSON reading uses `orjson` (3-10x faster than stdlib json, releases GIL for threaded parallelism). Changed in text.py, text/utils.py, metadb.py, corpus/utils.py.
-- `corpus.zip()` rewritten to avoid `os.chdir()` (broke imports on macOS SIP). Uses `os.path.abspath()` + `os.path.relpath()` for arcnames.
-- `corpus.publish(public=, private=)` zips, uploads to Dropbox via bundled `bin/dropbox_uploader.sh`, gets share links, updates manifest. Public URLs go to package manifest, private URLs to user manifest only.
-- `PATH_CORPUS` now wrapped in `os.path.expanduser()` to handle `~` from config files.
-- `C.t` (random text picker): sampling chain is MetaDB → RO DuckDB → `metadata.csv` id column → `_textd` → full load. Avoids loading 336K texts for a one-off pick, and survives cross-process DuckDB write-lock contention. Cached id list stored as `_cached_ids` per instance.
-- `BaseText.__init__` unconditionally calls `self.corpus.add_text(self)` → any freshly constructed text lands in `_textd`. Code paths that sample texts must not gate on `_textd` being empty alone (it won't be, after one pick).
-- `get_txt(force_xml=False)` only forwards `force_xml` to subclass `text_plain()` when truthy, with a `TypeError` fallback. Keeps legacy corpora (chadwyck_poetry, chadwyck_drama, ecco, dialogues, coha) working without kwarg churn.
-- Log file rotation wrapped in try/except for PermissionError resilience (macOS SIP).
-
-## Web app (`lltk app`)
-
-FastAPI + Svelte explorer for browsing all corpora via the DuckDB metadata store. Read-only.
-
-```bash
-lltk app                    # launches on http://0.0.0.0:8899
-lltk app --port 9000
-```
-
-### Architecture
-
-- Backend: `lltk/web/app.py` — FastAPI with JSON API endpoints
-- Frontend: `lltk/web/frontend/` — Svelte 5 source, built to `lltk/web/static/dist/`
-- Built bundle (index.js + index.css) checked into git — no npm needed for end users
-- HTML shell: `lltk/web/templates/app.html`
-- Frontend developers: `cd lltk/web/frontend && npm install && npm run build`
-
-### Current views
-
-- **Dashboard**: stat cards, corpus grid (name/desc from manifest), genre timeline (stacked bars by decade with count/proportion toggle), genre x century heatmap (clickable → drills into Texts)
-- **Texts**: searchable/filterable table with sort, dedup toggle, server-side pagination. Click row → detail panel with metadata, match group, text preview
-- **Ngrams**: word frequency explorer — SVG line chart, clickable decades show example texts, collocate panel. Requires `lltk db-wordindex` to be built.
-- **Matches**: search match groups by title, expandable group cards
-- **Corpora**: corpus list with detail panel (genre/year bars, top authors). "Browse" links to filtered Texts view.
-- **Overlap**: cross-corpus duplicate match counts
-
-### URL hash routing
-
-State is encoded in the URL hash: `#texts?search=Pamela&genre=Fiction`, `#ngrams`, `#matches?search=Crusoe`. Back/forward buttons work. Tab switches push history; filter changes replace state.
-
-### API endpoints
-
-All read-only JSON, auto-documented at `/docs`:
-
-| Route | Purpose |
-|-------|---------|
-| `GET /api/stats` | Global stats |
-| `GET /api/overview` | Per-corpus summaries with manifest name/desc |
-| `GET /api/heatmap` | Genre x century counts |
-| `GET /api/genre-timeline` | Genre counts by decade (for stacked chart) |
-| `GET /api/texts` | Paginated text list with filters |
-| `GET /api/text/{_id}` | Single text + match group + txt preview |
-| `GET /api/corpora` | Corpus list |
-| `GET /api/corpus/{id}` | Corpus detail (genres, years, authors) |
-| `GET /api/genres` | Genre vocabulary |
-| `GET /api/ngram` | Word frequency time series |
-| `GET /api/ngram/{word}/examples` | Texts using a word most |
-| `GET /api/ngram/{word}/collocates` | Document-level co-occurring words |
-| `GET /api/matches` | Search match groups by title |
-| `GET /api/match-stats` | Matching statistics |
-| `GET /api/corpus-overlap` | Cross-corpus overlap counts |
-
-## Word index (metadb_wordindex.duckdb)
-
-Pre-aggregated word frequency tables for fast ngram queries. No per-text detail table — aggregated at build time.
-
-```bash
-lltk db-wordindex --sql [--vocab-size 50000]     # ~30-60 min, uses freqs_db
-lltk db-wordindex [-j 8] [--vocab-size 50000]    # legacy: ~3.5h for 1.6M texts
-```
-
-### Schema
-
-Separate DuckDB file attached as `wi_db`:
-
-```sql
-wi_db.word_year_corpus(word TEXT, year INT, corpus TEXT, genre TEXT,
-    word_count BIGINT, n_texts INT, word_count_dedup BIGINT, n_texts_dedup INT)
-wi_db.year_corpus_totals(year INT, corpus TEXT, genre TEXT,
-    n_texts INT, total_words BIGINT, n_texts_dedup INT, total_words_dedup BIGINT)
-```
-
-- 317M aggregate rows (50K vocab), 21K totals rows, 19GB (as of 2026-04-15 rebuild)
-- `_dedup` columns: only preferred match group texts (rank=0), built at index time
-- Vocabulary: saved as frequency-ordered TSV (`wordindex_vocab_{N}.tsv`), reusable across builds
-
-### Build process (--sql mode, preferred)
-
-Requires `db-freqs` to have populated `freqs_db.text_freqs`. Two passes, each using 10 parallel Python workers reading from freqs_db and writing parquet shards:
-
-- **Pass 1 (vocab)**: workers iterate MAP entries in Python, build per-chunk Counters, write vocab parquet shards. DuckDB merges shards with `GROUP BY word SUM(cnt) ORDER BY cnt DESC LIMIT N`. ~30 min (often skippable if vocab TSV already exists).
-- **Pass 2 (aggregates)**: workers aggregate `(word, year, corpus, genre) → [wc, nt, wc_d, nt_d]` locally, write parquet shards. DuckDB merges via batched staging (`_wyc_stage`) + final `GROUP BY` into `word_year_corpus`. Batched merge (50 shards per batch) avoids OOM on hundreds of shards.
-- **Shards preserved on failure**: `lltk.db.merge_wi_shards(path)` retries just the merge step.
-
-Key design lessons:
-- DuckDB's `UNNEST(map_entries(freqs))` is slow and memory-hungry at scale (spilled 70GB for a single-query vocab build). Python workers iterating MAPs directly are much faster.
-- Single-query merge of 800+ parquet shards OOMs. Batched staging + final GROUP BY stays within memory limits.
-- Aggregation in workers (not a central dict) removes the single-thread bottleneck of the old design.
-
-### Build process (legacy, JSON-files mode)
-
-`lltk db-wordindex` (without `--sql`) uses the original Python+JSON workers — fallback if `freqs_db` isn't populated.
-
-### Python API
-
-```python
-lltk.db.ngram('virtue', genre='Fiction')                    # time series DataFrame
-lltk.db.ngram(['virtue', 'honor'], year_min=1700)           # comparative
-lltk.db.ngram('virtue', dedup=True)                          # one representative per match group
-lltk.db.ngram('virtue', by_corpus=True)                      # separate line per corpus
-lltk.db.has_word_index()                                     # check if built
-```
-
-### Web app ngram operators
-
-The `/api/ngram` endpoint supports `+` and `-` operators:
-- `virtue+vertue` — merges spelling variants into one line (sum)
-- `virtue-vice` — virtue minus vice (subtraction)
-- `virtue+vertue, honor+honour` — two merged series compared
-- Commas still separate independent series
-
-### Chart display options (client-side)
-
-`NgramExplorer.svelte` supports client-side display tweaks in a second options row:
-- **Bin** (1/5/10/25 yr): aggregates per-year rows into bigger bins, weighted by n_texts. When bin < 10, re-fetches with `?by=year` (backend default is decade-bucketed).
-- **Smooth** (0/3/5/11/21): centered moving average window over binned values.
-- **Lines / Points**: toggle SVG `<path>` and `<circle>` rendering.
-- **Relative to max**: normalize each series to its own [0, 1] range — useful for comparing word trajectories regardless of absolute frequency.
-
-`paths` is a Svelte 5 `$derived` that re-runs when any of these toggle. Finer-than-decade needs a re-fetch; everything else is pure client-side transform of cached data.
-
-## Freqs DB (metadb_freqs.duckdb)
-
-Per-text word frequencies stored as DuckDB MAP type. Complete coverage of all texts with freqs on disk — enables per-text queries and bulk aggregations without reading JSON files.
-
-```sql
-text_freqs(_id TEXT PRIMARY KEY, corpus TEXT, freqs MAP(VARCHAR, INTEGER))
-```
-
-- **1,637,147 texts, 48GB** (as of 2026-04-15)
-- Queryable: `SELECT _id, freqs['virtue'] FROM text_freqs WHERE freqs['virtue'] > 0`
-- Used for MinHash matching, abstraction scoring, word index rebuild
-- Build/extend: `lltk db-freqs` (~10 min via parquet-shard architecture)
-
-### Build architecture (`build_freqs_db`)
-
-Parallel workers read freqs JSONs, write native-MAP parquet shards via pyarrow. Main does batched `INSERT FROM read_parquet` (200 shards per batch) — avoids OOM on 2500-shard single-INSERT.
-
-- Picklable worker: `_freqs_read_batch` in metadb.py
-- Uses `pa.map_(pa.string(), pa.int32())` for native parquet MAP encoding
-- Incremental: LEFT JOIN pre-filter so reruns only ingest missing texts
-- Shards preserved on failure — can retry merge without redoing worker phase
+Excluded as noisy: histoire/Geschichte, nouvelle, mémoires, conte, vers, discours, lettre, erzählung, märchen, brief.
 
 ## MinHash matching
 
-Finds near-duplicate texts by word frequency overlap. Adds `match_type='minhash'` to existing match system.
+`scripts/minhash_match.py` — near-duplicate detection by word-set overlap.
 
 ```bash
 python scripts/minhash_match.py [--threshold 0.7] [--num-perm 128]
 ```
 
-- Uses `datasketch` library (MinHash + LSH)
-- Input: word sets from freqs DB (`map_keys(freqs)`)
-- Parameters: 128 permutations, Jaccard threshold 0.7, minimum 5K words
-- Results: 13,470 new matches integrated into match groups
-- Catches: cross-corpus duplicates with different titles, collected works vs individual novels, spelling variants
-- False positive mitigation: threshold 0.7 (not 0.5), min 5K words (excludes proclamations/sermons)
-- Future: MinHash on character n-gram shingles from FTS5 DB (better for OCR variants)
+Reads `map_keys(freqs)` from `lltk.text_freqs`, builds MinHash signatures, LSH for candidate pairs, writes to `lltk.matches` as `match_type='minhash'`. Threshold 0.7 + 5K-word floor excludes formulaic-vocab mega-groups (proclamations, sermons).
 
 ## Language normalization
 
-`lang` is a core column on the `texts` table, normalized to ISO 639-1 two-letter codes (`en`, `fr`, `de`, etc.).
+`lang` normalized to ISO 639-1 at ingest. Resolution order: `lang` / `language` / `language_1` / `estc_lang` column → manifest fallback → NULL. `normalize_lang()` maps 639-2/B (eng/fre/ger), 639-2/T (fra/deu), full names; pass-through 639-1.
 
-### Resolution order (in `ingest_df`)
+`t.lang` on BaseText checks meta keys in order, returns None if missing. `t.sents()` + `PassageSectionCorpus.parse_sections()` use `_lang_to_punkt(lang)` (falls back to English).
 
-1. **Metadata column**: `lang`, `language`, `language_1`, or `estc_lang` from `load_metadata()`, normalized via `normalize_lang()`
-2. **Manifest fallback**: `lang = en` in `manifest.txt` fills NULLs when metadata column is absent or blank
-3. **None**: if neither source provides a value
+## Passages DB (`db-passages`, `search`)
 
-### `normalize_lang()`
-
-Maps ISO 639-2/B (`eng`, `fre`, `ger`), ISO 639-2/T (`fra`, `deu`), full names (`German`, `English`, `French`), and pass-through of ISO 639-1. Defined in `metadb.py`.
-
-### `t.lang` property (BaseText)
-
-Checks `_meta` dict for keys `lang`, `language`, `language_1`, `estc_lang`, `language1` in order, normalizes to ISO 639-1. Returns `None` if not found. Used by `t.sents()` and `t.passages()` for language-specific sentence tokenization.
-
-### Sentence tokenization
-
-`t.sents()` and `PassageSectionCorpus.parse_sections()` use `_lang_to_punkt(lang)` to select the correct NLTK punkt model (English, French, German, etc.). Falls back to English.
-
-## Translation detection (`db-detect-translations`)
-
-Detects translations via cross-language match groups. Standalone command, separate from `db-enrich-genres`.
-
-```bash
-lltk db-detect-translations    # run after db-match
-```
-
-### Algorithm
-
-1. Find match groups containing texts in 2+ languages
-2. For each group, find earliest year per language
-3. Original language = language with earliest text (ties broken by text count)
-4. Texts in other languages: `is_translated=True`, `original_lang` set
-
-### Results (as of 2026-04-16)
-
-711 cross-language groups, 8,644 texts. 1,879 marked as translations.
-
-| Flow | Groups | Example |
-|------|--------|---------|
-| en ↔ la | 454 | Latin originals + English translations (Terence, Epictetus) |
-| en ↔ fr | 162 | French editions of English novels (Fielding, Dickens, Austen) |
-| el ↔ la | 46 | Greek/Latin bilingual editions |
-
-### Columns written
-
-- `is_translated` (BOOLEAN): only sets `True` on translations; doesn't overwrite existing `True` on originals (may come from MARC)
-- `original_lang` (TEXT): ISO 639-1 code of the source language
-
-### Use case
-
-Abstraction project: `arc_fiction_fr` filters `lang='fr' AND (is_translated IS NULL OR is_translated=FALSE)` to exclude translated English novels from the French fiction arc.
-
-## Prosodic integration (`prosodic-parse`, `prosodic-aggregate`)
-
-Wrapper around [`prosodic`](https://github.com/quadrismegistus/prosodic)'s batch helpers for corpus-level metrical parsing. Prosodic is an **optional dependency** (requires `prosodic>=3.1` for `parse_corpus` / `TextModel`) — imported lazily inside the CLI and accessor functions.
-
-### Per-text layout
-
-```
-{corpus.path}/prosodic/{text.id}/
-    syll.parquet     flat syllable-level DataFrame
-    parsed.parquet   per-line best parse + violations (if parsed)
-    meta.json        prosodic's config/metadata (resumability marker)
-```
-
-The directory is a `path_prosodic` attribute on both corpus and text, resolved through the standard `get_path` chain (manifest `path_prosodic = ...` or instance `_path_prosodic` overrides the default `{corpus.path}/prosodic`).
-
-### CLI
-
-```bash
-lltk prosodic-parse <corpus> [-j N] [--device cpu|gpu|auto]
-                             [--no-resume] [--syntax] [--limit N]
-lltk prosodic-aggregate <corpus>
-```
-
-- `-j, --jobs`: parallel workers (default: 1; `prosodic.parse_corpus` handles the pool)
-- `--device`: `auto` picks GPU if available (MPS/CUDA), else CPU. GPU forces `n_workers=1`.
-- `--no-resume`: force re-parse of already-parsed texts (default skips via meta.json marker)
-- `--syntax`: run syntactic parsing too (slower)
-- `--limit`: cap number of texts (for testing)
-
-Aggregate builds `{corpus.path}/prosodic.parquet` by streaming per-text `parsed.parquet` files through a single `pyarrow.parquet.ParquetWriter` (incremental, Hathi-scale safe). Each row carries a `text_id` column.
-
-### Python API
-
-`t.prosodic()` returns a `prosodic.TextModel` two ways:
-
-- **Cached** (default): if a corpus-level parse exists under `{corpus.path_prosodic}/{t.id}/`, load it — includes full metrical scansion.
-- **Ad-hoc fallback**: otherwise, build a fresh TextModel from `t.txt` — has syllable/line structure but no metrical parse. Call `.parse()` on it to scan meter on the fly.
-
-```python
-import lltk
-C = lltk.load('test_fixture')
-
-# Cached path (after `lltk prosodic-parse`)
-t = list(C.texts())[0]
-tm = t.prosodic()                  # loads from disk if parsed, else builds from txt
-tm._syll_df                        # syllable-level DataFrame
-tm._cached_parsed_df               # parsed lines + violations (if a parse ran)
-
-# Ad-hoc path (no corpus pass needed)
-tm = t.prosodic(cached=False)      # always fresh from t.txt
-tm.parse()                          # scan meter on the fly
-
-# Path attributes resolve regardless of whether a parse exists
-C.path_prosodic                     # {corpus.path}/prosodic
-t.path_prosodic                     # {corpus.path}/prosodic/{t.id}
-```
-
-The aggregator and parser live in `lltk/tools/prosodic_tools.py`. They are deliberately thin — `prosodic.parse_corpus` owns multiprocessing, resume logic, file format, and error handling; LLTK just feeds it the texts and points it at `path_prosodic`.
-
-### Notes
-
-- `text.txt` may be empty for some texts; the parser skips those silently.
-- Per-text dirs mean hundreds of thousands of inodes for Hathi-scale corpora. Acceptable for now; may add a sharded-parquet mode later if inode pressure becomes an issue.
-- Nothing is registered in MetaDB yet — prosodic output is file-backed only. Aggregation into a DB table is a separate future step.
-
-## Per-text language detection (`db-detect-langs`)
-
-Per-text language detection via stopword intersection against `freqs_db.text_freqs`. Complements the `lang` column populated from corpus metadata + manifest defaults at ingest, which mislabels French/Latin/German texts lurking inside English-defaulted corpora (ECCO, EEBO, Chadwyck, etc.).
-
-```bash
-lltk db-detect-langs              # writes lang_detected, lang_coverage, lang_confidence
-lltk db-detect-langs --apply      # also overwrite `lang` with confident detections
-```
-
-### Algorithm
-
-1. Group function words by language from NLTK stopwords (en/fr/de/it/es/pt/nl) + curated Latin (~150) and Greek (~50) lists. ~1,700 words total across 9 languages.
-2. For each text in `freqs_db.text_freqs`, sum stopword hits per language.
-3. Assign to `argmax(hits)` if:
-   - coverage (top_hits / total_tokens) ≥ `--coverage` (default 0.05)
-   - confidence (top_hits / second_hits) ≥ `--confidence` (default 2.0)
-4. Below threshold → `lang_detected = 'unknown'`.
-5. Below `--min-tokens` (default 50) → `lang_detected = NULL`.
-
-### Columns written
-
-- `lang_metadata` (TEXT): one-shot snapshot of the `lang` column value at first run — preserves the original metadata/manifest assignment
-- `lang_detected` (TEXT): freqs-based detection result, one of en/fr/de/la/it/es/pt/nl/el/unknown/NULL
-- `lang_coverage` (DOUBLE): share of tokens hitting top-lang stopwords (typically 0.3–0.5 for clean text)
-- `lang_confidence` (DOUBLE): ratio of top-lang hits to runner-up (999 if runner-up is 0)
-
-### Use cases
-
-- **Cleanup of manifest-default corpora**: English-defaulted corpora (ECCO, EEBO, Chadwyck, Hathi) contain French/Latin extracts that should be scored against the correct norm dictionary.
-- **Cross-check metadata**: compare `lang_metadata` vs `lang_detected` to find corpus metadata bugs.
-- **Per-language scoring**: abstraction project uses `lang_detected` to route each text to the correct language's norms DB.
-
-Runtime: ~5–10 min for 1.6M texts (single-threaded cursor over freqs_db, pure Python dict lookups).
-
-## Passages DB (metadb_passages.sqlite)
-
-SQLite + FTS5 database of ~500-word text passages for full-text search and passage-level analysis.
-
-```bash
-lltk db-passages                          # all corpora, 500w passages
-lltk db-passages chadwyck ecco_tcp        # specific corpora
-lltk db-passages -n 300                   # 300w passages
-lltk db-passages -j 8 --force             # 8 workers, rebuild
-```
-
-### Schema
+SQLite + FTS5 at `~/lltk_data/data/metadb_passages.sqlite`. ~500-word passages with sentence-aware chunking (NLTK punkt per lang). ~25-35 GB for fiction corpora.
 
 ```sql
-passages(_id TEXT, seq INTEGER, text TEXT, n_words INTEGER, lang TEXT, PRIMARY KEY (_id, seq))
-passages_meta(_id TEXT PRIMARY KEY, corpus TEXT, n_passages INTEGER)
-passages_fts USING fts5(_id, text, content='passages')  -- FTS5 virtual table
+passages(_id, seq, text, n_words, lang, PK(_id, seq))
+passages_meta(_id PK, corpus, n_passages)
+passages_fts USING fts5(_id, text, content='passages')
 ```
 
-### Build process
-
-- Iterates corpora from manifest (no DuckDB dependency)
-- Sentence-aware chunking using language-specific NLTK punkt tokenizer
-- Threaded parallel workers via `pmap(use_threads=True)`
-- Incremental: skips already-processed `_id`s (tracked in `passages_meta`)
-- FTS5 index built at the end
-
-### Full-text search
-
 ```python
-# Python API
 lltk.db.search('virtue', genre='Fiction', year_min=1700, limit=20)
 lltk.db.search('"virtue and honor"', corpus='chadwyck')
 lltk.db.search('NEAR(virtue vice, 5)', lang='en')
-lltk.db.search_count('virtue')
 ```
+
+Filters (genre/corpus/lang/year) resolved in CH → `_id` set → FTS5 search within set. Hathi excluded (freqs only, no txt).
+
+WAL mode enables unlimited concurrent readers. Stays SQLite for mature `snippet()` / BM25; CH's `full_text` index works but lacks snippet generation. If corpus grows past current scale (1M+ texts, 200+ GB), consider partitioning per corpus: `{corpus}/data/passages.sqlite`.
+
+## Prosodic integration
+
+Optional dep (`prosodic>=3.1`). Per-text layout `{corpus.path_prosodic}/{text.id}/` with `syll.parquet`, `parsed.parquet`, `meta.json` (resume marker). `path_prosodic` resolves via `get_path` chain.
 
 ```bash
-# CLI
-lltk search "virtue" --genre Fiction --year-min 1700 -n 10
-lltk search '"virtue and honor"' --corpus chadwyck
+lltk prosodic-parse <corpus> [-j N] [--device cpu|gpu|auto] [--no-resume] [--limit N]
+lltk prosodic-aggregate <corpus>     # streams per-text → {corpus.path}/prosodic.parquet
 ```
 
-```
-# Web API
-GET /api/search?q=virtue&genre=Fiction&year_min=1700&limit=20
-```
+`--device auto` picks MPS/CUDA if available; GPU forces `n_workers=1`.
 
-Filters (genre, corpus, lang, year) use DuckDB to get matching `_id`s, then SQLite FTS5 searches within that set.
-
-### Scale estimate
-
-~112K fiction texts with txt files → ~25-35GB passages DB. Hathi corpora excluded (freqs only, no txt).
-
-## Non-English corpora
-
-### French corpora
-
-| Corpus | ID | Texts | Source | Genre |
-|--------|-----|-------|--------|-------|
-| ARTFL | `artfl` | 3,558 | Frantext | From metadata + keyword fallback |
-| French PD Books | `french_pd_books` | 289,517 | PleIAs/Gallica via HuggingFace | Keyword (roman only) |
-| Gallica Literary Fictions | `gallica_literary_fictions` | 15,483 | Zenodo/Gallica Y2 classification | All Fiction |
-| Paige (French) | `paige` | 3,236 | Zenodo (Gallagher/Paige) | All Fiction |
-
-### German corpora
-
-| Corpus | ID | Texts | Source | Genre |
-|--------|-----|-------|--------|-------|
-| DTA | `dta` | 3,295 | Deutsches Textarchiv | From subject classification (40+ categories) |
-| German PD | `german_pd` | 274,563 | PleIAs via HuggingFace | Keyword (roman/novelle) |
-| German Fiction | `german_fiction` | 3,219 | Figshare/Gutenberg-DE | All Fiction, `is_translated` for 484 translations |
-
-### Compile patterns
-
-- **HuggingFace streaming** (french_pd_books): `load_dataset(streaming=True)`, row per book
-- **HuggingFace pyarrow** (german_pd): `HfFileSystem` + `pyarrow.parquet` to handle schema differences across shards
-- **Zenodo API** (gallica_literary_fictions, paige): download zips/CSVs via REST API
-- **Figshare API** (german_fiction): get download URL from API, download zip
-
-### Conservative genre keywords (precision over recall)
-
-French: `roman/romans` → Fiction, `poème/poèmes/poésie/poésies` → Poetry, `comédie/tragédie/opéra` → Drama.
-
-German: `roman/romane/novelle/novellen` → Fiction, `gedicht/gedichte/lyrik` → Poetry, `komödie/tragödie/trauerspiel/lustspiel/schauspiel` → Drama.
-
-Excluded noisy keywords: histoire/Geschichte (often fiction), nouvelle (means "new" in French), mémoires, conte, vers, discours, lettre, erzählung, märchen, brief.
+`t.prosodic(cached=True, **kwargs)`: cached → pre-parsed TextModel with full scansion; `cached=False` builds fresh from `t.txt`. kwargs forward to `prosodic.Text(...)`.
 
 ## BookNLP character analysis
 
-### Overview
-
-`lltk/model/booknlp.py` wraps [BookNLP](https://github.com/booknlp/booknlp) for character extraction, coreference resolution, quote attribution, and character network construction. BookNLP parses a text and produces token-level NLP annotations, entity coreference chains, quote attributions, supersense tags, and character summaries.
-
-### Usage
+`lltk/model/booknlp.py` wraps [BookNLP](https://github.com/booknlp/booknlp).
 
 ```python
-t = lltk.load('canon_fiction').text('Chaucer.Canterbury_Tales.02.Knights_Tale')
-t.booknlp.parse()           # run BookNLP (writes to corpus/booknlp/en_small/{text_id}/)
-t.booknlp.chardata()        # DataFrame of characters with mentions, agent/patient words, gender
-t.booknlp.quotes()          # DataFrame of quotes with attributed speakers
-t.booknlp.tokens()          # full token-level DataFrame with character annotations
+t.booknlp.parse()           # → corpus/booknlp/en_small/{text_id}/
+t.booknlp.chardata()        # character DataFrame
+t.booknlp.quotes(); .tokens()
+G = t.booknlp.comention_network(window=200, min_edge_count=5)
+t.booknlp.plot_network(save_path='network.png')
 ```
 
-### BookNLP output files
-
-| File | Contents |
-|------|----------|
-| `text.tokens` | Every token: POS, lemma, dependency parse, byte offsets, paragraph/sentence IDs |
-| `text.entities` | Coreference chains: mention span → COREF cluster ID, proper/common/pronoun, PER/LOC |
-| `text.quotes` | Quote spans with attributed speaker (char_id) and mention phrase |
-| `text.supersense` | WordNet supersense tags per span |
-| `text.book` | JSON: per-character summary — mention counts, agent/patient/possessive words, gender |
-| `text.book.html` | Visual annotation view — character list + color-coded text |
+Window=200 tokens is the sweet spot (100 too tight, 500+ too loose). `exclude_generic=True` filters collectives/abstractions.
 
 ### LLM character resolution
 
-BookNLP's NER/coreference is noisy on early modern English: discourse markers ("Certes", "Thenne") misidentified as proper nouns, single characters split across multiple clusters, places tagged as persons. An LLM resolution task in `~/github/largeliterarymodels/largeliterarymodels/tasks/resolve_characters.py` cleans this up.
+BookNLP NER/coref is noisy on early modern English. `CharacterTask` at `~/github/largeliterarymodels/largeliterarymodels/tasks/resolve_characters.py` cleans via Gemini Flash on top 30 clusters. Writes `{corpus}/booknlp/en_small/{text_id}/characters_resolved.json`.
 
-```python
-from largeliterarymodels.tasks import CharacterTask, format_character_roster
-task = CharacterTask()
-prompt = format_character_roster(t, max_chars=30)  # top 30 clusters by mention count
-results = task.run(prompt, model=GEMINI_FLASH, metadata={'_id': t.addr})
-# results: list[CharacterResolution] with name, ids (merged clusters), type, gender, notes
+## LLM tasks (`largeliterarymodels`)
+
+External package at `~/github/largeliterarymodels/`. Tasks cached via hashstash (pay once per text per model).
+
+- **GenreTask**: `genre, genre_raw, is_translated, author_first_name, year_estimated, confidence, reasoning`. Verification: send author last name + century; LLM returns first name + exact year to prove recognition.
+- **FryeTask**: mode (myth/romance/high_mimetic/low_mimetic/ironic), mythos (comedy/romance/tragedy/irony), narration, referential_mode (nobody/somebody/pseudo_referential/ambiguous), confidence scores, free-text signals + displacement. Input: OPENING/MIDDLE/CLOSING passages.
+- **CharacterTask**: see above.
+
+## Development notes
+
+- **Hydration chain**: `BaseText.get(key)` does fuzzy (`ish=True`) lookup after `_hydrate_meta()`. `_corpus_meta_row()` tries CH → cached `_metadfd` → `load_metadata()`.
+- **Lazy sampling `C.t`**: CH via `metadb.conn` (shim) → `metadata.csv` id column → `_textd` → full load. `BaseText.__init__` calls `corpus.add_text(self)`, so `_textd` is never empty after one sample — fast-path must not gate on that alone.
+- **Legacy compat**: `get_txt(force_xml=False)` only forwards `force_xml` when truthy, with `TypeError` fallback — keeps older corpus subclass signatures working.
+- **Legacy `.conn` shim** on MetaDBCH rewrites DuckDB SQL for web-app compat: `match_db.*`→`lltk.*`, `json_extract_string(x,'$.y')`→`JSONExtractString(x,'y')`, `to_timestamp`→`toDateTime`, `random()`→`rand()`, positional `?` params inlined.
+- **Misc**: `get_idx()` preserves spaces/`+`/`$` in IDs. `_open_file` handles `.gz`. `_PmapCaller` (picklable class) for `pmap()` under ProcessPoolExecutor. `corpus.zip()` avoids `os.chdir()` (macOS SIP). `PATH_CORPUS` wrapped in `os.path.expanduser()`.
+
+### Dialect gotchas (CH vs DuckDB)
+
+- `FROM texts FINAL AS t` (alias after FINAL, or wrap FINAL in a subquery)
+- `lead()` window works the same; but CH doesn't accept `FROM t FINAL alias` without `AS`
+- `INSERT OR IGNORE` → plain `INSERT` (ReplacingMergeTree handles dedup async; use `FINAL` on reads for exactness)
+- `ALTER TABLE ... DELETE` + `SETTINGS mutations_sync=1` for synchronous deletes
+- `async_insert=1` for many small inserts to avoid "too many parts" throttling
+- Streaming reads (`query_arrow_stream`) hold the primary session — use a separate client for concurrent writes
+
+## DB migration (one-shot)
+
+`lltk/tools/db_migrate.py` migrates DuckDB → ClickHouse via staged parquet:
+
+```bash
+python -m lltk.tools.db_migrate --tables texts matches match_groups
 ```
 
-**Input**: Character roster (~1K words) with cluster IDs, mention counts, proper/common names, gender, agent/patient verbs. No paragraph text needed for first pass.
+## Future work
 
-**Output schema**: `name` (canonical), `ids` (merged BookNLP cluster IDs), `type` (character/collective/place/abstraction/noise), `gender`, `notes`.
-
-**Results saved to**: `{corpus}/booknlp/en_small/{text_id}/characters_resolved.json`
-
-**Performance** (pilot on 51 texts from Frye sample, Gemini Flash): 0 errors, avg 18.4 characters identified per text, 3.5 cluster merges, 1.9 noise clusters filtered. Cost: ~$0.002/text.
-
-### Character co-mention networks
-
-```python
-G = t.booknlp.comention_network(window=200, min_edge_count=5)
-# returns networkx.Graph — nodes are resolved characters, edges weighted by co-mention count
-
-t.booknlp.plot_network(save_path='network.png', title='Knight\'s Tale')
-# saves matplotlib visualization with node size ∝ mentions, edge width ∝ co-mentions
-```
-
-**Co-mention window**: 200 tokens (~1 paragraph). Two characters co-mentioned within this window increment their edge weight. Window=100 too tight, 500+ too loose — 200 is the sweet spot.
-
-**Filtering**: `exclude_generic=True` (default) removes collectives ("the ladies", "his men"), generic references ("the king", "his son"), noise, abstractions. Named characters only.
-
-**Network statistics computed**: `n_nodes`, `n_edges`, `density`, `avg_clustering`, `transitivity`, `protagonist_dominance` (top node's share of total weighted degree), `dyad_dominance` (top 2 nodes' share), `degree_centralization`, `n_communities` (greedy modularity), `modularity`.
-
-### Network × Frye classification results (pilot, n=49)
-
-Cross-referencing character network structure with Frye mode/mythos classifications from the LLM Frye task:
-
-**By Frye mode:**
-- High mimetic: most communities (3.2), highest modularity (0.26), lowest density (0.41) — dispersed casts with distinct social clusters (court/battlefield/foreign)
-- Romance + low mimetic: high density (~0.6), tight social worlds
-- Myth: highest protagonist dominance (0.45) and dyad dominance (0.75) — narratives centered on 1-2 figures
-
-**By mythos:**
-- Comedy: lowest modularity (0.13), fewest communities (2.0), highest clustering (0.80) — everyone ends up in the same social world (comic reconciliation)
-- Irony: highest modularity (0.23) — fragmented social worlds, failed communication
-- Tragedy: more edges but lower clustering — many connections without triadic closure
-
-**By narration:**
-- First person: lowest density (0.48) — narrator filters who appears together
-- Third person omniscient: higher density (0.62) — can cut between any characters
-- Frame narratives: most communities (3.0) — frame cast + embedded story casts
-
-**Concreteness**: no significant correlations with any network statistic. Network structure and lexical concreteness are independent dimensions.
-
-**Data saved to**: `~/Dropbox/Prof/Books/AbsLitHist/data/llm_annotations/network_x_frye.csv`
-**Figures**: `~/Dropbox/Prof/Books/AbsLitHist/book/figures/network_x_frye.png`, `network_communities_x_frye.png`, `character_networks/*.png`
-
-## App development roadmap
-
-### Planned features (roughly ordered by priority)
-
-1. **Saved queries / collections** (low effort, no backend): localStorage-based saved filter sets with "Export as Python" code generation
-2. **Author page** (low effort): click author name → all works across corpora, grouped by match group, with timeline
-3. **Text export** (low effort): checkbox selection in Texts view → download CSV/JSON/ZIP of metadata, freqs, or txt files
-4. **Comparison view** (medium effort): select 2+ texts, compare word frequencies side by side, show distinctive words via log-likelihood
-5. **Full-text search** (high effort): SQLite FTS5 index built from txt files (~600K texts, ~10GB). Enables phrase search, KWIC concordance, highlighted snippets. Could also build a passages table for downstream scoring.
-6. **Map view** (medium effort): Leaflet.js showing publication places from ESTC metadata. Requires geocoding ~2K unique city names.
-7. **Network view** (medium effort): D3 force graph of corpus overlap from match groups
-8. **API documentation page** (low effort): styled examples with curl/Python snippets
-
-### Global annotations (future)
-
-Generalize the CuratedCorpus annotation system to allow annotating any text from any corpus via the web app. Currently annotations are per-CuratedCorpus JSON files; this would add a global annotation layer.
-
-- **Storage**: `metadb_annotations.duckdb` with `annotations(_id, field, value, source, created_at)`. Keyed by `(_id, field, source)` so multiple sources (human, LLM, bibliography) can coexist.
-- **Fields**: genre, genre_raw, exclude, is_translated, notes, arbitrary custom fields
-- **Match group propagation**: annotate one text → all match group members inherit (same as CuratedCorpus)
-- **Priority**: CuratedCorpus annotations override global annotations (more specific). Global overrides DB values.
-- **UI**: editable genre/genre_raw dropdowns in TextDetail panel with save button. POST to `/api/annotate/{_id}`.
-- **Auth**: for public deployment, gate POST endpoints behind a token/password. GET remains open.
-- **Migration**: existing CuratedCorpus `annotations.json` files could optionally import into the global table via `propagate_from()`.
-
-### Passages table (future)
-
-If full-text search is built, chunking texts into ~500-word passages creates a reusable unit for:
-- FTS5 search with meaningful snippets
-- Abstraction scoring at passage level
-- Sentiment, topic modeling, embeddings
-- Schema: `passages(_id, seq, text, n_words)` + `passage_scores(passage_id, metric, value)`
-- ~60M passages for 600K texts, ~15GB storage
-
-### OCR quality and corpus bias
-
-Corpora have varying OCR quality (Hathi/ECCO noisier than chadwyck). This affects word counts — garbage tokens inflate `n_words` and suppress per-million rates. Mitigation strategies:
-
-- **Dedup (implemented)**: `dedup=True` picks the best source per match group (by `CORPUS_SOURCE_RANKS`), biasing toward cleaner corpora
-- **Corpus faceting (implemented)**: `by_corpus=True` shows separate ngram lines per corpus, making OCR differences visible
-- **Corpus correction factors (future)**: for each corpus pair sharing match groups, compute median per-million ratio for common words. Apply as multiplicative correction when combining corpora.
-- **Per-text quality score (future)**: `quality = min_group_n_words / n_words` using match groups. Texts with inflated word counts (OCR junk) get downweighted.
-
-### Deployment
-
-Recommended VPS for serving the app with ~30GB DuckDB data:
-
-- **Hetzner CCX33/CCX43**: 8-16 cores, 32-64GB RAM, 240-360GB SSD. ~$35-65/mo. Best value.
-- DuckDB mmaps files, so 32GB RAM can work if queries stay simple (hot pages cached by OS)
-- 64GB RAM for comfortable headroom with ngram queries scanning the word index
-- Deployment: copy DuckDB files to server, pip install, `lltk app`. Put behind nginx + Let's Encrypt.
-- **Keep builds local**: `db-wordindex`, `db-rebuild`, `db-match` lock the DB (single-writer). Run on your machine, rsync DB files to server.
-- No Docker needed for basic deploy, but a Dockerfile would help for reproducibility.
+- **Web app**: saved queries, author page, text export, comparison/map/network views
+- **OCR correction factors**: per-corpus multiplicative corrections + per-text quality scores from match-group n_words ratios
+- **Global annotations**: CH table `lltk.annotations` for cross-corpus web-app annotation (currently per-CuratedCorpus only)
+- **Deployment**: lltk.net on Hetzner. Options: (a) `clickhouse-backup` nightly to S3, (b) per-server CH with direct ingest, (c) dump+restore
+- **Port wordcounts command**: largely redundant now (`arraySum(mapValues(freqs))` or `text_stats.n_words`); remove or keep as thin wrapper
+- **Passages → ClickHouse** if corpus expands past single-SQLite-file comfort zone (200+ GB); use `full_text` index + Python-based snippet generation
