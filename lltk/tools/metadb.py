@@ -34,7 +34,6 @@ PATH_METADB = os.path.join(PATH_LLTK_DATA, 'metadb.duckdb')
 PATH_MATCHDB = os.path.join(PATH_LLTK_DATA, 'metadb_matches.duckdb')
 PATH_WORDCOUNTDB = os.path.join(PATH_LLTK_DATA, 'metadb_wordcounts.duckdb')
 PATH_WORDINDEXDB = os.path.join(PATH_LLTK_DATA, 'metadb_wordindex.duckdb')
-PATH_FREQSDB = os.path.join(PATH_LLTK_DATA, 'metadb_freqs.duckdb')
 PATH_PASSAGESDB = os.path.join(PATH_LLTK_DATA, 'metadb_passages.sqlite')
 
 # Standard genre vocabulary — harmonized across corpora
@@ -689,12 +688,11 @@ def _wi_aggregate_batch(args):
 
 class MetaDB:
     def __init__(self, path=None, match_path=None, wordcount_path=None, wordindex_path=None,
-                 freqs_path=None, read_only=False):
+                 read_only=False):
         self.path = path or PATH_METADB
         self.match_path = match_path or PATH_MATCHDB
         self.wordcount_path = wordcount_path or PATH_WORDCOUNTDB
         self.wordindex_path = wordindex_path or PATH_WORDINDEXDB
-        self.freqs_path = freqs_path or PATH_FREQSDB
         self.read_only = read_only
         self._conn = None
         self._col_cache = None
@@ -1926,7 +1924,7 @@ class MetaDB:
                      coverage_threshold=0.05, confidence_threshold=2.0,
                      apply=False, apply_conservative=False, only_apply=False,
                      num_proc=None, progress=True):
-        """Detect per-text language via stopword intersection against freqs_db.
+        """Detect per-text language via stopword intersection against ClickHouse text_freqs.
 
         For each text with freqs, computes per-language hit counts against
         function-word lists (NLTK stopwords + curated Latin/Greek). Assigns
@@ -2422,8 +2420,8 @@ class MetaDB:
 
     def build_word_index_sql(self, vocab_size=50_000, min_count=1, corpora=None,
                              memory_limit='24GB', threads=None):
-        """Build word_year_corpus + year_corpus_totals tables from per-corpus
-        freqs.parquet files. Requires `build_freqs_db()` to have populated them.
+        """Build word_year_corpus + year_corpus_totals tables from ClickHouse
+        lltk.text_freqs. Requires `build_freqs_db()` to have populated it.
 
             lltk.db.build_word_index_sql()                     # all texts, top 50K words
             lltk.db.build_word_index_sql(vocab_size=100_000)

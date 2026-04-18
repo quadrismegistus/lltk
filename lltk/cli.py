@@ -68,7 +68,7 @@ def main():
 	p_db_trans = subparsers.add_parser('db-detect-translations', help='Detect translations via cross-language match groups')
 
 	# db-detect-langs
-	p_db_lang = subparsers.add_parser('db-detect-langs', help='Detect per-text language via stopword intersection against freqs_db')
+	p_db_lang = subparsers.add_parser('db-detect-langs', help='Detect per-text language via stopword intersection against ClickHouse text_freqs')
 	p_db_lang.add_argument('-j', '--jobs', type=int, default=None, help='Number of parallel workers (default: cpu_count - 2)')
 	p_db_lang.add_argument('--batch-size', type=int, default=5000, help='Texts per worker batch (default: 5000)')
 	p_db_lang.add_argument('--min-tokens', type=int, default=50, help='Skip texts with fewer total tokens (default: 50)')
@@ -105,7 +105,7 @@ def main():
 	p_db_wi.add_argument('-j', '--jobs', type=int, default=None, help='Number of parallel workers')
 	p_db_wi.add_argument('--min-count', type=int, default=1, help='Min word count to include (default: 1)')
 	p_db_wi.add_argument('--vocab-size', type=int, default=100_000, help='Top N words by document frequency (default: 100000)')
-	p_db_wi.add_argument('--sql', action='store_true', help='Use SQL-only build against freqs_db (requires db-freqs first; faster)')
+	p_db_wi.add_argument('--sql', action='store_true', help='Use SQL-only build against ClickHouse text_freqs (requires db-freqs first; faster)')
 	p_db_wi.add_argument('--memory-limit', default='32GB', help='DuckDB memory limit for --sql build (default: 32GB)')
 	p_db_wi.add_argument('corpora', nargs='*', help='Specific corpora (default: all)')
 
