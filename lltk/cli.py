@@ -46,8 +46,9 @@ def main():
 	p_install.add_argument('--parts', default='metadata', help='Comma-separated: metadata,txt,xml,freqs,raw')
 
 	# db rebuild
-	p_db_rebuild = subparsers.add_parser('db-rebuild', help='Rebuild the DuckDB metadata store')
+	p_db_rebuild = subparsers.add_parser('db-rebuild', help='Rebuild ClickHouse texts from corpus CSVs')
 	p_db_rebuild.add_argument('corpora', nargs='*', help='Corpus IDs to rebuild (default: all)')
+	p_db_rebuild.add_argument('--force', action='store_true', help='Drop and rebuild (default when no corpora specified)')
 
 	# db info
 	p_db_info = subparsers.add_parser('db-info', help='Show DuckDB metadata store info and genre breakdown')
@@ -194,11 +195,19 @@ def main():
 			corpus.install(part=part)
 
 	elif args.cmd == 'db-rebuild':
+		from lltk.tools.db_adapter import get_adapter
+		from lltk.tools.clickhouse_rebuild import rebuild_clickhouse
+		import os as _os
+		ch_url = _os.environ.get(
+			'LLTK_CLICKHOUSE_URL',
+			'clickhouse://lltk:lltk@localhost:8123/lltk',
+		)
+		ch = get_adapter(ch_url)
 		corpus_ids = args.corpora if args.corpora else None
-		if not corpus_ids:
-			lltk.db.drop()  # full rebuild: drop everything
-		results = lltk.db.rebuild(corpus_ids)
-		print(f'\nIngested {sum(v for v in results.values() if isinstance(v, int))} texts from {len(results)} corpora')
+		# `--force` (already present on the parser) is the full-rebuild flag.
+		force = getattr(args, 'force', True) if corpus_ids is None else False
+		total = rebuild_clickhouse(ch, corpora=corpus_ids, force=force)
+		print(f'\nTotal: {total:,} texts ingested into ClickHouse')
 
 	elif args.cmd == 'db-info':
 		import pandas as pd

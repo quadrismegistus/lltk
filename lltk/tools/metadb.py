@@ -3564,5 +3564,9 @@ class MetaDB:
             return f'MetaDB({self.path})'
 
 
-# Module-level singleton
-metadb = MetaDB()
+# Module-level singleton — ClickHouse-backed.
+# The legacy DuckDB-backed MetaDB class stays in this module as an
+# emergency fallback; import it explicitly if needed:
+#     from lltk.tools.metadb import MetaDB
+from lltk.tools.metadb_ch import MetaDBCH
+metadb = MetaDBCH()
