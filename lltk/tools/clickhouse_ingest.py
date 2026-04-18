@@ -49,7 +49,15 @@ def _worker_get_client(ch_url):
     global _WORKER_CH_CLIENT
     if _WORKER_CH_CLIENT is None:
         from lltk.tools.db_adapter import get_adapter
-        _WORKER_CH_CLIENT = get_adapter(ch_url).client
+        ch = get_adapter(ch_url)
+        # async_insert: ClickHouse buffers rows server-side and flushes them
+        # as fewer, larger parts — prevents the "too many tiny parts" slowdown
+        # when lots of workers hammer many small inserts.
+        ch.client.command("SET async_insert = 1")
+        ch.client.command("SET wait_for_async_insert = 1")
+        ch.client.command("SET async_insert_max_data_size = 10485760")  # 10 MB
+        ch.client.command("SET async_insert_busy_timeout_ms = 1000")
+        _WORKER_CH_CLIENT = ch.client
     return _WORKER_CH_CLIENT
 
 
@@ -90,7 +98,7 @@ def _worker_read_and_insert(args):
         return (batch_idx, 0, f'{type(e).__name__}: {str(e)[:150]}')
 
 
-def ingest_freqs_from_jsons(ch_adapter, corpora=None, batch_size=500,
+def ingest_freqs_from_jsons(ch_adapter, corpora=None, batch_size=2000,
                              num_proc=None, truncate_first=False):
     """Stream freqs JSONs into ClickHouse text_freqs.
 
