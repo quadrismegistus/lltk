@@ -615,29 +615,6 @@ def create_app():
         except Exception as e:
             return JSONResponse({'error': str(e)}, status_code=500)
 
-    @app.get('/api/ngram/{word}/collocates')
-    async def get_ngram_collocates(
-        word: str,
-        genre: str = Query(''),
-        corpus: str = Query(''),
-        year_min: Optional[int] = Query(None),
-        year_max: Optional[int] = Query(None),
-        limit: int = Query(50, ge=1, le=200),
-        dedup: bool = Query(False),
-        dedup_by: str = Query('rank'),
-    ):
-        if not db.has_word_index():
-            return JSONResponse({'error': 'Word index not built'}, status_code=404)
-        try:
-            df = db.ngram_collocates(
-                word, genre=genre or None, corpus=corpus or None,
-                year_min=year_min, year_max=year_max, limit=limit,
-                dedup=dedup, dedup_by=dedup_by,
-            )
-            return {'collocates': df.to_dict('records'), 'word': word}
-        except Exception as e:
-            return JSONResponse({'error': str(e)}, status_code=500)
-
     # ── Match browser ───────────────────────────────────────────────────
 
     @app.get('/api/matches')

@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { getNgram, getNgramExamples, getNgramCollocates, getGenres, getCorpora } from '../lib/api.js';
+  import { getNgram, getNgramExamples, getGenres, getCorpora } from '../lib/api.js';
   import { formatNumber } from '../lib/utils.js';
   import { openDetail } from '../stores.js';
 
@@ -36,10 +36,6 @@
   let examples = $state([]);
   let loadingExamples = $state(false);
 
-  // Collocates panel
-  let collocates = $state([]);
-  let loadingCollocates = $state(false);
-
   const COLORS = [
     '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316',
     '#84cc16', '#14b8a6', '#6366f1', '#d946ef', '#0ea5e9', '#a855f7', '#64748b', '#eab308',
@@ -66,9 +62,6 @@
       error = e.message;
     }
     loading = false;
-
-    // Auto-load collocates for single word
-    if (wordList.length === 1 && !byCorpus) loadCollocates(wordList[0]);
   }
 
   function onInput() {
@@ -83,23 +76,13 @@
     try {
       const res = await getNgramExamples(word, {
         genre, corpus, year_min: period, year_max: period + 9, limit: 20,
+        dedup: dedup ? true : undefined,
       });
       examples = res.examples || [];
     } catch (e) {
       examples = [];
     }
     loadingExamples = false;
-  }
-
-  async function loadCollocates(word) {
-    loadingCollocates = true;
-    try {
-      const res = await getNgramCollocates(word, { genre, corpus, year_min: yearMin, year_max: yearMax });
-      collocates = res.collocates || [];
-    } catch (e) {
-      collocates = [];
-    }
-    loadingCollocates = false;
   }
 
   // SVG chart dimensions
@@ -365,18 +348,6 @@
         </div>
       {/if}
 
-      {#if collocates.length > 0}
-        <div class="panel">
-          <h3>Collocates of "{wordList[0]}"</h3>
-          <div class="collocate-list">
-            {#each collocates.slice(0, 30) as col}
-              <span class="collocate" onclick={() => { words = col.word; search(); }}
-                title="{col.n_texts} texts"
-              >{col.word} <small>{col.n_texts}</small></span>
-            {/each}
-          </div>
-        </div>
-      {/if}
     </div>
   {/if}
 </div>
@@ -440,12 +411,4 @@
   .clickable:hover { background: #f8fafc; }
   .title-cell { font-weight: 500; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .num { text-align: right; font-variant-numeric: tabular-nums; }
-
-  .collocate-list { display: flex; flex-wrap: wrap; gap: 6px; }
-  .collocate {
-    background: #f1f5f9; padding: 3px 8px; border-radius: 4px; font-size: 13px;
-    cursor: pointer; transition: background 0.1s;
-  }
-  .collocate:hover { background: #e2e8f0; }
-  .collocate small { color: #94a3b8; font-size: 11px; }
 </style>

@@ -79,10 +79,3 @@ export function getNgramExamples(word, params = {}) {
   return fetchJson(`/api/ngram/${encodeURIComponent(word)}/examples?${qs}`);
 }
 
-export function getNgramCollocates(word, params = {}) {
-  const qs = new URLSearchParams();
-  for (const [k, v] of Object.entries(params)) {
-    if (v !== '' && v !== null && v !== undefined) qs.set(k, v);
-  }
-  return fetchJson(`/api/ngram/${encodeURIComponent(word)}/collocates?${qs}`);
-}

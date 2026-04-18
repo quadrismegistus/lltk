@@ -269,52 +269,6 @@ def ngram_examples_ch(ch_adapter, word, genre=None, corpus=None,
     return ch_adapter.query_df(sql)
 
 
-# ── Collocates: other words in docs that contain `word` ─────────────────
-
-def ngram_collocates_ch(ch_adapter, word, genre=None, corpus=None,
-                        year_min=None, year_max=None, lang=None,
-                        limit=50, dedup=False, dedup_by='rank'):
-    """Doc-level co-occurrence. Ranks by n_texts with the target word.
-
-    Two-step pattern:
-      1) cheap prefix scan on text_words(word, _id) → candidate docs
-      2) text_freqs (ORDER BY _id, Map per row) filtered to those docs,
-         arrayJoin keys and aggregate.
-    Step 2 is index-prunable because text_freqs is sorted by _id —
-    critical for speed. Scanning all rows of text_words instead takes
-    minutes on 18B rows.
-    """
-    word = word.lower()
-    wheres = _text_filters(genre=genre, corpus=corpus,
-                           year_min=year_min, year_max=year_max, lang=lang)
-    dedup_join, dedup_where = _dedup_join(dedup, dedup_by=dedup_by)
-    where_sql = ' AND '.join(wheres)
-
-    sql = f"""
-        WITH docs AS (
-            SELECT tw._id AS _id
-            FROM lltk.text_words tw
-            INNER JOIN (SELECT _id FROM lltk.texts FINAL
-                        WHERE {where_sql}) AS t ON tw._id = t._id
-            {dedup_join}
-            WHERE tw.word = '{word}'
-              {dedup_where}
-        )
-        SELECT
-            w                AS word,
-            uniqExact(f._id) AS n_texts,
-            sum(c)           AS total_count
-        FROM (SELECT _id, freqs FROM lltk.text_freqs FINAL
-              WHERE _id IN docs) AS f
-        ARRAY JOIN mapKeys(f.freqs) AS w, mapValues(f.freqs) AS c
-        WHERE w != '{word}'
-        GROUP BY w
-        ORDER BY n_texts DESC, total_count DESC
-        LIMIT {int(limit)}
-    """
-    return ch_adapter.query_df(sql)
-
-
 # ── Readiness probe ─────────────────────────────────────────────────────
 
 def has_word_index_ch(ch_adapter):

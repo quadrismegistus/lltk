@@ -475,18 +475,6 @@ class MetaDBCH:
                                  lang=lang, limit=limit,
                                  dedup=dedup, dedup_by=dedup_by)
 
-    def ngram_collocates(self, word, genre=None, corpus=None,
-                         year_min=None, year_max=None, lang=None, limit=50,
-                         dedup=False, dedup_by='rank'):
-        """Doc-level co-occurring words (most common words in the texts
-        that use `word`)."""
-        from lltk.tools.clickhouse_wordindex import ngram_collocates_ch
-        return ngram_collocates_ch(self.adapter, word,
-                                   genre=genre, corpus=corpus,
-                                   year_min=year_min, year_max=year_max,
-                                   lang=lang, limit=limit,
-                                   dedup=dedup, dedup_by=dedup_by)
-
     def has_word_index(self):
         from lltk.tools.clickhouse_wordindex import has_word_index_ch
         return has_word_index_ch(self.adapter)
