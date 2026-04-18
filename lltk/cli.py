@@ -102,12 +102,11 @@ def main():
 	p_db_wc.add_argument('-j', '--jobs', type=int, default=None, help='Number of parallel workers')
 
 	# db-wordindex
-	p_db_wi = subparsers.add_parser('db-wordindex', help='Build per-word frequency index from freqs files')
-	p_db_wi.add_argument('-j', '--jobs', type=int, default=None, help='Number of parallel workers')
+	p_db_wi = subparsers.add_parser('db-wordindex',
+		help='Build word_year_corpus + year_corpus_totals aggregation tables from lltk.text_freqs')
 	p_db_wi.add_argument('--min-count', type=int, default=1, help='Min word count to include (default: 1)')
-	p_db_wi.add_argument('--vocab-size', type=int, default=100_000, help='Top N words by document frequency (default: 100000)')
-	p_db_wi.add_argument('--sql', action='store_true', help='Use SQL-only build against ClickHouse text_freqs (requires db-freqs first; faster)')
-	p_db_wi.add_argument('--memory-limit', default='32GB', help='DuckDB memory limit for --sql build (default: 32GB)')
+	p_db_wi.add_argument('--vocab-size', type=int, default=50_000,
+		help='Trim to top N most-frequent words (default: 50000)')
 	p_db_wi.add_argument('corpora', nargs='*', help='Specific corpora (default: all)')
 
 	# db-freqs
@@ -337,20 +336,11 @@ def main():
 		)
 
 	elif args.cmd == 'db-wordindex':
-		if args.sql:
-			lltk.db.build_word_index_sql(
-				vocab_size=args.vocab_size,
-				min_count=args.min_count,
-				corpora=args.corpora or None,
-				memory_limit=args.memory_limit,
-			)
-		else:
-			lltk.db.build_word_index(
-				num_proc=args.jobs,
-				min_count=args.min_count,
-				vocab_size=args.vocab_size,
-				corpora=args.corpora or None,
-			)
+		lltk.db.build_word_index_sql(
+			vocab_size=args.vocab_size,
+			min_count=args.min_count,
+			corpora=args.corpora or None,
+		)
 
 	elif args.cmd == 'db-wordagg':
 		lltk.db.build_word_aggregates()
