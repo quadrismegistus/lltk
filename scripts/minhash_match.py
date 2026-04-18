@@ -5,9 +5,9 @@ Writes results into metadb_matches.duckdb as match_type='minhash'.
 Usage:
     python scripts/minhash_match.py [--threshold 0.5] [--num-perm 128]
 """
-import duckdb, os, sys, time, argparse
-import lltk
+import os, sys, time, argparse
 from datasketch import MinHash, MinHashLSH
+from lltk.tools.db_adapter import get_adapter
 
 MATCH_PATH = os.path.expanduser('~/lltk_data/data/metadb_matches.duckdb')
 
@@ -18,22 +18,21 @@ def main():
     parser.add_argument('--corpus', type=str, default=None, help='Limit to one corpus')
     args = parser.parse_args()
 
-    # Load word sets from per-corpus freqs parquets
-    print('Loading word sets from per-corpus freqs parquets...', flush=True)
+    print('Loading word sets from ClickHouse text_freqs...', flush=True)
     t0 = time.time()
-    corpora = [args.corpus] if args.corpus else None
-    parquet_paths = lltk.db.freqs_parquet_paths(corpora=corpora)
-    if not parquet_paths:
-        print('No per-corpus freqs parquets found. Run `lltk db-freqs` first.', flush=True)
+    ch_url = os.environ.get(
+        'LLTK_CLICKHOUSE_URL',
+        'clickhouse://lltk:lltk@localhost:8123/lltk',
+    )
+    ch = get_adapter(ch_url)
+    where = f"WHERE corpus = '{args.corpus}'" if args.corpus else ''
+    rows = ch.query(f"""
+        SELECT _id, mapKeys(freqs) AS words FROM lltk.text_freqs {where}
+    """)
+    ch.close()
+    if not rows:
+        print('No freqs found. Run `lltk db-freqs` first.', flush=True)
         sys.exit(1)
-
-    file_list = ', '.join(f"'{p}'" for p in parquet_paths)
-    freqs_conn = duckdb.connect()
-    rows = freqs_conn.execute(f"""
-        SELECT _id, map_keys(freqs) as words
-        FROM read_parquet([{file_list}])
-    """).fetchall()
-    freqs_conn.close()
     print(f'Loaded {len(rows):,} texts in {time.time()-t0:.1f}s', flush=True)
 
     # Compute MinHash signatures
