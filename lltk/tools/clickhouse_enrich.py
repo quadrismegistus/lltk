@@ -148,17 +148,17 @@ def detect_translations_ch(ch_adapter):
     # One query: get group_id, _id, lang, year for groups with multiple langs
     cross_lang = ch_adapter.query_df("""
         WITH g AS (
-            SELECT mg.group_id,
-                   t._id,
-                   t.lang,
-                   t.year
+            SELECT mg.group_id       AS group_id,
+                   t._id             AS _id,
+                   t.lang            AS lang,
+                   t.year            AS year
             FROM (SELECT _id, group_id FROM lltk.match_groups FINAL) AS mg
             INNER JOIN (
                 SELECT _id, lang, year FROM lltk.texts FINAL
                 WHERE lang != '' AND lang != 'unknown'
             ) AS t ON mg._id = t._id
         )
-        SELECT * FROM g
+        SELECT group_id, _id, lang, year FROM g
         WHERE group_id IN (
             SELECT group_id FROM g
             GROUP BY group_id
