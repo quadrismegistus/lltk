@@ -191,10 +191,22 @@ class MetaDBCH:
             f'{name}() not yet ported to ClickHouse. Tracking in Phase B.'
         )
 
-    def match(self, *a, **kw):            return self._phase_b('match')
-    def find_matches(self, *a, **kw):     return self._phase_b('find_matches')
-    def get_group(self, *a, **kw):        return self._phase_b('get_group')
-    def match_stats(self, *a, **kw):      return self._phase_b('match_stats')
+    def match(self, corpora=None, fuzzy=False, containment=True, progress=True):
+        from lltk.tools.clickhouse_match import match_clickhouse
+        return match_clickhouse(self.adapter, corpora=corpora, fuzzy=fuzzy,
+                                containment=containment, progress=progress)
+
+    def find_matches(self, query):
+        from lltk.tools.clickhouse_match import find_matches_ch
+        return find_matches_ch(self.adapter, query)
+
+    def get_group(self, _id):
+        from lltk.tools.clickhouse_match import get_group_ch
+        return get_group_ch(self.adapter, _id)
+
+    def match_stats(self):
+        from lltk.tools.clickhouse_match import match_stats_ch
+        return match_stats_ch(self.adapter)
     def wordcounts(self, *a, **kw):       return self._phase_b('wordcounts')
     def enrich_genres(self, *a, **kw):    return self._phase_b('enrich_genres')
     def detect_translations(self, *a, **kw): return self._phase_b('detect_translations')
