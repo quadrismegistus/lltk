@@ -145,11 +145,14 @@ def detect_langs_clickhouse(ch_adapter, min_tokens=50,
     from lltk.tools.tools import get_tqdm
     qid = str(uuid.uuid4())
 
-    n_remaining = ch_adapter.query(f"""
-        SELECT count(DISTINCT tw._id) FROM lltk.text_words tw
-        INNER JOIN lltk.stopwords sw ON tw.word = sw.word
-        WHERE 1 {skip_sql}
-    """)[0][0]
+    # Count via text_stats (one row per _id) — avoids a 18B-row DISTINCT scan
+    stats_skip = (
+        "WHERE _id NOT IN (SELECT _id FROM lltk.text_langs)"
+        if skip_existing else ""
+    )
+    n_remaining = ch_adapter.query(
+        f"SELECT count() FROM lltk.text_stats {stats_skip}"
+    )[0][0]
     print(f'  {n_remaining:,} texts to process')
     if n_remaining == 0:
         return {}
