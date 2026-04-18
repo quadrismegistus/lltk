@@ -1,15 +1,14 @@
 """
-Per-text language detection via stopword intersection, ClickHouse-native.
+Per-text language detection, fully server-side.
 
-Rather than streaming every text's freqs and summing stopword hits in Python,
-we push the entire per-lang hit computation to ClickHouse: for each row in
-text_freqs, it evaluates `freqs[stopword]` for each stopword per language
-and sums. The result is one row per text with (en_hits, fr_hits, ...,
-total_tokens), all columnar/SIMD-accelerated. Python then just picks the
-argmax and computes coverage/confidence.
+Rather than stream rows back to Python for argmax, compute everything in
+ClickHouse with one big INSERT INTO ... SELECT. Python just builds the
+SQL, issues it, waits. CH handles the 2.2M-row scan, per-row stopword
+sums, argmax, thresholding, and the write into text_langs in one pass.
 
-Expected throughput: full 2 M texts in minutes (was hours with Python
-per-token iteration).
+Per-text compute: 1732 Map lookups + 9 flat scalar sums + argmax over
+9 values. No intermediate arrays allocated per row (the old arrayMap
+approach blew 55 GB).
 """
 
 import time
@@ -19,18 +18,16 @@ import pyarrow as pa
 def detect_langs_clickhouse(ch_adapter, min_tokens=50,
                              coverage_threshold=0.05,
                              confidence_threshold=2.0,
-                             batch_size=50_000, progress=True,
-                             skip_existing=True):
+                             skip_existing=True, progress=True,
+                             **unused):
     """Server-side stopword-intersection language detection.
 
-    With skip_existing=True (default), only processes _ids not already in
-    text_langs. ReplacingMergeTree on _id (versioned by detected_at) means
-    re-runs always overwrite safely.
+    Writes to lltk.text_langs (ReplacingMergeTree, dedup on _id). With
+    skip_existing=True (default), skips _ids already present.
 
     Returns lang → row count distribution dict.
     """
     from lltk.tools.lang_detect import function_words_table
-    from lltk.tools.tools import get_tqdm
 
     # Ensure destination table exists
     ch_adapter.execute("""
@@ -45,7 +42,7 @@ def detect_langs_clickhouse(ch_adapter, min_tokens=50,
         ORDER BY _id
     """)
 
-    # Organize stopwords into per-lang lists
+    # Build per-language stopword lists
     lang_to_words = {}
     for w, lg in function_words_table():
         lang_to_words.setdefault(lg, []).append(w)
@@ -53,31 +50,8 @@ def detect_langs_clickhouse(ch_adapter, min_tokens=50,
     print(f'Detecting across {len(langs)} languages '
           f'({sum(len(ws) for ws in lang_to_words.values())} stopwords total)')
 
-    # Skip logic — count how much work remains
-    if skip_existing:
-        already = ch_adapter.query("SELECT count(DISTINCT _id) FROM lltk.text_langs")[0][0]
-        n_freqs = ch_adapter.query("""
-            SELECT count() FROM lltk.text_freqs f
-            WHERE f._id NOT IN (SELECT _id FROM lltk.text_langs)
-        """)[0][0]
-        if already:
-            print(f'  skipping {already:,} already-processed texts')
-    else:
-        already = 0
-        n_freqs = ch_adapter.query("SELECT count() FROM lltk.text_freqs")[0][0]
-    if n_freqs == 0:
-        print('Nothing to do')
-        return {}
-    print(f'  {n_freqs:,} texts remaining')
-
-    # Build per-language stopword-hits as a flat sum of freqs[word] lookups.
-    # arrayMap over 1570 elements allocated a per-row intermediate array
-    # that choked CH's allocator at scale; flat + addition compiles to
-    # direct scalar arithmetic in the query plan, no intermediate arrays.
+    # Flat sum of freqs[word] lookups, chunked to keep parser tree shallow
     def _sum_expr(words, chunk_size=20):
-        # Flat a + b + c + ... hits CH parser's recursion limit at ~100 terms.
-        # Chunk into groups of 20 terms so the expression tree stays shallow:
-        # ( (t1+..+t20) + (t21+..+t40) + ... ).
         terms = [
             f"toUInt64(freqs['{w.replace(chr(39), chr(39)*2)}'])"
             for w in words
@@ -88,101 +62,82 @@ def detect_langs_clickhouse(ch_adapter, min_tokens=50,
         ]
         return '(' + ' + '.join(chunks) + ')'
 
-    lang_exprs = ',\n           '.join(
+    lang_hits_cols = ',\n           '.join(
         f"{_sum_expr(lang_to_words[lg])} AS {lg}_hits"
         for lg in langs
     )
 
-    # Chunk by corpus — the whole-table single-query blew 55GB. Per-corpus
-    # keeps the arrayMap intermediate bounded.
+    # hits_arr: [en_hits, fr_hits, ...]    langs_arr: ['en', 'fr', ...]
+    hits_arr = '[' + ', '.join(f'{lg}_hits' for lg in langs) + ']'
+    langs_arr = '[' + ', '.join(f"'{lg}'" for lg in langs) + ']'
+
+    # Per-chunk filter for skip_existing — avoids re-hashing 500K rows per corpus
     if skip_existing:
-        corpora_rows = ch_adapter.query("""
-            SELECT corpus, count() AS n
-            FROM lltk.text_freqs
-            WHERE _id NOT IN (SELECT _id FROM lltk.text_langs)
-            GROUP BY corpus ORDER BY n
-        """)
+        already = ch_adapter.query(
+            "SELECT count(DISTINCT _id) FROM lltk.text_langs"
+        )[0][0]
+        if already:
+            print(f'  skipping {already:,} already-processed texts')
+        skip_sql = "AND _id NOT IN (SELECT _id FROM lltk.text_langs)"
     else:
-        corpora_rows = ch_adapter.query("""
-            SELECT corpus, count() AS n
-            FROM lltk.text_freqs GROUP BY corpus ORDER BY n
-        """)
-    corpora_todo = [(c, n) for c, n in corpora_rows if n]
-    print(f'  across {len(corpora_todo)} corpora')
+        already = 0
+        skip_sql = ''
 
-    # Writes on a dedicated client (streaming reads hold the primary session).
-    from lltk.tools.db_adapter import get_adapter
-    import os as _os
-    ch_url = _os.environ.get(
-        'LLTK_CLICKHOUSE_URL',
-        f'clickhouse://{ch_adapter.username}:{ch_adapter._password}'
-        f'@{ch_adapter.host}:{ch_adapter.port}/{ch_adapter.database}',
-    )
-    write_adapter = get_adapter(ch_url)
+    # Count how many rows remain
+    total_remaining = ch_adapter.query(f"""
+        SELECT count() FROM lltk.text_freqs WHERE 1 {skip_sql}
+    """)[0][0]
+    print(f'  {total_remaining:,} texts to process')
+    if total_remaining == 0:
+        return {}
 
-    pbar = get_tqdm(total=n_freqs, desc='detect_langs',
-                    unit='text', unit_scale=True) if progress else None
+    # One big INSERT. The NOT IN subquery is evaluated once as a hash set at
+    # the start; per-corpus loops were re-evaluating it per query.
     t0 = time.time()
-    results = []
-
-    for corpus, n_corpus in corpora_todo:
-        c_esc = corpus.replace("'", "''")
-        where_parts = [f"corpus = '{c_esc}'"]
-        if skip_existing:
-            where_parts.append("_id NOT IN (SELECT _id FROM lltk.text_langs)")
-        sql = f"""
+    sql = f"""
+        INSERT INTO lltk.text_langs
+            (_id, lang_detected, lang_coverage, lang_confidence, detected_at)
+        WITH
+          per_lang AS (
             SELECT _id,
-                   {lang_exprs},
-                   arraySum(mapValues(freqs)) AS total_tokens
-            FROM lltk.text_freqs
-            WHERE {' AND '.join(where_parts)}
-        """
+                   arraySum(mapValues(freqs)) AS total_tokens,
+                   {hits_arr} AS hits_arr
+            FROM (
+                SELECT _id, freqs, {lang_hits_cols}
+                FROM lltk.text_freqs
+                WHERE 1 {skip_sql}
+            )
+          ),
+          ranked AS (
+            SELECT _id, total_tokens, hits_arr,
+                   arrayMax(hits_arr) AS top_hits,
+                   {langs_arr}[indexOf(hits_arr, arrayMax(hits_arr))] AS top_lang,
+                   arraySort(x -> -x, hits_arr)[2] AS second_hits
+            FROM per_lang
+          )
+        SELECT
+          _id,
+          multiIf(
+            total_tokens < {min_tokens},       'null',
+            top_hits = 0,                      'unknown',
+            toFloat64(top_hits) / toFloat64(total_tokens) < {coverage_threshold},
+                                               'unknown',
+            (top_hits * 1.0) / if(second_hits = 0, 1, second_hits) < {confidence_threshold}
+              AND second_hits > 0,             'unknown',
+                                                top_lang
+          ) AS lang_detected,
+          toFloat32(if(top_hits = 0, 0.0, toFloat64(top_hits) / toFloat64(total_tokens))) AS lang_coverage,
+          toFloat32(if(second_hits = 0, 999.0, toFloat64(top_hits) / toFloat64(second_hits))) AS lang_confidence,
+          now()
+        FROM ranked
+    """
 
-        with ch_adapter.client.query_arrow_stream(sql) as stream:
-            for arrow_batch in stream:
-                ids = arrow_batch.column('_id').to_pylist()
-                lang_hits_arrays = {lg: arrow_batch.column(f'{lg}_hits').to_pylist()
-                                    for lg in langs}
-                totals = arrow_batch.column('total_tokens').to_pylist()
-
-                for i, (_id, total) in enumerate(zip(ids, totals)):
-                    if total < min_tokens:
-                        results.append((_id, 'null', 0.0, 0.0))
-                        continue
-                    # argmax + runner-up across per-lang hit counts
-                    top_lang, top_hits, second_hits = None, 0, 0
-                    for lg in langs:
-                        h = lang_hits_arrays[lg][i]
-                        if h > top_hits:
-                            second_hits = top_hits
-                            top_hits = h
-                            top_lang = lg
-                        elif h > second_hits:
-                            second_hits = h
-                    if top_hits == 0:
-                        results.append((_id, 'unknown', 0.0, 0.0))
-                        continue
-                    coverage = top_hits / total
-                    confidence = top_hits / second_hits if second_hits > 0 else 999.0
-                    if coverage < coverage_threshold or confidence < confidence_threshold:
-                        results.append((_id, 'unknown', coverage, confidence))
-                    else:
-                        results.append((_id, top_lang, coverage, confidence))
-
-                if pbar:
-                    pbar.update(len(ids))
-                if len(results) >= batch_size:
-                    _flush_langs(write_adapter, results)
-                    results.clear()
-
-    if pbar:
-        pbar.close()
-    if results:
-        _flush_langs(write_adapter, results)
-
+    print('Running single server-side INSERT...')
+    ch_adapter.execute(sql)
     elapsed = time.time() - t0
-    print(f'Done in {elapsed:.0f}s ({n_freqs/max(elapsed, 1):.0f}/s)')
+    print(f'  done in {elapsed:.1f}s ({total_remaining/max(elapsed, 1):.0f}/s)')
 
+    # Report distribution
     dist = ch_adapter.query("""
         SELECT lang_detected, count()
         FROM lltk.text_langs FINAL
@@ -194,20 +149,3 @@ def detect_langs_clickhouse(ch_adapter, min_tokens=50,
     for lg, n in stats.items():
         print(f'  {lg}: {n:,}')
     return stats
-
-
-def _flush_langs(ch_adapter, rows):
-    if not rows:
-        return
-    ids   = [r[0] for r in rows]
-    langs = [r[1] for r in rows]
-    covs  = [float(r[2]) for r in rows]
-    confs = [min(float(r[3]), 999.0) for r in rows]
-    table = pa.Table.from_arrays(
-        [pa.array(ids, type=pa.string()),
-         pa.array(langs, type=pa.string()),
-         pa.array(covs, type=pa.float32()),
-         pa.array(confs, type=pa.float32())],
-        names=['_id', 'lang_detected', 'lang_coverage', 'lang_confidence'],
-    )
-    ch_adapter.client.insert_arrow('text_langs', table)
