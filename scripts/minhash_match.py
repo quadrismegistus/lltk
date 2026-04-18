@@ -1,6 +1,6 @@
 """
-MinHash matching on freqs DB — finds near-duplicate texts by word frequency overlap.
-Writes results into metadb_matches.duckdb as match_type='minhash'.
+MinHash matching on freqs — finds near-duplicate texts by word-set overlap.
+Writes results into ClickHouse lltk.matches as match_type='minhash'.
 
 Usage:
     python scripts/minhash_match.py [--threshold 0.5] [--num-perm 128]
@@ -8,8 +8,6 @@ Usage:
 import os, sys, time, argparse
 from datasketch import MinHash, MinHashLSH
 from lltk.tools.db_adapter import get_adapter
-
-MATCH_PATH = os.path.expanduser('~/lltk_data/data/metadb_matches.duckdb')
 
 def main():
     parser = argparse.ArgumentParser()
@@ -92,57 +90,54 @@ def main():
 
     # Save matches to CSV first (in case DB is locked)
     import pandas as pd
-    csv_path = os.path.join(os.path.dirname(MATCH_PATH), 'minhash_matches.csv')
+    import pandas as pd
+    import pyarrow as pa
+    csv_path = os.path.expanduser('~/lltk_data/data/minhash_matches.csv')
     df = pd.DataFrame(matches, columns=['_id_a', '_id_b', 'similarity'])
     df['match_type'] = 'minhash'
     df.to_csv(csv_path, index=False)
     print(f'Saved {len(matches):,} matches to {csv_path}', flush=True)
 
-    # Write to match DB
-    print('Writing to match DB...', flush=True)
+    # Write to ClickHouse lltk.matches
+    print('Writing to ClickHouse lltk.matches...', flush=True)
+    ch = get_adapter(ch_url)
+
+    # Remove old minhash matches first
     try:
-        match_conn = duckdb.connect(MATCH_PATH)
+        ch.execute("ALTER TABLE lltk.matches DELETE WHERE match_type='minhash' "
+                   "SETTINGS mutations_sync=1")
     except Exception as e:
-        print(f'Cannot open match DB: {e}')
-        print(f'Matches saved to CSV. Run: python scripts/minhash_insert.py')
-        return
+        print(f'  old-row DELETE failed: {e}')
 
-    # Remove old minhash matches
-    try:
-        n_old = match_conn.execute("SELECT COUNT(*) FROM matches WHERE match_type='minhash'").fetchone()[0]
-        if n_old > 0:
-            match_conn.execute("DELETE FROM matches WHERE match_type='minhash'")
-            print(f'  Removed {n_old:,} old minhash matches', flush=True)
-    except Exception:
-        pass
+    # Ensure (_id_a < _id_b) ordering to match the table's ORDER BY
+    df = df.copy()
+    a_lt = df['_id_a'] < df['_id_b']
+    df.loc[~a_lt, ['_id_a', '_id_b']] = df.loc[~a_lt, ['_id_b', '_id_a']].values
+    df = df.drop_duplicates(subset=['_id_a', '_id_b'])
+    tbl = pa.Table.from_pandas(df[['_id_a', '_id_b', 'similarity', 'match_type']],
+                               preserve_index=False)
+    ch.client.insert_arrow('matches', tbl)
+    print(f'  Inserted {len(df):,} minhash matches', flush=True)
 
-    # Insert new matches (skip pairs that already exist from other tiers)
-    import pandas as pd
-    df = pd.DataFrame(matches, columns=['_id_a', '_id_b', 'similarity'])
-    df['match_type'] = 'minhash'
-    match_conn.execute("""
-        INSERT OR IGNORE INTO matches (_id_a, _id_b, similarity, match_type)
-        SELECT _id_a, _id_b, similarity, match_type FROM df
-    """)
-    print(f'  Inserted {len(matches):,} minhash matches', flush=True)
-
-    # Show sample
-    meta_conn = duckdb.connect(os.path.expanduser('~/lltk_data/data/metadb.duckdb'), read_only=True)
+    # Show sample with titles
     print(f'\nTop 20 matches:')
     for a, b, sim in matches[:20]:
         try:
-            ra = meta_conn.execute(f"SELECT title, author, year FROM texts WHERE _id='{a}'").fetchone()
-            rb = meta_conn.execute(f"SELECT title, author, year FROM texts WHERE _id='{b}'").fetchone()
+            a_esc = a.replace("'", "''")
+            b_esc = b.replace("'", "''")
+            ra = ch.query(f"SELECT title, author, year FROM lltk.texts FINAL WHERE _id='{a_esc}' LIMIT 1")
+            rb = ch.query(f"SELECT title, author, year FROM lltk.texts FINAL WHERE _id='{b_esc}' LIMIT 1")
+            ra = ra[0] if ra else None
+            rb = rb[0] if rb else None
             ta = f'[{ra[2]}] {(ra[1] or "")[:20]}: {(ra[0] or "")[:40]}' if ra else a
             tb = f'[{rb[2]}] {(rb[1] or "")[:20]}: {(rb[0] or "")[:40]}' if rb else b
-        except:
+        except Exception:
             ta, tb = a, b
         print(f'  {sim:.3f}  {ta}')
         print(f'         {tb}')
         print()
 
-    meta_conn.close()
-    match_conn.close()
+    ch.close()
     print('Done.')
 
 if __name__ == '__main__':

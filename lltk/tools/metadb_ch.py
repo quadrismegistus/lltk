@@ -76,6 +76,9 @@ def _rewrite_legacy_sql(sql):
     # to_timestamp(x) → toDateTime(x)
     sql = re.sub(r'\bto_timestamp\s*\(', 'toDateTime(', sql)
 
+    # random() → rand() — DuckDB has random(), ClickHouse needs rand()/rand64()
+    sql = re.sub(r'\brandom\s*\(\s*\)', 'rand()', sql)
+
     return sql
 
 
