@@ -645,17 +645,16 @@ class BaseCorpus(TextList):
     @property
     def t(self):
         """Return a random text, sampling from the full corpus via MetaDB
-        (or metadata.csv if the DB is locked). Avoids loading the whole
-        corpus when you just want a quick sample.
+        (or metadata.csv if the DB is unavailable). Avoids loading the
+        whole corpus when you just want a quick sample.
 
         Sampling order:
-          1. Main MetaDB connection (fast, ~ms)
-          2. Fresh read-only DuckDB connection (if main conn is locked)
-          3. metadata.csv id column (DB-free, ~1s for 300K rows)
-          4. In-memory `_textd` (only useful if already iterated)
-          5. Full corpus load (last resort)
+          1. Main metadata DB (ClickHouse via shim, ~ms)
+          2. metadata.csv id column (DB-free, ~1s for 300K rows)
+          3. In-memory `_textd` (only useful if already iterated)
+          4. Full corpus load (last resort)
         """
-        # 1. Main MetaDB
+        # 1. Main metadata DB (ClickHouse via the metadb shim)
         row = None
         try:
             from lltk.tools.metadb import metadb
@@ -664,37 +663,22 @@ class BaseCorpus(TextList):
                 [self.id],
             ).fetchone()
         except Exception:
-            # 2. RO DuckDB fallback — helps when another process in this
-            # same Python holds the write lock; cross-process writer locks
-            # will still block, handled by the CSV path below.
-            try:
-                import duckdb
-                from lltk.tools.metadb import PATH_METADB
-                ro = duckdb.connect(PATH_METADB, read_only=True)
-                try:
-                    row = ro.execute(
-                        "SELECT id FROM texts WHERE corpus = ? ORDER BY random() LIMIT 1",
-                        [self.id],
-                    ).fetchone()
-                finally:
-                    ro.close()
-            except Exception:
-                pass
+            pass
         if row and row[0]:
             return self.TEXT_CLASS(id=row[0], _corpus=self)
-        # 3. CSV — works even when DB is fully locked across processes.
-        # Cached across calls so we don't re-parse a 300K-row file every time.
+        # 2. CSV — works even if the DB is unavailable. Cached across calls
+        # so we don't re-parse a 300K-row file every time.
         try:
             ids = self._cached_id_list()
             if ids:
                 return self.TEXT_CLASS(id=random.choice(ids), _corpus=self)
         except Exception:
             pass
-        # 4. Memory, if already populated by prior iteration
+        # 3. Memory, if already populated by prior iteration
         loaded = [t for t in self._textd.values() if t is not None]
         if loaded and len(loaded) > 1:
             return random.choice(loaded)
-        # 5. Full load (last resort)
+        # 4. Full load (last resort)
         ol = list(self.texts(progress=False))
         return random.choice(ol) if ol else None
 
