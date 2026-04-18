@@ -77,7 +77,7 @@ def detect_langs_clickhouse(ch_adapter, min_tokens=50,
         return '[' + ', '.join(parts) + ']'
 
     lang_exprs = ',\n           '.join(
-        f"arraySum(arrayMap(w -> toUInt32OrZero(freqs[w]), {_sql_str_array(lang_to_words[lg])})) "
+        f"arraySum(arrayMap(w -> freqs[w], {_sql_str_array(lang_to_words[lg])})) "
         f"AS {lg}_hits"
         for lg in langs
     )
