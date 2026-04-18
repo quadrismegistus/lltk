@@ -447,12 +447,45 @@ class MetaDBCH:
         build_text_stats(self.adapter, force=force)
         return n_words
 
-    def ngram(self, words, genre=None, corpus=None, year_min=None,
-              year_max=None, dedup=False, by_corpus=False):
+    def ngram(self, words, genre=None, corpus=None, year_min=1500,
+              year_max=2020, lang=None, normalize='per_million',
+              by='decade', dedup=False, dedup_by='rank', by_corpus=False):
+        """Word frequency over time. Live aggregation from lltk.text_words
+        + lltk.year_corpus_totals (denominator cache).
+
+            lltk.db.ngram('virtue')
+            lltk.db.ngram(['virtue', 'honor'], genre='Fiction', dedup=True)
+            lltk.db.ngram('virtue', by_corpus=True)
+        """
         from lltk.tools.clickhouse_wordindex import ngram_ch
-        return ngram_ch(self.adapter, words, genre=genre, corpus=corpus,
-                        year_min=year_min, year_max=year_max,
-                        dedup=dedup, by_corpus=by_corpus)
+        return ngram_ch(self.adapter, words,
+                        genre=genre, corpus=corpus,
+                        year_min=year_min, year_max=year_max, lang=lang,
+                        normalize=normalize, dedup=dedup, dedup_by=dedup_by,
+                        by_corpus=by_corpus, by=by)
+
+    def ngram_examples(self, word, genre=None, corpus=None,
+                       year_min=None, year_max=None, lang=None, limit=20,
+                       dedup=False, dedup_by='rank'):
+        """Texts scoring highest (per_million) on a word."""
+        from lltk.tools.clickhouse_wordindex import ngram_examples_ch
+        return ngram_examples_ch(self.adapter, word,
+                                 genre=genre, corpus=corpus,
+                                 year_min=year_min, year_max=year_max,
+                                 lang=lang, limit=limit,
+                                 dedup=dedup, dedup_by=dedup_by)
+
+    def ngram_collocates(self, word, genre=None, corpus=None,
+                         year_min=None, year_max=None, lang=None, limit=50,
+                         dedup=False, dedup_by='rank'):
+        """Doc-level co-occurring words (most common words in the texts
+        that use `word`)."""
+        from lltk.tools.clickhouse_wordindex import ngram_collocates_ch
+        return ngram_collocates_ch(self.adapter, word,
+                                   genre=genre, corpus=corpus,
+                                   year_min=year_min, year_max=year_max,
+                                   lang=lang, limit=limit,
+                                   dedup=dedup, dedup_by=dedup_by)
 
     def has_word_index(self):
         from lltk.tools.clickhouse_wordindex import has_word_index_ch
