@@ -122,34 +122,35 @@ def ingest_freqs_from_jsons(ch_adapter, corpora=None, batch_size=500,
     batches = [todo[i:i+batch_size] for i in range(0, len(todo), batch_size)]
     args_list = [(i, corpus_root, b) for i, b in enumerate(batches)]
 
+    from lltk.tools.tools import get_tqdm
+
     t0 = time.time()
     n_inserted = 0
     n_failed = 0
 
-    # Use a single ClickHouse connection (HTTP client) in the main process;
-    # workers just read JSONs (I/O bound) and return arrow tables.
-    with ProcessPoolExecutor(max_workers=num_proc) as pool:
-        futures = {pool.submit(_worker_read_batch, a): a[0] for a in args_list}
-        for fut in as_completed(futures):
-            batch_idx, table, n_read = fut.result()
-            if table is None:
-                continue
-            try:
-                ch_adapter.client.insert_arrow('text_freqs', table)
-                n_inserted += n_read
-            except Exception as e:
-                n_failed += n_read
-                print(f'  batch {batch_idx}: insert failed: {type(e).__name__}: {str(e)[:120]}', flush=True)
-                continue
-
-            if n_inserted % (batch_size * 20) == 0 or n_inserted == len(todo):
-                rate = n_inserted / (time.time() - t0)
-                eta = (len(todo) - n_inserted) / rate if rate > 0 else 0
-                print(f'  {n_inserted:,}/{len(todo):,} ({rate:.0f}/s, '
-                      f'ETA {eta:.0f}s)', flush=True)
+    pbar = get_tqdm(total=len(todo), desc='freqs → ClickHouse',
+                    unit='text', unit_scale=True, smoothing=0.1)
+    try:
+        with ProcessPoolExecutor(max_workers=num_proc) as pool:
+            futures = {pool.submit(_worker_read_batch, a): a[0] for a in args_list}
+            for fut in as_completed(futures):
+                batch_idx, table, n_read = fut.result()
+                if table is None:
+                    continue
+                try:
+                    ch_adapter.client.insert_arrow('text_freqs', table)
+                    n_inserted += n_read
+                    pbar.update(n_read)
+                except Exception as e:
+                    n_failed += n_read
+                    pbar.write(f'  batch {batch_idx}: insert failed: '
+                               f'{type(e).__name__}: {str(e)[:120]}')
+                    continue
+    finally:
+        pbar.close()
 
     elapsed = time.time() - t0
-    print(f'\nInserted {n_inserted:,} rows in {elapsed:.0f}s '
+    print(f'Inserted {n_inserted:,} rows in {elapsed:.0f}s '
           f'({n_inserted/elapsed:.0f}/s); {n_failed} failed')
 
     # Final count

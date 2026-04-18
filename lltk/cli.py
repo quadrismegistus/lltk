@@ -351,7 +351,7 @@ def main():
 			num_proc=args.jobs,
 			batch_size=args.batch_size,
 			corpora=args.corpora or None,
-			force=args.force,
+			truncate_first=args.force,
 		)
 
 	elif args.cmd == 'db-match-stats':
