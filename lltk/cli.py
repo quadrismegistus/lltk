@@ -69,15 +69,16 @@ def main():
 	p_db_trans = subparsers.add_parser('db-detect-translations', help='Detect translations via cross-language match groups')
 
 	# db-detect-langs
-	p_db_lang = subparsers.add_parser('db-detect-langs', help='Detect per-text language via stopword intersection against ClickHouse text_freqs')
-	p_db_lang.add_argument('-j', '--jobs', type=int, default=None, help='Number of parallel workers (default: cpu_count - 2)')
-	p_db_lang.add_argument('--batch-size', type=int, default=5000, help='Texts per worker batch (default: 5000)')
-	p_db_lang.add_argument('--min-tokens', type=int, default=50, help='Skip texts with fewer total tokens (default: 50)')
-	p_db_lang.add_argument('--coverage', type=float, default=0.05, help='Min fraction of tokens hitting top-lang stopwords (default: 0.05)')
-	p_db_lang.add_argument('--confidence', type=float, default=2.0, help='Min ratio of top-lang hits to runner-up (default: 2.0)')
-	p_db_lang.add_argument('--apply', action='store_true', help='Overwrite `lang` column with confident detections in both directions (default: only write lang_detected/coverage/confidence)')
-	p_db_lang.add_argument('--apply-conservative', action='store_true', help='Overwrite `lang` only where lang_metadata=en (likely manifest default) AND lang_detected is a confident non-English language')
-	p_db_lang.add_argument('--only-apply', action='store_true', help='Skip detection; just run the selected --apply / --apply-conservative update using existing lang_detected values')
+	p_db_lang = subparsers.add_parser('db-detect-langs',
+		help='Per-text language detection via stopword JOIN on lltk.text_words')
+	p_db_lang.add_argument('--min-tokens', type=int, default=50,
+		help='Skip texts with fewer total tokens (default: 50)')
+	p_db_lang.add_argument('--coverage', type=float, default=0.05,
+		help="Min fraction of tokens hitting top-lang's stopwords (default: 0.05)")
+	p_db_lang.add_argument('--confidence', type=float, default=2.0,
+		help='Min ratio of top-lang hits to runner-up (default: 2.0)')
+	p_db_lang.add_argument('--rebuild', action='store_true',
+		help='Reprocess every text (default: skip _ids already in lltk.text_langs)')
 
 	# search
 	p_search = subparsers.add_parser('search', help='Full-text search across passages')
@@ -325,14 +326,10 @@ def main():
 
 	elif args.cmd == 'db-detect-langs':
 		lltk.db.detect_langs(
-			batch_size=args.batch_size,
 			min_tokens=args.min_tokens,
 			coverage_threshold=args.coverage,
 			confidence_threshold=args.confidence,
-			apply=args.apply,
-			apply_conservative=args.apply_conservative,
-			only_apply=args.only_apply,
-			num_proc=args.jobs,
+			skip_existing=not args.rebuild,
 		)
 
 	elif args.cmd == 'search':
