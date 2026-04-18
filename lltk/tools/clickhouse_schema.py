@@ -159,6 +159,36 @@ CLICKHOUSE_SCHEMA = {
         ENGINE = ReplacingMergeTree(detected_at)
         ORDER BY _id
     """,
+
+    # Flat (word, _id, count) long-format inversion of text_freqs.
+    # ORDER BY (word, _id) means queries for a specific word read a contiguous
+    # index range — sub-second even across billions of rows. LowCardinality
+    # word column compresses heavily (most words repeat across texts).
+    'text_words': """
+        CREATE TABLE IF NOT EXISTS {db}.text_words (
+            word    LowCardinality(String),
+            _id     String,
+            count   UInt32,
+            corpus  LowCardinality(String)
+        )
+        ENGINE = MergeTree()
+        ORDER BY (word, _id)
+        SETTINGS index_granularity = 8192
+    """,
+
+    # Small per-text stats table (populated from text_freqs). Makes
+    # total-tokens JOINs cheap for detect_langs etc. without scanning the
+    # full freqs Map column.
+    'text_stats': """
+        CREATE TABLE IF NOT EXISTS {db}.text_stats (
+            _id            String,
+            corpus         LowCardinality(String),
+            n_words        UInt64,
+            n_unique_words UInt32
+        )
+        ENGINE = ReplacingMergeTree()
+        ORDER BY _id
+    """,
 }
 
 

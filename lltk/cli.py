@@ -109,6 +109,13 @@ def main():
 		help='Trim to top N most-frequent words (default: 50000)')
 	p_db_wi.add_argument('corpora', nargs='*', help='Specific corpora (default: all)')
 
+	# db-text-words
+	p_db_tw = subparsers.add_parser('db-text-words',
+		help='Build flat (word, _id, count) text_words table for native-columnar word queries')
+	p_db_tw.add_argument('--force', action='store_true',
+		help='Truncate and rebuild (default: skip already-built corpora)')
+	p_db_tw.add_argument('corpora', nargs='*', help='Specific corpora (default: all)')
+
 	# db-freqs
 	p_db_fq = subparsers.add_parser('db-freqs', help='Ingest per-text freqs JSONs into per-corpus freqs.parquet files')
 	p_db_fq.add_argument('-j', '--jobs', type=int, default=None, help='Number of parallel workers')
@@ -340,6 +347,12 @@ def main():
 			vocab_size=args.vocab_size,
 			min_count=args.min_count,
 			corpora=args.corpora or None,
+		)
+
+	elif args.cmd == 'db-text-words':
+		lltk.db.build_text_words(
+			corpora=args.corpora or None,
+			force=args.force,
 		)
 
 	elif args.cmd == 'db-wordagg':

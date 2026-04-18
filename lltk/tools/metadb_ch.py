@@ -341,6 +341,22 @@ class MetaDBCH:
             corpora=corpora,
         )
 
+    def build_text_words(self, corpora=None, force=False):
+        """Build lltk.text_words + lltk.text_stats from text_freqs.
+
+        text_words is a flat (word, _id, count) inversion of freqs. Queries
+        on a single word become sub-second index-range scans instead of
+        full-column Map scans. text_stats stores per-text total_tokens.
+        """
+        from lltk.tools.clickhouse_text_words import (
+            build_text_words, build_text_stats,
+        )
+        n_words = build_text_words(
+            self.adapter, corpora=corpora, force=force,
+        )
+        build_text_stats(self.adapter, force=force)
+        return n_words
+
     def ngram(self, words, genre=None, corpus=None, year_min=None,
               year_max=None, dedup=False, by_corpus=False):
         from lltk.tools.clickhouse_wordindex import ngram_ch

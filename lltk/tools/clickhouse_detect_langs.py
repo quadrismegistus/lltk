@@ -1,14 +1,14 @@
 """
-Per-text language detection, fully server-side.
+Per-text language detection — native-columnar via text_words + stopwords JOIN.
 
-Rather than stream rows back to Python for argmax, compute everything in
-ClickHouse with one big INSERT INTO ... SELECT. Python just builds the
-SQL, issues it, waits. CH handles the 2.2M-row scan, per-row stopword
-sums, argmax, thresholding, and the write into text_langs in one pass.
+Uses the flat lltk.text_words table (ORDER BY (word, _id)) to pull only rows
+where word is a stopword. The index range scan is sub-second even across
+billions of word-count rows. Per-text total_tokens comes from lltk.text_stats
+(pre-aggregated per-text row).
 
-Per-text compute: 1732 Map lookups + 9 flat scalar sums + argmax over
-9 values. No intermediate arrays allocated per row (the old arrayMap
-approach blew 55 GB).
+Compared to the old Map-lookup approach (1732 freqs[word] lookups per row,
+required scanning the full 28 GB freqs Map column): orders of magnitude
+faster.
 """
 
 import time
@@ -20,16 +20,14 @@ def detect_langs_clickhouse(ch_adapter, min_tokens=50,
                              confidence_threshold=2.0,
                              skip_existing=True, progress=True,
                              **unused):
-    """Server-side stopword-intersection language detection.
+    """Server-side stopword-intersection language detection via text_words.
 
-    Writes to lltk.text_langs (ReplacingMergeTree, dedup on _id). With
-    skip_existing=True (default), skips _ids already present.
-
-    Returns lang → row count distribution dict.
+    Prerequisites: lltk.text_words + lltk.text_stats populated (via
+    `lltk db-text-words`). Writes to lltk.text_langs (ReplacingMergeTree).
     """
     from lltk.tools.lang_detect import function_words_table
 
-    # Ensure destination table exists
+    # Ensure destination + stopwords tables exist
     ch_adapter.execute("""
         CREATE TABLE IF NOT EXISTS lltk.text_langs (
             _id              String,
@@ -41,8 +39,14 @@ def detect_langs_clickhouse(ch_adapter, min_tokens=50,
         ENGINE = ReplacingMergeTree(detected_at)
         ORDER BY _id
     """)
+    ch_adapter.execute("""
+        CREATE TABLE IF NOT EXISTS lltk.stopwords (
+            word LowCardinality(String),
+            lang LowCardinality(String)
+        ) ENGINE = MergeTree() ORDER BY word
+    """)
 
-    # Build per-language stopword lists
+    # (Re)populate stopwords
     lang_to_words = {}
     for w, lg in function_words_table():
         lang_to_words.setdefault(lg, []).append(w)
@@ -50,99 +54,112 @@ def detect_langs_clickhouse(ch_adapter, min_tokens=50,
     print(f'Detecting across {len(langs)} languages '
           f'({sum(len(ws) for ws in lang_to_words.values())} stopwords total)')
 
-    # Flat sum of freqs[word] lookups, chunked to keep parser tree shallow
-    def _sum_expr(words, chunk_size=20):
-        terms = [
-            f"toUInt64(freqs['{w.replace(chr(39), chr(39)*2)}'])"
-            for w in words
-        ]
-        chunks = [
-            '(' + ' + '.join(terms[i:i + chunk_size]) + ')'
-            for i in range(0, len(terms), chunk_size)
-        ]
-        return '(' + ' + '.join(chunks) + ')'
-
-    lang_hits_cols = ',\n           '.join(
-        f"{_sum_expr(lang_to_words[lg])} AS {lg}_hits"
-        for lg in langs
+    ch_adapter.execute("TRUNCATE TABLE lltk.stopwords")
+    all_words, all_langs = [], []
+    for lg, ws in lang_to_words.items():
+        for w in ws:
+            all_words.append(w)
+            all_langs.append(lg)
+    ch_adapter.client.insert_arrow(
+        'stopwords',
+        pa.Table.from_arrays(
+            [pa.array(all_words), pa.array(all_langs)],
+            names=['word', 'lang'],
+        ),
     )
 
-    # hits_arr: [en_hits, fr_hits, ...]    langs_arr: ['en', 'fr', ...]
-    hits_arr = '[' + ', '.join(f'{lg}_hits' for lg in langs) + ']'
-    langs_arr = '[' + ', '.join(f"'{lg}'" for lg in langs) + ']'
+    # Sanity: text_words populated?
+    n_text_words = ch_adapter.query("SELECT count() FROM lltk.text_words")[0][0]
+    if n_text_words == 0:
+        raise RuntimeError(
+            'lltk.text_words is empty. Run `lltk db-text-words` first.'
+        )
 
-    # Per-chunk filter for skip_existing — avoids re-hashing 500K rows per corpus
+    # Skip filter
     if skip_existing:
         already = ch_adapter.query(
             "SELECT count(DISTINCT _id) FROM lltk.text_langs"
         )[0][0]
         if already:
             print(f'  skipping {already:,} already-processed texts')
-        skip_sql = "AND _id NOT IN (SELECT _id FROM lltk.text_langs)"
+        skip_sql = "AND tw._id NOT IN (SELECT _id FROM lltk.text_langs)"
     else:
         already = 0
         skip_sql = ''
 
-    # Count how many rows remain
-    total_remaining = ch_adapter.query(f"""
-        SELECT count() FROM lltk.text_freqs WHERE 1 {skip_sql}
-    """)[0][0]
-    print(f'  {total_remaining:,} texts to process')
-    if total_remaining == 0:
-        return {}
+    # Per-language hit sums via JOIN (index-prunes text_words to stopword rows)
+    sumif_cols = ',\n           '.join(
+        f"sumIf(tw.count, sw.lang = '{lg}') AS {lg}_hits"
+        for lg in langs
+    )
+    hits_arr = '[' + ', '.join(f'{lg}_hits' for lg in langs) + ']'
+    langs_arr = '[' + ', '.join(f"'{lg}'" for lg in langs) + ']'
 
-    # One big INSERT. The NOT IN subquery is evaluated once as a hash set at
-    # the start; per-corpus loops were re-evaluating it per query.
-    t0 = time.time()
     sql = f"""
         INSERT INTO lltk.text_langs
             (_id, lang_detected, lang_coverage, lang_confidence, detected_at)
         WITH
-          per_lang AS (
-            SELECT _id,
-                   arraySum(mapValues(freqs)) AS total_tokens,
+          hits AS (
+            SELECT tw._id AS _id,
+                   {sumif_cols}
+            FROM lltk.text_words tw
+            INNER JOIN lltk.stopwords sw ON tw.word = sw.word
+            WHERE 1 {skip_sql}
+            GROUP BY tw._id
+          ),
+          joined AS (
+            SELECT h._id AS _id,
+                   ts.n_words AS total_tokens,
                    {hits_arr} AS hits_arr
-            FROM (
-                SELECT _id, freqs, {lang_hits_cols}
-                FROM lltk.text_freqs
-                WHERE 1 {skip_sql}
-            )
+            FROM hits h
+            INNER JOIN lltk.text_stats ts ON h._id = ts._id
           ),
           ranked AS (
             SELECT _id, total_tokens, hits_arr,
                    arrayMax(hits_arr) AS top_hits,
                    {langs_arr}[indexOf(hits_arr, arrayMax(hits_arr))] AS top_lang,
                    arraySort(x -> -x, hits_arr)[2] AS second_hits
-            FROM per_lang
+            FROM joined
           )
         SELECT
           _id,
           multiIf(
-            total_tokens < {min_tokens},       'null',
-            top_hits = 0,                      'unknown',
+            total_tokens < {min_tokens}, 'null',
+            top_hits = 0,                'unknown',
             toFloat64(top_hits) / toFloat64(total_tokens) < {coverage_threshold},
-                                               'unknown',
-            (top_hits * 1.0) / if(second_hits = 0, 1, second_hits) < {confidence_threshold}
-              AND second_hits > 0,             'unknown',
-                                                top_lang
+                                          'unknown',
+            (top_hits * 1.0) / if(second_hits = 0, 1, second_hits)
+              < {confidence_threshold} AND second_hits > 0,
+                                          'unknown',
+                                           top_lang
           ) AS lang_detected,
-          toFloat32(if(top_hits = 0, 0.0, toFloat64(top_hits) / toFloat64(total_tokens))) AS lang_coverage,
-          toFloat32(if(second_hits = 0, 999.0, toFloat64(top_hits) / toFloat64(second_hits))) AS lang_confidence,
+          toFloat32(if(top_hits = 0, 0.0,
+                       toFloat64(top_hits) / toFloat64(total_tokens))) AS lang_coverage,
+          toFloat32(if(second_hits = 0, 999.0,
+                       toFloat64(top_hits) / toFloat64(second_hits))) AS lang_confidence,
           now()
         FROM ranked
     """
 
-    # Tag the INSERT with a query_id so we can watch its progress.
+    # tqdm progress via system.processes polling
     import uuid, threading
     from lltk.tools.tools import get_tqdm
     qid = str(uuid.uuid4())
 
-    pbar = get_tqdm(total=total_remaining, desc='detect_langs',
+    n_remaining = ch_adapter.query(f"""
+        SELECT count(DISTINCT tw._id) FROM lltk.text_words tw
+        INNER JOIN lltk.stopwords sw ON tw.word = sw.word
+        WHERE 1 {skip_sql}
+    """)[0][0]
+    print(f'  {n_remaining:,} texts to process')
+    if n_remaining == 0:
+        return {}
+
+    pbar = get_tqdm(total=n_remaining, desc='detect_langs',
                     unit='text', unit_scale=True) if progress else None
     stop_flag = {'done': False}
 
     def _watch():
-        # Use a dedicated client — the primary one is blocked running INSERT.
         from lltk.tools.db_adapter import get_adapter
         import os as _os
         url = _os.environ.get(
@@ -151,18 +168,16 @@ def detect_langs_clickhouse(ch_adapter, min_tokens=50,
             f'@{ch_adapter.host}:{ch_adapter.port}/{ch_adapter.database}',
         )
         watcher = get_adapter(url)
-        last = 0
         while not stop_flag['done']:
             try:
                 rows = watcher.query(
-                    f"SELECT read_rows FROM system.processes "
+                    f"SELECT written_rows FROM system.processes "
                     f"WHERE query_id = '{qid}'"
                 )
-                if rows:
+                if rows and pbar:
                     now = rows[0][0]
-                    if pbar and now > last:
-                        pbar.update(min(now - last, total_remaining - last))
-                        last = now
+                    if now > (pbar.n or 0):
+                        pbar.update(min(now - pbar.n, n_remaining - pbar.n))
             except Exception:
                 pass
             time.sleep(0.5)
@@ -171,7 +186,8 @@ def detect_langs_clickhouse(ch_adapter, min_tokens=50,
     thread = threading.Thread(target=_watch, daemon=True)
     thread.start()
 
-    print('Running single server-side INSERT...')
+    t0 = time.time()
+    print('Running server-side INSERT...')
     try:
         ch_adapter.client.command(sql, settings={'query_id': qid})
     finally:
@@ -181,9 +197,8 @@ def detect_langs_clickhouse(ch_adapter, min_tokens=50,
             pbar.close()
 
     elapsed = time.time() - t0
-    print(f'  done in {elapsed:.1f}s ({total_remaining/max(elapsed, 1):.0f}/s)')
+    print(f'  done in {elapsed:.1f}s ({n_remaining/max(elapsed, 1):.0f}/s)')
 
-    # Report distribution
     dist = ch_adapter.query("""
         SELECT lang_detected, count()
         FROM lltk.text_langs FINAL
