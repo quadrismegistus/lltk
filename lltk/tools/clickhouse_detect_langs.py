@@ -1,31 +1,33 @@
 """
-Per-text language detection via stopword intersection, ClickHouse-backed.
+Per-text language detection via stopword intersection, ClickHouse-native.
 
-Streams freqs from lltk.text_freqs in Arrow batches, scores each text
-against per-language stopword lists, writes results to lltk.text_langs.
-Query-time joins expose lang_detected / lang_coverage / lang_confidence
-alongside texts.
+Rather than streaming every text's freqs and summing stopword hits in Python,
+we push the entire per-lang hit computation to ClickHouse: for each row in
+text_freqs, it evaluates `freqs[stopword]` for each stopword per language
+and sums. The result is one row per text with (en_hits, fr_hits, ...,
+total_tokens), all columnar/SIMD-accelerated. Python then just picks the
+argmax and computes coverage/confidence.
+
+Expected throughput: full 2 M texts in minutes (was hours with Python
+per-token iteration).
 """
 
 import time
-import pandas as pd
 import pyarrow as pa
-
-from lltk.tools.db_adapter import get_adapter
 
 
 def detect_langs_clickhouse(ch_adapter, min_tokens=50,
                              coverage_threshold=0.05,
                              confidence_threshold=2.0,
-                             batch_size=5000, progress=True,
+                             batch_size=50_000, progress=True,
                              skip_existing=True):
-    """Score every row in lltk.text_freqs, write lang_detected to lltk.text_langs.
+    """Server-side stopword-intersection language detection.
 
     With skip_existing=True (default), only processes _ids not already in
-    text_langs — safe resumable default after a crash or Ctrl+C. Pass
-    skip_existing=False for a full recompute.
+    text_langs. ReplacingMergeTree on _id (versioned by detected_at) means
+    re-runs always overwrite safely.
 
-    Returns distribution stats as a dict lang → row count.
+    Returns lang → row count distribution dict.
     """
     from lltk.tools.lang_detect import function_words_table
     from lltk.tools.tools import get_tqdm
@@ -43,33 +45,56 @@ def detect_langs_clickhouse(ch_adapter, min_tokens=50,
         ORDER BY _id
     """)
 
+    # Organize stopwords into per-lang lists
+    lang_to_words = {}
+    for w, lg in function_words_table():
+        lang_to_words.setdefault(lg, []).append(w)
+    langs = sorted(lang_to_words.keys())
+    print(f'Detecting across {len(langs)} languages '
+          f'({sum(len(ws) for ws in lang_to_words.values())} stopwords total)')
+
+    # Skip logic — count how much work remains
     if skip_existing:
+        already = ch_adapter.query("SELECT count(DISTINCT _id) FROM lltk.text_langs")[0][0]
         n_freqs = ch_adapter.query("""
-            SELECT count() FROM lltk.text_freqs
-            LEFT ANTI JOIN lltk.text_langs USING _id
+            SELECT count() FROM lltk.text_freqs f
+            WHERE f._id NOT IN (SELECT _id FROM lltk.text_langs)
         """)[0][0]
-        already = ch_adapter.query("SELECT count() FROM lltk.text_langs FINAL")[0][0]
         if already:
-            print(f'Skipping {already:,} already-processed texts '
-                  f'(use skip_existing=False to recompute)')
+            print(f'  skipping {already:,} already-processed texts')
     else:
+        already = 0
         n_freqs = ch_adapter.query("SELECT count() FROM lltk.text_freqs")[0][0]
     if n_freqs == 0:
-        print('Nothing to do — all texts already have detected lang '
-              '(or lltk.text_freqs is empty)')
+        print('Nothing to do')
         return {}
+    print(f'  {n_freqs:,} texts remaining')
 
-    # Invert function-word list: word → tuple of langs
-    word_to_langs = {}
-    for w, lg in function_words_table():
-        word_to_langs.setdefault(w, []).append(lg)
-    word_to_langs = {w: tuple(lgs) for w, lgs in word_to_langs.items()}
-    langs = sorted({lg for lgs in word_to_langs.values() for lg in lgs})
-    print(f'Detecting across {len(langs)} languages ({len(word_to_langs)} distinct stopwords)')
+    # Build the big SELECT. One arraySum + arrayMap per language.
+    def _sql_str_array(ws):
+        # quote + escape single quotes in stopwords
+        parts = ["'" + w.replace("'", "''") + "'" for w in ws]
+        return '[' + ', '.join(parts) + ']'
 
-    # Streaming scorer. Needs a dedicated write client because the streaming
-    # read holds the primary client's session open — concurrent inserts on
-    # that same session raise SESSION_IS_LOCKED.
+    lang_exprs = ',\n           '.join(
+        f"arraySum(arrayMap(w -> toUInt32OrZero(freqs[w]), {_sql_str_array(lang_to_words[lg])})) "
+        f"AS {lg}_hits"
+        for lg in langs
+    )
+
+    where = ("WHERE _id NOT IN (SELECT _id FROM lltk.text_langs)"
+             if skip_existing else "")
+
+    sql = f"""
+        SELECT _id,
+               {lang_exprs},
+               arraySum(mapValues(freqs)) AS total_tokens
+        FROM lltk.text_freqs
+        {where}
+    """
+
+    # Streaming read; no writes on this client (held-open session stays read-only).
+    # Writes go through a dedicated client.
     from lltk.tools.db_adapter import get_adapter
     import os as _os
     ch_url = _os.environ.get(
@@ -83,63 +108,51 @@ def detect_langs_clickhouse(ch_adapter, min_tokens=50,
     pbar = get_tqdm(total=n_freqs, desc='detect_langs',
                     unit='text', unit_scale=True) if progress else None
 
-    stream_sql = (
-        "SELECT _id, freqs FROM lltk.text_freqs LEFT ANTI JOIN lltk.text_langs USING _id"
-        if skip_existing else
-        "SELECT _id, freqs FROM lltk.text_freqs"
-    )
-    with ch_adapter.client.query_arrow_stream(stream_sql) as stream:
+    t0 = time.time()
+    with ch_adapter.client.query_arrow_stream(sql) as stream:
         for arrow_batch in stream:
             ids = arrow_batch.column('_id').to_pylist()
-            freqs_col = arrow_batch.column('freqs').to_pylist()
-            for _id, entries in zip(ids, freqs_col):
-                if not entries:
+            lang_hits_arrays = {lg: arrow_batch.column(f'{lg}_hits').to_pylist()
+                                for lg in langs}
+            totals = arrow_batch.column('total_tokens').to_pylist()
+
+            for i, (_id, total) in enumerate(zip(ids, totals)):
+                if total < min_tokens:
                     results.append((_id, 'null', 0.0, 0.0))
                     continue
-                items = entries.items() if isinstance(entries, dict) else entries
-                total_tokens = 0
-                lang_hits = {}
-                for w, n in items:
-                    total_tokens += n
-                    lgs = word_to_langs.get(w)
-                    if lgs:
-                        for lg in lgs:
-                            lang_hits[lg] = lang_hits.get(lg, 0) + n
-                if total_tokens < min_tokens:
-                    results.append((_id, 'null', 0.0, 0.0))
-                    continue
-                if not lang_hits:
-                    results.append((_id, 'unknown', 0.0, 0.0))
-                    continue
-                top_lang = None
-                top_hits = 0
-                second_hits = 0
-                for lg, h in lang_hits.items():
+                hits = {lg: lang_hits_arrays[lg][i] for lg in langs}
+                # argmax + runner-up
+                top_lang, top_hits, second_hits = None, 0, 0
+                for lg, h in hits.items():
                     if h > top_hits:
                         second_hits = top_hits
                         top_hits = h
                         top_lang = lg
                     elif h > second_hits:
                         second_hits = h
-                coverage = top_hits / total_tokens
+                if top_hits == 0:
+                    results.append((_id, 'unknown', 0.0, 0.0))
+                    continue
+                coverage = top_hits / total
                 confidence = top_hits / second_hits if second_hits > 0 else 999.0
                 if coverage < coverage_threshold or confidence < confidence_threshold:
                     results.append((_id, 'unknown', coverage, confidence))
                 else:
                     results.append((_id, top_lang, coverage, confidence))
+
             if pbar:
                 pbar.update(len(ids))
-            # Flush results to CH periodically to keep memory bounded
-            if len(results) >= batch_size * 20:
+            if len(results) >= batch_size:
                 _flush_langs(write_adapter, results)
                 results.clear()
     if pbar:
         pbar.close()
-
     if results:
         _flush_langs(write_adapter, results)
 
-    # Stats
+    elapsed = time.time() - t0
+    print(f'Done in {elapsed:.0f}s ({n_freqs/max(elapsed, 1):.0f}/s)')
+
     dist = ch_adapter.query("""
         SELECT lang_detected, count()
         FROM lltk.text_langs FINAL
@@ -154,14 +167,11 @@ def detect_langs_clickhouse(ch_adapter, min_tokens=50,
 
 
 def _flush_langs(ch_adapter, rows):
-    """Insert a batch of (_id, lang_detected, lang_coverage, lang_confidence)
-    into lltk.text_langs via Arrow.
-    """
     if not rows:
         return
-    ids = [r[0] for r in rows]
+    ids   = [r[0] for r in rows]
     langs = [r[1] for r in rows]
-    covs = [float(r[2]) for r in rows]
+    covs  = [float(r[2]) for r in rows]
     confs = [min(float(r[3]), 999.0) for r in rows]
     table = pa.Table.from_arrays(
         [pa.array(ids, type=pa.string()),
