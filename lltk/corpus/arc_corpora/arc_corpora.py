@@ -90,6 +90,36 @@ class ArcFictionFr(CuratedCorpus):
         return meta
 
 
+class ArcFictionDe(CuratedCorpus):
+    ID = 'arc_fiction_de'
+    NAME = 'ArcFictionDe'
+    # internet_archive is excluded: its corpus-provided `lang='de'` flag is
+    # wrong for its fiction subset — all 17 Fiction+lang=de candidates are
+    # confidently English per db-detect-langs (16 'en' at conf >5, 1
+    # 'unknown'). ecco + gale_amfic kept — their lang='de' Fiction is
+    # genuine German content (18th-c German imprints / 19th-c German-
+    # American fiction) and matches lang_detected.
+    SOURCES = {
+        'german_fiction':   {'genre': 'Fiction', 'lang': 'de'},
+        'german_pd':        {'genre': 'Fiction', 'lang': 'de'},
+        'de_corp':          {'genre': 'Fiction', 'lang': 'de'},
+        'dta':              {'genre': 'Fiction', 'lang': 'de'},
+        'txtlab':           {'genre': 'Fiction', 'lang': 'de'},
+        'ecco':             {'genre': 'Fiction', 'lang': 'de'},
+        'gale_amfic':       {'genre': 'Fiction', 'lang': 'de'},
+    }
+    DEDUP = True
+    DEDUP_BY = 'oldest'
+
+    def load_metadata(self, **kwargs):
+        meta = super().load_metadata(**kwargs)
+        if meta is None or not len(meta):
+            return meta
+        if 'is_translated' in meta.columns:
+            meta = meta[meta.is_translated.fillna(False) == False]
+        return meta
+
+
 class ArcPoetry(CuratedCorpus):
     ID = 'arc_poetry'
     NAME = 'ArcPoetry'
