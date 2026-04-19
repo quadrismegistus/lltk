@@ -127,6 +127,32 @@ def enrich_genres_ch(ch_adapter, progress=True):
           AND genre != ''
     """)
 
+    # Sync enrichment provenance back to lltk.texts so callers that
+    # read `genre_enriched_source` / `genre_corpus` directly (ArcFiction's
+    # conservative filter, abstraction's web-app provenance queries) see
+    # the values. text_genres remains the source of truth; this is a
+    # read-convenience mirror. We do it as INSERT + OPTIMIZE because
+    # CH ALTER UPDATE doesn't accept correlated subqueries, and RMT's
+    # (corpus, _id) key ensures the newer row wins on FINAL reads.
+    print('enrich_genres: syncing provenance back to lltk.texts...')
+    ch_adapter.execute("""
+        INSERT INTO lltk.texts
+        SELECT
+            t._id, t.corpus, t.id, t.title, t.author, t.year,
+            t.genre, t.genre_raw,
+            tg.genre_corpus          AS genre_corpus,
+            tg.genre_enriched_source AS genre_enriched_source,
+            t.title_norm, t.author_norm, t.path_freqs, t.n_words,
+            t.lang, t.lang_metadata, t.lang_detected,
+            t.lang_coverage, t.lang_confidence,
+            t.is_translated, t.original_lang, t.meta
+        FROM (SELECT * FROM lltk.texts FINAL) AS t
+        INNER JOIN (SELECT _id, genre_corpus, genre_enriched_source
+                    FROM lltk.text_genres FINAL) AS tg
+          ON t._id = tg._id
+    """)
+    ch_adapter.execute("OPTIMIZE TABLE lltk.texts FINAL")
+
     stats = ch_adapter.query_df("""
         SELECT genre_enriched_source, count() AS n
         FROM lltk.text_genres FINAL
