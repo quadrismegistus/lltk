@@ -73,7 +73,10 @@ class ArcFictionFr(CuratedCorpus):
     ID = 'arc_fiction_fr'
     NAME = 'ArcFictionFr'
     SOURCES = {
-        'french_pd_books': {'genre': 'Fiction', 'lang': 'fr'},
+        # Temporarily excluded: Fiction label derives from title-keyword
+        # heuristics (roman/poème/etc.) rather than an authority. Re-enable
+        # once we have bibliography- or LLM-backed genre classification.
+        # 'french_pd_books': {'genre': 'Fiction', 'lang': 'fr'},
         'artfl': {'genre': 'Fiction', 'lang': 'fr'},
         'gallica_literary_fictions': {'genre': 'Fiction', 'lang': 'fr'},
         'txtlab': {'genre': 'Fiction', 'lang': 'fr'},
@@ -101,7 +104,10 @@ class ArcFictionDe(CuratedCorpus):
     # American fiction) and matches lang_detected.
     SOURCES = {
         'german_fiction':   {'genre': 'Fiction', 'lang': 'de'},
-        'german_pd':        {'genre': 'Fiction', 'lang': 'de'},
+        # Temporarily excluded: Fiction label derives from title-keyword
+        # heuristics (roman/novelle/etc.) rather than an authority. Re-enable
+        # once we have bibliography- or LLM-backed genre classification.
+        # 'german_pd':        {'genre': 'Fiction', 'lang': 'de'},
         'de_corp':          {'genre': 'Fiction', 'lang': 'de'},
         'dta':              {'genre': 'Fiction', 'lang': 'de'},
         'txtlab':           {'genre': 'Fiction', 'lang': 'de'},
