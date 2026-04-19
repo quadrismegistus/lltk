@@ -127,19 +127,27 @@ def enrich_genres_ch(ch_adapter, progress=True):
           AND genre != ''
     """)
 
-    # Sync enrichment provenance back to lltk.texts so callers that
-    # read `genre_enriched_source` / `genre_corpus` directly (ArcFiction's
-    # conservative filter, abstraction's web-app provenance queries) see
-    # the values. text_genres remains the source of truth; this is a
-    # read-convenience mirror. We do it as INSERT + OPTIMIZE because
-    # CH ALTER UPDATE doesn't accept correlated subqueries, and RMT's
-    # (corpus, _id) key ensures the newer row wins on FINAL reads.
-    print('enrich_genres: syncing provenance back to lltk.texts...')
+    # Sync enrichment back to lltk.texts so callers that read `genre` /
+    # `genre_raw` / `genre_enriched_source` / `genre_corpus` directly
+    # (ArcFiction's conservative filter, abstraction's web-app provenance
+    # queries, any SELECT against lltk.texts) see the authority-propagated
+    # values. text_genres remains the source of truth; this is a
+    # read-convenience mirror. INSERT + OPTIMIZE because CH ALTER UPDATE
+    # doesn't accept correlated subqueries; RMT's (corpus, _id) key ensures
+    # the newer row wins on FINAL reads.
+    #
+    # Note: we pull `genre` / `genre_raw` from text_genres, not texts —
+    # otherwise authority-propagated genres (match-linked eebo_tcp→
+    # fiction_biblio, etc.) never reach lltk.texts.genre and consumers
+    # that filter `WHERE genre='Fiction'` on texts see only the original
+    # corpus labels.
+    print('enrich_genres: syncing back to lltk.texts...')
     ch_adapter.execute("""
         INSERT INTO lltk.texts
         SELECT
             t._id, t.corpus, t.id, t.title, t.author, t.year,
-            t.genre, t.genre_raw,
+            tg.genre                 AS genre,
+            tg.genre_raw             AS genre_raw,
             tg.genre_corpus          AS genre_corpus,
             tg.genre_enriched_source AS genre_enriched_source,
             t.title_norm, t.author_norm, t.path_freqs, t.n_words,
@@ -147,8 +155,10 @@ def enrich_genres_ch(ch_adapter, progress=True):
             t.lang_coverage, t.lang_confidence,
             t.is_translated, t.original_lang, t.meta
         FROM (SELECT * FROM lltk.texts FINAL) AS t
-        INNER JOIN (SELECT _id, genre_corpus, genre_enriched_source
-                    FROM lltk.text_genres FINAL) AS tg
+        INNER JOIN (
+            SELECT _id, genre, genre_raw, genre_corpus, genre_enriched_source
+            FROM lltk.text_genres FINAL
+        ) AS tg
           ON t._id = tg._id
     """)
     ch_adapter.execute("OPTIMIZE TABLE lltk.texts FINAL")
