@@ -215,7 +215,9 @@ All values stored as `String`; `field_spec['type']` documents the encoding (`boo
 - lltk-internal writers: use specific sources from `DEFAULT_SOURCES` (e.g. `'heuristic'` for ESTC-form rules, `'bibliography:fiction_biblio'` for authority propagation).
 - LLM tasks (largeliterarymodels): use `llm:<model-id>` pattern. Auto-registers at priority 10 on first write; override via `register_source('llm:gemini-2.5-pro', priority=..., description=...)` if you want nicer metadata.
 
-**Deferred**: Path-A migration of `db-enrich-genres` to write through `annotations` (currently still writes to `text_genres`; migration is separate PR once shape is proven).
+**Mirror from `lltk.texts`**: `A.mirror_genres_from_texts(run_id='mirror:genre', replace=True)` reads genre + genre_enriched_source and writes one annotation per text, sourcing as `corpus:<corpus_id>` (priority 30) or `bibliography:...` (priority 90). Runs in ~12s on 1.87M rows. Idempotent via run_id-keyed synchronous DELETE. Without this, `A.disagreements('genre')` only sees LLM writes and misses lltk-internal authority vs. corpus-native disagreements.
+
+**Deferred**: Path-A migration of `db-enrich-genres` to write through `annotations` directly (would subsume `mirror_genres_from_texts`).
 
 ### Word index / ngrams (`db-wordindex`)
 

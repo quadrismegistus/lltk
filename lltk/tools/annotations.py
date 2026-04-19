@@ -143,6 +143,7 @@ DEFAULT_SOURCES = {
     'heuristic':                     (50, 'Rule-based (ESTC form, title keywords)'),
 }
 DEFAULT_LLM_PRIORITY = 10
+DEFAULT_CORPUS_PRIORITY = 30        # corpus-native label (`corpus:<corpus_id>`)
 DEFAULT_UNKNOWN_PRIORITY = 0
 
 
@@ -288,6 +289,8 @@ def register_source(source: str, priority: int = None,
             priority, description = DEFAULT_SOURCES[source]
         elif source.startswith('llm:'):
             priority = DEFAULT_LLM_PRIORITY
+        elif source.startswith('corpus:'):
+            priority = DEFAULT_CORPUS_PRIORITY
         else:
             priority = DEFAULT_UNKNOWN_PRIORITY
     adapter, db = _db()
@@ -461,24 +464,129 @@ def resolve(ids: Optional[Iterable[str]] = None,
 
 
 def disagreements(field: str, min_sources: int = 2) -> pd.DataFrame:
-    """Return _ids where ≥ `min_sources` distinct sources gave different
-    values for `field`. Useful for prompt debugging + active-learning sample
-    selection.
+    """Return _ids where ≥ `min_sources` distinct sources disagree on
+    `field`. Useful for prompt debugging + active-learning sample selection.
 
-    Columns: _id, n_sources, n_distinct_values, values (array).
+    Per-source dedup happens first (latest `annotated_at` wins within a
+    source), so re-mirroring or multiple writes from the same source don't
+    produce phantom same-source "disagreements".
+
+    Columns: _id, n_sources, n_distinct_values, values (array of winner
+    values, one per source).
     """
     adapter, db = _db()
     field_esc = _sql_escape(field)
     return adapter.query_df(f"""
+        WITH latest_per_source AS (
+            SELECT
+                _id,
+                source,
+                argMax(value, annotated_at) AS value
+            FROM {db}.annotations
+            WHERE field = '{field_esc}'
+            GROUP BY _id, source
+        )
         SELECT
             _id,
             uniqExact(source) AS n_sources,
             uniqExact(value)  AS n_distinct_values,
             groupUniqArray(value) AS values
-        FROM {db}.annotations
-        WHERE field = '{field_esc}'
+        FROM latest_per_source
         GROUP BY _id
         HAVING uniqExact(source) >= {int(min_sources)}
            AND uniqExact(value) > 1
         ORDER BY n_sources DESC, _id
     """)
+
+
+# ── Mirror from lltk.texts ──────────────────────────────────────────────
+# Reads genre + genre_enriched_source from lltk.texts FINAL and writes one
+# annotation row per text, sourced by the provenance tag. Used to make
+# existing enrichment state visible to the SDK until `db-enrich-genres`
+# migrates to Path A (writing through lltk.annotations directly).
+
+def mirror_genres_from_texts(run_id: str = 'mirror:genre',
+                             replace: bool = True,
+                             batch_size: int = 50_000) -> int:
+    """Populate `lltk.annotations` with genre rows from `lltk.texts`.
+
+    Source mapping:
+      genre_enriched_source = 'corpus'              → 'corpus:<corpus_id>'
+      genre_enriched_source = 'bibliography:...'    → pass-through
+      genre_enriched_source = '' (baseline)         → 'corpus:<corpus_id>'
+
+    Rows with empty genre are skipped (nothing to annotate).
+
+    If `replace=True` (default), prior rows with the same `run_id` are
+    deleted via `ALTER TABLE DELETE` first so re-mirroring stays
+    idempotent. Otherwise simply appends.
+
+    Returns the number of rows written.
+    """
+    adapter, db = _db()
+
+    # Delete previous mirror run synchronously so argMax across versions
+    # sees only fresh data. CH ALTER DELETE is async by default — force sync.
+    if replace:
+        adapter.execute(
+            f"ALTER TABLE {db}.annotations DELETE "
+            f"WHERE run_id = '{_sql_escape(run_id)}' AND field = 'genre' "
+            f"SETTINGS mutations_sync=1"
+        )
+
+    # Pull rows in a single streaming query — CH handles the LowCardinality
+    # dedup for us, and we only need 4 cols per row (~100MB at 2M rows).
+    now = datetime.now()
+    rows_df = adapter.query_df(f"""
+        SELECT
+            _id,
+            corpus,
+            genre,
+            genre_enriched_source
+        FROM {db}.texts FINAL
+        WHERE genre != ''
+    """)
+    if not len(rows_df):
+        return 0
+
+    # Build source label per row, then track which sources appeared so we
+    # can auto-register the corpus:* ones.
+    def _source_of(ges, corpus):
+        if ges and ges.startswith('bibliography:'):
+            return ges
+        if ges in ('', 'corpus'):
+            return f'corpus:{corpus}'
+        # Unknown provenance — pass through as-is (captures heuristic /
+        # authority_corpus / any future tags).
+        return ges
+
+    sources = [
+        _source_of(ges, c)
+        for ges, c in zip(rows_df['genre_enriched_source'], rows_df['corpus'])
+    ]
+    unique_sources = set(sources)
+    existing = {
+        r[0] for r in adapter.query(
+            f"SELECT source FROM {db}.annotation_sources FINAL"
+        )
+    }
+    for s in unique_sources - existing:
+        register_source(s)
+
+    # Batch insert. Each row becomes (_id, 'genre', value, source, run_id,
+    # annotated_at, confidence=1.0, meta='{}').
+    total = 0
+    cols = ['_id', 'field', 'value', 'source', 'run_id',
+            'annotated_at', 'confidence', 'meta']
+    ids_list = rows_df['_id'].tolist()
+    genre_list = rows_df['genre'].tolist()
+    for i in range(0, len(rows_df), batch_size):
+        end = i + batch_size
+        chunk = [
+            [ids_list[j], 'genre', genre_list[j], sources[j], run_id,
+             now, 1.0, '{}']
+            for j in range(i, min(end, len(rows_df)))
+        ]
+        adapter.client.insert(f'{db}.annotations', chunk, column_names=cols)
+        total += len(chunk)
+    return total
