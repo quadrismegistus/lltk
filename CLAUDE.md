@@ -151,6 +151,8 @@ Every `load_metadata()` returns a DataFrame with: `id` (index), `title`, `author
 
 Writes to `lltk.text_genres` (separate table, not UPDATE on texts — CH ALTER is expensive). Baseline = corpus genre; authority corpora (`fiction_biblio`, `end`, `ravengarside`) override via match groups, highest-priority authority wins per group. `genre_corpus` preserves original.
 
+After enrichment, `enrich_genres_ch` mirrors `genre_enriched_source` + `genre_corpus` back to `lltk.texts` via `INSERT INTO texts SELECT ... LEFT JOIN text_genres ... + OPTIMIZE TABLE texts FINAL`. ReplacingMergeTree on `(corpus, _id)` makes the newer row win on FINAL reads, same effect as ALTER UPDATE but synchronous and ~14s for 2.8M rows. `text_genres` stays the source of truth; the texts columns are a read-convenience mirror for callers that `SELECT genre_enriched_source FROM texts` directly (ArcFiction's conservative filter, web-app provenance queries). Without this sync the columns exist in schema but are empty — silent regression if skipped.
+
 ### Translation detection (`db-detect-translations`)
 
 Writes to `lltk.text_translations`. Finds match groups with 2+ languages; earliest-year language wins (tie → text count), others get `is_translated=1` with `original_lang`. Top flows: en↔la, en↔fr, de↔en.
@@ -207,6 +209,8 @@ lltk.db.match(fuzzy=False)             # → lltk.matches, lltk.match_groups
 # Reads
 lltk.db.get('_estc/T012345')           # dict
 lltk.db.query("SELECT * FROM texts WHERE year<1700 AND genre='Fiction'")
+lltk.db.texts_df(sources=..., dedup=True, dedup_by='oldest')  # SyntheticCorpus filter → DataFrame
+lltk.db.texts(sources=..., dedup=True)  # same but yields BaseText objects
 lltk.db.read_freqs(ids=[...])          # per-text freqs for a batch (abstraction)
 lltk.db.dedup_frame(df, by='rank')     # reduce any _id-keyed frame via match groups
 lltk.db.ngram(['virtue', 'honor'], genre='Fiction', dedup=True)
@@ -299,6 +303,8 @@ class ArcFiction(CuratedCorpus):
 - **Whitelist**: any `_id` in annotations.json is included, even if it doesn't match SOURCES genre filters (bibliography-corrected texts enter).
 - `propagate_from(source)` adds entries from corpus ID / DataFrame / dict list. Idempotent (replaces same-source entries).
 - Annotations propagate across match groups at read time.
+- **Adding a new `ArcX` subclass is a two-file change**: the class in `lltk/corpus/arc_corpora/arc_corpora.py` AND a stanza in `lltk/corpus/manifest.txt`. Star-imports make the class directly importable, but `lltk.load('arc_x')` goes through manifest resolution — no stanza = returns None. Registered arcs: `arc_fiction`, `arc_fiction_fr`, `arc_fiction_de`, `arc_poetry`, `arc_periodical`, `arc_essays`, `arc_sermons`, `arc_biography`.
+- **Annotation whitelist/propagation silently skips on CH** — `CuratedCorpus.load_metadata` uses DuckDB-only `lltk.db.conn.register(df)` / `unregister()` for the annotated-_ids whitelist + match-group override, wrapped in `try/except Exception: pass`. On CH those AttributeError and skip. SOURCES filter still works; annotation-driven whitelist + group propagation do not. Port if/when CH needs them.
 
 ## Explorer web app (`lltk app`)
 
@@ -364,6 +370,8 @@ Conservative genre keywords (precision over recall):
 - German: `roman(e)/novelle(n)`→Fiction, `gedicht(e)/lyrik`→Poetry, `komödie/tragödie/trauerspiel/lustspiel/schauspiel`→Drama
 
 Excluded as noisy: histoire/Geschichte, nouvelle, mémoires, conte, vers, discours, lettre, erzählung, märchen, brief.
+
+**`french_pd_books` and `german_pd` temporarily excluded from ArcFictionFr / ArcFictionDe** (see `lltk/corpus/arc_corpora/arc_corpora.py`) — title-keyword heuristics at their scale are unreliable, and detect-langs flagged 1,478 high-confidence English texts in german_pd's unclassified subset. Re-enable once bibliography authority or LLM `classify_genre` pass lands. They stay in the corpus data + `lltk.texts` (other paths may use them); only the arc `SOURCES` dicts exclude them.
 
 ## MinHash matching
 
@@ -454,8 +462,11 @@ External package at `~/github/largeliterarymodels/`. Tasks cached via hashstash 
 - `lead()` window works the same; but CH doesn't accept `FROM t FINAL alias` without `AS`
 - `INSERT OR IGNORE` → plain `INSERT` (ReplacingMergeTree handles dedup async; use `FINAL` on reads for exactness)
 - `ALTER TABLE ... DELETE` + `SETTINGS mutations_sync=1` for synchronous deletes
+- **No correlated subqueries in ALTER UPDATE.** CH rejects `UPDATE t SET col = (SELECT v FROM other WHERE other._id = t._id)`. To sync columns from another table onto a ReplacingMergeTree, `INSERT INTO target SELECT ... LEFT JOIN source` + `OPTIMIZE TABLE target FINAL`. The RMT ORDER BY key makes the newer row win on FINAL reads, same effect and synchronous (vs ALTER UPDATE's async mutation). See `enrich_genres_ch` for the pattern.
 - `async_insert=1` for many small inserts to avoid "too many parts" throttling
 - Streaming reads (`query_arrow_stream`) hold the primary session — use a separate client for concurrent writes
+- CH returns booleans as `UInt8` with pd.NA. `.fillna(False)` chokes on the MaskedArray. Promote to pandas nullable `boolean` dtype before boolean ops (done automatically in `texts_df` for `is_translated`).
+- IN-clause size: building `WHERE _id IN ({huge_tuple})` with >>10K values hits `max_query_size`. Insert to a `tmp.*` Memory table and JOIN instead.
 
 ## DB migration (one-shot)
 
