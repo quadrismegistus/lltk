@@ -417,6 +417,121 @@ class MetaDBCH:
             return df.copy()
         return df[~df[id_col].astype(str).isin(drop)].copy()
 
+    def _build_where_ch(self, *, where=None, genre=None, year_min=None,
+                        year_max=None, corpora=None, sources=None):
+        """Build a CH WHERE clause from keyword filters.
+
+        No column alias — the caller queries `lltk.texts FINAL` directly.
+        Values go through SQL escaping; numeric values cast to int.
+        `sources` dict semantics: OR across corpus_ids, AND within each,
+        with `_min`/`_max` suffixes becoming range predicates.
+        """
+        clauses = []
+        if where:
+            clauses.append(f'({where})')
+        if genre:
+            clauses.append(f"genre = '{_sql_str(str(genre))}'")
+        if year_min is not None:
+            clauses.append(f'year >= {int(year_min)}')
+        if year_max is not None:
+            clauses.append(f'year <= {int(year_max)}')
+        if corpora:
+            for c in corpora:
+                _validate_corpus(c)
+            lst = ', '.join(f"'{c}'" for c in corpora)
+            clauses.append(f'corpus IN ({lst})')
+        if sources:
+            _RANGE = {'_min': '>=', '_max': '<='}
+            source_clauses = []
+            for corpus_id, filters in sources.items():
+                _validate_corpus(corpus_id)
+                parts = [f"corpus = '{corpus_id}'"]
+                for k, v in filters.items():
+                    handled = False
+                    for suffix, op in _RANGE.items():
+                        if k.endswith(suffix):
+                            col = k[:-len(suffix)]
+                            parts.append(f"{col} {op} {int(v)}")
+                            handled = True
+                            break
+                    if not handled:
+                        parts.append(f"{k} = '{_sql_str(str(v))}'")
+                source_clauses.append('(' + ' AND '.join(parts) + ')')
+            clauses.append('(' + ' OR '.join(source_clauses) + ')')
+        return ' AND '.join(clauses) if clauses else '1=1'
+
+    def texts_df(self, where=None, *, genre=None, year_min=None, year_max=None,
+                 corpora=None, sources=None, dedup=True, dedup_by='rank'):
+        """Return a DataFrame of `lltk.texts` rows matching filters.
+
+        `sources` is a dict {corpus_id: {filter_key: value}}; a row is
+        included if it matches any corpus's filter block (OR), with all
+        within-block conditions required (AND). Keys ending in `_min` /
+        `_max` become range predicates.
+
+        If `dedup` is True, the result is reduced via `dedup_frame` — one
+        row per match group, picked by rank or oldest-year.
+        """
+        where_sql = self._build_where_ch(
+            where=where, genre=genre, year_min=year_min, year_max=year_max,
+            corpora=corpora, sources=sources,
+        )
+        sql = (
+            f"SELECT * FROM lltk.texts FINAL WHERE {where_sql} "
+            f"ORDER BY year, corpus, id"
+        )
+        df = self.adapter.query_df(sql)
+        # CH returns UInt8 for booleans (is_translated). Promote to pandas
+        # nullable `boolean` so downstream `.fillna(False)` / `== False`
+        # in ArcFictionFr etc. doesn't choke on the UInt8 MaskedArray.
+        for col in df.columns:
+            if str(df[col].dtype) == 'UInt8':
+                df[col] = df[col].astype('boolean')
+        if dedup and len(df):
+            df = self.dedup_frame(df, by=dedup_by, id_col='_id')
+        return df
+
+    def texts(self, where=None, *, genre=None, year_min=None, year_max=None,
+              corpora=None, sources=None, dedup=True, dedup_by='rank',
+              progress=False):
+        """Yield BaseText objects for rows matching filters.
+
+        Texts are constructed via their source `Corpus(corpus_id).text(id)`
+        so path resolution and file I/O route through the originating corpus.
+        """
+        from lltk.corpus.corpus import Corpus
+        from lltk.tools.tools import get_tqdm
+
+        where_sql = self._build_where_ch(
+            where=where, genre=genre, year_min=year_min, year_max=year_max,
+            corpora=corpora, sources=sources,
+        )
+        cols = '_id, corpus, id, year' if dedup else 'corpus, id'
+        sql = (
+            f"SELECT {cols} FROM lltk.texts FINAL WHERE {where_sql} "
+            f"ORDER BY year, corpus, id"
+        )
+        df = self.adapter.query_df(sql)
+        if dedup and len(df):
+            df = self.dedup_frame(df, by=dedup_by, id_col='_id')
+
+        rows = list(df.itertuples(index=False))
+        if progress:
+            rows = get_tqdm(rows, desc='[MetaDB] Loading texts')
+
+        for row in rows:
+            try:
+                corpus_obj = Corpus(row.corpus)
+                t = corpus_obj.text(row.id)
+                yield t
+            except Exception:
+                continue
+
+    def corpus(self, where=None, id='_query', **kwargs):
+        """Return a SyntheticCorpus wrapping a metadb query."""
+        from lltk.corpus.synthetic import SyntheticCorpus
+        return SyntheticCorpus(id=id, _query_kwargs={'where': where, **kwargs})
+
     def read_freqs(self, ids=None, corpora=None, as_df=True):
         """Read rows from lltk.text_freqs. Returns DataFrame or list of tuples.
 

@@ -360,3 +360,67 @@ class TestDedupFrameValidation:
         df = pd.DataFrame({'_id': [None, None], 'x': [1.0, 2.0]})
         out = m.dedup_frame(df)
         assert len(out) == 2
+
+
+class TestBuildWhereCh:
+    def _make_bare(self):
+        from lltk.tools.metadb_ch import MetaDBCH
+        m = MetaDBCH.__new__(MetaDBCH)
+        m.url = 'clickhouse://test'
+        m._adapter = None
+        return m
+
+    def test_empty_filters(self):
+        m = self._make_bare()
+        assert m._build_where_ch() == '1=1'
+
+    def test_genre_and_year_range(self):
+        m = self._make_bare()
+        sql = m._build_where_ch(genre='Fiction', year_min=1700, year_max=1800)
+        assert "genre = 'Fiction'" in sql
+        assert 'year >= 1700' in sql
+        assert 'year <= 1800' in sql
+
+    def test_corpora_in_list(self):
+        m = self._make_bare()
+        sql = m._build_where_ch(corpora=['estc', 'chadwyck'])
+        assert "corpus IN ('estc', 'chadwyck')" in sql
+
+    def test_corpora_rejects_bad_name(self):
+        # Defense in depth: _validate_corpus rejects non-manifest names
+        m = self._make_bare()
+        with pytest.raises(ValueError):
+            m._build_where_ch(corpora=['evil; DROP TABLE x'])
+
+    def test_sources_multi_corpus(self):
+        m = self._make_bare()
+        sql = m._build_where_ch(sources={
+            'chadwyck': {'genre': 'Fiction'},
+            'estc': {'genre': 'Fiction'},
+        })
+        # Each source clause is AND'd internally, OR'd across
+        assert "corpus = 'chadwyck'" in sql
+        assert "corpus = 'estc'" in sql
+        assert ' OR ' in sql
+        assert ' AND ' in sql
+
+    def test_sources_range_suffix(self):
+        # year_min / year_max on a source turn into range predicates
+        m = self._make_bare()
+        sql = m._build_where_ch(sources={
+            'estc': {'year_min': 1700, 'year_max': 1750},
+        })
+        assert 'year >= 1700' in sql
+        assert 'year <= 1750' in sql
+
+    def test_escapes_single_quotes(self):
+        # Inline string values must be SQL-escaped (`'` -> `''`)
+        m = self._make_bare()
+        sql = m._build_where_ch(genre="Robin's Tale")
+        assert "genre = 'Robin''s Tale'" in sql
+
+    def test_raw_where_passed_through(self):
+        m = self._make_bare()
+        sql = m._build_where_ch(where="length(title) > 5", genre='Fiction')
+        assert '(length(title) > 5)' in sql
+        assert "genre = 'Fiction'" in sql
