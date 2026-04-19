@@ -13,29 +13,28 @@ class ArcFiction(CuratedCorpus):
     ID = 'arc_fiction'
     NAME = 'ArcFiction'
     SOURCES = {
-        'bpo': {'genre': 'Fiction'},
-        'chadwyck': {},
-        'canon_fiction': {'genre': 'Fiction'},
-        'chicago': {},
-        'clmet': {'genre': 'Fiction'},
-        'gale_amfic': {},
-        'gildedage': {},
-        'hathi_englit': {'genre': 'Fiction'},
-        'internet_archive': {},
-        'litlab': {'genre': 'Fiction'},
-        'long_arc_prestige': {'genre': 'Fiction'},
-        'markmark': {},
-        'ecco': {'genre': 'Fiction'},
-        'ecco_tcp': {'genre': 'Fiction'},
-        'eebo_tcp': {'genre': 'Fiction'},
-        'earlyprint': {'genre': 'Fiction'},
-        'evans_tcp': {'genre': 'Fiction'},
-        'coha': {'genre': 'Fiction'},
-        'clmet': {'genre': 'Fiction'},
+        'bpo': {'genre': 'Fiction', 'year_max': 2009},
+        'chadwyck': {'year_max': 2009},
+        'canon_fiction': {'genre': 'Fiction', 'year_max': 2009},
+        'chicago': {'year_max': 2009},
+        'clmet': {'genre': 'Fiction', 'year_max': 2009},
+        'gale_amfic': {'year_max': 2009},
+        'gildedage': {'year_max': 2009},
+        'hathi_englit': {'genre': 'Fiction', 'year_max': 2009},
+        'internet_archive': {'year_max': 2009},
+        'litlab': {'genre': 'Fiction', 'year_max': 2009},
+        'long_arc_prestige': {'genre': 'Fiction', 'year_max': 2009},
+        'markmark': {'year_max': 2009},
+        'ecco': {'genre': 'Fiction', 'year_max': 2009},
+        'ecco_tcp': {'genre': 'Fiction', 'year_max': 2009},
+        'eebo_tcp': {'genre': 'Fiction', 'year_max': 2009},
+        'earlyprint': {'genre': 'Fiction', 'year_max': 2009},
+        'evans_tcp': {'genre': 'Fiction', 'year_max': 2009},
+        'coha': {'genre': 'Fiction', 'year_max': 2009},
         # 'dialnarr': {'genre': 'Fiction'},
         # 'sellers': {'genre': 'Fiction'},
-        'tedjdh': {'genre': 'Fiction'},
-        'blbooks': {'genre': 'Fiction'},
+        'tedjdh': {'genre': 'Fiction', 'year_max': 2009},
+        'blbooks': {'genre': 'Fiction', 'year_max': 2009},
     }
     DEDUP = True
     DEDUP_BY = 'oldest'
@@ -76,10 +75,10 @@ class ArcFictionFr(CuratedCorpus):
         # Temporarily excluded: Fiction label derives from title-keyword
         # heuristics (roman/poème/etc.) rather than an authority. Re-enable
         # once we have bibliography- or LLM-backed genre classification.
-        # 'french_pd_books': {'genre': 'Fiction', 'lang': 'fr'},
-        'artfl': {'genre': 'Fiction', 'lang': 'fr'},
-        'gallica_literary_fictions': {'genre': 'Fiction', 'lang': 'fr'},
-        'txtlab': {'genre': 'Fiction', 'lang': 'fr'},
+        # 'french_pd_books': {'genre': 'Fiction', 'lang': 'fr', 'year_max': 1950},
+        'artfl': {'genre': 'Fiction', 'lang': 'fr', 'year_max': 1950},
+        'gallica_literary_fictions': {'genre': 'Fiction', 'lang': 'fr', 'year_max': 1950},
+        'txtlab': {'genre': 'Fiction', 'lang': 'fr', 'year_max': 1950},
     }
     DEDUP = True
     DEDUP_BY = 'oldest'
@@ -103,16 +102,16 @@ class ArcFictionDe(CuratedCorpus):
     # genuine German content (18th-c German imprints / 19th-c German-
     # American fiction) and matches lang_detected.
     SOURCES = {
-        'german_fiction':   {'genre': 'Fiction', 'lang': 'de'},
+        'german_fiction':   {'genre': 'Fiction', 'lang': 'de', 'year_max': 1950},
         # Temporarily excluded: Fiction label derives from title-keyword
         # heuristics (roman/novelle/etc.) rather than an authority. Re-enable
         # once we have bibliography- or LLM-backed genre classification.
-        # 'german_pd':        {'genre': 'Fiction', 'lang': 'de'},
-        'de_corp':          {'genre': 'Fiction', 'lang': 'de'},
-        'dta':              {'genre': 'Fiction', 'lang': 'de'},
-        'txtlab':           {'genre': 'Fiction', 'lang': 'de'},
-        'ecco':             {'genre': 'Fiction', 'lang': 'de'},
-        'gale_amfic':       {'genre': 'Fiction', 'lang': 'de'},
+        # 'german_pd':        {'genre': 'Fiction', 'lang': 'de', 'year_max': 1950},
+        'de_corp':          {'genre': 'Fiction', 'lang': 'de', 'year_max': 1950},
+        'dta':              {'genre': 'Fiction', 'lang': 'de', 'year_max': 1950},
+        'txtlab':           {'genre': 'Fiction', 'lang': 'de', 'year_max': 1950},
+        'ecco':             {'genre': 'Fiction', 'lang': 'de', 'year_max': 1950},
+        'gale_amfic':       {'genre': 'Fiction', 'lang': 'de', 'year_max': 1950},
     }
     DEDUP = True
     DEDUP_BY = 'oldest'
