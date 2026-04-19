@@ -77,6 +77,9 @@ Linux: `apt-get install clickhouse-server clickhouse-client` from the official r
 | `stopwords` | MergeTree | `word` | `word → lang` lookup for detect_langs |
 | `word_year_corpus` | MergeTree | `(word, year, corpus)` | pre-aggregated ngram cache (optional) |
 | `year_corpus_totals` | MergeTree | `(year, corpus)` | per-year denominator for normalization |
+| `annotations` | MergeTree | `(_id, field, source, annotated_at)` | append-only cross-corpus annotation log (see Annotations) |
+| `annotation_sources` | ReplacingMergeTree | `source` | source → priority dim table |
+| `annotations_latest` | VIEW | — | argMax resolver over `(priority, annotated_at)`; one winner per `(_id, field)` |
 
 **Two representations of per-text word data:**
 
@@ -160,6 +163,59 @@ Writes to `lltk.text_translations`. Finds match groups with 2+ languages; earlie
 ### Language detection (`db-detect-langs`)
 
 NLTK stopwords (en/fr/de/it/es/pt/nl) + curated Latin (~150) + Greek (~50) = ~1,700 words, 9 langs. Per text, JOIN `text_words` with `stopwords` + GROUP BY → per-lang hit counts. Argmax in SQL with thresholds (coverage ≥ 0.05, confidence ≥ 2.0). Writes to `lltk.text_langs`. ~minutes for 2.2M texts (vs ~hours via per-row Map lookups before `text_words` existed).
+
+### Annotations (`lltk.tools.annotations`)
+
+Cross-corpus canonical annotation store. Plain `lltk.annotations` MergeTree preserves history; `lltk.annotations_latest` VIEW picks the winning value per `(_id, field)` via `argMax(value, (priority, annotated_at))`. Priority semantic: HIGHER wins. Controlled vocabs (`GENRE_VOCAB`, `LANG_ISO639_1`) live in `lltk.tools.vocabs` — importable without CH/DuckDB deps so client packages (largeliterarymodels, abstraction) can depend on them without pulling in storage code.
+
+**Seeded source priorities** (in `annotation_sources`):
+
+| Source | Priority | Notes |
+|---|---|---|
+| `human` | 100 | manual curation |
+| `bibliography:fiction_biblio`, `bibliography:end`, `bibliography:ravengarside` | 90 | scholarly bibliographies |
+| `authority_corpus` | 70 | generic authority-corpus propagation |
+| `heuristic` | 50 | ESTC form / title-keyword rules |
+| `llm:*` | 10 | LLM outputs; auto-registered on first write |
+
+**Seven first-class fields** (shipped with specs in `lltk.tools.annotations._FIELD_SPECS`): `genre` (vocab=`GENRE_VOCAB`), `genre_raw` (uncontrolled), `is_translated` (bool), `original_lang` (vocab=`LANG_ISO639_1`, normalize hook coerces "French"→"fr"), `year_estimated` (int, range=[-500, 2100]), `author_first_name` (str), `exclude` (bool). Extend via `register_field_spec(field, spec)`.
+
+**SDK:**
+
+```python
+from lltk.tools import annotations as A
+
+A.ensure_schema()             # create tables + view + seed sources (idempotent)
+
+A.write(
+    source='llm:gemini-2.5-pro',
+    rows=[
+        {'_id': '_estc/T068056', 'field': 'genre', 'value': 'Fiction',
+         'confidence': 0.95},
+        {'_id': '_estc/T068056', 'field': 'year_estimated', 'value': 1689},
+    ],
+    run_id='gemini-pro:2026-04-19',   # optional; default `{source}:{today}`
+)
+
+A.resolve(ids=['_estc/T068056'], fields=['genre'])
+# → DataFrame: _id, field, value, source, confidence, annotated_at
+
+A.disagreements('genre', min_sources=2)   # for prompt debugging / active learning
+```
+
+All values stored as `String`; `field_spec['type']` documents the encoding (`bool` → `'0'`/`'1'`, `int` → decimal string). `resolve()` decodes on read unless `decode=False`.
+
+**Value semantics**:
+- Empty string `''` = "explicitly unknown" on nullable fields (distinct from "no one looked" which just means no row exists for `(_id, field)`).
+- `confidence` default = 1.0.
+- `run_id` default = `f"{source}:{date.today().isoformat()}"`.
+- `meta` = JSON blob for free-form extensions (prompt fingerprint, tool version).
+
+**Writer conventions**:
+- lltk-internal writers: use specific sources from `DEFAULT_SOURCES` (e.g. `'heuristic'` for ESTC-form rules, `'bibliography:fiction_biblio'` for authority propagation).
+- LLM tasks (largeliterarymodels): use `llm:<model-id>` pattern. Auto-registers at priority 10 on first write; override via `register_source('llm:gemini-2.5-pro', priority=..., description=...)` if you want nicer metadata.
+
+**Deferred**: Path-A migration of `db-enrich-genres` to write through `annotations` (currently still writes to `text_genres`; migration is separate PR once shape is proven).
 
 ### Word index / ngrams (`db-wordindex`)
 

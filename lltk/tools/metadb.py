@@ -36,56 +36,14 @@ PATH_WORDCOUNTDB = os.path.join(PATH_LLTK_DATA, 'metadb_wordcounts.duckdb')
 PATH_WORDINDEXDB = os.path.join(PATH_LLTK_DATA, 'metadb_wordindex.duckdb')
 PATH_PASSAGESDB = os.path.join(PATH_LLTK_DATA, 'metadb_passages.sqlite')
 
-# Standard genre vocabulary — harmonized across corpora
-GENRE_VOCAB = {
-    'Fiction',
-    'Poetry',
-    'Drama',
-    'Periodical',
-    'Essay',
-    'Treatise',
-    'Letters',
-    'Sermon',
-    'Biography',
-    'Nonfiction',
-    'Legal',
-    'Speech',
-    'Spoken',
-    'History',
-    'Criticism',
-    'Academic',
-    'Almanac',
-    'Reference',
-}
-
-# Normalize language codes to ISO 639-1 two-letter codes
-LANG_NORMALIZE = {
-    # ISO 639-2/B (bibliographic)
-    'eng': 'en', 'fre': 'fr', 'ger': 'de', 'spa': 'es', 'ita': 'it',
-    'por': 'pt', 'rus': 'ru', 'lat': 'la', 'grc': 'el', 'dut': 'nl',
-    'swe': 'sv', 'dan': 'da', 'nor': 'no', 'pol': 'pl', 'hun': 'hu',
-    'cze': 'cs', 'rum': 'ro', 'fin': 'fi',
-    # ISO 639-2/T (terminological)
-    'fra': 'fr', 'deu': 'de', 'nld': 'nl', 'ces': 'cs', 'ron': 'ro',
-    # Full names (lowercase)
-    'english': 'en', 'french': 'fr', 'german': 'de', 'spanish': 'es',
-    'italian': 'it', 'portuguese': 'pt', 'russian': 'ru', 'latin': 'la',
-    'greek': 'el', 'dutch': 'nl', 'swedish': 'sv', 'danish': 'da',
-    'norwegian': 'no', 'polish': 'pl', 'hungarian': 'hu',
-    'czech': 'cs', 'romanian': 'ro', 'finnish': 'fi',
-    # Already ISO 639-1 — pass through
-    'en': 'en', 'fr': 'fr', 'de': 'de', 'es': 'es', 'it': 'it',
-    'pt': 'pt', 'ru': 'ru', 'la': 'la', 'el': 'el', 'nl': 'nl',
-    'sv': 'sv', 'da': 'da', 'no': 'no', 'pl': 'pl', 'hu': 'hu',
-    'cs': 'cs', 'ro': 'ro', 'fi': 'fi',
-}
-
-
-def normalize_lang(lang):
-    """Normalize a language code/name to ISO 639-1 two-letter code."""
-    if not lang or not isinstance(lang, str) or lang.strip() == '' or lang == 'nan':
-        return None
-    return LANG_NORMALIZE.get(lang.strip().lower())
+# Canonical vocabs live in lltk.tools.vocabs to keep them importable
+# without the duckdb/clickhouse deps. Re-export here for backwards compat.
+from lltk.tools.vocabs import (
+    GENRE_VOCAB,
+    LANG_ISO639_1,
+    LANG_NORMALIZE,
+    normalize_lang,
+)
 
 
 # Corpora excluded from DB ingest (too large, not useful as standalone)

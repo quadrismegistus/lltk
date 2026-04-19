@@ -189,18 +189,121 @@ CLICKHOUSE_SCHEMA = {
         ENGINE = ReplacingMergeTree()
         ORDER BY _id
     """,
+
+    # Cross-corpus annotation store. Writable by lltk itself and by client
+    # packages (largeliterarymodels writing LLM outputs, curation UIs writing
+    # human labels). Plain MergeTree preserves history — the resolver VIEW
+    # (annotations_latest) picks the winning value per (_id, field) by source
+    # priority. See `lltk.tools.annotations`.
+    #
+    # Schema contract:
+    #   _id           canonical text address `_{corpus}/{id}`
+    #   field         column name (genre, is_translated, year_estimated, ...)
+    #   value         always String — caller encodes int/bool; field_spec
+    #                 documents the expected shape per field
+    #   source        who wrote it ('human', 'fiction_biblio',
+    #                 'llm:gemini-2.5-pro', ...). Joined to annotation_sources
+    #                 to get a priority score
+    #   run_id        batch identifier; default `{source}:{YYYY-MM-DD}` at
+    #                 write time if caller omits
+    #   annotated_at  wall-clock DateTime, tie-breaks priority ties
+    #   confidence    Float32 per-row confidence (optional; default 1.0)
+    #   meta          JSON blob for free-form extensions (prompt fingerprint,
+    #                 upstream tool version, etc.)
+    'annotations': """
+        CREATE TABLE IF NOT EXISTS {db}.annotations (
+            _id           String,
+            field         LowCardinality(String),
+            value         String,
+            source        LowCardinality(String),
+            run_id        String,
+            annotated_at  DateTime DEFAULT now(),
+            confidence    Float32  DEFAULT 1.0,
+            meta          String   DEFAULT '{{}}'
+        )
+        ENGINE = MergeTree()
+        ORDER BY (_id, field, source, annotated_at)
+    """,
+
+    # Dim table of annotation sources and their priorities. Higher priority
+    # wins at read time (see annotations_latest VIEW).
+    #
+    # Seeded priorities (see lltk.tools.annotations.DEFAULT_SOURCES):
+    #   human                       100   manual curation
+    #   bibliography:fiction_biblio   90   scholarly bibliographies
+    #   bibliography:end              90
+    #   bibliography:ravengarside     90
+    #   heuristic                     50   rule-based (ESTC form, title kw)
+    #   llm:*                         10   LLM outputs (auto-registered)
+    #
+    # Unregistered sources default to priority 0 (lowest) in the resolver VIEW.
+    'annotation_sources': """
+        CREATE TABLE IF NOT EXISTS {db}.annotation_sources (
+            source         LowCardinality(String),
+            priority       Int16,
+            description    String,
+            registered_at  DateTime DEFAULT now()
+        )
+        ENGINE = ReplacingMergeTree(registered_at)
+        ORDER BY source
+    """,
 }
+
+# The `annotations_latest` VIEW runs `argMax(value, (priority, annotated_at))`
+# per (_id, field) to resolve the current winning annotation. Defined as a
+# separate DDL because CREATE VIEW can't be CREATE-IF-NOT-EXISTS-idempotent
+# and depends on the two tables above existing first.
+#
+# priority semantic: HIGHER wins. Sources not in annotation_sources
+# default to priority 0 via LEFT JOIN + coalesce.
+ANNOTATIONS_LATEST_VIEW = """
+    CREATE OR REPLACE VIEW {db}.annotations_latest AS
+    SELECT
+        _id,
+        field,
+        tupleElement(winner, 1) AS value,
+        tupleElement(winner, 2) AS source,
+        tupleElement(winner, 3) AS confidence,
+        tupleElement(winner, 4) AS annotated_at
+    FROM (
+        SELECT
+            _id,
+            field,
+            argMax(
+                tuple(value, source, confidence, annotated_at),
+                tuple(priority, annotated_at)
+            ) AS winner
+        FROM (
+            SELECT
+                a._id AS _id,
+                a.field AS field,
+                a.value AS value,
+                a.source AS source,
+                a.confidence AS confidence,
+                a.annotated_at AS annotated_at,
+                coalesce(s.priority, 0) AS priority
+            FROM {db}.annotations a
+            LEFT JOIN (
+                SELECT source, priority FROM {db}.annotation_sources FINAL
+            ) s
+                ON a.source = s.source
+        )
+        GROUP BY _id, field
+    )
+"""
 
 
 def create_all_tables(adapter, database='lltk'):
     """Create every LLTK table on the ClickHouse server via `adapter`.
 
-    Idempotent (CREATE TABLE IF NOT EXISTS). Only meaningful for
-    ClickHouseAdapter; other engines raise.
+    Idempotent (CREATE TABLE IF NOT EXISTS + CREATE OR REPLACE VIEW). Only
+    meaningful for ClickHouseAdapter; other engines raise.
     """
     if adapter.engine != 'clickhouse':
         raise ValueError(f'create_all_tables is ClickHouse-only; got engine={adapter.engine}')
     adapter.execute(f"CREATE DATABASE IF NOT EXISTS {database}")
     for name, ddl in CLICKHOUSE_SCHEMA.items():
         adapter.execute(ddl.format(db=database))
-    return list(CLICKHOUSE_SCHEMA.keys())
+    # Views depend on tables existing; run after the table loop.
+    adapter.execute(ANNOTATIONS_LATEST_VIEW.format(db=database))
+    return list(CLICKHOUSE_SCHEMA.keys()) + ['annotations_latest (view)']
