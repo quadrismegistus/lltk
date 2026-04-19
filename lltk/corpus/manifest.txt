@@ -699,6 +699,13 @@ desc = Synthetic corpus: French fiction (artfl, french_pd_books, gallica_literar
 path_python = arc_corpora/arc_corpora.py
 class_name = ArcFictionFr
 
+[ArcFictionDe]
+id = arc_fiction_de
+name = ArcFictionDe
+desc = Synthetic corpus: German fiction (de_corp, german_fiction, german_pd, dta, txtlab, ecco, gale_amfic), deduplicated, translations excluded
+path_python = arc_corpora/arc_corpora.py
+class_name = ArcFictionDe
+
 [ArcPoetry]
 id = arc_poetry
 name = ArcPoetry
