@@ -698,12 +698,115 @@ class MetaDBCH:
 
     # ── Passages ────────────────────────────────────────────────────────────
 
-    def build_passages_db(self, n: int = 500, num_proc=None,
-                          corpora=None, force: bool = False):
-        """Chunk corpus txt files into ~n-word passages → lltk.passages (CH)."""
+    def build_passages_db(self, n: int = 500, num_proc=None, corpora=None,
+                          force: bool = False, year_min=None, year_max=None,
+                          dedup: bool = False, dedup_by: str = 'rank'):
+        """Chunk corpus txt files into ~n-word passages → lltk.passages (CH).
+
+        When `corpora` contains a SyntheticCorpus ID (e.g. 'arc_fiction'), or
+        when year_min/year_max/dedup filters are set, the text list is resolved
+        via texts_df() before chunking so only the matching subset is ingested.
+
+        Examples:
+            lltk.db.build_passages_db(corpora=['arc_fiction'],
+                                      year_max=1800, dedup=True)
+        """
         from lltk.tools.clickhouse_passages import build_passages_ch
+
+        needs_resolution = year_min is not None or year_max is not None or dedup
+        if not needs_resolution and corpora is not None:
+            from lltk.corpus.utils import load as load_corpus
+            from lltk.corpus.synthetic import SyntheticCorpus
+            for cid in corpora:
+                try:
+                    if isinstance(load_corpus(cid), SyntheticCorpus):
+                        needs_resolution = True
+                        break
+                except Exception:
+                    pass
+
+        if needs_resolution:
+            tasks = self._resolve_passage_tasks(
+                corpora, year_min=year_min, year_max=year_max,
+                dedup=dedup, dedup_by=dedup_by, n=n,
+            )
+            return build_passages_ch(self.adapter, n=n, num_proc=num_proc,
+                                     force=force, tasks=tasks)
+
         return build_passages_ch(self.adapter, n=n, num_proc=num_proc,
                                  corpora=corpora, force=force)
+
+    def _resolve_passage_tasks(self, corpora, year_min=None, year_max=None,
+                                dedup=False, dedup_by='rank', n=500):
+        """Resolve a corpus list (possibly synthetic) to chunker task tuples.
+
+        Returns list of (_id, corpus_id, txt_path, lang, n) ready for
+        build_passages_ch(tasks=...).
+        """
+        from lltk.corpus.utils import load as load_corpus
+        from lltk.corpus.synthetic import SyntheticCorpus
+        from lltk.corpus.corpus import Corpus
+        from lltk.tools.metadb import normalize_lang
+
+        all_sources: dict = {}
+        for cid in (corpora or []):
+            try:
+                c = load_corpus(cid)
+            except Exception:
+                continue
+            if isinstance(c, SyntheticCorpus) and hasattr(c, 'SOURCES'):
+                all_sources.update(c.SOURCES)
+            else:
+                all_sources[cid] = {}
+
+        df = self.texts_df(
+            sources=all_sources if all_sources else None,
+            corpora=None if all_sources else (corpora or None),
+            year_min=year_min, year_max=year_max,
+            dedup=dedup, dedup_by=dedup_by,
+        )
+        if not len(df):
+            return []
+
+        corpus_cache: dict = {}
+        tasks = []
+        for _, row in df.iterrows():
+            _id = str(row['_id'])
+            corpus_id = str(row['corpus'])
+            text_id = str(row['id'])
+
+            if corpus_id not in corpus_cache:
+                try:
+                    corpus_cache[corpus_id] = Corpus(corpus_id)
+                except Exception:
+                    corpus_cache[corpus_id] = None
+            c = corpus_cache[corpus_id]
+            if c is None:
+                continue
+
+            try:
+                t = c.text(text_id)
+            except Exception:
+                continue
+
+            txt_path = getattr(t, 'path_txt', None)
+            if not txt_path or not os.path.exists(txt_path):
+                continue
+
+            lang = None
+            if t._meta:
+                for key in ('lang', 'language', 'language_1', 'estc_lang'):
+                    val = t._meta.get(key)
+                    if val and str(val).strip() and str(val) != 'nan':
+                        lang = normalize_lang(str(val).strip())
+                        if lang:
+                            break
+            if not lang:
+                lang = normalize_lang(getattr(c, 'lang', None) or '')
+
+            tasks.append((_id, corpus_id, txt_path, lang, n))
+
+        return tasks
 
     def get_passages(self, ids, scheme: str = 'p500'):
         """Return passages DataFrame for given text _ids.

@@ -105,10 +105,15 @@ def _extract_snippet(text: str, query: str, context_words: int = 30) -> str:
 # ── Build ──────────────────────────────────────────────────────────────────────
 
 def build_passages_ch(adapter, n: int = 500, num_proc: int | None = None,
-                      corpora=None, force: bool = False):
+                      corpora=None, force: bool = False, tasks=None):
     """Chunk corpus txt files into ~n-word passages and insert into lltk.passages.
 
     Idempotent: skips texts already in lltk.passages_meta (unless force=True).
+
+    If `tasks` is provided (list of (_id, corpus_id, txt_path, lang, n) tuples
+    pre-built by the caller), the corpus enumeration step is skipped entirely.
+    Used by MetaDBCH.build_passages_db when year/dedup/SyntheticCorpus filtering
+    has already resolved the exact set of texts to chunk.
     """
     from lltk.tools.metadb import _chunk_text_to_passages, DB_BLACKLIST
     from lltk.tools.tools import pmap, get_tqdm
@@ -134,54 +139,59 @@ def build_passages_ch(adapter, n: int = 500, num_proc: int | None = None,
     if done_ids and log:
         log(f'[passages] {len(done_ids)} texts already in passages table')
 
-    # Gather tasks
-    from lltk.corpus.utils import load as load_corpus
-    from lltk.corpus.synthetic import SyntheticCorpus
+    # Gather tasks — pre-built list takes precedence over corpus enumeration
+    if tasks is not None:
+        all_tasks = [t for t in tasks if t[0] not in done_ids]
+        if log:
+            log(f'[passages] {len(all_tasks)} texts from pre-resolved task list')
+    else:
+        from lltk.corpus.utils import load as load_corpus
+        from lltk.corpus.synthetic import SyntheticCorpus
 
-    if corpora is None:
-        from lltk.corpus.utils import get_inducted_corpus_ids
-        corpora = get_inducted_corpus_ids()
+        if corpora is None:
+            from lltk.corpus.utils import get_inducted_corpus_ids
+            corpora = get_inducted_corpus_ids()
 
-    all_tasks = []
-    for cid in corpora:
-        if cid in DB_BLACKLIST:
-            continue
-        try:
-            corpus = load_corpus(cid)
-        except Exception:
-            continue
-        if isinstance(corpus, SyntheticCorpus):
-            continue
-        if not hasattr(corpus, 'path_txt') or not os.path.isdir(
-                getattr(corpus, 'path_txt', '')):
-            continue
-        manifest_lang = getattr(corpus, 'lang', None)
-        try:
-            meta = corpus.load_metadata()
-        except Exception:
-            continue
-        if meta is None or not len(meta):
-            continue
-
-        for text_id in meta.index:
-            _id = f'_{cid}/{text_id}'
-            if _id in done_ids:
+        all_tasks = []
+        for cid in corpora:
+            if cid in DB_BLACKLIST:
                 continue
-            t = corpus.text(text_id)
-            txt_path = getattr(t, 'path_txt', None)
-            if not txt_path or not os.path.exists(txt_path):
+            try:
+                corpus = load_corpus(cid)
+            except Exception:
                 continue
-            lang = None
-            if t._meta:
-                for key in ('lang', 'language', 'language_1', 'estc_lang'):
-                    val = t._meta.get(key)
-                    if val and str(val).strip() and str(val) != 'nan':
-                        lang = normalize_lang(str(val).strip())
-                        if lang:
-                            break
-            if not lang and manifest_lang:
-                lang = normalize_lang(manifest_lang)
-            all_tasks.append((_id, cid, txt_path, lang, n))
+            if isinstance(corpus, SyntheticCorpus):
+                continue
+            if not hasattr(corpus, 'path_txt') or not os.path.isdir(
+                    getattr(corpus, 'path_txt', '')):
+                continue
+            manifest_lang = getattr(corpus, 'lang', None)
+            try:
+                meta = corpus.load_metadata()
+            except Exception:
+                continue
+            if meta is None or not len(meta):
+                continue
+
+            for text_id in meta.index:
+                _id = f'_{cid}/{text_id}'
+                if _id in done_ids:
+                    continue
+                t = corpus.text(text_id)
+                txt_path = getattr(t, 'path_txt', None)
+                if not txt_path or not os.path.exists(txt_path):
+                    continue
+                lang = None
+                if t._meta:
+                    for key in ('lang', 'language', 'language_1', 'estc_lang'):
+                        val = t._meta.get(key)
+                        if val and str(val).strip() and str(val) != 'nan':
+                            lang = normalize_lang(str(val).strip())
+                            if lang:
+                                break
+                if not lang and manifest_lang:
+                    lang = normalize_lang(manifest_lang)
+                all_tasks.append((_id, cid, txt_path, lang, n))
 
     if not all_tasks:
         if log:

@@ -100,7 +100,10 @@ def main():
 	p_db_passages.add_argument('-j', '--jobs', type=int, default=None, help='Number of parallel workers')
 	p_db_passages.add_argument('-n', '--passage-size', type=int, default=500, help='Target words per passage (default: 500)')
 	p_db_passages.add_argument('--force', action='store_true', help='Rebuild from scratch')
-	p_db_passages.add_argument('corpora', nargs='*', default=None, help='Corpus IDs (default: all)')
+	p_db_passages.add_argument('--year-min', type=int, default=None, help='Only texts with year >= N')
+	p_db_passages.add_argument('--year-max', type=int, default=None, help='Only texts with year <= N')
+	p_db_passages.add_argument('--dedup', action='store_true', help='Only chunk rank-0 match-group representatives')
+	p_db_passages.add_argument('corpora', nargs='*', default=None, help='Corpus IDs or SyntheticCorpus IDs (default: all)')
 
 	# db wordcounts
 	p_db_wc = subparsers.add_parser('db-wordcounts', help='Compute word counts from freqs files')
@@ -365,6 +368,9 @@ def main():
 			num_proc=args.jobs,
 			corpora=args.corpora or None,
 			force=args.force,
+			year_min=args.year_min,
+			year_max=args.year_max,
+			dedup=args.dedup,
 		)
 
 	elif args.cmd == 'db-wordindex':
