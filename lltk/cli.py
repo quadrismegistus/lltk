@@ -237,7 +237,7 @@ def main():
 		ch = get_adapter(ch_url)
 		corpus_ids = args.corpora if args.corpora else None
 		# `--force` (already present on the parser) is the full-rebuild flag.
-		force = getattr(args, 'force', True) if corpus_ids is None else False
+		force = args.force or corpus_ids is None
 		total = rebuild_clickhouse(ch, corpora=corpus_ids, force=force)
 		print(f'\nTotal: {total:,} texts ingested into ClickHouse')
 
