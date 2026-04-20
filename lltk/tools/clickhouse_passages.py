@@ -304,7 +304,7 @@ def search_passages_ch(adapter, query: str, genre=None, corpus=None,
     """Keyword search over lltk.passages using the CH full_text index.
 
     Metadata filters (genre/corpus/lang/year) are resolved via lltk.texts FINAL
-    before the passages scan. Results are sorted by (_id, seq) — no BM25 rank.
+    before the passages scan. Results are sorted by (year, _id, seq).
     Snippet extraction is done in Python.
 
     Returns list of dicts: _id, seq, snippet, n_words, title, author, year,
@@ -333,7 +333,7 @@ def search_passages_ch(adapter, query: str, genre=None, corpus=None,
         if not filtered_ids:
             return []
 
-    # 2. Passages query
+    # 2. Passages query — JOIN texts for year so we can ORDER BY year
     text_cond = _query_to_ch_condition(query)
     total_needed = offset + limit
 
@@ -350,32 +350,38 @@ def search_passages_ch(adapter, query: str, genre=None, corpus=None,
                 column_names=['_id'],
             )
             sql = f"""
-                SELECT p._id, p.seq, p.text, p.n_words, p.lang
+                SELECT p._id, p.seq, p.text, p.n_words, p.lang, t.year
                 FROM lltk.passages p
                 JOIN tmp.passage_ids f ON p._id = f._id
+                LEFT JOIN (SELECT _id, year FROM lltk.texts FINAL) t
+                    ON p._id = t._id
                 WHERE p.scheme = 'p500'
                   AND {text_cond}
-                ORDER BY p._id, p.seq
+                ORDER BY t.year, p._id, p.seq
                 LIMIT {total_needed}
             """
         else:
             ids_sql = ', '.join(f"'{_escape(i)}'" for i in filtered_ids)
             sql = f"""
-                SELECT _id, seq, text, n_words, lang
-                FROM lltk.passages
-                WHERE _id IN ({ids_sql})
-                  AND scheme = 'p500'
+                SELECT p._id, p.seq, p.text, p.n_words, p.lang, t.year
+                FROM lltk.passages p
+                LEFT JOIN (SELECT _id, year FROM lltk.texts FINAL) t
+                    ON p._id = t._id
+                WHERE p._id IN ({ids_sql})
+                  AND p.scheme = 'p500'
                   AND {text_cond}
-                ORDER BY _id, seq
+                ORDER BY t.year, p._id, p.seq
                 LIMIT {total_needed}
             """
     else:
         sql = f"""
-            SELECT _id, seq, text, n_words, lang
-            FROM lltk.passages
-            WHERE scheme = 'p500'
+            SELECT p._id, p.seq, p.text, p.n_words, p.lang, t.year
+            FROM lltk.passages p
+            LEFT JOIN (SELECT _id, year FROM lltk.texts FINAL) t
+                ON p._id = t._id
+            WHERE p.scheme = 'p500'
               AND {text_cond}
-            ORDER BY _id, seq
+            ORDER BY t.year, p._id, p.seq
             LIMIT {total_needed}
         """
 
@@ -407,7 +413,7 @@ def search_passages_ch(adapter, query: str, genre=None, corpus=None,
             'n_words': int(r['n_words']),
             'title': m.get('title', ''),
             'author': m.get('author', ''),
-            'year': m.get('year'),
+            'year': r.get('year') if 'year' in r.index else m.get('year'),
             'corpus': m.get('corpus', ''),
             'genre': m.get('genre', ''),
             'lang': r['lang'] or m.get('lang', ''),
