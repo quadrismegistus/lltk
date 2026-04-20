@@ -57,11 +57,17 @@ def xml2txt_impact_es(xmlpath):
 
     else:
         # GT: plain text paragraphs; <head> and <ab> are not <p>, so iter(P) skips them
+        # De-hyphenate: if a paragraph ends with a hyphen (page-break word split),
+        # strip the hyphen and join directly to the next paragraph's first word.
         paragraphs = []
         for p in body.iter(P):
             text = ' '.join(p.itertext()).strip()
             text = ' '.join(text.split())
-            if text:
+            if not text:
+                continue
+            if paragraphs and paragraphs[-1].endswith('-'):
+                paragraphs[-1] = paragraphs[-1][:-1] + text
+            else:
                 paragraphs.append(text)
         return '\n\n'.join(paragraphs)
 
@@ -73,7 +79,7 @@ ZIP_SECTIONS = {
 
 
 class TextImpactES(BaseText):
-    XML2TXT = staticmethod(xml2txt_impact_es)
+    XML2TXT = xml2txt_impact_es
 
 
 class ImpactES(BaseCorpus):

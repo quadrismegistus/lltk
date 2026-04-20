@@ -201,6 +201,37 @@ CLICKHOUSE_SCHEMA = {
         ORDER BY _id
     """,
 
+    # ~500-word sentence-aware passage chunks.  full_text index on `text`
+    # enables fast hasTokenCaseInsensitive() queries without a full scan.
+    # Replaces the old metadb_passages.sqlite (SQLite FTS5) backend.
+    # scheme='p500' is the canonical single-scheme default; chapter / w1000
+    # variants can coexist in the same table once llmtasks uses them.
+    'passages': """
+        CREATE TABLE IF NOT EXISTS {db}.passages (
+            _id     String,
+            corpus  LowCardinality(String),
+            scheme  LowCardinality(String) DEFAULT 'p500',
+            seq     UInt32,
+            text    String,
+            n_words UInt32,
+            lang    LowCardinality(String),
+            INDEX   idx_text text TYPE text(tokenizer = 'splitByNonAlpha') GRANULARITY 1
+        )
+        ENGINE = MergeTree()
+        ORDER BY (_id, scheme, seq)
+    """,
+
+    'passages_meta': """
+        CREATE TABLE IF NOT EXISTS {db}.passages_meta (
+            _id        String,
+            corpus     LowCardinality(String),
+            scheme     LowCardinality(String) DEFAULT 'p500',
+            n_passages UInt32
+        )
+        ENGINE = ReplacingMergeTree()
+        ORDER BY (_id, scheme)
+    """,
+
     # Cross-corpus annotation store. Writable by lltk itself and by client
     # packages (largeliterarymodels writing LLM outputs, curation UIs writing
     # human labels). Plain MergeTree preserves history — the resolver VIEW

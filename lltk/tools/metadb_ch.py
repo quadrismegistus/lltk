@@ -696,6 +696,47 @@ class MetaDBCH:
     # shim routes those calls to ClickHouse after rewriting DuckDB-only
     # table references (match_db.x → lltk.x, texts → lltk.texts).
 
+    # ── Passages ────────────────────────────────────────────────────────────
+
+    def build_passages_db(self, n: int = 500, num_proc=None,
+                          corpora=None, force: bool = False):
+        """Chunk corpus txt files into ~n-word passages → lltk.passages (CH)."""
+        from lltk.tools.clickhouse_passages import build_passages_ch
+        return build_passages_ch(self.adapter, n=n, num_proc=num_proc,
+                                 corpora=corpora, force=force)
+
+    def get_passages(self, ids, scheme: str = 'p500'):
+        """Return passages DataFrame for given text _ids.
+
+        Columns: _id, scheme, seq, text, n_words, lang.
+        Used by largeliterarymodels via lltk.db.get_passages(ids).
+        """
+        from lltk.tools.clickhouse_passages import get_passages_ch
+        return get_passages_ch(self.adapter, ids, scheme=scheme)
+
+    def search(self, query: str, genre=None, corpus=None, lang=None,
+               year_min=None, year_max=None, limit: int = 20,
+               offset: int = 0, snippet_words: int = 30):
+        """Keyword search over lltk.passages via CH full_text index.
+
+        Returns list of dicts: _id, seq, snippet, n_words, title, author,
+        year, corpus, genre, lang.  No BM25 ranking — results ordered by
+        (_id, seq).  Snippet extracted in Python.
+        """
+        from lltk.tools.clickhouse_passages import search_passages_ch
+        return search_passages_ch(
+            self.adapter, query, genre=genre, corpus=corpus, lang=lang,
+            year_min=year_min, year_max=year_max, limit=limit,
+            offset=offset, snippet_words=snippet_words,
+        )
+
+    def search_count(self, query: str) -> int:
+        """Count passages matching query (scheme='p500', no metadata filter)."""
+        from lltk.tools.clickhouse_passages import search_passages_count_ch
+        return search_passages_count_ch(self.adapter, query)
+
+    # ── Legacy shim ─────────────────────────────────────────────────────────
+
     @property
     def conn(self):
         return _LegacyConnShim(self.adapter)

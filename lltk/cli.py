@@ -96,7 +96,7 @@ def main():
 	p_search.add_argument('--offset', type=int, default=0)
 
 	# db-passages
-	p_db_passages = subparsers.add_parser('db-passages', help='Build passages DB (SQLite + FTS5) from txt files')
+	p_db_passages = subparsers.add_parser('db-passages', help='Build lltk.passages (CH) from corpus txt files')
 	p_db_passages.add_argument('-j', '--jobs', type=int, default=None, help='Number of parallel workers')
 	p_db_passages.add_argument('-n', '--passage-size', type=int, default=500, help='Target words per passage (default: 500)')
 	p_db_passages.add_argument('--force', action='store_true', help='Rebuild from scratch')
