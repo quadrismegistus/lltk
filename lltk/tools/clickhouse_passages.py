@@ -117,7 +117,7 @@ def build_passages_ch(adapter, n: int = 500, num_proc: int | None = None,
     """
     from lltk.tools.metadb import _chunk_text_to_passages, DB_BLACKLIST
     from lltk.tools.tools import pmap, get_tqdm
-    from lltk.tools.tools import normalize_lang
+    from lltk.tools.vocabs import normalize_lang
 
     try:
         from lltk.imports import log

@@ -746,7 +746,7 @@ class MetaDBCH:
         from lltk.corpus.utils import load as load_corpus
         from lltk.corpus.synthetic import SyntheticCorpus
         from lltk.corpus.corpus import Corpus
-        from lltk.tools.metadb import normalize_lang
+        from lltk.tools.vocabs import normalize_lang
 
         all_sources: dict = {}
         for cid in (corpora or []):
