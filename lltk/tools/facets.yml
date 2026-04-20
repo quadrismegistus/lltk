@@ -1,0 +1,519 @@
+# facets.yml — canonical genre tag vocabulary for lltk.text_genre_tags
+#
+# Parsing algorithm (lltk.tools.genre_tags.normalize_genre_raw):
+#   1. Split raw string on ';' or ' | ' → independent tag chunks
+#   2. For each chunk: exact-match lookup in `atoms` first
+#   3. If no exact match: split on first ',' → look up each part in `atoms`
+#   4. Lowercase + strip each part before lookup
+#   5. null atom values = skip (noise / redundant with genre vocab)
+#   6. List atom values = decompose (e.g. "Historical fiction" → [historical, novel])
+#
+# Tag naming: lowercase-with-spaces. Multi-word terms that are critically
+# established as a single genre are kept atomic (imaginary voyage, rogue fiction,
+# criminal biography, tragical history, secret history, it-narrative).
+
+# ── Canonical tag definitions ─────────────────────────────────────────────────
+
+tags:
+
+  # Form — what kind of narrative object
+  novel:          {facets: [form]}
+  romance:        {facets: [form]}
+  tale:           {facets: [form]}
+  novella:        {facets: [form]}
+  fable:          {facets: [form]}
+  allegory:       {facets: [form, register]}
+  satire:         {facets: [form, register]}
+  dialogue:       {facets: [form]}
+  biography:      {facets: [form]}
+  jestbook:       {facets: [form]}
+  chapbook:       {facets: [form]}
+  # verse intentionally omitted — duplicates genre=Poetry; use ballad/hymn/ode/etc.
+  comedy:         {facets: [form]}
+  tragedy:        {facets: [form]}
+  tragicomedy:    {facets: [form]}
+  opera:          {facets: [form]}
+  drama:          {facets: [form]}
+  masque:         {facets: [form]}
+  interlude:      {facets: [form]}
+
+  # Poetry subgenres
+  ballad:         {facets: [form]}
+  hymn:           {facets: [form]}
+  ode:            {facets: [form]}
+  epic:           {facets: [form]}
+  sonnet:         {facets: [form]}
+  elegy:          {facets: [form]}
+  lyric:          {facets: [form]}
+
+  # Compound critical terms — kept atomic, not decomposed; subgenre = specific
+  # named form within a broader category (novel, biography, etc.)
+  imaginary voyage:    {facets: [form, subgenre]}
+  criminal biography:  {facets: [form, subgenre]}
+  tragical history:    {facets: [form, subgenre]}
+  secret history:      {facets: [form, subgenre]}
+  rogue fiction:       {facets: [form, register, subgenre]}
+  character writing:   {facets: [form, subgenre]}
+  pamphlet fiction:    {facets: [form, subgenre]}
+  hagiography:         {facets: [form, subgenre]}
+  it-narrative:        {facets: [form, subgenre]}
+  utopia:              {facets: [form, subgenre]}
+  roman à clef:        {facets: [form, subgenre]}
+
+  # Named subgenres (common enough to tag; treated as form for cross-facet queries)
+  gothic:              {facets: [mode, register]}
+  bildungsroman:       {facets: [form, subgenre]}
+
+  # Mode / register — how it's written, what it does
+  epistolary:     {facets: [mode]}
+  picaresque:     {facets: [mode, register]}
+  amatory:        {facets: [mode, register]}
+  pastoral:       {facets: [mode, register]}
+  heroic:         {facets: [mode, register]}
+  chivalric:      {facets: [mode, register]}
+  mock-chivalric: {facets: [mode, register]}
+  historical:     {facets: [mode]}
+  sentimental:    {facets: [mode, register]}
+  gallant:        {facets: [mode, register]}
+  didactic:       {facets: [mode, register]}
+  classical:      {facets: [mode]}
+  legendary:      {facets: [mode]}
+  oriental:       {facets: [mode, register]}
+  satirical:      {facets: [mode, register]}
+  comic:          {facets: [mode, register]}
+  religious:      {facets: [mode, register]}
+  biblical:       {facets: [mode]}
+  political:      {facets: [mode]}
+  psychological:  {facets: [mode]}
+  scandal:        {facets: [mode, register]}
+  allegorical:    {facets: [mode, register]}
+
+
+# ── Atom-level normalization ───────────────────────────────────────────────────
+# Maps individual atoms (after splitting on ; / | / ,) to canonical tag(s).
+# String → single canonical tag name
+# String → list of canonical tag names (decompose)
+# String → null (skip — noise or redundant with genre vocab)
+#
+# Case-insensitive lookup; strip whitespace before matching.
+
+atoms:
+
+  # Core forms — direct
+  "Novel":            novel
+  "Romance":          romance
+  "Tale":             tale
+  "Novella":          novella
+  "Fable":            fable
+  "Allegory":         allegory
+  "Satire":           satire
+  "Dialogue":         dialogue
+  "Biography":        biography
+  "Jestbook":         jestbook
+  "Chapbook":         chapbook
+  "Verse":            null          # duplicates genre=Poetry
+  "Picaresque":       picaresque
+  "Utopia":           utopia
+
+  # Atomic critical terms
+  "Imaginary voyage":   imaginary voyage
+  "Criminal biography": criminal biography
+  "Tragical history":   tragical history
+  "Secret history":     secret history
+  "Rogue fiction":      rogue fiction
+  "Character writing":  character writing
+  "Pamphlet fiction":   pamphlet fiction
+  "Hagiography":        hagiography
+  "It-Narrative":       it-narrative
+  "Roman à clef":       roman à clef
+
+  # Mode atoms — appear after comma in "Form, mode" compounds
+  "epistolary":     epistolary
+  "amatory":        amatory
+  "amorous":        amatory       # variant
+  "pastoral":       pastoral
+  "heroic":         heroic
+  "chivalric":      chivalric
+  "mock-chivalric": mock-chivalric
+  "historical":     historical
+  "sentimental":    sentimental
+  "gallant":        gallant
+  "didactic":       didactic
+  "classical":      classical
+  "legendary":      legendary
+  "oriental":       oriental
+  "satirical":      satirical
+  "comic":          comic
+  "religious":      religious
+  "biblical":       biblical
+  "political":      political
+  "psychological":  psychological
+  "scandal":        scandal
+  "allegorical":    allegorical
+  "prose":          null          # skip — prose is default for fiction
+  "courtly":        gallant       # map: courtly ≈ gallant
+  "descriptive":    null
+  "tragic":         null          # too generic
+  "anecdotal":      null
+  "miscellany":     null
+  "collection":     null
+  "comic":          comic
+  "memorial":       null
+  "memoir":         null
+  "frame narrative": null         # structural, not genre
+
+  # Compounds that need explicit decomposition (comma-split would misparse)
+  "Historical fiction":     [historical, novel]
+  "Amatory fiction":        [amatory, novel]
+  "Amatory romance":        [romance, amatory]
+  "Rogue fiction":          rogue fiction        # protect from comma-split
+  "Criminal biography":     criminal biography
+  "Tragical history":       tragical history
+  "Secret history":         secret history
+  "Imaginary voyage":       imaginary voyage
+  "Character writing":      character writing
+  "Pamphlet fiction":       pamphlet fiction
+  "It-Narrative":           it-narrative
+  "Roman à clef":           roman à clef
+  "Hagiography, legendary": hagiography          # comma here is qualifier, not form/mode
+  "Hagiography (legendary)": hagiography
+  "Fable, beast epic":      fable
+  "Allegorical romance":    [romance, allegorical]
+  "Biographical fiction":   [biography, novel]
+  "Historical biography":   [biography, historical]
+  "Historical narrative":   null
+  "Historical":             historical
+  "Letters, fictional":     epistolary
+  "Fictional Narration":    novel
+  "Fictional Dialogue":     dialogue
+  "Fictional letters":      epistolary
+  "Novel, epistolary fiction": [novel, epistolary]
+  "Novel, heroic romance":  [novel, heroic]
+  "Novel, roman à clef":    [novel, roman à clef]
+  "Novel, It-Narrative":    [novel, it-narrative]
+  "Novel, Imaginary voyage": [novel, imaginary voyage]
+  "Romance, mock-chivalric": [romance, mock-chivalric]
+  "Romance, Greek":         [romance, classical]
+  "Romance, allegorical":   [romance, allegorical]
+  "Prose dialogue, satirical": [dialogue, satirical]
+  "Satire, prose":          satire
+  "Fiction, satire":        [novel, satire]
+  "Dialogue (comic)":       [dialogue, comic]
+  "Jestbook, Satire":       [jestbook, satire]
+  "Jestbook; Satire, prose": [jestbook, satire]
+  "Novella collection":     novella
+  "Pilgrimage narrative":   allegory             # Bunyan-type → allegory
+
+  # Drama subgenres
+  "Comedy":         comedy
+  "Tragedy":        tragedy
+  "Tragicomedy":    tragicomedy
+  "Masque":         masque
+  "Interlude":      interlude
+  "Farce":          comedy
+
+  # Poetry subgenres
+  "Ballad":         ballad
+  "Ballad/Song":    ballad
+  "Ballad/Song | Poetry": ballad
+  "Hymn":           hymn
+  "Ode":            ode
+  "Epic":           epic
+  "Sonnet":         sonnet
+  "Elegy":          elegy
+  "Lyric":          lyric
+  "Devotional | Hymn": [hymn]
+  "Devotional":     null          # genre=Devotional already covers this
+
+  # Non-English → canonical English
+  "Roman":                          novel
+  "Romane, Novellen und Erzählungen": [novel, novella]
+  "Novellen":                       novella
+  "Novelle":                        novella
+  "Gedichte":                       null          # genre=Poetry
+  "Gedicht":                        null
+  "Zeitung":                        null          # newspaper/periodical
+  "Leichenpredigt":                 null          # funeral sermon — genre=Sermon already
+  "Trauerspiel":                    tragedy
+  "Tragödie":                       tragedy
+  "Lustspiel":                      comedy
+  "Komödie":                        comedy
+  "Schauspiel":                     drama
+  "Comédie":                        comedy
+  "Tragédie":                       tragedy
+  "Opéra":                          opera
+  "Poésies":                        null          # genre=Poetry
+  "Poésie":                         null
+  "Poème":                          null
+  "Poèmes":                         null
+  "Lyrik":                          null          # genre=Poetry
+  "Prosa":                          null          # skip — prose is default
+  "Märchen":                        tale
+  "Briefe":                         null          # genre=Letters
+  "Brief":                          null
+  "Autobiographie":                 biography
+  "Biographie":                     biography
+  "Romanhafte Biographien":         [biography, novel]
+  "Historische Romane und Erzählungen": [novel, historical]
+  "Geschichte":                     null          # genre=History/Nonfiction
+  "Reiseberichte":                  null
+  "Reiseerzählungen":               null
+  "Reiseliteratur":                 null
+  "Gelegenheitsschrift":            null
+  "Krimis":                         null
+  "Gesellschaft":                   null
+  "Erbauungsliteratur":             null
+  "Bildungsroman":                  bildungsroman
+  "Jugendliteratur":                null
+  "Spannung und Abenteuer":         null
+  "Kolportageliteratur":            null
+  "Philosophie":                    null
+  "Theologie":                      null
+  "Geographie":                     null
+  "Jura":                           null
+  "Biologie":                       null
+  "Historiographie":                null
+  "Medizin":                        null
+  "Psychologie":                    null
+  "Natur":                          null
+  "Kunstgeschichte":                null
+  "Technik":                        null
+  "Ökonomie":                       null
+  "Politik":                        null
+  "Physik":                         null
+  "Sprachwissenschaft":             null
+  "Mathematik":                     null
+  "Chemie":                         null
+  "Astronomie":                     null
+  "Philologie":                     null
+  "Literaturwissenschaft":          null
+  "Naturgeschichte":                null
+
+  # Skip — redundant with GENRE_VOCAB (genre column already captures these)
+  "FanFiction":      null
+  "Proclamation":    null
+  "Travel":          null          # genre=Nonfiction; use imaginary voyage for fiction travel
+  "Sermon":          null
+  "Treatise":        null
+  "Legal":           null
+  "Academic":        null
+  "Spoken":          null
+  "Letters":         null
+  "Letter":          null
+  "Magazine":        null
+  "News":            null
+  "Journal":         null
+  "Periodical":      null
+  "Almanac":         null
+  "Speech":          null
+  "Essay":           null          # genre=Essay already
+  "Review":          null
+  "Obituary":        null
+  "Recipe":          null
+  "Catalogue":       null
+  "Map":             null
+  "Music":           null
+  "Cookery":         null
+  "Dictionary":      null
+  "Grammar/Textbook": null
+  "Petition/Address": null
+  "General Information": null
+  "Back Matter":     null
+  "Front Matter":    null
+  "Correspondence":  null
+  "Juvenile":        null
+  "Genealogy":       null
+  "Medical":         null
+  "Advertisement":   null
+  "Catechism":       null
+  "Lecture":         null
+  "Trial":           null
+
+  # Skip — too generic, redundant with genre=Fiction, or non-fiction
+  "Fiction":         null
+  "Narrative":       null
+  "Nonfiction":      null
+  "History":         null
+  "Story":           null
+  "Novel fiction":   null
+  "Didactic":        null
+  "Religious":       null
+  "Historical":      historical
+  "Miscellanies":    null
+  "Essay":           null
+  "Drama":           drama
+  "Poetry":          null          # genre=Poetry
+  "Poem":            null
+  "Poems":           null
+  "Poetical":        null
+  "Biography":       biography
+  "Novel, amorous":  [novel, amatory]
+  "Tale, misogynist": tale
+  "Tale, fairy":     tale
+  "Tale, ghost":     tale
+  "Tale, jestbook":  [tale, jestbook]
+  "Tale, novella":   [tale, novella]
+  "Novel, memorial": novel
+  "Novel, miscellany": novel
+  "Novel, collection": novel
+  "Novel, anecdotal": novel
+  "Romance, frame narrative": romance
+  "Romance, descriptive": romance
+  "Romance, prose":  romance
+  "Romance, amorous": [romance, amatory]
+  "Novel, memoir":   novel
+  "Novel, political": [novel, political]
+  "Novel, religious": [novel, religious]
+  "Novel, psychological": [novel, psychological]
+  "Novel, comic":    [novel, comic]
+  "Novel, didactic": [novel, didactic]
+  "Novel, oriental": [novel, oriental]
+  "Novel, satire":   [novel, satire]
+  "Novel, scandal":  [novel, scandal]
+  "Novel, picaresque": [novel, picaresque]
+  "Novel, sentimental": [novel, sentimental]
+  "Novel, historical": [novel, historical]
+  "Novel, amatory":  [novel, amatory]
+  "Novel, epistolary": [novel, epistolary]
+  "Romance, sentimental": [romance, sentimental]
+  "Romance, biblical": [romance, biblical]
+  "Romance, religious": [romance, religious]
+  "Romance, oriental": [romance, oriental]
+  "Romance, comic":  [romance, comic]
+  "Romance, satirical": [romance, satirical]
+  "Romance, didactic": [romance, didactic]
+  "Romance, classical": [romance, classical]
+  "Romance, legendary": [romance, legendary]
+  "Romance, historical": [romance, historical]
+  "Romance, gallant": [romance, gallant]
+  "Romance, chivalric": [romance, chivalric]
+  "Romance, heroic": [romance, heroic]
+  "Romance, pastoral": [romance, pastoral]
+  "Tale, comic":     [tale, comic]
+  "Tale, exemplary": [tale, didactic]
+  "Tale, oriental":  [tale, oriental]
+  "Tale, satirical": [tale, satirical]
+  "Tale, prose":     tale
+  "Tale, amorous":   [tale, amatory]
+  "Tale, allegorical": [tale, allegorical]
+  "Tale, didactic":  [tale, didactic]
+  "Fable, allegorical": [fable, allegorical]
+  "Fable, didactic": [fable, didactic]
+  "Fable, Allegory": [fable, allegory]
+  "Allegory, religious": [allegory, religious]
+  "Allegory, historical": [allegory, historical]
+  "Allegory, economic": allegory
+  "Dialogue, satirical": [dialogue, satirical]
+  "Dialogue, comic": [dialogue, comic]
+  "Dialogue, didactic": [dialogue, didactic]
+  "Pamphlet fiction, satirical": [pamphlet fiction, satirical]
+
+  # LLM output pass-throughs — map or null to keep tag set clean
+  "film":               null
+  "political speech":   null          # genre=Speech
+  "oratory":            null          # genre=Speech
+  "verses":             null          # genre=Poetry
+  "undefined":          null
+  "other":              null
+  "non":                null
+  "acted":              null
+  "silver fork":        novel         # silver-fork novels → novel (subgenre not canonical)
+  "humor":              comic
+  "dramatic":           drama
+  "trial proceedings":  null
+  "science fiction":    null          # genre=Fiction; too broad a cross-period tag
+  "sonnets":            sonnet
+  "odes":               ode
+  "drama comedy":       [drama, comedy]
+  "scandalous":         scandal
+  "sensation":          null          # sensation fiction → handled by novel/register
+  "industrial":         null
+  "national":           null
+  "anti-jacobin":       null          # too specific / political, not generic genre
+  "moral":              null
+  "juvenilia":          null
+  "it narrative":       it-narrative  # variant spelling (no hyphen)
+  "newgate":            criminal biography
+  "nautical":           null
+  "horror":             null
+  "erotic":             amatory
+  "adventure":          null
+  "political satire":   [satire, political]
+  "school story":       null
+  "short story":        tale
+  "courtship":          null
+  "fictionalized":      null
+  "epistolary fiction": epistolary
+  "beast fable":        fable
+  "beast epic":         fable
+  "philosophical":      null
+  "autobiographical":   biography
+  "latin":              null          # language, not genre
+  "biographical":       biography
+  "historical romance": [romance, historical]
+  "robinsonade":        imaginary voyage
+  "travel narrative":   null
+  "adventurous":        null
+  "metafictional":      null
+  "historical memoir":  null
+  "ancient":            null
+  "educational":        null
+  "prose fiction":      novel
+  "irish life":         null
+  "fictional":          null
+  "byzantine":          null
+  "anthology":          null
+  "parody":             satire
+  "travel literature":  null
+  "translation":        null
+  "comical":            comic
+  "tale collection":    tale
+  "moralistic":         didactic
+  "epistolary (implied)": epistolary
+  "travelogue":         null
+  "sensational":        null
+  "novella cycle":      novella
+  "autobiography":      biography
+  "voyage":             imaginary voyage
+  "almanack":           null
+  "moral history":      null
+  "anti-heroic":        null
+  "ghost story":        tale
+  "social":             null
+  "political intrigue": null
+  "political prose":    null
+  "scandalous memoirs": null
+  "conduct book":       null
+  "funeral sermons":    null
+  "discursive":         null
+  "gallantries":        null
+  "sporting":           null
+  "gothic":             gothic
+  "new woman":          null
+  "fictional txtnarration": novel     # typo variant of "Fictional Narration"
+  "fictional txtdialogue":  dialogue  # typo variant of "Fictional Dialogue"
+  "didactic work (excluding language teaching)": didactic
+  "miscellaneous text types": null
+  "witness deposition": null
+  "language teaching handbook: french": null
+  "language teaching handbook: english": null
+  "religion":                   null          # genre=Nonfiction/Sermon
+  "historische kriminalromane und -fälle": null
+  "praktisches":                null
+  "phantastische literatur":    null
+  "memoirs":                    null
+  "pseudo-memoir":              novel
+  "exemplary":                  didactic
+  "artisanal":                  null
+  "dream vision":               allegory
+  "euphuistic":                 null
+  "conduct fiction":            null
+  "italian":                    null          # language, not genre
+  "scandal chronicle":          scandal
+  "prose tale":                 tale
+  "artisan":                    null
+  "pseudo-autobiographical":    novel
+  "beast allegory":             [fable, allegorical]
+  "ethnographic":               null
+  "autobiographical memoir":    biography
+  "repentance":                 null
