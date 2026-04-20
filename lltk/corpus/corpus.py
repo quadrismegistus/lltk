@@ -1304,6 +1304,52 @@ class BaseCorpus(TextList):
 
     def preprocess_misc(self): pass
 
+    def preprocess_gzip_txt(self, verbose=True, force=False, num_proc=DEFAULT_NUM_PROC, **attrs):
+        """Gzip all .txt files under path_txt in-place, updating ext_txt to .txt.gz.
+
+        Not in PREPROC_CMDS defaults — run explicitly with --parts gzip_txt.
+        Safe to re-run: skips files that are already .txt.gz unless force=True.
+        """
+        import gzip as _gzip
+        from lltk.tools.tools import get_tqdm
+
+        txt_root = self.path_txt
+        if not txt_root or not os.path.isdir(txt_root):
+            if log: log(f'[{self.name}] path_txt not found: {txt_root}')
+            return
+
+        txt_files = [
+            os.path.join(root, fn)
+            for root, _, files in os.walk(txt_root)
+            for fn in files
+            if fn.endswith('.txt')
+        ]
+        if not txt_files:
+            if log: log(f'[{self.name}] No .txt files found under {txt_root}')
+            return
+
+        if log: log(f'[{self.name}] Gzipping {len(txt_files):,} .txt files...')
+
+        def _gzip_file(path):
+            gz_path = path + '.gz'
+            if os.path.exists(gz_path) and not force:
+                os.remove(path)
+                return
+            with open(path, 'rb') as f_in:
+                with _gzip.open(gz_path, 'wb') as f_out:
+                    f_out.write(f_in.read())
+            os.remove(path)
+
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=int(num_proc)) as pool:
+            list(get_tqdm(
+                pool.map(_gzip_file, txt_files),
+                total=len(txt_files),
+                desc=f'[{self.name}] gzip_txt',
+            ))
+
+        if log: log(f'[{self.name}] Done. Update manifest: ext_txt = .txt.gz')
+
     def has_data(self,part):
 
         ppart=f'path_{part}'

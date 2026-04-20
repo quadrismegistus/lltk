@@ -149,6 +149,17 @@ CLICKHOUSE_SCHEMA = {
         ORDER BY _id
     """,
 
+    'text_genre_tags': """
+        CREATE TABLE IF NOT EXISTS {db}.text_genre_tags (
+            _id     String,
+            tag     LowCardinality(String),
+            facet   LowCardinality(String),
+            tagged_at DateTime DEFAULT now()
+        )
+        ENGINE = MergeTree()
+        ORDER BY (tag, _id)
+    """,
+
     'text_translations': """
         CREATE TABLE IF NOT EXISTS {db}.text_translations (
             _id              String,

@@ -62,6 +62,10 @@ def main():
 	p_db_matches = subparsers.add_parser('db-matches', help='Search for matches by title')
 	p_db_matches.add_argument('query', help='Title search string')
 
+	# db-tag-genres
+	p_db_tg = subparsers.add_parser('db-tag-genres',
+		help='Materialize lltk.text_genre_tags from annotations genre_raw via facets.yml')
+
 	# db enrich-genres
 	p_db_enrich = subparsers.add_parser('db-enrich-genres', help='Propagate genre from bibliography corpora via match groups')
 
@@ -314,6 +318,12 @@ def main():
 
 	elif args.cmd == 'db-wordcounts':
 		lltk.db.wordcounts(num_proc=args.jobs)
+
+	elif args.cmd == 'db-tag-genres':
+		from lltk.tools.genre_tags import build_genre_tags
+		from lltk.tools.db_adapter import get_adapter
+		ch = get_adapter('clickhouse://lltk:lltk@localhost:8123/lltk')
+		build_genre_tags(ch)
 
 	elif args.cmd == 'db-enrich-genres':
 		stats = lltk.db.enrich_genres()

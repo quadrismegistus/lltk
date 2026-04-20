@@ -506,87 +506,86 @@ def disagreements(field: str, min_sources: int = 2) -> pd.DataFrame:
 # migrates to Path A (writing through lltk.annotations directly).
 
 def mirror_genres_from_texts(run_id: str = 'mirror:genre',
+                             genre_raw_run_id: str = 'mirror:genre_raw',
                              replace: bool = True,
                              batch_size: int = 50_000) -> int:
-    """Populate `lltk.annotations` with genre rows from `lltk.texts`.
+    """Populate `lltk.annotations` with genre + genre_raw rows from `lltk.texts`.
 
-    Source mapping:
-      genre_enriched_source = 'corpus'              → 'corpus:<corpus_id>'
-      genre_enriched_source = 'bibliography:...'    → pass-through
-      genre_enriched_source = '' (baseline)         → 'corpus:<corpus_id>'
+    genre source mapping:
+      genre_enriched_source = 'bibliography:...'  → pass-through
+      genre_enriched_source = '' / 'corpus'       → 'corpus:<corpus_id>'
+      other                                        → pass-through
 
-    Rows with empty genre are skipped (nothing to annotate).
+    genre_raw source: always 'corpus:<corpus_id>' (no enriched_source for raw).
 
-    If `replace=True` (default), prior rows with the same `run_id` are
-    deleted via `ALTER TABLE DELETE` first so re-mirroring stays
-    idempotent. Otherwise simply appends.
+    Rows with empty values are skipped. If `replace=True` (default), prior
+    rows with the same run_ids are deleted first (idempotent).
 
-    Returns the number of rows written.
+    Returns total rows written (genre + genre_raw combined).
     """
     adapter, db = _db()
 
-    # Delete previous mirror run synchronously so argMax across versions
-    # sees only fresh data. CH ALTER DELETE is async by default — force sync.
     if replace:
-        adapter.execute(
-            f"ALTER TABLE {db}.annotations DELETE "
-            f"WHERE run_id = '{_sql_escape(run_id)}' AND field = 'genre' "
-            f"SETTINGS mutations_sync=1"
-        )
+        for rid, field in [(run_id, 'genre'), (genre_raw_run_id, 'genre_raw')]:
+            adapter.execute(
+                f"ALTER TABLE {db}.annotations DELETE "
+                f"WHERE run_id = '{_sql_escape(rid)}' AND field = '{field}' "
+                f"SETTINGS mutations_sync=1"
+            )
 
-    # Pull rows in a single streaming query — CH handles the LowCardinality
-    # dedup for us, and we only need 4 cols per row (~100MB at 2M rows).
     now = datetime.now()
     rows_df = adapter.query_df(f"""
-        SELECT
-            _id,
-            corpus,
-            genre,
-            genre_enriched_source
+        SELECT _id, corpus, genre, genre_raw, genre_enriched_source
         FROM {db}.texts FINAL
-        WHERE genre != ''
+        WHERE genre != '' OR genre_raw != ''
     """)
     if not len(rows_df):
         return 0
 
-    # Build source label per row, then track which sources appeared so we
-    # can auto-register the corpus:* ones.
     def _source_of(ges, corpus):
         if ges and ges.startswith('bibliography:'):
             return ges
         if ges in ('', 'corpus'):
             return f'corpus:{corpus}'
-        # Unknown provenance — pass through as-is (captures heuristic /
-        # authority_corpus / any future tags).
         return ges
 
-    sources = [
+    genre_sources = [
         _source_of(ges, c)
         for ges, c in zip(rows_df['genre_enriched_source'], rows_df['corpus'])
     ]
-    unique_sources = set(sources)
-    existing = {
-        r[0] for r in adapter.query(
-            f"SELECT source FROM {db}.annotation_sources FINAL"
-        )
-    }
+    raw_sources = [f'corpus:{c}' for c in rows_df['corpus']]
+
+    # Auto-register any new corpus:* sources
+    unique_sources = set(genre_sources) | set(raw_sources)
+    existing = {r[0] for r in adapter.query(f"SELECT source FROM {db}.annotation_sources FINAL")}
     for s in unique_sources - existing:
         register_source(s)
 
-    # Batch insert. Each row becomes (_id, 'genre', value, source, run_id,
-    # annotated_at, confidence=1.0, meta='{}').
+    cols = ['_id', 'field', 'value', 'source', 'run_id', 'annotated_at', 'confidence', 'meta']
+    ids_list      = rows_df['_id'].tolist()
+    genre_list    = rows_df['genre'].tolist()
+    raw_list      = rows_df['genre_raw'].tolist()
+
     total = 0
-    cols = ['_id', 'field', 'value', 'source', 'run_id',
-            'annotated_at', 'confidence', 'meta']
-    ids_list = rows_df['_id'].tolist()
-    genre_list = rows_df['genre'].tolist()
-    for i in range(0, len(rows_df), batch_size):
-        end = i + batch_size
-        chunk = [
-            [ids_list[j], 'genre', genre_list[j], sources[j], run_id,
-             now, 1.0, '{}']
-            for j in range(i, min(end, len(rows_df)))
-        ]
+
+    # genre pass
+    genre_rows = [
+        [ids_list[j], 'genre', genre_list[j], genre_sources[j], run_id, now, 1.0, '{}']
+        for j in range(len(rows_df)) if genre_list[j]
+    ]
+    for i in range(0, len(genre_rows), batch_size):
+        chunk = genre_rows[i:i + batch_size]
         adapter.client.insert(f'{db}.annotations', chunk, column_names=cols)
         total += len(chunk)
+
+    # genre_raw pass
+    raw_rows = [
+        [ids_list[j], 'genre_raw', raw_list[j], raw_sources[j], genre_raw_run_id, now, 1.0, '{}']
+        for j in range(len(rows_df)) if raw_list[j]
+    ]
+    for i in range(0, len(raw_rows), batch_size):
+        chunk = raw_rows[i:i + batch_size]
+        adapter.client.insert(f'{db}.annotations', chunk, column_names=cols)
+        total += len(chunk)
+
     return total

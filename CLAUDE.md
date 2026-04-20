@@ -209,7 +209,14 @@ All values stored as `String`; `field_spec['type']` documents the encoding (`boo
 - Empty string `''` = "explicitly unknown" on nullable fields (distinct from "no one looked" which just means no row exists for `(_id, field)`).
 - `confidence` default = 1.0.
 - `run_id` default = `f"{source}:{date.today().isoformat()}"`.
-- `meta` = JSON blob for free-form extensions (prompt fingerprint, tool version).
+- `meta` = JSON blob for free-form extensions. Canonical pattern for LLM tasks:
+  ```python
+  meta={'prompt_variant': 'subgenre_override',   # semantic label
+        'sp_sha256_12': '85af95161e54',           # first 12 chars of SHA-256 of raw system prompt — exact-content guarantee
+        'sp_len': 3068,                           # raw system prompt char length — human-readable sanity check
+        'n_examples': 5}                          # number of few-shot examples
+  ```
+  `sp_len` should be the **raw constant length**, not the assembled prompt (which includes examples and is keyed differently by HashStash). Use all three (`prompt_variant` + `sp_sha256_12` + `sp_len`) for concentric filter power: semantic label for quick grouping, hash for exact identity, len as a sanity check. Known hashes: `85af95161e54` = SUBGENRE_SYSTEM_PROMPT v1 (arc_fiction pre-1800 subgenre task).
 
 **Writer conventions**:
 - lltk-internal writers: use specific sources from `DEFAULT_SOURCES` (e.g. `'heuristic'` for ESTC-form rules, `'bibliography:fiction_biblio'` for authority propagation).

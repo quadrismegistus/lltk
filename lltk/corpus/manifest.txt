@@ -31,6 +31,27 @@ class_name = FrenchPDBooks
 public = metadata,txt
 license_type = Public Domain
 
+[ImpactES]
+id = impact_es
+name = ImpactES
+desc = IMPACT-es Spanish historical corpus (BVC + GT sections), TEI XML
+link = https://www.digitisation.eu/knowledge/language-resources/impact-es-2/
+path_python = impact_es/impact_es.py
+class_name = ImpactES
+ext_xml = .xml
+license_type = CC BY-SA / CC BY-NC-SA
+
+[SpanishPDBooks]
+id = spanish_pd_books
+name = SpanishPDBooks
+desc = Spanish public domain books (via HuggingFace, PleIAs)
+link = https://huggingface.co/datasets/PleIAs/Spanish-PD-Books
+path_python = spanish_pd_books/spanish_pd_books.py
+class_name = SpanishPDBooks
+public = metadata,txt
+license_type = Public Domain
+ext_txt = .txt.gz
+
 [GallicaLiteraryFictions]
 id = gallica_literary_fictions
 name = GallicaLiteraryFictions
