@@ -21,6 +21,9 @@ classifiers = [
 ]
 dynamic = ["dependencies"]
 
+[project.optional-dependencies]
+analysis = ["scipy>=1.9"]
+
 [project.urls]
 Homepage = "https://github.com/quadrismegistus/lltk"
 
