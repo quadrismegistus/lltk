@@ -134,7 +134,7 @@ def fisher_tests(
             g_prefix = _task_prefix(g_col_name)
             candidate_feats = [
                 (fi, fc) for fi, fc in enumerate(feat_cols)
-                if fi != gi and (
+                if fi > gi and (
                     not cross_task_pairs_only
                     or _task_prefix(fc) != g_prefix
                 )
