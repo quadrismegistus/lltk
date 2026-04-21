@@ -127,7 +127,7 @@ def fisher_tests(
 
     if include_feature_pairs:
         def _task_prefix(col):
-            return col.split(':')[0] if ':' in col else col
+            return col.split('.')[0] if '.' in col else col
 
         for gi, g_col_name in enumerate(feat_cols):
             g_vec = feat_arr[:, gi:gi+1]  # keep as column
