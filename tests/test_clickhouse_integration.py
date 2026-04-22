@@ -6,13 +6,14 @@ arrayMap, annotation priority resolution — without a running server.
 """
 
 import pytest
-import pyarrow as pa
 
 try:
     import chdb  # noqa: F401
+    import pyarrow as pa
     _HAS_CHDB = True
 except ImportError:
     _HAS_CHDB = False
+    pa = None
 
 needs_chdb = pytest.mark.skipif(not _HAS_CHDB, reason='chdb not installed')
 
