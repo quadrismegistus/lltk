@@ -190,6 +190,140 @@ class ClickHouseAdapter(DBAdapter):
         self.client.close()
 
 
+class ChDBAdapter(DBAdapter):
+    """In-process ClickHouse via chdb — same SQL dialect, no server needed.
+
+    Intended for tests: full MergeTree/RMT/FINAL semantics without a running
+    ClickHouse instance. Exposes a `.client` shim so code that calls
+    `adapter.client.insert()` / `insert_arrow()` / `command()` works unchanged.
+    """
+
+    def __init__(self, database='lltk'):
+        from chdb import session as chdb_session
+        self._session = chdb_session.Session()
+        self.database = database
+        self.host = 'chdb'
+        self.port = 0
+        self.username = 'default'
+        self._password = ''
+        self._session.query(f'CREATE DATABASE IF NOT EXISTS {database}')
+        self._session.query("SET enable_full_text_index = 1")
+        self.client = self._ChDBClient(self._session, database)
+
+    class _ChDBClient:
+        """Minimal shim matching the clickhouse-connect client methods used by LLTK."""
+
+        def __init__(self, session, database):
+            self._session = session
+            self._database = database
+
+        def command(self, sql, parameters=None, settings=None):
+            self._session.query(sql)
+
+        def insert(self, table, data, column_names=None, settings=None):
+            if not data:
+                return
+            tbl = table if '.' in table else f'{self._database}.{table}'
+            cols = f"({', '.join(column_names)})" if column_names else ''
+            for row in data:
+                vals = ', '.join(self._format_value(v) for v in row)
+                self._session.query(f'INSERT INTO {tbl} {cols} VALUES ({vals})')
+
+        def insert_arrow(self, table, arrow_table):
+            import pyarrow as pa
+            tbl = table if '.' in table else f'{self._database}.{table}'
+            cols = arrow_table.column_names
+            col_clause = f"({', '.join(cols)})"
+            for batch in arrow_table.to_batches():
+                for row_idx in range(batch.num_rows):
+                    vals = []
+                    for col_name in cols:
+                        v = batch.column(col_name)[row_idx].as_py()
+                        vals.append(self._format_value(v))
+                    self._session.query(
+                        f"INSERT INTO {tbl} {col_clause} VALUES ({', '.join(vals)})"
+                    )
+
+        def query(self, sql, parameters=None):
+            import pandas as pd
+            r = self._session.query(sql, 'ArrowStream')
+            if r is None or r.bytes() == b'':
+                return type('R', (), {'result_rows': []})()
+            tbl = pa.ipc.open_stream(r.bytes()).read_all()
+            rows = [tuple(r) for r in tbl.to_pydict().values()]
+            if rows:
+                rows = list(zip(*rows))
+            return type('R', (), {'result_rows': rows})()
+
+        def query_df(self, sql, parameters=None):
+            import pandas as pd
+            r = self._session.query(sql, 'ArrowStream')
+            if r is None or r.bytes() == b'':
+                return pd.DataFrame()
+            import pyarrow as pa
+            tbl = pa.ipc.open_stream(r.bytes()).read_all()
+            return tbl.to_pandas()
+
+        def close(self):
+            pass
+
+        @staticmethod
+        def _format_value(v):
+            if v is None:
+                return 'NULL'
+            if isinstance(v, str):
+                return "'" + v.replace("\\", "\\\\").replace("'", "\\'") + "'"
+            if isinstance(v, bool):
+                return '1' if v else '0'
+            if isinstance(v, (int, float)):
+                return str(v)
+            if isinstance(v, list):
+                inner = ', '.join(ChDBAdapter._ChDBClient._format_value(x) for x in v)
+                return f'[{inner}]'
+            return str(v)
+
+    @property
+    def engine(self):
+        return 'clickhouse'
+
+    def execute(self, sql, params=None):
+        self._session.query(sql)
+
+    def query(self, sql, params=None):
+        r = self._session.query(sql, 'CSV')
+        if r is None or r.bytes() == b'':
+            return []
+        import csv, io
+        reader = csv.reader(io.StringIO(r.bytes().decode()))
+        return [tuple(row) for row in reader]
+
+    def query_df(self, sql, params=None):
+        import pandas as pd
+        r = self._session.query(sql, 'ArrowStream')
+        if r is None or r.bytes() == b'':
+            return pd.DataFrame()
+        import pyarrow as pa
+        tbl = pa.ipc.open_stream(r.bytes()).read_all()
+        return tbl.to_pandas()
+
+    def insert_parquet(self, table, path_or_glob):
+        raise NotImplementedError('ChDBAdapter does not support insert_parquet')
+
+    def table_exists(self, name):
+        if '.' in name:
+            schema, tbl = name.split('.', 1)
+        else:
+            schema, tbl = self.database, name
+        r = self._session.query(
+            f"SELECT 1 FROM system.tables WHERE database = '{schema}' AND name = '{tbl}'",
+            'CSV',
+        )
+        return r is not None and r.bytes() != b''
+
+    def close(self):
+        pass
+
+
 def get_adapter(url: str = None) -> DBAdapter:
     """Return a DBAdapter from a URL or the LLTK_DB_URL env var.
 
@@ -229,4 +363,8 @@ def get_adapter(url: str = None) -> DBAdapter:
             username=username, password=password,
         )
 
-    raise ValueError(f'Unknown DB URL scheme: {scheme!r}. Use duckdb:// or clickhouse://')
+    if scheme == 'chdb':
+        database = parsed.path.lstrip('/') or 'lltk'
+        return ChDBAdapter(database=database)
+
+    raise ValueError(f'Unknown DB URL scheme: {scheme!r}. Use duckdb://, clickhouse://, or chdb://')

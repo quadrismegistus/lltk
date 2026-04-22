@@ -140,14 +140,6 @@ def build_embeddings_ch(adapter, model_name: str = DEFAULT_MODEL,
             log('[embed] All texts already embedded.')
         return 0
 
-    # Check passage count
-    n_passages_total = adapter.query_df(
-        f"SELECT count() as n FROM lltk.passages "
-        f"WHERE {where_sql} "
-        f"AND _id IN (SELECT _id FROM lltk.passages "
-        f"WHERE {where_sql} GROUP BY _id)"
-    )
-
     if log:
         log(f'[embed] {len(all_text_ids)} texts to embed '
             f'(model={model_short}, device={device})')
