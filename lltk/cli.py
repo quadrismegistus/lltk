@@ -65,6 +65,10 @@ def main():
 	# db-tag-genres
 	p_db_tg = subparsers.add_parser('db-tag-genres',
 		help='Materialize lltk.text_genre_tags from annotations genre_raw via facets.yml')
+	p_db_tg.add_argument('--no-recognition', action='store_true',
+		help='Disable recognition gating (include all LLM sources regardless of author/year match)')
+	p_db_tg.add_argument('--min-sources', type=int, default=1,
+		help='Minimum number of sources agreeing on a tag (default: 1)')
 
 	# db enrich-genres
 	p_db_enrich = subparsers.add_parser('db-enrich-genres', help='Propagate genre from bibliography corpora via match groups')
@@ -119,6 +123,16 @@ def main():
 	p_db_embed.add_argument('--force', action='store_true', help='Rebuild from scratch')
 	p_db_embed.add_argument('corpora', nargs='*', default=None,
 		help='Corpus IDs (default: all texts with passages)')
+
+	# db-match-embeddings
+	p_db_me = subparsers.add_parser('db-match-embeddings',
+		help='Find duplicate/translation candidates via embedding cosine similarity')
+	p_db_me.add_argument('--threshold', type=float, default=0.998,
+		help='Minimum cosine similarity for a match (default: 0.998)')
+	p_db_me.add_argument('--same-corpus', action='store_true',
+		help='Include same-corpus pairs (default: cross-corpus only)')
+	p_db_me.add_argument('--model', default='multilingual-e5-large',
+		help='Embedding model short name (default: multilingual-e5-large)')
 
 	# db wordcounts
 	p_db_wc = subparsers.add_parser('db-wordcounts', help='Compute word counts from freqs files')
@@ -341,7 +355,8 @@ def main():
 		from lltk.tools.genre_tags import build_genre_tags
 		from lltk.tools.db_adapter import get_adapter
 		ch = get_adapter('clickhouse://lltk:lltk@localhost:8123/lltk')
-		build_genre_tags(ch)
+		build_genre_tags(ch, recognized_only=not args.no_recognition,
+		                 min_sources=args.min_sources)
 
 	elif args.cmd == 'db-enrich-genres':
 		stats = lltk.db.enrich_genres()
@@ -396,6 +411,13 @@ def main():
 			encode_batch_size=args.encode_batch_size,
 			corpora=args.corpora or None,
 			force=args.force,
+		)
+
+	elif args.cmd == 'db-match-embeddings':
+		lltk.db.match_embeddings(
+			model=args.model,
+			threshold=args.threshold,
+			same_corpus=args.same_corpus,
 		)
 
 	elif args.cmd == 'db-wordindex':

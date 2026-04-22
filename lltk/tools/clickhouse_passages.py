@@ -140,8 +140,8 @@ def build_passages_ch(adapter, n: int = 500, num_proc: int | None = None,
         # Expand to all _ids sharing a match group with any done text —
         # avoids ingesting duplicate passages from different corpora
         group_df = adapter.query_df("""
-            SELECT DISTINCT mg._id
-            FROM lltk.match_groups FINAL AS mg
+            SELECT DISTINCT _id
+            FROM (SELECT * FROM lltk.match_groups FINAL) mg
             WHERE mg.group_id IN (
                 SELECT group_id FROM lltk.match_groups FINAL
                 WHERE _id IN (SELECT _id FROM lltk.passages_meta FINAL)

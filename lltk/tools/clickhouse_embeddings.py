@@ -100,8 +100,8 @@ def build_embeddings_ch(adapter, model_name: str = DEFAULT_MODEL,
     if done_ids:
         # Expand via match groups (same pattern as passages)
         group_df = adapter.query_df("""
-            SELECT DISTINCT mg._id
-            FROM lltk.match_groups FINAL AS mg
+            SELECT DISTINCT _id
+            FROM (SELECT * FROM lltk.match_groups FINAL) mg
             WHERE mg.group_id IN (
                 SELECT group_id FROM lltk.match_groups FINAL
                 WHERE _id IN (SELECT _id FROM lltk.passage_embeddings_meta FINAL)
@@ -307,6 +307,105 @@ def similar_texts_ch(adapter, _id: str,
             'lang': m.get('lang', ''),
         })
     return results
+
+
+def match_by_embeddings_ch(adapter, model: str = 'multilingual-e5-large',
+                           scheme: str = 'p500', threshold: float = 0.998,
+                           same_corpus: bool = False,
+                           batch_size: int = 500,
+                           progress: bool = True) -> int:
+    """Find duplicate/translation candidates via mean-pooled cosine similarity.
+
+    Inserts cross-corpus pairs above `threshold` into lltk.matches as
+    match_type='embedding_similarity', then recomputes match_groups.
+    Returns number of new match pairs inserted.
+    """
+    import numpy as np
+    import pandas as pd
+    import pyarrow as pa
+    from lltk.tools.tools import get_tqdm
+
+    print(f'[match-embed] Loading embeddings (model={model}, scheme={scheme})...')
+    df = adapter.query_df(f"""
+        SELECT _id, groupArray(embedding) as embeddings
+        FROM lltk.passage_embeddings
+        WHERE model = '{_escape(model)}' AND scheme = '{_escape(scheme)}'
+        GROUP BY _id
+    """)
+    if not len(df):
+        print('[match-embed] No embeddings found.')
+        return 0
+
+    ids = df['_id'].tolist()
+    n_texts = len(ids)
+    print(f'[match-embed] {n_texts:,} texts loaded. Mean-pooling...')
+
+    vecs = []
+    for embs in df['embeddings']:
+        arr = np.array(embs, dtype=np.float32)
+        m = arr.mean(axis=0)
+        n = np.linalg.norm(m)
+        vecs.append(m / n if n > 0 else m)
+    matrix = np.stack(vecs)
+
+    if not same_corpus:
+        meta_df = adapter.query_df(
+            "SELECT _id, corpus FROM lltk.texts FINAL "
+            "WHERE _id IN (SELECT DISTINCT _id FROM lltk.passage_embeddings)"
+        )
+        id_to_corpus = dict(zip(meta_df['_id'], meta_df['corpus']))
+    else:
+        id_to_corpus = {}
+
+    existing = set()
+    exist_df = adapter.query_df(
+        "SELECT _id_a, _id_b FROM lltk.matches FINAL "
+        "WHERE match_type = 'embedding_similarity'"
+    )
+    if len(exist_df):
+        for _, r in exist_df.iterrows():
+            existing.add((r['_id_a'], r['_id_b']))
+
+    print(f'[match-embed] Computing pairwise similarities (threshold={threshold})...')
+    pairs = []
+    iterator = range(0, n_texts, batch_size)
+    if progress:
+        iterator = get_tqdm(iterator, desc='[match-embed] batches')
+
+    for i in iterator:
+        end_i = min(i + batch_size, n_texts)
+        sims = matrix[i:end_i] @ matrix.T
+
+        for bi in range(end_i - i):
+            gi = i + bi
+            candidates = np.where(sims[bi, gi + 1:] >= threshold)[0] + gi + 1
+            for gj in candidates:
+                id_a, id_b = ids[gi], ids[gj]
+                if id_a > id_b:
+                    id_a, id_b = id_b, id_a
+                if (id_a, id_b) in existing:
+                    continue
+                if not same_corpus and id_to_corpus.get(id_a) == id_to_corpus.get(id_b):
+                    continue
+                pairs.append((id_a, id_b, float(sims[bi, gj]),
+                              'embedding_similarity'))
+
+    if not pairs:
+        print('[match-embed] No new pairs above threshold.')
+        return 0
+
+    print(f'[match-embed] Inserting {len(pairs):,} pairs...')
+    pdf = pd.DataFrame(pairs, columns=['_id_a', '_id_b', 'similarity', 'match_type'])
+    pdf = pdf.drop_duplicates(subset=['_id_a', '_id_b'])
+    tbl = pa.Table.from_pandas(pdf, preserve_index=False)
+    adapter.client.insert_arrow('matches', tbl)
+
+    print('[match-embed] Recomputing match groups...')
+    from lltk.tools.clickhouse_match import _compute_match_groups_ch
+    _compute_match_groups_ch(adapter)
+
+    print(f'[match-embed] Done — {len(pdf):,} new pairs inserted.')
+    return len(pdf)
 
 
 def search_embeddings_ch(adapter, query_text: str,

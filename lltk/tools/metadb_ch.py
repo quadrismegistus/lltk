@@ -880,6 +880,15 @@ class MetaDBCH:
             limit=limit, device=device, corpora=corpora, lang=lang,
         )
 
+    def match_embeddings(self, model='multilingual-e5-large', scheme='p500',
+                         threshold=0.998, same_corpus=False):
+        """Insert embedding-based duplicate/translation matches."""
+        from lltk.tools.clickhouse_embeddings import match_by_embeddings_ch
+        return match_by_embeddings_ch(
+            self.adapter, model=model, scheme=scheme,
+            threshold=threshold, same_corpus=same_corpus,
+        )
+
     # ── Legacy shim ─────────────────────────────────────────────────────────
 
     @property

@@ -151,10 +151,11 @@ CLICKHOUSE_SCHEMA = {
 
     'text_genre_tags': """
         CREATE TABLE IF NOT EXISTS {db}.text_genre_tags (
-            _id     String,
-            tag     LowCardinality(String),
-            facet   LowCardinality(String),
-            tagged_at DateTime DEFAULT now()
+            _id        String,
+            tag        LowCardinality(String),
+            facet      LowCardinality(String),
+            recognized UInt8 DEFAULT 1,
+            tagged_at  DateTime DEFAULT now()
         )
         ENGINE = MergeTree()
         ORDER BY (tag, _id)
