@@ -47,7 +47,7 @@ from lltk.tools.vocabs import (
 
 
 # Corpora excluded from DB ingest (too large, not useful as standalone)
-DB_BLACKLIST = {'hathi', 'bighist'}
+DB_BLACKLIST = {'hathi', 'bighist', 'spanish_pd_books'}
 
 # Core columns stored as real columns; everything else goes in meta JSON
 CORE_COLS = ['_id', 'corpus', 'id', 'title', 'author', 'year', 'genre', 'genre_raw', 'lang', 'is_translated', 'title_norm', 'author_norm', 'path_freqs']
