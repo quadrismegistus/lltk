@@ -1,14 +1,14 @@
 """
-Per-text language detection — native-columnar via text_words + stopwords JOIN.
+Per-text language detection — exclusivity-weighted via text_words + freq_words JOIN.
 
-Uses the flat lltk.text_words table (ORDER BY (word, _id)) to pull only rows
-where word is a stopword. The index range scan is sub-second even across
-billions of word-count rows. Per-text total_tokens comes from lltk.text_stats
-(pre-aggregated per-text row).
+Uses frequency-ranked word lists (top 500 per language, from OpenSubtitles)
+with exclusivity weighting: each word's contribution is scaled by 1/N where
+N is the number of languages sharing that word. This strongly discriminates
+between related languages (e.g. Spanish vs French vs Portuguese) that share
+many common function words.
 
-Compared to the old Map-lookup approach (1732 freqs[word] lookups per row,
-required scanning the full 28 GB freqs Map column): orders of magnitude
-faster.
+The flat lltk.text_words table (ORDER BY (word, _id)) makes the JOIN
+sub-second via index range scans even across billions of word-count rows.
 """
 
 import time
@@ -19,7 +19,7 @@ def detect_langs_clickhouse(ch_adapter, min_tokens=50,
                              coverage_threshold=0.05,
                              confidence_threshold=2.0,
                              skip_existing=True, progress=True):
-    """Server-side stopword-intersection language detection via text_words.
+    """Server-side weighted language detection via text_words.
 
     Prerequisites: lltk.text_words + lltk.text_stats populated (via
     `lltk db-text-words`). Writes to lltk.text_langs (ReplacingMergeTree).
@@ -40,32 +40,58 @@ def detect_langs_clickhouse(ch_adapter, min_tokens=50,
     """)
     ch_adapter.execute("""
         CREATE TABLE IF NOT EXISTS lltk.stopwords (
-            word LowCardinality(String),
-            lang LowCardinality(String)
+            word   LowCardinality(String),
+            lang   LowCardinality(String),
+            weight Float32 DEFAULT 1.0
         ) ENGINE = MergeTree() ORDER BY word
     """)
 
-    # (Re)populate stopwords
+    # (Re)populate stopwords with weighted frequency words
     lang_to_words = {}
-    for w, lg in function_words_table():
+    word_weights = {}
+    for w, lg, wt in function_words_table():
         lang_to_words.setdefault(lg, []).append(w)
+        word_weights[(w, lg)] = wt
     langs = sorted(lang_to_words.keys())
-    print(f'Detecting across {len(langs)} languages '
-          f'({sum(len(ws) for ws in lang_to_words.values())} stopwords total)')
+    n_total = sum(len(ws) for ws in lang_to_words.values())
+    print(f'Detecting across {len(langs)} languages ({n_total} words total)')
 
     ch_adapter.execute("TRUNCATE TABLE lltk.stopwords")
-    all_words, all_langs = [], []
+    all_words, all_langs, all_weights = [], [], []
     for lg, ws in lang_to_words.items():
         for w in ws:
             all_words.append(w)
             all_langs.append(lg)
-    ch_adapter.client.insert_arrow(
-        'stopwords',
-        pa.Table.from_arrays(
-            [pa.array(all_words), pa.array(all_langs)],
-            names=['word', 'lang'],
-        ),
-    )
+            all_weights.append(word_weights[(w, lg)])
+
+    # Check if stopwords table has weight column; if not, recreate
+    try:
+        ch_adapter.client.insert_arrow(
+            'stopwords',
+            pa.Table.from_arrays(
+                [pa.array(all_words), pa.array(all_langs),
+                 pa.array(all_weights, type=pa.float32())],
+                names=['word', 'lang', 'weight'],
+            ),
+        )
+    except Exception:
+        # Old schema without weight column — recreate
+        ch_adapter.execute("DROP TABLE IF EXISTS lltk.stopwords")
+        ch_adapter.execute("""
+            CREATE TABLE lltk.stopwords (
+                word   LowCardinality(String),
+                lang   LowCardinality(String),
+                weight Float32 DEFAULT 1.0
+            ) ENGINE = MergeTree() ORDER BY word
+        """)
+        ch_adapter.client.insert_arrow(
+            'stopwords',
+            pa.Table.from_arrays(
+                [pa.array(all_words), pa.array(all_langs),
+                 pa.array(all_weights, type=pa.float32())],
+                names=['word', 'lang', 'weight'],
+            ),
+        )
 
     # Sanity: text_words populated?
     n_text_words = ch_adapter.query("SELECT count() FROM lltk.text_words")[0][0]
@@ -86,9 +112,9 @@ def detect_langs_clickhouse(ch_adapter, min_tokens=50,
         already = 0
         skip_sql = ''
 
-    # Per-language hit sums via JOIN (index-prunes text_words to stopword rows)
+    # Per-language weighted hit sums via JOIN
     sumif_cols = ',\n           '.join(
-        f"sumIf(tw.count, sw.lang = '{lg}') AS {lg}_hits"
+        f"sumIf(tw.count * sw.weight, sw.lang = '{lg}') AS {lg}_hits"
         for lg in langs
     )
     hits_arr = '[' + ', '.join(f'{lg}_hits' for lg in langs) + ']'
@@ -145,7 +171,6 @@ def detect_langs_clickhouse(ch_adapter, min_tokens=50,
     from lltk.tools.tools import get_tqdm
     qid = str(uuid.uuid4())
 
-    # Count via text_stats (one row per _id) — avoids a 18B-row DISTINCT scan
     stats_skip = (
         "WHERE _id NOT IN (SELECT _id FROM lltk.text_langs)"
         if skip_existing else ""
