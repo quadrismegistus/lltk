@@ -280,6 +280,11 @@ class ChDBAdapter(DBAdapter):
             if isinstance(v, list):
                 inner = ', '.join(ChDBAdapter._ChDBClient._format_value(x) for x in v)
                 return f'[{inner}]'
+            from datetime import datetime, date
+            if isinstance(v, datetime):
+                return f"'{v.strftime('%Y-%m-%d %H:%M:%S')}'"
+            if isinstance(v, date):
+                return f"'{v.isoformat()}'"
             return str(v)
 
     @property
