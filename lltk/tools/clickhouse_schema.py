@@ -289,6 +289,30 @@ CLICKHOUSE_SCHEMA = {
         ENGINE = ReplacingMergeTree(registered_at)
         ORDER BY source
     """,
+
+    'passage_embeddings': """
+        CREATE TABLE IF NOT EXISTS {db}.passage_embeddings (
+            _id       String,
+            scheme    LowCardinality(String) DEFAULT 'p500',
+            seq       UInt32,
+            model     LowCardinality(String),
+            embedding Array(Float32)
+        )
+        ENGINE = MergeTree()
+        ORDER BY (_id, scheme, seq, model)
+    """,
+
+    'passage_embeddings_meta': """
+        CREATE TABLE IF NOT EXISTS {db}.passage_embeddings_meta (
+            _id         String,
+            scheme      LowCardinality(String) DEFAULT 'p500',
+            model       LowCardinality(String),
+            n_passages  UInt32,
+            embedded_at DateTime DEFAULT now()
+        )
+        ENGINE = ReplacingMergeTree(embedded_at)
+        ORDER BY (_id, scheme, model)
+    """,
 }
 
 # The `annotations_latest` VIEW runs `argMax(value, (priority, annotated_at))`
@@ -334,6 +358,22 @@ ANNOTATIONS_LATEST_VIEW = """
     )
 """
 
+# Per-source latest: dedup within each source (latest annotated_at wins),
+# but keep all sources visible. Use for idempotency checks ("did this LLM
+# source already annotate this _id?") and multi-source comparison.
+ANNOTATIONS_BY_SOURCE_VIEW = """
+    CREATE OR REPLACE VIEW {db}.annotations_by_source AS
+    SELECT
+        a._id AS _id,
+        a.field AS field,
+        a.source AS source,
+        argMax(a.value, a.annotated_at) AS value,
+        argMax(a.confidence, a.annotated_at) AS confidence,
+        max(a.annotated_at) AS annotated_at
+    FROM {db}.annotations AS a
+    GROUP BY a._id, a.field, a.source
+"""
+
 
 def create_all_tables(adapter, database='lltk'):
     """Create every LLTK table on the ClickHouse server via `adapter`.
@@ -348,4 +388,7 @@ def create_all_tables(adapter, database='lltk'):
         adapter.execute(ddl.format(db=database))
     # Views depend on tables existing; run after the table loop.
     adapter.execute(ANNOTATIONS_LATEST_VIEW.format(db=database))
-    return list(CLICKHOUSE_SCHEMA.keys()) + ['annotations_latest (view)']
+    adapter.execute(ANNOTATIONS_BY_SOURCE_VIEW.format(db=database))
+    return list(CLICKHOUSE_SCHEMA.keys()) + [
+        'annotations_latest (view)', 'annotations_by_source (view)',
+    ]

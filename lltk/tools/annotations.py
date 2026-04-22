@@ -326,12 +326,13 @@ def ensure_schema() -> None:
     """Create lltk.annotations + lltk.annotation_sources + the resolver view,
     and seed default source priorities. Idempotent."""
     from lltk.tools.clickhouse_schema import (
-        CLICKHOUSE_SCHEMA, ANNOTATIONS_LATEST_VIEW,
+        CLICKHOUSE_SCHEMA, ANNOTATIONS_LATEST_VIEW, ANNOTATIONS_BY_SOURCE_VIEW,
     )
     adapter, db = _db()
     adapter.execute(CLICKHOUSE_SCHEMA['annotations'].format(db=db))
     adapter.execute(CLICKHOUSE_SCHEMA['annotation_sources'].format(db=db))
     adapter.execute(ANNOTATIONS_LATEST_VIEW.format(db=db))
+    adapter.execute(ANNOTATIONS_BY_SOURCE_VIEW.format(db=db))
     seed_default_sources(overwrite=False)
 
 
@@ -461,6 +462,33 @@ def resolve(ids: Optional[Iterable[str]] = None,
             for v, f in zip(df['value'], df['field'])
         ]
     return df
+
+
+def resolve_by_source(source: str,
+                      ids: Optional[Iterable[str]] = None,
+                      fields: Optional[Iterable[str]] = None) -> pd.DataFrame:
+    """Return the latest annotation per (_id, field) from a single source.
+
+    Use for idempotency checks ("which _ids has this source already annotated?")
+    and for reading one source's values without priority shadowing.
+    """
+    adapter, db = _db()
+    wheres = [f"source = '{_sql_escape(source)}'"]
+    if ids is not None:
+        ids = list(ids)
+        if not ids:
+            return pd.DataFrame(columns=['_id', 'field', 'value', 'confidence', 'annotated_at'])
+        ids_sql = ', '.join(f"'{_sql_escape(i)}'" for i in ids)
+        wheres.append(f"_id IN ({ids_sql})")
+    if fields is not None:
+        fields = list(fields)
+        fields_sql = ', '.join(f"'{_sql_escape(f)}'" for f in fields)
+        wheres.append(f"field IN ({fields_sql})")
+    where_sql = ' AND '.join(wheres)
+    return adapter.query_df(
+        f"SELECT _id, field, value, confidence, annotated_at "
+        f"FROM {db}.annotations_by_source WHERE {where_sql}"
+    )
 
 
 def disagreements(field: str, min_sources: int = 2) -> pd.DataFrame:

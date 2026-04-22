@@ -23,6 +23,7 @@ dynamic = ["dependencies"]
 
 [project.optional-dependencies]
 analysis = ["scipy>=1.9"]
+embeddings = ["sentence-transformers>=2.2", "torch>=2.0"]
 
 [project.urls]
 Homepage = "https://github.com/quadrismegistus/lltk"

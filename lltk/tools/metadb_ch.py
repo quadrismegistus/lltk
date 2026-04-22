@@ -838,6 +838,48 @@ class MetaDBCH:
         from lltk.tools.clickhouse_passages import search_passages_count_ch
         return search_passages_count_ch(self.adapter, query)
 
+    # ── Embeddings ──────────────────────────────────────────────────────────
+
+    def build_embeddings_db(self, model='intfloat/multilingual-e5-large',
+                            device='auto', batch_size=200,
+                            encode_batch_size=64, corpora=None,
+                            force=False, scheme='p500'):
+        """Encode passages -> lltk.passage_embeddings.
+
+        Prerequisite: lltk.passages must be populated (run db-passages first).
+        """
+        from lltk.tools.clickhouse_embeddings import build_embeddings_ch
+        return build_embeddings_ch(
+            self.adapter, model_name=model, device=device,
+            batch_size=batch_size, encode_batch_size=encode_batch_size,
+            corpora=corpora, force=force, scheme=scheme,
+        )
+
+    def text_embedding(self, _id, model='multilingual-e5-large', scheme='p500'):
+        """Return mean-pooled embedding (numpy array) for a text."""
+        from lltk.tools.clickhouse_embeddings import get_text_embedding_ch
+        return get_text_embedding_ch(self.adapter, _id, model=model,
+                                     scheme=scheme)
+
+    def similar_texts(self, _id, model='multilingual-e5-large', scheme='p500',
+                      limit=20, corpora=None, lang=None):
+        """Find texts most similar to _id by mean-pooled cosine similarity."""
+        from lltk.tools.clickhouse_embeddings import similar_texts_ch
+        return similar_texts_ch(
+            self.adapter, _id, model=model, scheme=scheme,
+            limit=limit, corpora=corpora, lang=lang,
+        )
+
+    def search_semantic(self, query_text, model='intfloat/multilingual-e5-large',
+                        scheme='p500', limit=20, device='auto',
+                        corpora=None, lang=None):
+        """Semantic search over passages using embedding similarity."""
+        from lltk.tools.clickhouse_embeddings import search_embeddings_ch
+        return search_embeddings_ch(
+            self.adapter, query_text, model_name=model, scheme=scheme,
+            limit=limit, device=device, corpora=corpora, lang=lang,
+        )
+
     # ── Legacy shim ─────────────────────────────────────────────────────────
 
     @property

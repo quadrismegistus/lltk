@@ -105,6 +105,21 @@ def main():
 	p_db_passages.add_argument('--dedup', action='store_true', help='Only chunk rank-0 match-group representatives')
 	p_db_passages.add_argument('corpora', nargs='*', default=None, help='Corpus IDs or SyntheticCorpus IDs (default: all)')
 
+	# db-embed-passages
+	p_db_embed = subparsers.add_parser('db-embed-passages',
+		help='Compute passage embeddings -> lltk.passage_embeddings (requires sentence-transformers)')
+	p_db_embed.add_argument('--model', default='intfloat/multilingual-e5-large',
+		help='Encoder model (default: intfloat/multilingual-e5-large)')
+	p_db_embed.add_argument('--device', default='auto', choices=['auto', 'cpu', 'mps', 'cuda'],
+		help='Compute device (default: auto)')
+	p_db_embed.add_argument('--batch-size', type=int, default=200,
+		help='Texts per CH insert batch (default: 200)')
+	p_db_embed.add_argument('--encode-batch-size', type=int, default=64,
+		help='Passages per encoder forward pass (default: 64)')
+	p_db_embed.add_argument('--force', action='store_true', help='Rebuild from scratch')
+	p_db_embed.add_argument('corpora', nargs='*', default=None,
+		help='Corpus IDs (default: all texts with passages)')
+
 	# db wordcounts
 	p_db_wc = subparsers.add_parser('db-wordcounts', help='Compute word counts from freqs files')
 	p_db_wc.add_argument('-j', '--jobs', type=int, default=None, help='Number of parallel workers')
@@ -371,6 +386,16 @@ def main():
 			year_min=args.year_min,
 			year_max=args.year_max,
 			dedup=args.dedup,
+		)
+
+	elif args.cmd == 'db-embed-passages':
+		lltk.db.build_embeddings_db(
+			model=args.model,
+			device=args.device,
+			batch_size=args.batch_size,
+			encode_batch_size=args.encode_batch_size,
+			corpora=args.corpora or None,
+			force=args.force,
 		)
 
 	elif args.cmd == 'db-wordindex':

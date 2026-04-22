@@ -30,6 +30,7 @@ path_python = french_pd_books/french_pd_books.py
 class_name = FrenchPDBooks
 public = metadata,txt
 license_type = Public Domain
+lang = fr
 
 [ImpactES]
 id = impact_es
@@ -40,6 +41,7 @@ path_python = impact_es/impact_es.py
 class_name = ImpactES
 ext_xml = .xml
 license_type = CC BY-SA / CC BY-NC-SA
+lang = es
 
 [SpanishPDBooks]
 id = spanish_pd_books
@@ -51,6 +53,7 @@ class_name = SpanishPDBooks
 public = metadata,txt
 license_type = Public Domain
 ext_txt = .txt.gz
+lang = es
 
 [GallicaLiteraryFictions]
 id = gallica_literary_fictions
@@ -61,6 +64,7 @@ path_python = gallica_literary_fictions/gallica_literary_fictions.py
 class_name = GallicaLiteraryFictions
 public = metadata,txt
 license_type = CC0
+lang = fr
 
 [Paige]
 id = paige
@@ -81,6 +85,7 @@ path_python = german_pd/german_pd.py
 class_name = GermanPD
 public = metadata,txt
 license_type = Public Domain
+lang = de
 
 [GermanFiction]
 id = german_fiction
@@ -91,6 +96,7 @@ path_python = german_fiction/german_fiction.py
 class_name = GermanFiction
 public = metadata,txt
 license_type = Research
+lang = de
 
 [DeCorp]
 id = de_corp
@@ -101,6 +107,7 @@ path_python = de_corp/de_corp.py
 class_name = DeCorp
 public = metadata,txt
 license_type = CC-BY-NC-SA-4.0
+lang = de
 
 [BPO]
 id = bpo
@@ -220,6 +227,7 @@ license = https://creativecommons.org/licenses/by-sa/4.0/
 path_xml_meta = xml_meta
 public = metadata,freqs,raw,raw_metadata,txt,xml
 url_freqs = https://www.dropbox.com/s/nb1u0e77ng2d5mh/dta_freqs.zip?dl=1
+lang = de
 url_metadata = https://www.dropbox.com/s/294h2suvtu6sing/dta_metadata.zip?dl=1
 url_raw = http://media.dwds.de/dta/download/dta_komplett_2019-06-05.zip
 url_raw_metadata = http://media.dwds.de/dta/download/dta_metadaten_oai_dc_2018-09-12.zip
