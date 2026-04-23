@@ -484,6 +484,9 @@ def search_embeddings_ch(adapter, query_text: str,
         seq = int(r['seq'])
         m = meta_map.get(_id, {})
         text = psg_map.get((_id, seq), '')
+        alpha_count = sum(c.isalpha() for c in text)
+        if alpha_count < 20:
+            continue
         words = text.split()
         snippet = ' '.join(words[:snippet_words])
         if len(words) > snippet_words:
