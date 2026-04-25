@@ -1,5 +1,17 @@
 #encoding=utf-8
-from lltk.imports import *
+import os
+
+import pandas as pd
+
+from lltk.imports import (
+    DEFAULT_NUM_PROC,
+    get_tqdm,
+    pmap,
+    tools,
+)
+from lltk.text import BaseText, clean_text
+from lltk.corpus.corpus import BaseCorpus
+from lltk.corpus.utils import fix_meta
 
 
 def estimate_genre(text_xml):
