@@ -1,4 +1,9 @@
-from lltk.imports import *
+import os
+import sys
+import re
+import shutil
+import warnings
+import multiprocessing as mp
 import time
 import csv
 import numpy as np
@@ -6,6 +11,11 @@ from collections import UserList, defaultdict
 from collections.abc import MutableMapping
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from io import StringIO
+from lltk.imports import (
+    HOME, ROOT, LLTK_ROOT, PATH_HERE,
+    PATH_DEFAULT_LLTK_HOME, PATH_DEFAULT_CONF,
+    META_KEY_SEP, DEFAULT_NUM_PROC, mp_cpu_count,
+)
 
 
 def _load_config():
@@ -277,8 +287,6 @@ class OrderedSetDict(MutableMapping):
         }
 
 
-
-import numpy as np
 
 def safebool(x,bad_vals={np.nan}):
     if is_dictish(x):
@@ -725,10 +733,6 @@ def tokenize(txt,*x,**y):
 
 _SPLITTER_ = r"([-.,/:!?\";)(])"
 
-
-
-from io import StringIO 
-import sys
 
 
 class Capturing(list):

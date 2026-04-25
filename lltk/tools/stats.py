@@ -1,4 +1,6 @@
-from lltk.imports import *
+import pandas as pd
+import statsmodels.formula.api as smf
+from scipy.stats import pearsonr
 
 def newpolyfit(X,Y):
     newdf=pd.DataFrame({'X':X, 'Y':Y})
