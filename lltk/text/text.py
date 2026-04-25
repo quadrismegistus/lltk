@@ -267,48 +267,6 @@ class BaseText(BaseObject):
         
 
 
-    def get_ish(self,meta,key,before_suf='|'):
-        keys=[k for k in meta.keys() if k.startswith(key)]
-        numkeys=len(keys)
-        if numkeys==0: return None
-        if numkeys==1: 
-            keyname = keys[0]
-        else:
-
-            def get_rank(k,sep=META_KEY_SEP):
-                if not sep in k: return np.inf
-                corp=k.split(sep)[-1]
-                crnk=CORPUS_SOURCE_RANKS.get(corp,np.inf)
-                return crnk
-
-            keys.sort(key=lambda k: get_rank(k))
-            keyname=keys[0]
-
-            if log>0: log.warning(f'more than one metadata key begins with "{key}": {", ".join(keys)}. Using key: "{keyname}".')
-        
-        res = meta.get(keyname)
-
-        if before_suf and type(res)==str and res:
-            res = res.split('|')[0]
-        
-        return res
-    
-    def get_one(self,key,default=None,**kwargs):
-        res = self.get(key,default=default,**kwargs)
-        if res:
-            if type(res) in {list,tuple,set}:
-                res = list(res)[0]
-        return res if res is not None else default
-
-    def get_all(self,key,default=None,**kwargs):
-        res = self.get(key,default=default,**kwargs)
-        if res:
-            if type(res) in {list,tuple,set}:
-                res = list(res)[0]
-        return res if res is not None else default
-
-
-
     @property
     def xml2txt_func(self): return self.XML2TXT.__func__
     
@@ -473,21 +431,12 @@ class BaseText(BaseObject):
     
     def query(self,*x,**y): return {}
 
-    def metadata_initial(
-            self,meta={},
-            bad_keys={},#'_source','_sources'},
-            sep=META_KEY_SEP,
-            **kwargs):
-        if log>1: log(self)
+    def metadata(self, meta={}, to_numeric=True, sep=META_KEY_SEP, **kwargs):
         self._hydrate_meta()
-        imeta=merge_dict(TEXT_META_DEFAULT, self.META, self.__meta, self._meta, meta)
-        ometa=self.ensure_id({k:v for k,v in imeta.items() if k not in bad_keys},allow_sep=False)
-        self._meta={k:v for k,v in ometa.items() if not sep in k}
-        return ometa
-
-    def metadata(self, meta={}, to_numeric=True, **kwargs):
-        ometa = self.metadata_initial(meta)
-        self.__meta = ometa = self.ensure_id(ometa)
+        imeta = merge_dict(TEXT_META_DEFAULT, self.META, self.__meta, self._meta, meta)
+        ometa = self.ensure_id(imeta, allow_sep=False)
+        self._meta = {k: v for k, v in ometa.items() if sep not in k}
+        self.__meta = ometa
         if to_numeric:
             ometa = to_numeric_dict(ometa)
         return ometa
@@ -498,93 +447,26 @@ class BaseText(BaseObject):
     def meta(self): return self.metadata()
     @property
     def _meta_(self): return {k:v for k,v in self._meta.items() if not META_KEY_SEP in k}
+
+    def meta_(self, key='', ish=True, **kwargs):
+        self._hydrate_meta()
+        meta = merge_dict(self._meta, self.__meta)
+        o = []
+        for k, v in meta.items():
+            if (ish and k.startswith(key)) or (not ish and k == key):
+                o.append((self, k, v))
+        return o
+
+    def meta_l(self, *args, **kwargs):
+        return SetList([v for t, k, v in self.meta_(*args, **kwargs)])
+
+    def meta_1(self, *args, **kwargs):
+        l = self.meta_l(*args, **kwargs)
+        return l[0] if l else None
+
     def id_is_valid(self,*x,**y):
         if self.id in {None,'','None'}: return False 
         return True
-    def meta_is_valid(self,*x,**y): return True
-    def is_valid(self,meta=None,**kwargs):
-        """
-        @TODO: Subclasses need to implement this
-        """
-        return True
-
-    def metadata_source_counts(self,meta={},**kwargs):
-        meta=self.metadata(meta,**kwargs)
-        cd=Counter(k.split(META_KEY_SEP)[1] if META_KEY_SEP in k else t.corpus.id for k in meta)
-        return cd
-
-    def metadata_by_source_corpus(self,meta={},sep=META_KEY_SEP,**kwargs):
-        odset=defaultdict(dict)
-        meta=self.metadata(meta,**kwargs)
-        for k,v in meta.items():
-            k2,corp = (k,self.corpus.id) if sep not in k else k.split(sep,1)
-            odset[corp][k2]=v
-        return odset
-
-
-
-    
-    def meta_(self,
-            key='',
-            ish=True,
-            init=False,
-            **kwargs):
-        self._hydrate_meta()
-        sources = set(self._sources if not init else self.sources) | {self}
-        vals = set()
-        o = []
-        for t in sources:
-            for k in t._meta:
-                if ish:
-                    if not k.startswith(key): continue
-                else:
-                    if k != key: continue
-                
-                val = t._meta[k]
-                if is_hashable(val):
-                    if val in vals: continue
-                    vals|={val}
-                ot = (t,k,val)
-                o.append(ot)
-        return o
-
-    def meta_l(self,*args,**kwargs):
-        return SetList([v for t,k,v in self.meta_(*args,**kwargs)])
-    
-    def meta_1(self,*args,**kwargs):
-        l=self.meta_l(*args,**kwargs)
-        return l[0] if l else None
-
-    def metadata_by_source(
-            self,
-            key_startswith='',
-            meta={},
-            sep=META_KEY_SEP,
-            inverse=False,
-            init=False,**kwargs):
-        # self.init(meta=meta,sep=sep,**kwargs)
-        
-        sources = set(self._sources if not init else self.sources) | {self}
-
-        def filtermeta(d):
-            return d if not key_startswith else {
-                k:v for k,v in d.items() if k.startswith(key_startswith)
-            }
-
-        if inverse:
-            return {k:v for k,v in [(t,filtermeta(t._meta)) for t in sources] if k and v}
-        else:
-            od=OrderedSetDict()
-            for t in sources:
-                for k,v in t._meta.items():
-                    od[k]=[(t,v)]
-            return filtermeta(dict((k,dict(v)) for k,v in od.items()))
-
-    
-
-
-
-
     def num_words(self,keys=['num_words','length']):
         for k in keys:
             if k in self.meta:
@@ -706,110 +588,15 @@ class BaseText(BaseObject):
     def qstr(self):
         return clean_text(f'{self.shorttitle} {self.au}')
     @property
-    def qstr_plus(self):
-        from urllib.parse import quote_plus
-        return quote_plus(self.qstr)
-    
-    @property
-    def shortauthor(self):
-        au=clean_text(self.author)
-        if not au: return ''
-        if not ',' in au: return au
-        
-        parts=[x.strip() for x in au.split(',') if x.strip() and x.strip()[0].isalpha()]
-        if len(parts)==0: return au
-        if len(parts)==1: return parts[0]
-        oparts=[parts[1]] + [parts[0]]
-
-        # parentheses
-        def grabparen(x):
-            if '(' in x and ')' in x: return x.split('(',1)[-1].split(')',1)[0].strip()
-            return x
-        oparts=[grabparen(x) for x in oparts]
-        ostr=' '.join(oparts)
-        return ostr
-
-
-
-
-    ####################################################################
-    # Matches 
-    ####################################################################
-
-
-    def match(self,other,yn='',rel=MATCHRELNAME,rel_type='',cache=True,viceversa=True,**kwargs):
-        if is_textish(other):
-            other = Text(other)
-            if self != other and self.id_is_valid() and other.id_is_valid():
-                if log: log(f'{self.addr} --> {other.addr} ?')
-                relmeta=dict(yn=yn,rel=rel,rel_type=rel_type,**just_meta_no_id(kwargs))
-                self._rels[other.addr]=relmeta
-                other._rels[self.addr]=relmeta
-
-                # cache locally
-                if log: log('caching local')
-                with self.cachedb('match') as odb:
-                    odb[self.addr]=self.rels
-                    odb[other.addr]=other.rels
-
-                return True
-        return False
-    
-    add_source=match
-
-
-        
-    def match_net(self,other,yn='',rel=MATCHRELNAME,cache=True,**kwargs):
-        other = Text(other)
-        if log: log(f'{self.addr} --> {other.addr} ?')
-        
-        self.gdb.add_node(self.addr)#, **no_id(self._meta))
-        self.gdb.add_node(other.addr)#, **no_id(other._meta))
-
-        meta=dict(yn=yn, rel=rel, **just_meta_no_id(kwargs))
-        self.gdb.add_edge(self.addr, other.addr, **meta)
-
-
-
-
-    def get_matches(self,node=None,as_text=True,rel=MATCHRELNAME,depth=1,**kwargs):
-        return set(self.get_matchgraph().nodes()) - {self.addr}
-
-    def get_matchgraph(self,as_text=True,rel=MATCHRELNAME,depth=1,node_name='addr',**kwargs):
-        g=nx.Graph()
-        g.add_node(self.addr)
-        for addr in self.rels:
-            g.add_node(addr)
-            g.add_edge(self.addr,addr)
-
-        for node in list(g.nodes()):
-            if IDSEP_START+TMP_CORPUS_ID+IDSEP in node:
-                g.remove_node(node)
-
-        if node_name!='addr':
-            labeld=dict((addr,Text(addr).node) for addr in g.nodes())
-            nx.relabel_nodes(g,labeld,copy=False)
-        return g
-                
-    def matchgraph(self,rel=MATCHRELNAME,draw=True,node_name='addr',**kwargs):
-        g=self.get_matchgraph(rel=rel,node_name=node_name)
-        if not draw:
-            return g
-        else:
-            from lltk.model.networks import draw_nx
-            return draw_nx(g,**kwargs)
-
-
-    @property
-    def matches(self): return self.get_matches()
+    def matches(self):
+        return set(self._rels.keys())
 
     @property
     def match_group(self):
-        """Get all texts in this text's match group from the DuckDB matches DB."""
+        """Return DataFrame of all texts in this text's match group from CH."""
         try:
             from lltk.tools.metadb import metadb
-            df = metadb.get_group(self.addr)
-            return df if df is not None and len(df) else None
+            return metadb.get_group(self.addr)
         except Exception:
             return None
 
@@ -1120,55 +907,7 @@ class BaseText(BaseObject):
         # return paras
 
     @property
-    def nltk(self):
-        import nltk
-        return nltk.Text(self.tokens())
-    @property
-    def blob(self):
-        from textblob import TextBlob
-        return TextBlob(self.txt)
-    def stanza_paras(self,lang=None,num_proc=1):
-        if lang is None: lang=self.lang
-        txt=self.txt
-        if not txt: return
-        yield from pmap_iter(
-                do_parse_stanza,
-                # self.paras,
-                [(para,lang) for para in self.paras],
-                desc='Parsing paragraphs with Stanza',
-                num_proc=num_proc)
-    @property
-    def stanza(self,lang=None):
-        if lang is None: lang=self.lang
-        #return do_parse_stanza(self.txt)
-        return list(self.stanza_paras(lang=lang))
-    @property
-    def spacy(self,lang=None,num_proc=1):
-        if lang is None: lang=self.lang
-        objs=[(para,lang) for para in self.paras]
-        if not objs: return []
-        return pmap(
-            do_parse_spacy,
-            objs,
-            desc='Parsing paragraphs with spaCy',
-            num_proc=num_proc
-        )
-    
-    # def minhash(self,cache=True,force=False):
-    #     from datasketch import MinHash,LeanMinHash
-    #     m = MinHash(num_perm=128*2)
-    #     from base64 import b64decode,b64encode
-
-    #     if self._minhash:
-    #         if isinstance(self._minhash,bytes):
-    #             self._minhash = LeanMinHash.deserialize(b64decode(self._minhash))
-    #     else:
-    #         if not os.path.exists(self.path_txt): return
-    #         words = self.words
-    #         if words:
-    #             m = MinHash(num_perm=128*2)
-    #             for word in words: m.update(word.encode('utf-8'))
-    #             self._minhash = lm = LeanMinHash(m)
+    # def minhash -- removed, see scripts/minhash_match.py for standalone version
 
     #             if cache:
     #                 buf = bytearray(lm.bytesize())
@@ -1291,11 +1030,6 @@ class BaseText(BaseObject):
 
 
     ###
-    def testx(self,*x,**y):
-        time.sleep(random.random() * 5)
-        return time.time()
-
-
 
 
 
