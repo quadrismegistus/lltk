@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lltk-dh"
-version = "0.7.1"
+version = "0.8.0"
 description = "Literary Language Toolkit (LLTK): corpora, models, and tools for the digital humanities"
 readme = "README.md"
 license = {text = "MIT"}
@@ -22,8 +22,21 @@ classifiers = [
 dynamic = ["dependencies"]
 
 [project.optional-dependencies]
-analysis = ["scipy>=1.9"]
+analysis = ["scipy>=1.9", "scikit-learn>=1.0", "statsmodels>=0.13"]
+clickhouse = ["clickhouse-connect>=0.7"]
 embeddings = ["sentence-transformers>=2.2", "torch>=2.0"]
+llm = ["largeliterarymodels"]
+web = ["fastapi>=0.100", "uvicorn[standard]>=0.20"]
+matching = ["datasketch>=1.5", "recordlinkage>=0.14"]
+plotting = ["plotnine>=0.10"]
+corpora = [
+    "internetarchive",
+    "rispy",
+    "wptools",
+    "geopy",
+]
+legacy = ["duckdb>=0.8"]
+all = ["lltk-dh[analysis,clickhouse,embeddings,web,matching,plotting,corpora]"]
 
 [project.urls]
 Homepage = "https://github.com/quadrismegistus/lltk"
@@ -42,3 +55,27 @@ include-package-data = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.coverage.run]
+omit = [
+    "lltk/corpus/*/[!_]*.py",
+    "lltk/corpus/*/*/*.py",
+    "lltk/web/*",
+    "lltk/model/booknlp.py",
+    "lltk/model/characters.py",
+    "lltk/model/charnet.py",
+    "lltk/model/ner.py",
+    "lltk/model/networks.py",
+    "lltk/model/semnet.py",
+    "lltk/model/word2vec.py",
+    "lltk/model/word2vecs.py",
+    "lltk/model/classifier.py",
+    "lltk/lib/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__",
+    "raise NotImplementedError",
+]

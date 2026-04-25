@@ -2,7 +2,7 @@ name: Tests
 
 on:
   push:
-    branches: [master, claude, clickhouse-migration]
+    branches: [master, spring-cleaning]
   pull_request:
     branches: [master]
 
@@ -12,6 +12,21 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.9", "3.11", "3.12"]
+
+    services:
+      clickhouse:
+        image: clickhouse/clickhouse-server:latest
+        ports:
+          - 8123:8123
+          - 9000:9000
+        env:
+          CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+          CLICKHOUSE_PASSWORD: ""
+        options: >-
+          --health-cmd "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - uses: actions/checkout@v4
@@ -26,13 +41,18 @@ jobs:
           python -m pip install --upgrade pip
           pip install pytest pytest-cov
           pip install -r requirements.txt
-          pip install -e .
+          pip install -e ".[all,legacy]"
           pip install chdb pyarrow
 
       - name: Download NLTK data
         run: python -c "import nltk; nltk.download('punkt_tab')"
 
       - name: Run tests with coverage
+        env:
+          LLTK_TEST_CH_HOST: localhost
+          LLTK_TEST_CH_PORT: "8123"
+          LLTK_TEST_CH_USER: default
+          LLTK_TEST_CH_PASSWORD: ""
         run: pytest tests/ -v --cov=lltk --cov-report=xml
 
       - name: Upload coverage to Codecov

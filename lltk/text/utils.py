@@ -883,7 +883,7 @@ def filter_freqs(freqs,modernize=False,lower=True):
 
 def save_freqs_json(obj, lower=True):
     from collections import Counter
-    import ujson as json
+    import json
 
     ifnfn,ofnfn,tokenizer=obj
     if not os.path.exists(ifnfn): return

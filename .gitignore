@@ -37,6 +37,15 @@ venv
 .venv
 .vscode
 
+# Generated/local files
+.coverage
+*.db
+!lltk/tools/db.py
+uv.lock
+lltk/corpus/test_fixture/freqs/
+lltk/corpus/test_fixture/metadata.parquet
+lltk/corpus/test_fixture_linked/metadata.parquet
+
 # Web frontend
 lltk/web/frontend/node_modules/
 

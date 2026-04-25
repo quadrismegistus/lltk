@@ -944,6 +944,7 @@ class TestParseYear:
         assert _parse_year(1750.0) == 1750
 
 
+@pytest.mark.skip(reason='DuckDB MetaDB removed in 0.8.0 — use ClickHouse')
 class TestMetaDB:
     """Tests for MetaDB with a temporary DuckDB."""
 

@@ -26,7 +26,8 @@ import pandas as pd
 import pyarrow as pa
 
 from lltk.tools.metadb import (
-    MetaDB, CORE_COLS, DB_BLACKLIST,
+    prepare_corpus_df, _resolve_freqs_paths,
+    CORE_COLS, DB_BLACKLIST,
 )
 
 
@@ -124,15 +125,8 @@ def ingest_corpus_to_clickhouse(corpus_id: str, ch_adapter,
         print(f'No metadata for {corpus_id}')
         return None
 
-    # Reuse MetaDB's per-row cleanup. We don't persist to DuckDB, but the
-    # prepare method is self-contained (doesn't touch self.conn).
-    mdb = MetaDB.__new__(MetaDB)
-    mdb._resolve_freqs_paths = MetaDB._resolve_freqs_paths.__get__(mdb, MetaDB)
-    df = mdb._resolve_freqs_paths(df, corpus)
-
     manifest_lang = getattr(corpus, 'lang', None)
-
-    prepared = MetaDB.prepare_corpus_df(mdb, df, corpus_id, default_lang=manifest_lang)
+    prepared = prepare_corpus_df(df, corpus_id, corpus=corpus, default_lang=manifest_lang)
     if prepared is None or not len(prepared):
         return 0
 
