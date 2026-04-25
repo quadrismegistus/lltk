@@ -109,6 +109,14 @@ def main():
 	p_db_passages.add_argument('--dedup', action='store_true', help='Only chunk rank-0 match-group representatives')
 	p_db_passages.add_argument('corpora', nargs='*', default=None, help='Corpus IDs or SyntheticCorpus IDs (default: all)')
 
+	# export-passages
+	p_export_psg = subparsers.add_parser('export-passages', help='Export passages to per-text JSONL files')
+	p_export_psg.add_argument('corpus', nargs='?', default=None, help='Corpus ID to export')
+	p_export_psg.add_argument('--year-min', type=int, default=None)
+	p_export_psg.add_argument('--year-max', type=int, default=None)
+	p_export_psg.add_argument('--scheme', default='p500', help='Passage scheme (default: p500)')
+	p_export_psg.add_argument('--out-dir', default=None, help='Output directory (default: corpus-local)')
+
 	# db-embed-passages
 	p_db_embed = subparsers.add_parser('db-embed-passages',
 		help='Compute passage embeddings -> lltk.passage_embeddings (requires sentence-transformers)')
@@ -401,6 +409,15 @@ def main():
 			year_min=args.year_min,
 			year_max=args.year_max,
 			dedup=args.dedup,
+		)
+
+	elif args.cmd == 'export-passages':
+		lltk.db.export_passages(
+			corpus=args.corpus,
+			year_min=args.year_min,
+			year_max=args.year_max,
+			scheme=args.scheme,
+			out_dir=args.out_dir,
 		)
 
 	elif args.cmd == 'db-embed-passages':

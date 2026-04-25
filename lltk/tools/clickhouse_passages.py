@@ -429,3 +429,134 @@ def search_passages_count_ch(adapter, query: str) -> int:
         WHERE scheme = 'p500' AND {text_cond}
     """)
     return int(result['n'].iloc[0]) if len(result) else 0
+
+
+# ── Export ────────────────────────────────────────────────────────────────────
+
+def export_passages_ch(adapter, ids=None, corpus=None, year_min=None,
+                       year_max=None, scheme: str = 'p500',
+                       out_dir=None):
+    """Export passages to per-text JSONL files.
+
+    Each file has a header line (no 'text' key) with metadata, followed by
+    one line per passage (has 'text' key).  Consumers filter on 'text' in row.
+
+    Files written to:
+        {out_dir}/{_id}.jsonl              (if out_dir given)
+        {corpus_path}/passages/{scheme}/{text_id}.jsonl  (if out_dir is None)
+
+    Returns (n_texts, n_passages) written.
+    """
+    import json
+
+    try:
+        from lltk.imports import log, PATH_CORPUS
+    except Exception:
+        log = None
+        PATH_CORPUS = os.path.expanduser('~/lltk_data/corpora')
+
+    # Resolve IDs
+    if ids is not None:
+        ids = list(ids)
+    else:
+        clauses = [f"scheme = '{_escape(scheme)}'"]
+        if corpus:
+            clauses.append(f"corpus = '{_escape(corpus)}'")
+        where = ' AND '.join(clauses)
+        id_df = adapter.query_df(
+            f"SELECT DISTINCT _id FROM lltk.passages_meta WHERE {where}"
+        )
+        ids = id_df['_id'].tolist() if len(id_df) else []
+
+    if year_min is not None or year_max is not None:
+        year_clauses = []
+        if year_min is not None:
+            year_clauses.append(f'year >= {int(year_min)}')
+        if year_max is not None:
+            year_clauses.append(f'year <= {int(year_max)}')
+        year_where = ' AND '.join(year_clauses)
+        ids_sql = ', '.join(f"'{_escape(i)}'" for i in ids)
+        filtered = adapter.query_df(f"""
+            SELECT _id FROM lltk.texts FINAL
+            WHERE _id IN ({ids_sql}) AND {year_where}
+        """)
+        ids = filtered['_id'].tolist() if len(filtered) else []
+
+    if not ids:
+        if log:
+            log('[export-passages] No texts to export.')
+        return 0, 0
+
+    if log:
+        log(f'[export-passages] Exporting {len(ids)} texts (scheme={scheme})')
+
+    # Fetch metadata for headers
+    ids_sql = ', '.join(f"'{_escape(i)}'" for i in ids)
+    meta_df = adapter.query_df(f"""
+        SELECT _id, title, author, year, corpus, genre, lang
+        FROM lltk.texts FINAL
+        WHERE _id IN ({ids_sql})
+    """)
+    meta_map = {r['_id']: r.to_dict() for _, r in meta_df.iterrows()}
+
+    # Fetch passage counts
+    count_df = adapter.query_df(f"""
+        SELECT _id, n_passages FROM lltk.passages_meta
+        WHERE _id IN ({ids_sql}) AND scheme = '{_escape(scheme)}'
+    """)
+    count_map = dict(zip(count_df['_id'], count_df['n_passages']))
+
+    # Fetch passages in batches
+    passages_df = get_passages_ch(adapter, ids, scheme=scheme)
+
+    n_texts = 0
+    n_passages = 0
+
+    for _id in ids:
+        text_passages = passages_df[passages_df['_id'] == _id].sort_values('seq')
+        if not len(text_passages):
+            continue
+
+        # Determine output path
+        if out_dir:
+            bare_id = _id[1:] if _id.startswith('_') else _id
+            out_path = os.path.join(out_dir, scheme, f'{bare_id}.jsonl')
+        else:
+            bare_id = _id[1:] if _id.startswith('_') else _id
+            corpus_id, text_id = bare_id.split('/', 1)
+            out_path = os.path.join(
+                PATH_CORPUS, corpus_id, 'passages', scheme, f'{text_id}.jsonl'
+            )
+
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+
+        m = meta_map.get(_id, {})
+        header = {
+            '_id': _id,
+            'corpus': m.get('corpus', ''),
+            'scheme': scheme,
+            'n_passages': int(count_map.get(_id, len(text_passages))),
+            'lang': m.get('lang', ''),
+            'title': m.get('title', ''),
+            'author': m.get('author', ''),
+        }
+        year = m.get('year')
+        if year is not None and str(year) != 'nan':
+            header['year'] = int(year)
+
+        with open(out_path, 'w', encoding='utf-8') as f:
+            f.write(json.dumps(header, ensure_ascii=False) + '\n')
+            for _, row in text_passages.iterrows():
+                f.write(json.dumps({
+                    'seq': int(row['seq']),
+                    'text': row['text'],
+                    'n_words': int(row['n_words']),
+                }, ensure_ascii=False) + '\n')
+
+        n_texts += 1
+        n_passages += len(text_passages)
+
+    if log:
+        log(f'[export-passages] Wrote {n_passages:,} passages '
+            f'from {n_texts} texts')
+    return n_texts, n_passages

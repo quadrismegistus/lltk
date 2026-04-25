@@ -817,6 +817,20 @@ class MetaDBCH:
         from lltk.tools.clickhouse_passages import get_passages_ch
         return get_passages_ch(self.adapter, ids, scheme=scheme)
 
+    def export_passages(self, ids=None, corpus=None, year_min=None,
+                        year_max=None, scheme: str = 'p500', out_dir=None):
+        """Export passages to per-text JSONL files.
+
+        Each JSONL has a header line (metadata, no 'text' key) then one
+        passage per line (has 'text' key).
+        """
+        from lltk.tools.clickhouse_passages import export_passages_ch
+        return export_passages_ch(
+            self.adapter, ids=ids, corpus=corpus,
+            year_min=year_min, year_max=year_max,
+            scheme=scheme, out_dir=out_dir,
+        )
+
     def search(self, query: str, genre=None, corpus=None, lang=None,
                year_min=None, year_max=None, limit: int = 20,
                offset: int = 0, snippet_words: int = 30):
