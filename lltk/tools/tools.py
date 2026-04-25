@@ -1,6 +1,43 @@
 from lltk.imports import *
 import time
+import csv
+import numpy as np
+from collections import UserList, defaultdict
+from collections.abc import MutableMapping
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+from io import StringIO
+
+
+def _load_config():
+    """Load configuration from config files. Returns dict."""
+    import configparser
+    cfg = {'PATH_TO_CORPORA': os.path.join(PATH_DEFAULT_LLTK_HOME, 'corpora')}
+    for p in [PATH_DEFAULT_CONF,
+              os.path.join(ROOT, 'config_local.txt'),
+              os.path.join(HOME, 'lltk_config.txt')]:
+        if os.path.exists(p):
+            c = configparser.ConfigParser()
+            c.read(p)
+            for section in c.sections():
+                for k, v in c[section].items():
+                    cfg[k.upper()] = v
+            if 'Default' in c:
+                for k, v in c['Default'].items():
+                    cfg[k.upper()] = v
+    # Also check pointer file
+    pointer = os.path.join(HOME, '.lltk_config')
+    if os.path.exists(pointer):
+        with open(pointer) as f:
+            user_conf = f.read().strip()
+        if os.path.exists(user_conf):
+            c = configparser.ConfigParser()
+            c.read(user_conf)
+            for section in c.sections():
+                for k, v in c[section].items():
+                    cfg[k.upper()] = v
+    return cfg
+
+config = _load_config()
 
 
 class _PmapCaller:
@@ -11,6 +48,7 @@ class _PmapCaller:
         self.kwargs = kwargs
     def __call__(self, obj):
         return self.func(obj, *self.args, **self.kwargs)
+
 
 
 def pmap(func, objs, args=(), kwargs=None, num_proc=1, use_threads=False,
@@ -53,6 +91,7 @@ def pmap(func, objs, args=(), kwargs=None, num_proc=1, use_threads=False,
     return results
 
 
+
 def pmap_iter(func, objs, args=(), kwargs=None, num_proc=1, use_threads=False,
               progress=True, desc='', **_ignored):
     """Iterator version of pmap."""
@@ -60,37 +99,16 @@ def pmap_iter(func, objs, args=(), kwargs=None, num_proc=1, use_threads=False,
                      use_threads=use_threads, progress=progress, desc=desc))
 
 
-def getweeknum(): 
-    import datetime
-    return datetime.date.today().strftime("%Y-%V")
 
-import base64
 def to_bs64(x):
     if type(x)!=bytes: x=x.encode()
     return base64.b64encode(x)
-def from_bs64(xb):
-    return base64.b64decode(xb)
-
-
-def serialize_map(obj):
-    assert is_dictish(obj)
-    import orjson
-    return {
-        str(k):orjson.dumps(v, option=orjson.OPT_SERIALIZE_NUMPY).decode()
-        for k,v in obj.items()
-    }
-def deserialize_map(obj):
-    assert is_dictish(obj)
-    import orjson
-    return {
-        str(k):orjson.loads(v.encode())
-        for k,v in obj.items()
-    }
 
 def serialize(obj):
     from pickle import dumps
     from base64 import b64encode
     return b64encode(compressed(dumps(obj)))
+
 
 def deserialize(obj):
     from base64 import b64decode
@@ -98,66 +116,10 @@ def deserialize(obj):
     return loads(decompressed(b64decode(obj)))
 
 
+
 def compressed(bytes):
     import blosc
     return blosc.compress(bytes, cname='lz4')
-def decompressed(bytes):
-    import blosc
-    return blosc.decompress(bytes)
-
-
-YEARKEYS=['year','date']
-def get_years(*ld,keys=YEARKEYS):
-    import pandas as pd
-
-    years = SetList()
-    for d in ld:
-        for trykey in keys:
-            for k in d:
-                if k.startswith(trykey):
-                    v = zeropunc(str(d[k]))[:4]
-                    if v.isdigit():
-                        vnum = pd.to_numeric(v,errors='coerce')
-                        if safebool(vnum):
-                            years.append(vnum)
-    if not years: return []
-    years.sort()
-    return years
-    # return self._years
-
-def get_year(*ld,**kwargs):
-    years = get_years(*ld,**kwargs)
-    if len(years)==0: return 0
-    if len(years)==1: return years[0]
-    if len(years)==2: return years[0]
-    if len(years)==3: return years[1]
-    if len(years)==4: return years[1]
-    imedian = len(years) // 2
-    return years[imedian]
-
-
-
-import contextlib
-@contextlib.contextmanager
-def tqdm_joblib(tqdm_object):
-    import joblib
-    from tqdm import tqdm
-    """Context manager to patch joblib to report into tqdm progress bar given as argument"""
-    class TqdmBatchCompletionCallback(joblib.parallel.BatchCompletionCallBack):
-        def __call__(self, *args, **kwargs):
-            tqdm_object.update(n=self.batch_size)
-            return super().__call__(*args, **kwargs)
-
-    old_batch_callback = joblib.parallel.BatchCompletionCallBack
-    joblib.parallel.BatchCompletionCallBack = TqdmBatchCompletionCallback
-    try:
-        yield tqdm_object
-    finally:
-        joblib.parallel.BatchCompletionCallBack = old_batch_callback
-        tqdm_object.close()
-
-
-
 
 def llmap(
         addrs,
@@ -194,78 +156,8 @@ def llmap(
             ) for addr,args,kwargs in objs
         )
     
-def llfunc(addr,func,*args,**kwargs):
-    # obj = LLTK[addr]
-    from lltk import LLTK
-    try:
-        obj = LLTK[addr]
-        func = getattr(obj,func)
-        return func(*args,**kwargs)
-    except Exception as e:
-        LLTK.log.error(e)
-        return None
-
-
-
-def llcode(code,callback=None,import_from=None,**kwargs):
-    if not code: return
-    # imports
-    if not import_from:
-        from lltk.imports import PATH_LLTK_CODE_HOME as import_from
-    
-    code=f'''
-import os,sys; sys.path.insert(0,'{import_from}')
-import lltk
-from lltk import *
-# log.verbose=0
-# logger.remove()
-
-{code}
-'''
-    # if log: log(code)
-    codeid=hashstr(code)[:14]
-    ofn=f'.llcode.{codeid}.py'
-    with open(ofn,'w') as of: of.write(code)
-    ocmd=f'python {ofn}'
-    def _callback(out):
-        if callback: callback(out)
-        rmfn(ofn)
-    
-    thread=popen_and_call(ocmd,callback=_callback)
-    return thread
-
-
-
-
-import threading
-import subprocess
-
-def popen_and_call(*popen_args,callback=None,**popen_kwargs):
-    """
-    Runs the given args in a subprocess.Popen, and then calls the function
-    on_exit when the subprocess completes.
-    on_exit is a callable object, and popen_args is a list/tuple of args that 
-    would give to subprocess.Popen.
-    """
-    def run_in_thread(callback, popen_args, popen_kwargs):
-        if len(popen_args)==1: popen_args=popen_args[0].split()
-        # proc = subprocess.Popen(*popen_args,**popen_kwargs)
-        # proc.wait()
-        out = subprocess.check_output(
-            popen_args,
-            # stderr=subprocess.STDOUT,
-            **popen_kwargs
-        ).decode()
-        if callback: callback(out)
-        return #out
-    thread = threading.Thread(target=run_in_thread, args=(callback, popen_args, popen_kwargs))
-    thread.start()
-    # returns immediately after the thread starts
-    return thread
-
 
 def is_hashable_rly(v):
-    """Determine whether `v` can be hashed."""
     try:
         hash(v)
         return True
@@ -276,26 +168,15 @@ def is_hashable(v):
     from collections.abc import Hashable
     return isinstance(v,Hashable) and is_hashable_rly(v)
 
+
 def is_dictish(v):
     from collections.abc import MutableMapping
     return isinstance(v, MutableMapping)
 
+
 def is_iterable(v):
     from collections.abc import Iterable
     return isinstance(v,Iterable)
-
-def flattendict(d,pref='',sep='_'):
-    odset=OrderedSetDict()
-    for k,v in d.items():
-        if type(v)==dict:
-            v_odset = flattendict(v,pref=k)
-            for kk,vv in v_odset.items(): odset[kk]=vv
-        else:
-            odset[pref+sep+k if pref else k]=v
-    return odset.to_dict()
-
-from collections.abc import MutableMapping
-from collections import UserList
 
 
 class SetList(UserList):
@@ -339,6 +220,7 @@ class SetList(UserList):
             pass
                 
         
+
 
 
 class OrderedSetDict(MutableMapping):
@@ -397,6 +279,7 @@ class OrderedSetDict(MutableMapping):
 
 
 import numpy as np
+
 def safebool(x,bad_vals={np.nan}):
     if is_dictish(x):
         return {
@@ -427,6 +310,7 @@ def safebool(x,bad_vals={np.nan}):
         log.error(e)
         return None
 
+
 def safeget(x,k):
     try:
         return x.get(k)
@@ -437,9 +321,11 @@ def safeget(x,k):
             pass
     
 
+
 def safejson(obj):
     import orjson
     return orjson.loads(orjson.dumps(obj, option=orjson.OPT_SERIALIZE_NUMPY))
+
 
 
 
@@ -453,13 +339,6 @@ def get_ideal_cpu_count():
     if log>0: log(f'ideal cpu count = {DEFAULT_NUM_PROC}')
     return DEFAULT_NUM_PROC
 
-def fixpath(path):
-    if type(path)==str and path and not os.path.isabs(path):
-        if '~' in path:
-            path=path.split('~')[-1]
-            path=os.path.join(os.path.expanduser('~'), path[1:])
-        path=os.path.abspath(path)
-    return path
 
 def gethtml(url,timeout=10):
     from lltk import log
@@ -483,89 +362,21 @@ def gethtml(url,timeout=10):
     if log: log(f'-> {" ".join(o.split())[:100]} ... ({len(o)} chars)')
     return o
 
-def unrelfile(path):
-    if type(path)==str and path and not os.path.isabs(path):
-        path = path.replace('~', os.path.expanduser('~'))
-        path=path.replace(os.path.sep + os.path.sep, os.path.sep)
-    elif not path:
-        path=''
-    return path
-
-
-def to_params_meta(_params_or_meta,prefix_params='_'):
-    params={k:v for k,v in _params_or_meta.items() if k and k[0]==prefix_params}
-    meta={k:v for k,v in _params_or_meta.items() if k and k[0]!=prefix_params}
-    return (params,meta)
 
 def just_metadata(d,prefix_params='_',ok_keys=None):
     from lltk.imports import COL_ADDR,COL_ID,COL_CORPUS
     if not ok_keys: ok_keys={COL_ADDR,COL_ID,COL_CORPUS}
     return {k:v for k,v in d.items() if k and (k in ok_keys or k[0] not in set(prefix_params))}
 
+
 def just_meta_no_id(d,**y):
     from lltk.imports import COL_ADDR,COL_ID,COL_CORPUS
     bad_keys={COL_ADDR,COL_ID,COL_CORPUS}
     return {k:v for k,v in just_metadata(d).items() if k not in bad_keys and META_KEY_SEP not in k}
 
+
 def no_id(d,col_id='id'):
     return {k:v for k,v in d.items() if k!=col_id}
-
-def pf(*x,sep='\n',pad_start=False,pad_end=False,**y):
-    from pprint import pformat
-    o=sep.join(pformat(_x,indent=2) if type(_x)!=str else _x for _x in x)
-    if pad_start: o=sep+o
-    if pad_end: o=o+sep
-    return o
-
-def diffdict(d1,d2,verbose=1,type_changes=False):
-    from deepdiff import DeepDiff
-    ddiff=DeepDiff(d1,d2,verbose_level=verbose).to_dict()
-    if not type_changes and 'type_changes' in ddiff: del ddiff['type_changes']
-    return ddiff
-
-def is_cacheworthy(new,old,**kwargs):
-    return new != old
-    
-    from lltk import log
-    # log(f'old = {pf(old)}')
-
-    # log(f'new = {pf(new)}')
-
-    if old is None:
-        if log>0: log(f'new cache')
-        return True
-    else:
-        ddiff = diffdict(old,new,**kwargs)
-        if ddiff:
-            if log>0: log(pf(f'cache updated',ddiff))
-            # log(pf(old))
-            # log(pf(new))
-            # STOPPXPXPX
-            return True
-        else:
-            if log>0: log(pf(f'cache unchanged'))
-            return False
-
-def force_int(x):
-    import numpy as np, pandas as pd
-    if type(x)==int: return x
-    try:
-        return int(float(x))
-    except AssertionError:
-        try:
-            return int(pd.to_numeric(x))
-        except AssertionError as e:
-            log.error(x)
-            return x
-    return np.nan
-
-def force_float(x):
-    import numpy as np, pandas as pd
-    if type(x)==float: return x
-    try:
-        return float(x)
-    except AssertionError:
-        return np.nan
 
 
 def to_numeric_dict(d):
@@ -589,10 +400,6 @@ def to_numeric_dict(d):
     return odx
 
 
-def is_url(x): return type(x)==str and x.strip().startswith('http')
-def is_path(x):  return type(x) == str and os.path.exists(x)
-def is_graph(x): return type(x) in {nx.Graph, nx.DiGraph}
-def tupper(x): return x[0].upper()+x[1:]
 
 def camel_case_split(str):
     words = [[str[0]]]
@@ -607,12 +414,14 @@ def camel_case_split(str):
 
 
 
+
 def rmfn(fn):
     if os.path.exists(fn):
         try:
             os.unlink(fn)
         except AssertionError as e:
             pass
+
 
 
 
@@ -627,20 +436,6 @@ def read_json(path):
                 return json.load(f)
     return {}
 
-def write_json(obj, path, indent=4):
-    ensure_dir_exists(path)
-    try:
-        with open(path, 'wb') as f:
-            f.write(orjson.dumps(obj, option=orjson.OPT_INDENT_2))
-    except Exception:
-        import json
-        with open(path, 'w') as f:
-            json.dump(obj, f, indent=indent)
-    
-
-# save txt
-def ensure_abs(path_root,path):
-    return os.path.join(path_root,path) if not os.path.isabs(path) else path
 
 def fillna(x,y=''):
     try:
@@ -648,17 +443,9 @@ def fillna(x,y=''):
     except TypeError:
         return x
 
-def join_if(*l,sep):
-    return sep.join(str(x) for x in l if x)
-
-
 
 def escape_linebreaks(txt,sep='↵'):
     return txt.strip().replace('\n',sep)
-def unescape_linebreaks(txt,sep='↵'):
-    return txt.replace(sep,'\n').strip()
-
-
 
 def snake2camel(x,sep='_'):
     return ''.join(
@@ -666,16 +453,10 @@ def snake2camel(x,sep='_'):
         for xx in x.split(sep)
     )
 
-def ensure_camel(s):
-    l=s.replace('_',' ').strip().split()
-    l=[zeropunc(x) for x in l]
-    # l=[zeropunc(x,allow='_') for x in l]
-    l=[x[0].upper()+x[1:] for x in l if x]
-    o=''.join(l)
-    return o
 
 def to_camel_case(x):
     return ''.join((y[0].upper()+y[1:] for y in x.split()))
+
 
 def ensure_snake(xstr,lower=True,allow={'_'}):
     if lower: xstr=xstr.lower()
@@ -686,6 +467,7 @@ def ensure_snake(xstr,lower=True,allow={'_'}):
     )
     while META_KEY_SEP in o: o=o.replace(META_KEY_SEP,'_')
     return o
+
 
 
 def which(pgm):
@@ -712,6 +494,7 @@ except (NameError,ModuleNotFoundError):
     pass
 
 
+
 def human_format(num):
     magnitude = 0
     if num<1000: return str(num)
@@ -720,80 +503,6 @@ def human_format(num):
         num /= 1000.0
     # add more suffixes if you need them
     return '%.0f%s' % (num, ['', 'K', 'M', 'B', 'T', 'P'][magnitude])
-
-def loadjson(fn):
-    try:
-        with open(fn) as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {}
-
-
-### SET THE CONFIG
-
-def hashstr(x):
-    import hashlib
-    return hashlib.sha224(str(x).encode('utf-8')).hexdigest()
-
-### SET THE CONFIGS
-
-
-def config_obj2dict(config_obj,keys=['Default','User'],pathhack_root=ROOT,pathhack=True):
-    config_dict = {}
-
-    #dict([(k.upper(),v) for k,v in list(config[key].items())])
-    for key in keys:
-        if key not in config_obj: continue
-        for attr,val in config_obj[key].items():
-            if 'path' in attr.lower() and not os.path.isabs(val):
-                val=val.replace('~',os.path.expanduser('~'))
-                if pathhack: val=os.path.abspath(os.path.join(os.path.dirname(pathhack_root), val))
-            config_dict[attr.upper()]=val
-
-    return config_dict
-
-
-def load_config(pathhack=True,prompt_for_base_conf=False):
-    if prompt_for_base_conf and not os.path.exists(PATH_BASE_CONF):
-        configure_prompt()
-
-    CONFIG={}
-    for f in [load_default_config,load_global_config,load_user_config]:
-        for k,v in f().items(): CONFIG[k.upper()]=v
-
-    # print('>> loaded config:',CONFIG)
-    for k,v in CONFIG.items():
-        if v.strip().startswith('~'):
-            v=os.path.join(os.path.expanduser('~'),v.strip()[1:])
-    return CONFIG
-
-
-
-def load_global_config(pathhack=True,prompt_for_base_conf=False):
-    # from lltk import PATH_LLTK_REPO
-    #CONFIG_PATHS = [PATH_DEFAULT_CONF]
-    CONFIG_PATHS=[]
-    CONFIG_PATHS += [os.path.join(ROOT,'config_local.txt')]
-    CONFIG_PATHS.append(os.path.join(os.path.join(ROOT,'..','lltk_config.txt')))
-    CONFIG_PATHS.append(os.path.join(os.path.join(ROOT,'..','config','lltk_config.txt')))
-    CONFIG_PATHS.append(os.path.join(os.path.join(HOME,'lltk_config.txt')))
-
-    CONFIG={}
-    for config_path in CONFIG_PATHS:
-        #print('## looking for config:',os.path.abspath(config_path))
-        if not os.path.exists(config_path): continue
-        import configparser
-        config = configparser.ConfigParser()
-        config.read(config_path)
-
-        # for k,v in config_obj2dict(config,pathhack_root=config_path).items():
-        for k,v in config_obj2dict(config,pathhack_root=PATH_LLTK_REPO).items():
-            CONFIG[k]=v
-
-
-    #print(CONFIG)
-    return CONFIG
-
 
 
 def get_url_or_path(url_or_path):
@@ -813,139 +522,6 @@ def get_url_or_path(url_or_path):
 
 
 
-def whatism(val,name='var', pref='* '):
-    printm(f'{pref}```{name}``` = {val}')
-
-
-
-
-def load_default_config():
-    import configparser
-    config=configparser.ConfigParser()
-    config.read(PATH_DEFAULT_CONF)
-    configd=config_obj2dict(config,pathhack_root=ROOT,pathhack=False)
-    for k,v in  configd.items():
-        if not os.path.isabs(v):
-            # configd[k]=os.path.join(PATH_LLTK_REPO,v)
-            configd[k]=os.path.join(PATH_LLTK_HOME,v)
-    if not 'PATH_TO_CORPORA' in configd: configd['PATH_TO_CORPORA']='~/lltk_data/corpora'
-    # configd=dict((k,v.replace(os.path.expanduser('~'),'~')) for k,v in configd.items())
-    # if not 'PATH_TO_CORPORA' in configd: configd['PATH_TO_CORPORA']=os.path.expanduser('~/lltk_data/corpora')
-    return configd
-
-def load_user_config():
-    import configparser
-    config=configparser.ConfigParser()
-    if os.path.exists(PATH_BASE_CONF):
-        with open(PATH_BASE_CONF) as f:
-            path_base_conf_value = f.read().strip()
-            if os.path.exists(path_base_conf_value):
-                config.read(path_base_conf_value)
-                configd=config_obj2dict(config,pathhack_root=path_base_conf_value)
-                return configd
-    return {}
-
-
-
-
-def configure_prompt(default_config='config.txt',default_corpora='corpora',default_manifest='manifest.txt'):
-    print('## Literary Language Toolkit (LLTK) configuration')
-
-    if not os.path.isabs(default_config): default_config=os.path.join(PATH_LLTK_HOME,default_config)
-    if not os.path.isabs(default_corpora): default_corpora=os.path.join(PATH_LLTK_HOME,default_corpora)
-    if not os.path.isabs(default_manifest): default_manifest=os.path.join(PATH_LLTK_HOME,default_manifest)
-
-    #path_config=input('>> Where should the config file be stored? [default: {default}]: '.format(default=default_config)).strip()
-    #path_corpora=input('>> Where should corpora be stored? [default: {default}]: '.format(default=default_corpora)).strip()
-    #path_manifest=input('>> Where should the corpus manifest be stored? [default: {default}] '.format(default=default_manifest)).strip()
-    path_config,path_corpora,path_manifest=None,None,None
-
-    if not path_config: path_config=default_config
-    if not path_corpora: path_corpora=default_corpora
-    if not path_manifest: path_manifest=default_manifest
-
-    # path_config=path_config.replace('~',HOME)
-    # path_corpora=path_corpora.replace('~',HOME)
-    # path_manifest=path_manifest.replace('~',HOME)
-
-    var2path = {}
-    var2path['PATH_TO_CORPORA'] = path_corpora
-    var2path['PATH_TO_MANIFEST'] = path_manifest
-
-    for var,path in var2path.items():
-        var2path[var] = path = path.replace('~',HOME)  #os.path.expanduser(path)
-        # # make dir if needed
-        # if not os.path.exists(path):
-        # 	if os.path.splitext(path)[0]==path:
-        # 		os.makedirs(path)
-        # 	else:
-        # 		dirname=os.path.dirname(path)
-        # 		if not os.path.exists(dirname):
-        # 			os.makedirs(dirname)
-
-    import configparser
-    config_obj = configparser.ConfigParser()
-
-    newconfig={} #dict(load_config())
-    # for k,v in load_default_config().items(): newconfig[k]=v
-    for k,v in load_user_config().items(): newconfig[k]=v
-    for k,v in var2path.items(): newconfig[k]=v
-    # for k,v in newconfig.items():
-        # from lltk import PATH_LLTK_CODE_HOME
-        # if PATH_LLTK_CODE_HOME in v: v=v.replace(PATH_LLTK_CODE_HOME+os.path.sep,'')
-        # newconfig[k]=v.replace(os.path.expanduser('~'),'~')
-
-
-    config_obj['User'] = newconfig
-
-
-    for x in [path_config,PATH_BASE_CONF,path_manifest]:
-        if not os.path.exists(os.path.dirname(x)):
-            os.makedirs(os.path.dirname(x))
-    
-    with open(path_config,'w') as of:
-        config_obj.write(of)
-        print('>> saved:',path_config)
-
-    with open(PATH_BASE_CONF,'w') as of:
-        of.write(path_config)
-
-    if not os.path.exists(path_manifest):
-        import shutil
-        shutil.copyfile(PATH_MANIFEST_GLOBAL,path_manifest)
-        print('>> saved:',path_manifest)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# load config
-config=load_config()
-
-
-
-
-WORDDB_FN = config.get('PATH_TO_WORDDB')
-
-from collections import defaultdict
-WORDLISTS=defaultdict(set)
-OCRCORREX=defaultdict(dict)
-WORD2POS=defaultdict(dict)
-STOPWORDS=defaultdict(set)
-SPELLINGD=defaultdict(dict)
-
-import sys
-import csv
-#csv.field_size_limit(sys.maxsize)
 
 def get_tqdm(*args,**kwargs):
     if in_jupyter():
@@ -955,29 +531,6 @@ def get_tqdm(*args,**kwargs):
     return tqdmx(*args,**kwargs)
 
 
-def get_the_getters(lang='en'):
-    get_stopwords(lang=lang)
-    get_wordlist(lang=lang)
-    get_spelling_modernizer(lang=lang)
-    get_word2pos(lang=lang)
-    get_ocr_corrections(lang=lang)
-
-def get_stopwords(lang='en',include_rank=None):
-    global STOPWORDS
-    if lang in STOPWORDS: return STOPWORDS[lang]
-    if lang=='en':
-        from lltk import PATH_TO_ENGLISH_STOPWORDS
-        path = config.get('PATH_TO_ENGLISH_STOPWORDS',PATH_TO_ENGLISH_STOPWORDS)
-        if not path: raise Exception('!! PATH_TO_ENGLISH_STOPWORDS not set in config.txt')
-        if not os.path.isabs(path): path=os.path.join(PATH_LLTK_HOME,path)
-        if not os.path.exists(path): download_default_data(path)
-        if os.path.exists(path):
-            with xopen(path) as f: sw1=set(f.read().strip().split('\n'))
-            if include_rank and type(include_rank)==int:
-                sw2={d['word'] for d in worddb() if int(d['rank'])<=include_rank}
-                sw1|=sw2
-            STOPWORDS[lang]={w for w in sw1 if w}
-    return STOPWORDS[lang]
 
 def get_wordlist(lang='en'):
     global WORDLISTS
@@ -992,6 +545,7 @@ def get_wordlist(lang='en'):
             with xopen(path) as f:
                 WORDLISTS[lang]=set(f.read().strip().split('\n'))
     return WORDLISTS[lang]
+
 
 def get_spelling_modernizer(lang='en'):
     global SPELLINGD
@@ -1018,11 +572,6 @@ def get_spelling_modernizer(lang='en'):
             SPELLINGD[lang]=d
     return SPELLINGD[lang]
 
-def get_word2pos_df(lang='en'):
-    w2p=get_word2pos(lang=lang)
-    df=pd.DataFrame(w2p.items(),columns=['word','pos']).set_index('word')
-    return df
-
 
 def get_word2pos(lang='en'):
     global WORD2POS
@@ -1040,13 +589,6 @@ def get_word2pos(lang='en'):
                 WORD2POS[lang]=json.load(f)
     return WORD2POS[lang]
 
-def download_default_data(path):
-    if not os.path.exists(os.path.dirname(PATH_DEFAULT_DATA)):
-        os.makedirs(os.path.dirname(PATH_DEFAULT_DATA))
-    if path and not os.path.exists(path) and '/default/' in path:
-        download(URL_DEFAULT_DATA, PATH_DEFAULT_DATA)
-        unzip(PATH_DEFAULT_DATA,os.path.dirname(PATH_DEFAULT_DATA))
-    
 
 def get_ocr_corrections(lang='en'):
     global OCRCORREX
@@ -1069,12 +611,6 @@ def get_ocr_corrections(lang='en'):
                     d[old]=new
         OCRCORREX[lang]=d
     return OCRCORREX[lang]
-
-def get_encoding(fn):
-    import chardet
-    with open(fn, 'rb') as f:
-        result = chardet.detect(f.read())  # or readline if the file is large
-    return result['encoding']
 
 
 def save_df(df,ofn,move_prev=False,index=None,key='',log=print,verbose=False,**kwargs):
@@ -1109,6 +645,7 @@ def save_df(df,ofn,move_prev=False,index=None,key='',log=print,verbose=False,**k
     if verbose and log: log(f'Saved: {ofn}')
 
 
+
 def read_df(ifn,key='',fmt='',on_bad_lines='skip',**attrs):
     if not os.path.exists(ifn): return
     import pandas as pd
@@ -1141,8 +678,9 @@ def read_df(ifn,key='',fmt='',on_bad_lines='skip',**attrs):
     
     return pd.DataFrame()
 
-def get_backup_fn(fn,suffix='bak'):
-    name,ext=os.path.splitext(fn)
+
+def get_backup_fn(fn, suffix='bak'):
+    name, ext = os.path.splitext(fn)
     return f'{name}.bak{ext}'
 
 def backup_fn(fn,suffix='bak',copy=True,move=True,**kwargs):
@@ -1155,38 +693,6 @@ def backup_fn(fn,suffix='bak',copy=True,move=True,**kwargs):
         if copy: shutil.copy(fn,ofn)
         if move: shutil.move(fn,ofn)
 
-def backup_save_df(df,fn,suffix='bak',**kwargs):
-    """
-    `move` is reset to False if copy == True
-    """
-    import filecmp
-    
-    odf=df
-    odf_fn=fn
-    odf_fn_tmp=odf_fn+'.tmp'
-    
-    bak_fn=get_backup_fn(fn,suffix=suffix)
-    bak_fn_tmp=bak_fn+'.tmp'
-    
-    # if os.path.exists(bak_fn): shutil.move(bak_fn,bak_fn_tmp)
-    if os.path.exists(odf_fn): shutil.move(odf_fn,odf_fn_tmp)
-    
-    save_df(odf,odf_fn,**kwargs)
-
-    if os.path.exists(odf_fn_tmp):
-        file_changed = not filecmp.cmp(odf_fn, odf_fn_tmp)
-        if file_changed: 
-            # move prev version to backup file
-            shutil.move(odf_fn_tmp, bak_fn)
-        else:
-            # get rid of prev version tmp file
-            os.unlink(odf_fn_tmp)
-
-def show_csvs(path='.',**kwargs):
-    for fn in os.listdir(path):
-        if fn.endswith('csv'): 
-            print(fn)
-            display(read_df(fn))
 
 def iter_move(fn,force=False,prefix='',keep=3):
     if os.path.exists(fn):
@@ -1195,6 +701,7 @@ def iter_move(fn,force=False,prefix='',keep=3):
         if not os.path.exists(iter_dir): os.makedirs(iter_dir)
         shutil.move(fn,iter_fn)
         # print(f'>> moved: {fn} --> {iter_fn}')
+
 
 def iter_filename(fnfn,force=False,prefix=''):
     if os.path.exists(fnfn) or force:
@@ -1208,18 +715,6 @@ def iter_filename(fnfn,force=False,prefix=''):
         fnfn = maybe_fn
     return fnfn
 
-
-def measure_ocr_accuracy(txt_or_tokens,lang='en'):
-    wordlist=get_wordlist(lang=lang)
-    if type(txt_or_tokens) is str:
-        tokens=tokenize(txt_or_tokens)
-    elif type(txt_or_tokens) in [tuple,list]:
-        tokens=list(txt_or_tokens)
-    else:
-        raise Exception("Function `measure_ocr_accuracy(txt_or_tokens)` must take text string or list of tokens.")
-    numwords=float(len(tokens))
-    numrecog=len([tok for tok in tokens if tok in wordlist or tok.lower() in wordlist])
-    return numrecog/numwords
 
 
 def tokenize(txt,*x,**y):
@@ -1235,6 +730,7 @@ _SPLITTER_ = r"([-.,/:!?\";)(])"
 from io import StringIO 
 import sys
 
+
 class Capturing(list):
     def __enter__(self):
         self._stdout = sys.stdout
@@ -1244,6 +740,7 @@ class Capturing(list):
         self.extend(self._stringio.getvalue().splitlines())
         del self._stringio    # free up some memory
         sys.stdout = self._stdout
+
 
 
 
@@ -1261,90 +758,6 @@ def ensure_dir_exists(path,fn=None):
 
 MDETOK=None
 
-def moses_detokenize(tokens,lang='en'):
-    global MDETOK
-    if MDETOK is None:
-        from sacremoses import MosesTokenizer, MosesDetokenizer
-        MDETOK=MosesDetokenizer(lang=lang)
-    return MDETOK.detokenize(tokens)
-def basic_detokenizer(words):
-    """ This is the basic detokenizer helps us to resolves the issues we created by  our tokenizer"""
-    detokenize_sentence =[]
-    pos = 0
-    while( pos < len(words)):
-        if words[pos] in '-/.' and pos > 0 and pos < len(words) - 1:
-            left = detokenize_sentence.pop()
-            detokenize_sentence.append(left +''.join(words[pos:pos + 2]))
-            pos +=1
-        elif  words[pos] in '[(' and pos < len(words) - 1:
-            detokenize_sentence.append(''.join(words[pos:pos + 2]))   
-            pos +=1        
-        elif  words[pos] in ']).,:!?;' and pos > 0:
-            left  = detokenize_sentence.pop()
-            detokenize_sentence.append(left + ''.join(words[pos:pos + 1]))            
-        else:
-            detokenize_sentence.append(words[pos])
-        pos +=1
-    return ' '.join(detokenize_sentence)
-
-DTOK_TREEBANK=None
-DTOK_MD=None
-def detokenize_treebank(x):
-    global DTOK_TREEBANK
-    if DTOK_TREEBANK is None:
-        from nltk.tokenize.treebank import TreebankWordDetokenizer
-        DTOK_TREEBANK = TreebankWordDetokenizer()
-    return DTOK_TREEBANK.detokenize(x)
-
-def cleanstrip(x):
-    x=x.strip()
-    while '  ' in x: x=x.replace('  ',' ')
-    while ' \n' in x: x=x.replace(' \n','\n')
-    while '\n ' in x: x=x.replace('\n ','\n')
-    while '\n\n\n' in x: x=x.replace('\n\n\n','\n\n')
-    if x.count('\n\n')*2==(x.count('\n')):
-        x=x.replace('\n\n','\n')
-
-    # quote?
-    # x=x.replace(' "','"')
-    # x=x.replace('" ','"')
-    # x=x.replace(" '","'")
-    # x=x.replace("' ","'")
-
-    return x
-
-def detokenize(x,lang='en'):
-    global DTOK_MD
-    if DTOK_MD is None:
-        from sacremoses import MosesDetokenizer
-        DTOK_MD=MosesDetokenizer(lang=lang)
-    return DTOK_MD.detokenize(x)
-
-def printimg(fn):
-    from IPython.display import Image
-    return Image(filename=fn)
-
-def find_nth_character(str1, substr, n):
-    pos = -1
-    for x in range(n):
-        pos = str1.find(substr, pos+1)
-        if pos == -1:
-            return None
-    return pos
-
-## only singular nouns!
-def to_singular(ld):
-    import inflect
-    p=inflect.engine()
-    return [d for d in ld if p.singular_noun(d['word']) in {d['word'],False}]
-
-def worddf():
-    WORDDB_PATH = config.get('PATH_TO_WORDDB')
-    if not WORDDB_PATH: raise Exception('!! PATH_TO_WORDDB not set in config.txt')
-    if not WORDDB_PATH.startswith(os.path.sep): WORDDB_PATH=os.path.join(ROOT,WORDDB_PATH)
-
-    import pandas as pd
-    return pd.read_csv(WORDDB_PATH,sep='\t',error_bad_lines=False)
 
 def worddb(abs_key = 'Complex Substance (Locke) <> Mixed Modes (Locke)_max',conc_key='Complex Substance (Locke) <> Mixed Modes (Locke)_min',cutoff_abs=0.1,cutoff_conc=-0.1,allow_names=False,only_content_words=True):
     WORDDB_PATH = config.get('PATH_TO_WORDDB')
@@ -1373,11 +786,6 @@ def worddb(abs_key = 'Complex Substance (Locke) <> Mixed Modes (Locke)_max',conc
 
 ###
 
-def resetindex(df,badcols={'level_0','index'},**y):
-    odf=df.reset_index()
-    return odf[[col for col in odf.columns if col not in badcols]]
-
-
 
 def read_ld(fn,keymap={},toprint=True):
     if fn.endswith('.xls') or fn.endswith('.xlsx'):
@@ -1389,23 +797,11 @@ def read_ld(fn,keymap={},toprint=True):
     return list(readgen_csv(fn))
 
 
-def writegen_jsonl(fnfn,generator,args=[],kwargs={}):
-    import jsonlines
-    with jsonlines.open(fnfn,'w') as writer:
-        for i,dx in enumerate(generator(*args,**kwargs)):
-            writer.write(dx)
-    print('>> saved:',fnfn)
-
-def readgen_jsonl(fnfn):
-    import jsonlines
-    with jsonlines.open(fnfn) as reader:
-        for dx in reader:
-            yield dx
-
 
 def printm(x):
     from IPython.display import display,Markdown
     display(Markdown(x))
+
 
 
 def writegen(fnfn,generator,header=None,args=[],kwargs={},find_all_keys=False,total=None,progress=False,delimiter=','):
@@ -1469,14 +865,6 @@ def writegen(fnfn,generator,header=None,args=[],kwargs={},find_all_keys=False,to
 # 			writer.writerow(dx)
 # 	print('>> saved:',fnfn)
 
-def writegen_orig(fnfn,generator,header=None,args=[],kwargs={}):
-    if 'jsonl' in fnfn.split('.'): return writegen_jsonl(fnfn,generator,args=args,kwargs=kwargs)
-    with codecs.open(fnfn,'w',encoding='utf-8') as of:
-        for i,dx in enumerate(generator()):
-            if not header: header=sorted(dx.keys())
-            if not i: of.write('\t'.join(header) + '\n')
-            of.write('\t'.join([str(dx.get(h,'')) for h in header]) + '\n')
-    print('>> saved:',fnfn)
 
 def writegengen(fnfn,generator,header=None,save=True):
     if save: of = codecs.open(fnfn,'w',encoding='utf-8')
@@ -1486,6 +874,7 @@ def writegengen(fnfn,generator,header=None,save=True):
             if save: of.write('\t'.join(header) + '\n')
         if save: of.write('\t'.join([str(dx.get(h,'')) for h in header]) + '\n')
         yield dx
+
 
 def readgen_csv(fnfn,sep=None,encoding='utf-8',errors='ignore',header=[],progress=True,num_lines=0,desc='Reading CSV file'):
     from smart_open import open
@@ -1511,6 +900,7 @@ def readgen_csv(fnfn,sep=None,encoding='utf-8',errors='ignore',header=[],progres
                 except AssertionError:
                     pass
 
+
 def readgen(fnfn,**y):
     if issubclass(fnfn.__class__,pd.DataFrame): yield from resetindex(fnfn).to_dict('records')
     if type(fnfn)==str and os.path.exists(fnfn):
@@ -1525,6 +915,7 @@ def readgen(fnfn,**y):
             # print(f'[readgen()] Resorting to non-generator load for {fnfn}')
             df=read_df(fnfn)
             yield from resetindex(df).to_dict('records')
+
 
 def header(fnfn,tsep='\t',encoding='utf-8'):
     header=[]
@@ -1571,6 +962,7 @@ def header(fnfn,tsep='\t',encoding='utf-8'):
 #
 # 	return ''
 
+
 def read(fnfn):
     try:
         if fnfn.endswith('.gz'):
@@ -1586,135 +978,6 @@ def read(fnfn):
         print()
         return ''
 
-def filesize(fn):
-    return sizeof_fmt(os.path.getsize(fn))
-
-def sizeof_fmt(num, suffix='B'):
-    for unit in ['','Ki','Mi','Gi','Ti','Pi','Ei','Zi']:
-        if abs(num) < 1024.0:
-            return "%3.1f%s%s" % (num, unit, suffix)
-        num /= 1024.0
-    return "%.1f%s%s" % (num, 'Yi', suffix)
-
-
-
-def xls2ld(fn,header=[],sheetname=True,keymap={},keymap_all=str):
-    import time
-    now=time.time()
-    print('>> reading as xls:',fn)
-    import xlrd
-    if '*' in keymap: keymap_all=keymap['*']
-    headerset=True if len(header) else False
-    f=xlrd.open_workbook(fn)
-    ld=[]
-    def _boot_xls_sheet(sheet,header=[]):
-        ld2=[]
-        for y in range(sheet.nrows):
-            if not header:
-                for xi in range(sheet.ncols):
-                    cell=sheet.cell_value(rowx=y,colx=xi)
-                    header+=[cell]
-                continue
-            d={}
-            for key in header:
-                try:
-                    value=sheet.cell_value(rowx=y, colx=header.index(key))
-                    #print '??',value,type(value),key
-                    if keymap_all:
-                        func=keymap_all
-                        if func is str and type(value) in [float]:
-                            if value == int(value): value=int(value)
-                        d[key]=keymap_all(value)
-                    elif keymap and key in keymap:
-                        func=keymap[key]
-                        if func is str and type(value) in [float]:
-                            if value == int(value): value=int(value)
-                        d[key]=keymap[key](value)
-                    else:
-                        d[key]=value
-                    #print key,value,y,header.index(key),row[header.index(key)]
-                except AssertionError as e:
-                    print('!! ERROR:',e)
-                    print('!! on key =',key,'& value =',value, type(value))
-                    #print "!! "+key+" not found in "+str(sheet)
-                    #d[key]=''
-                    pass
-            if len(d):
-                if sheetname: d['sheetname']=sheet.name
-                ld2.append(d)
-        return ld2
-
-
-    if f.nsheets > 1:
-        sheetnames=sorted(f.sheet_names())
-        for sheetname in sheetnames:
-            sheet=f.sheet_by_name(sheetname)
-            for d in _boot_xls_sheet(sheet,header=header if headerset else []):
-                ld.append(d)
-    else:
-        sheet = f.sheet_by_index(0)
-        ld.extend(_boot_xls_sheet(sheet,header=header if headerset else []))
-
-    nownow=time.time()
-    print('>> done ['+str(round(nownow-now,1))+' seconds]')
-
-    return ld
-
-
-def xls2dld(fn,header=[]):
-    return ld2dld(xls2ld(fn,header=header,sheetname=True), 'sheetname')
-
-def levenshtein(s1, s2):
-    l1 = len(s1)
-    l2 = len(s2)
-
-    matrix = [list(range(l1 + 1))] * (l2 + 1)
-    for zz in range(l2 + 1):
-        matrix[zz] = list(range(zz,zz + l1 + 1))
-    for zz in range(0,l2):
-        for sz in range(0,l1):
-            if s1[sz] == s2[zz]:
-                matrix[zz+1][sz+1] = min(matrix[zz+1][sz] + 1, matrix[zz][sz+1] + 1, matrix[zz][sz])
-            else:
-                matrix[zz+1][sz+1] = min(matrix[zz+1][sz] + 1, matrix[zz][sz+1] + 1, matrix[zz][sz] + 1)
-    return matrix[l2][l1]
-
-def xlsx2ld(fn,header=[],numsheets=1):
-    from openpyxl.reader.excel import load_workbook
-    header_set=bool(len(header))
-    wb=load_workbook(filename=fn)
-    ld=[]
-    for sheet in wb.worksheets[:numsheets]:
-        if not header_set: header=[]
-        #header=[]
-        for rownum,row in enumerate(sheet.rows):
-            values=[]
-            for cell in row:
-                value=cell.value
-                if value is None:
-                    value=''
-
-                try:
-                    value=float(value)/0
-                except:
-                    value=value
-                    if not isinstance(value, str):
-                        value=str(value)
-                values.append(value)
-            if not rownum and not len(header):
-                header=values
-            else:
-                d=dict((header[i],values[i]) for i in range(len(values)))
-                ld+=[d]
-    return ld
-
-def dl2ld(dl,kcol='group'):
-    ld=[]
-    for k in dl:
-        for d in dl[k]:
-            d[kcol]=k
-            ld+=[d]
-    return ld
 
 def ld2dl(ld):
     keys = list(ld[0].keys())
@@ -1722,36 +985,6 @@ def ld2dl(ld):
     for k in keys:
         dl[k] = [d[k] for d in ld]
     return dl
-
-def fn2ld(fn,header=[],sep='\t',nsep='\n'):
-    import codecs
-    f=codecs.open(fn,encoding='utf-8')
-    for line in f:
-        line=line.strip()
-        if not header:
-            header=line.split(sep)
-            continue
-        dx={}
-        for i,val in enumerate(line.split(sep)):
-            key=header[i] if len(header)>i else 'key_'+str(i)
-            dx[key]=val
-        yield dx
-
-def goog2tsv(googsrc):
-    import bs4
-    dom=bs4.BeautifulSoup(googsrc,'lxml')
-    header=[th.text for th in dom('thead')[0]('th')]
-    header=header if True in [bool(hx) for hx in header] else None
-    old=[]
-    for row in dom('tbody')[0]('tr'):
-        rowdat=[cell.text for cell in row('td')]
-        if not header:
-            header=rowdat
-            #print ">> HEADER:",header
-            continue
-        odx=dict(list(zip(header,rowdat)))
-        old+=[odx]
-    return old
 
 
 def tsv2ld(fn,tsep='\t',nsep='\n',u=True,header=[],keymap={},zero='',removeEmpties=False):
@@ -1839,71 +1072,10 @@ def tsv2ld(fn,tsep='\t',nsep='\n',u=True,header=[],keymap={},zero='',removeEmpti
 
 
 
-def ld2html(ld):
-    keys=ld2keys(ld)
-    headerrow=['<th>%s</th>'%k for k in keys]
-    rows=[]
-    rows+=['\n\t\t'.join(headerrow)]
-    for d in ld:
-        row=['<td>%s</td>'%d.get(k,'') for k in keys]
-        rows+=['\n\t\t'.join(row)]
-    ostr=u"<table>\n\t<tr>\n\t\t" + u'\n\t</tr>\n\t<tr>\n\t\t'.join(rows) + u"\n\t</tr>\n</table>"
-    return ostr
-
-def ld2keys(ld):
-    keys=[]
-    for d in ld:
-        for k in d:
-            keys+=[k]
-    keys=list(sorted(list(set(keys))))
-    return keys
-
-def ld2ll(ld,zero='',tostr=False,uni=True):
-    keys=[]
-    for d in ld:
-        for k in d:
-            keys+=[k]
-    keys=sorted(list(set(keys)))
-    o=[keys]
-    for d in ld:
-        l=[]
-        for k in keys:
-            v=d.get(k,zero)
-            if tostr:
-                v=str(v) if uni else str(v)
-            l+=[v]
-        o+=[l]
-    return o
-
 
 def write_ld(fn,ld,zero='',timestamp=None):
     return write(fn,ld2ll(ld,zero=zero),timestamp=timestamp)
 
-def dd2ld(dd,rownamecol='rownamecol'):
-    if not rownamecol:
-        return [ (dict(list(v.items()))) for k,v in list(dd.items()) ]
-    else:
-        return [ (dict(list(v.items()) + [(rownamecol,k)])) for k,v in list(dd.items()) ]
-
-def dld2ld(dld,key='rownamecol'):
-    ld=[]
-    for k in dld:
-        for d in dld[k]:
-            d[key]=k
-            ld+=[d]
-    return ld
-
-def ld_resample(ld,key='rownamecol',n=None):
-    import random
-    dld=ld2dld(ld,key)
-    minlen_actually=min([len(dld[k]) for k in dld])
-    minlen=minlen_actually if not n or n>minlen_actually else n
-    ld2=[]
-    print('>> resampling to minimum length of:',minlen)
-    for k in sorted(dld):
-        print('>>',k,len(dld[k]),'-->',minlen)
-        ld2+=random.sample(dld[k],minlen)
-    return ld2
 
 def ld2dld(ld,key='rownamecol'):
     dld={}
@@ -1912,12 +1084,14 @@ def ld2dld(ld,key='rownamecol'):
         dld[d[key]]+=[d]
     return dld
 
+
 def ld2dd(ld,rownamecol='rownamecol'):
     dd={}
     for d in ld:
         dd[d[rownamecol]]=d
         #del dd[d[rownamecol]][rownamecol]
     return dd
+
 
 def datatype(data,depth=0,v=False):
     def echo(dt):
@@ -1955,93 +1129,6 @@ def datatype(data,depth=0,v=False):
         return '?'
 
 
-def limcols(ld,limcol=255):
-    keyd={}
-    keys=set()
-    for d in ld:
-        dkeys=set(d.keys())
-        for key in dkeys-keys:
-            keyd[key]=0
-        keys|=dkeys
-        for k in d:
-            if d[k]:
-                keyd[k]+=1
-
-    cols=set(sorted(list(keyd.keys()), key=lambda _k: (-keyd[_k],_k))[:limcol])
-
-    for d in ld:
-        dkeys=set(d.keys())
-        for key in dkeys-cols:
-            del d[key]
-
-    return ld
-
-def ld2str(ld,**data):
-    if data['limcol']:
-        print(">> limiting columns")
-        limcol=data['limcol']
-        ld=limcols(ld,limcol)
-    if 'limcol' in data:
-        del data['limcol']
-    return ll2str(ld2ll(ld),**data)
-
-def d2ll(d):
-    try:
-        return [[k,v] for k,v in sorted(list(d.items()),key=lambda lt: -lt[1])]
-    except:
-        return [[k,v] for k,v in list(d.items())]
-
-def d2str(d,uni=True):
-    return ll2str(d2ll(d),uni=uni)
-
-def strmake(x,uni=True):
-    if uni and type(x) is str:
-        return x
-    elif uni:
-        return str(x)
-    elif not uni and type(x) is str:
-        return x
-
-    print([x],type(x))
-    return str(x)
-
-
-def ll2str(ll,uni=True,join_line=u'\n',join_cell=u'\t'):
-    if not uni:
-        join_line=str(join_line)
-        join_cell=str(join_cell)
-        quotechar='"' if join_cell==',' else ''
-    else:
-        quotechar=u'"' if join_cell==',' else u''
-
-    for line in ll:
-        lreturn=join_cell.join([quotechar+strmake(cell,uni=uni)+quotechar for cell in line])+join_line
-        yield lreturn
-
-def l2str(l,uni=True,join_line=u'\n',join_cell=u'\t',quotechar=''):
-    for line in l: yield strmake(line)+join_line
-
-def write_ld2(fn,gen1,gen2,uni=True,badkeys=[]):
-    def find_keys(gen):
-        keys=set()
-        for d in gen:
-            keys=keys|set(d.keys())
-        keys=keys-set(badkeys)
-        return keys
-
-    keys=list(sorted(list(find_keys(gen1))))
-    numk=len(keys)
-
-    import codecs
-    of=codecs.open(fn,'w',encoding='utf-8')
-    of.write('\t'.join([strmake(x) for x in keys]) + '\n')
-
-    for d in gen2:
-        data=[d.get(key,'') for key in keys]
-        of.write('\t'.join([strmake(x) for x in data]) + '\n')
-    of.close()
-    print(">> saved:",fn)
-
 
 def write2(fn,data,uni=True,join_cell=u'\t',join_line=u'\n',limcol=None,toprint=True):
     ## pass off to other write functions if necessary
@@ -2074,6 +1161,7 @@ def write2(fn,data,uni=True,join_cell=u'\t',join_line=u'\n',limcol=None,toprint=
     of.close()
     if toprint: print('>> saved:',fn)
 
+
 def slice(l,num_slices=None,slice_length=None,runts=True,random=False):
     """
     Returns a new list of n evenly-sized segments of the original list
@@ -2088,9 +1176,11 @@ def slice(l,num_slices=None,slice_length=None,runts=True,random=False):
     return [lx for lx in newlist if len(lx)==slice_length]
 
 
+
 def noPunc(token):
     from string import punctuation
     return token.strip(punctuation)
+
 
 def zeropunc(s,allow={}):
     allow=set(allow)
@@ -2103,6 +1193,7 @@ def zeropunc(s,allow={}):
     # # return ''.join(x for x in s if x.isalpha() or x in ok)
 
 
+
 def now(now=None):
     import datetime as dt
     if not now:
@@ -2111,93 +1202,6 @@ def now(now=None):
         now=dt.datetime.fromtimestamp(now)
 
     return '{0}-{1}-{2} {3}:{4}:{5}'.format(now.year,str(now.month).zfill(2),str(now.day).zfill(2),str(now.hour).zfill(2),str(now.minute).zfill(2),str(now.second).zfill(2))
-
-def slingshot_cmd_starter(corpus,method,slingshot_n,slingshot_opts):
-    Scmd='slingshot -lltk_corpus {corpus} -lltk_method {method}'.format(corpus=corpus,method=method)
-    if slingshot_n: Scmd+=' -parallel {slingshot_n}'.format(slingshot_n=slingshot_n)
-    if slingshot_opts: Scmd+=' '+slingshot_opts.strip()
-    return Scmd
-
-
-
-def toks2str(tlist,uni=False):
-    toks=[]
-    putleft=False
-    #print tlist
-    for tk in tlist:
-        tk=tk.strip()
-        if not tk: continue
-        tk = tk.split()[-1]
-        if not tk: continue
-        if (not len(toks)):
-            toks+=[tk]
-        elif putleft:
-            toks[-1]+=tk
-            putleft=False
-        elif tk=='`':
-            toks+=[tk]
-            putleft=True
-        elif tk=='-LRB-':
-            toks+=['(']
-            putleft=True
-        elif tk=='-RRB-':
-            toks[-1]+=')'
-        elif len(tk)>1 and tk[0]=="'":
-            toks[-1]+=tk
-        elif tk[0].isalnum():
-            toks+=[tk]
-        elif tk.startswith('<') and '>' in tk:
-            toks+=[tk]
-        else:
-            toks[-1]+=tk
-    if uni: return u' '.join(toks)
-    return ' '.join(toks)
-
-
-
-
-
-
-####
-def print_config(corpus):
-    print()
-    print()
-    print('[%s]' % corpus.__name__)
-    print("name = %s" % corpus.__name__)
-    #print "link = "
-    ppath=''
-    if hasattr(corpus,'PATH_TXT'):
-        ppath=corpus.PATH_TXT
-        print("path_txt = %s" % corpus.PATH_TXT)
-    if hasattr(corpus,'PATH_XML'):
-        if not ppath: ppath=corpus.PATH_XML
-        print("path_xml = %s" % corpus.PATH_XML)
-    if hasattr(corpus,'PATH_METADATA'): print("path_metadata = %s" % corpus.PATH_METADATA)
-    print("path_python = %s" % ppath.split('/')[0] + '/' + ppath.split('/')[0] + '.py')
-    print("class_corpus = %s" % corpus.__name__)
-    print("class_text = %s" % 'Text'+corpus.__name__)
-
-
-def do_configs(rootdir):
-    import importlib.util,os
-    done=set()
-    for fldr in sorted(os.listdir(rootdir)):
-        path=os.path.join(rootdir,fldr)
-        if not os.path.isdir(path): continue
-        for fn in sorted(os.listdir(path)):
-            if fn.endswith('.py') and not fn.startswith('_'):
-                modname = fn.replace('.py','')
-                spec = importlib.util.spec_from_file_location(modname, os.path.join(path,fn))
-                mod = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(mod)
-
-                for obj in dir(mod):
-                    if obj[0]==obj[0].upper() and not obj in ['Text','Corpus'] and not obj.startswith('Text'):
-                        if obj in done: continue
-                        done|={obj}
-                        x=getattr(mod,obj)
-                        if not hasattr(x,'__name__'): continue
-                        print_config(x)
 
 
 def gleanPunc2(aToken):
@@ -2211,6 +1215,7 @@ def gleanPunc2(aToken):
         aToken = aToken[:-1]
 
     return (aPunct0, aToken, aPunct1)
+
 
 def modernize_spelling_in_txt(txt,spelling_d=None):
     if not spelling_d: spelling_d=get_spelling_modernizer()
@@ -2226,6 +1231,7 @@ def modernize_spelling_in_txt(txt,spelling_d=None):
     return '\n'.join(lines)
 
 
+
 def tokenize_fast(line):
     return re.findall("[A-Z]{2,}(?![a-z])|[A-Z][a-z]+(?=[A-Z])|[\'\w\-]+",line.lower())
 
@@ -2234,6 +1240,7 @@ def tokenize_fast(line):
 
 
 ### multiprocessing
+
 def crunch(objects,function_or_methodname,ismethod=None,nprocs=8,args=[],kwargs={}):
     import time,random
     #ismethod=type(function_or_methodname) in [str,six.text_type] if ismethod is None else ismethod
@@ -2291,8 +1298,10 @@ def crunch(objects,function_or_methodname,ismethod=None,nprocs=8,args=[],kwargs=
 
 
 
+
 def bigrams(l):
     return ngram(l,2)
+
 
 def ngram(l,n=3):
     grams=[]
@@ -2314,17 +1323,12 @@ def ngram(l,n=3):
 ### PASSAGES
 
 
-def get_word_window(text,numwords=100,go_backwards=False):
-    import re
-    spaces = [match.start() for match in re.finditer(re.compile('\s'), text)]
-    spaces = list(reversed(spaces)) if go_backwards else spaces
-    spaces = spaces[:numwords]
-    return text[:spaces[-1]] if not go_backwards else text[spaces[-1]:]
 
 def index(text,phrase,ignorecase=True):
     compiled = re.compile(phrase, re.IGNORECASE) if ignorecase else re.compile(phrase)
     passage_indices = [(match.start(), match.end()) for match in re.finditer(compiled, text)]
     return passage_indices
+
 
 def passages(text,phrases=[],window=200,indices=None,ignorecase=True,marker='***'):
     txt_lower = text.lower()
@@ -2343,25 +1347,13 @@ def passages(text,phrases=[],window=200,indices=None,ignorecase=True,marker='***
 write = write2
 
 
-def splitkeepsep(s, sep):
-    return reduce(lambda acc, elem: acc[:-1] + [acc[-1] + elem] if elem == sep else acc + [elem], re.split("(%s)" % re.escape(sep), s), [])
 
-
-
-
-
-
-
-
-
-
-## Spelling
-V2S = None
 def variant2standard():
     global V2S
     if not V2S:
         V2S = dict((d['variant'],d['standard']) for d in tools.tsv2ld(SPELLING_VARIANT_PATH,header=['variant','standard','']))
     return V2S
+
 
 def standard2variant():
     v2s=variant2standard()
@@ -2370,6 +1362,7 @@ def standard2variant():
         if not s in d: d[s]=[]
         d[s]+=[v]
     return d
+
 
 
 
@@ -2386,12 +1379,14 @@ def phrase2variants(phrase):
 
 
 ENGLISH = None
+
 def load_english():
     global ENGLISH
     print('>> loading english dictionary...')
     ENGLISH = set(codecs.open('/Dropbox/LITLAB/TOOLS/english.txt','r','utf-8').read().split('\n'))
     #ENGLISH = (eng - load_stopwords())
     return ENGLISH
+
 
 
 
@@ -2409,17 +1404,13 @@ def yank(text,tag,none=None):
         return none
 
 
-def tagname2tagtup(tagname):
-    return ('<'+tagname+'>','</'+tagname+'>')
-
-
-
 
 def product(*args):
     if not args:
         return iter(((),)) # yield tuple()
     return (items + (item,)
         for items in product(*args[:-1]) for item in args[-1])
+
 
 
 def zfy(data):
@@ -2429,7 +1420,7 @@ def zfy(data):
 
 
 
-load_stopwords = get_stopwords
+
 
 
 
@@ -2481,6 +1472,7 @@ def linreg(X, Y):
     return a, b, RR
 
 
+
 def download_wget(url, save_to, **attrs):
     import wget
     save_to_dir,save_to_fn=os.path.split(save_to)
@@ -2491,6 +1483,7 @@ def download_wget(url, save_to, **attrs):
     os.rename(fn,save_to_fn)
     # print('\n>> saved:',save_to)
 
+
 def download(url,save_to,force=False,desc=''):
     here=os.getcwd()
     if not force and os.path.exists(save_to): return
@@ -2499,13 +1492,6 @@ def download(url,save_to,force=False,desc=''):
     # download_wget(url,save_to,desc=desc)
     download_file_tqdm(url,save_to,desc=desc)
     os.chdir(here)
-
-def download_curl(url,save_to):
-    save_to_dir,save_to_fn=os.path.split(save_to)
-    if save_to_dir: os.chdir(save_to_dir)
-    cmd=f'curl -o {save_to} {url}'
-    print(cmd)
-    os.system(cmd)
 
 
 def copyfileobj(fsrc, fdst, total, length=16*1024):
@@ -2521,134 +1507,9 @@ def copyfileobj(fsrc, fdst, total, length=16*1024):
             fdst.write(buf)
             pbar.update(len(buf))
 
-def download_tqdm2(url, save_to):
-    import requests
-    with requests.get(url, stream=True, verify=False) as r:
-        totalstr=r.headers.get('Content-length')
-        total=int(totalstr) if totalstr else None
-        with open(save_to, 'wb') as f:
-            copyfileobj(r.raw, f, total)
-
-
-
-#!/usr/bin/env python 
-__author__  = "github.com/ruxi"
-__license__ = "MIT"
-def download_file_tqdm(url, filename=False, verbose = False, desc=None):
-    """
-    Download file with progressbar
-    """
-
-    import requests 
-    from tqdm import tqdm
-    import os.path
-
-
-    if not filename:
-        local_filename = os.path.join(".",url.split('/')[-1])
-    else:
-        local_filename = filename
-    
-    r = requests.get(url, stream=True)
-    file_size = r.headers.get('content-length')
-    chunk = 1
-    chunk_size=1024
-    num_bars = int(file_size) // chunk_size if file_size else None
-    if verbose>0:
-        print(dict(file_size=file_size))
-        print(dict(num_bars=num_bars))
-
-    
-    with open(local_filename, 'wb') as fp:
-        iterr=get_tqdm(
-            r.iter_content(chunk_size=chunk_size),
-            total=num_bars,
-            unit='KB',
-            desc = local_filename if not desc else desc,
-            leave = True
-        )
-        for chunk in iterr:
-            fp.write(chunk)
-    return
-
-def download_pycurl(url, save_to,desc=''):
-    # from: https://gist.github.com/etheleon/882d6a9a64c064d4202ccd59f6c0b533
-
-    import os
-    import pycurl
-    from tqdm import tqdm
-    downloader = pycurl.Curl()
-    def sanitize(c):
-        c.setopt(pycurl.UNRESTRICTED_AUTH, False)
-        c.setopt(pycurl.HTTPAUTH, pycurl.HTTPAUTH_ANYSAFE)
-        c.setopt(pycurl.ACCEPT_ENCODING, b'')
-        c.setopt(pycurl.TRANSFER_ENCODING, True)
-        c.setopt(pycurl.SSL_VERIFYPEER, True)
-        c.setopt(pycurl.SSL_VERIFYHOST, 2)
-        c.setopt(pycurl.SSLVERSION, pycurl.SSLVERSION_TLSv1)
-        #c.setopt(pycurl.FOLLOWLOCATION, False)
-        c.setopt(pycurl.FOLLOWLOCATION, True)
-
-    def do_download(url, local, *, safe=True):
-        rv = False
-        with get_tqdm(desc=url if not desc else desc, total=1, unit='b', unit_scale=True) as progress:
-            xfer = XferInfoDl(url, progress)
-            if safe:
-                local_tmp = local + '.tmp'
-            else:
-                local_tmp = local
-
-            c = downloader
-            c.reset()
-            sanitize(c)
-
-            c.setopt(pycurl.NOPROGRESS, False)
-            c.setopt(pycurl.XFERINFOFUNCTION, xfer)
-
-            c.setopt(pycurl.URL, url.encode('utf-8'))
-            with open(local_tmp, 'wb') as out:
-                c.setopt(pycurl.WRITEDATA, out)
-                try:
-                    c.perform()
-                except pycurl.error:
-                    os.unlink(local_tmp)
-                    return False
-            if c.getinfo(pycurl.RESPONSE_CODE) >= 400:
-                os.unlink(local_tmp)
-            else:
-                if safe:
-                    os.rename(local_tmp, local)
-                rv = True
-            progress.total = progress.n = progress.n - 1
-            progress.update(1)
-        return rv
-
-
-    class XferInfoDl:
-        def __init__(self, url, progress):
-            self._tqdm = progress
-
-        def __call__(self, dltotal, dlnow, ultotal, ulnow):
-            n = dlnow - self._tqdm.n
-            self._tqdm.total = dltotal or guess_size(dlnow)
-            if n:
-                self._tqdm.update(n)
-
-
-    def guess_size(now):
-        ''' Return a number that is strictly greater than `now`,
-            but likely close to `approx`.
-        '''
-        return 1 << now.bit_length()
-
-
-    ## main of function
-    do_download(url, save_to)
 
 def in_jupyter(): return sys.argv[-1].endswith('json')
 
-def printx(x):
-    printm(x) if in_jupyter() else print(x)
 
 class Bunch(object):
     def __init__(self, **adict):
@@ -2663,13 +1524,16 @@ class Bunch(object):
             yield v
 
 
+
 def mask_home_dir(path): return ppath(path)
+
 def ppath(path):
     import os
     return path.replace(
         os.path.expanduser('~'),
         '~'
     )
+
 def rpath(path):
     import os
     return path.replace(
@@ -2678,44 +1542,13 @@ def rpath(path):
     )
 
 
-def untar(fname,dest='.',overwrite=False,progress=True,progress_desc=None,**attrs):
-    import tarfile
-    from tqdm import tqdm
-
-
-    mode='r:'
-    if not progress_desc: progress_desc=f'Extracting {os.path.basename(fname)}'
-    if fname.endswith("tar.gz") or fname.endswith("tgz"): mode+='gz'
-    with tarfile.open(fname, "r:gz") as tar:
-        members=tar.getnames()
-        iterr=get_tqdm(members,desc=progress_desc) if progress else members
-        for member in iterr:
-            ofnfn=os.path.join(dest,member)
-            if not overwrite and os.path.exists(ofnfn): continue
-            tar.extract(member,dest)
-
-
-
-def download_tqdm(url, save_to):
-    import requests
-    from tqdm import tqdm
-
-    r = requests.get(url, stream=True)
-    total_size = int(r.headers.get('content-length', 0))
-
-    with open(save_to, 'wb') as f:
-        for chunk in get_tqdm(r.iter_content(32*1024), total=total_size, unit='B',unit_scale=True):
-            if chunk:
-                f.write(chunk)
-
-    return save_to
-
 
 def extract(fn,*x,**attrs):
     if fn.endswith('zip'):
         unzip(fn,*x,**attrs)
     elif fn.endswith('tar') or fn.endswith('tgz') or fn.endswith('tar.gz'):
         untar(fn,*x,**attrs)
+
 
 
 
@@ -2751,10 +1584,6 @@ def unzip(zipfn, dest='.', flatten=False, overwrite=False, replace_in_filenames=
                     shutil.copyfileobj(source, target)
             except FileNotFoundError:
                 print('!! File not found:',target_fnfn)
-def safesample(df,n,replace=False):
-    if replace: return df.sample(n=n,replace=True)
-    return df.sample(n=n) if len(df)>n else df
-
 
 def get_num_lines(filename):
     from smart_open import open
@@ -2775,6 +1604,7 @@ def get_num_lines(filename):
 #print('>>>>',config)
 
 
+
 def cloud_list(tmpfn='.tmp_lltk_cloud_list'):
     import subprocess
     try:
@@ -2792,15 +1622,6 @@ def cloud_list(tmpfn='.tmp_lltk_cloud_list'):
     except AssertionError:
         return ''
 
-def cloud_share_all():
-    sharecmd=config['CLOUD_SHARE_CMD']
-    dest=config['CLOUD_DEST']
-
-
-
-
-
-
 
 def check_make_dir(path,ask=True,default='y'):
     if os.path.exists(path) and os.path.isdir(path): return True
@@ -2815,6 +1636,7 @@ def check_make_dir(path,ask=True,default='y'):
             os.makedirs(path)
             return True
     return False
+
 
 def symlink(path,link_to,default='y',ask=True):
     # symlink?
@@ -2841,14 +1663,6 @@ def symlink(path,link_to,default='y',ask=True):
                 if os.path.exists(link_to): os.remove(link_to)
                 os.symlink(path, link_to)
 
-def check_copy_file(src,dst):
-    try:
-        if check_make_dir(os.path.dirname(dst)):
-            if input(f'\nSave\n    {src}\nto\n    {dst}\n[Y/n] ').strip()!='n':
-                shutil.copyfile(src,dst)
-                print('\n>> saved:',dst,'\n')
-    except (KeyboardInterrupt,EOFError) as e:
-        return False
 
 def check_move_file(src,dst):
     try:
@@ -2859,6 +1673,7 @@ def check_move_file(src,dst):
                 print('\n>> renamed:',dst,'\n')
     except (KeyboardInterrupt,EOFError) as e:
         return False
+
 
 def check_move_link_file(src,dst):
     src=os.path.abspath(src)
@@ -2875,6 +1690,7 @@ def check_move_link_file(src,dst):
         return False
 
 
+
 def check_make_dirs(paths,ask=True):
     l=[]
     for path in paths:
@@ -2884,10 +1700,15 @@ def check_make_dirs(paths,ask=True):
 
 
 SOURCES=[]
-if config.get('PATH_TO_CORPORA'): SOURCES+=[config.get('PATH_TO_CORPORA')]
+try:
+    from lltk.imports import PATH_CORPUS
+    SOURCES.append(PATH_CORPUS)
+except Exception:
+    pass
 SOURCES+=['.']
 
 #print("SOURCES:",SOURCES)
+
 
 def get_path_abs(path,sources=SOURCES,rel_to=None):
     if not path: return ''
@@ -2910,61 +1731,15 @@ def get_path_abs(path,sources=SOURCES,rel_to=None):
 
 
 
-def get_lltk_id(idx,corpus):
-    if corpus and corpus!='corpus':
-        return corpus+'|'+idx
-    return idx
 
-
-
-
-
-def camel2snake_case(name):
-    s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
-    return re.sub('([a-z0-9])([A-Z])', r'\1_\2', s1).lower()
-
-
-
-
-def valid_args_for(func_or_method):
-    import inspect
-    return inspect.getfullargspec(func_or_method).args
-
-
-
-
-def read_csv_with_pandas(fnfn,return_ld=False,encoding='utf-8',**attrs):
-    import pandas as pd
-    #if fnfn.endswith('.gz'): fnfn=fnfn[:-3]
-    attrs['error_bad_lines']=False
-    ext=os.path.splitext(fnfn[:-3] if fnfn.endswith('.gz') else fnfn)[-1]
-    if ext=='.csv':
-        try:
-            df=pd.read_csv(fnfn,sep=',',encoding='utf-8',**attrs)
-        except UnicodeDecodeError:
-            df=pd.read_csv(fnfn,sep=',',encoding='ISO-8859-1',**attrs)
-
-    elif ext in {'.txt','.tsv'}:
-        try:
-            df=pd.read_csv(fnfn,sep='\t',encoding='utf-8',**attrs)
-        except UnicodeDecodeError:
-            df=pd.read_csv(fnfn,sep='\t',encoding='ISO-8859-1',**attrs)
-    elif ext in {'.xls','.xlsx'}:
-        df=pd.read_excel(fnfn)#,**attrs)
-    else:
-        return pd.DataFrame() if not return_ld else []
-    return df if not return_ld else df.to_dict('records')
-
-
-
-USER_HOME=os.path.expanduser('~')
-def get_config_file_location(pointer_fn=f'{USER_HOME}/.lltk_config'):
+def get_config_file_location(pointer_fn=os.path.expanduser('~/.lltk_config')):
     if not os.path.exists(pointer_fn):
         print('!! No configuration file created. Run: lltk configure')
         return
 
     with open(pointer_fn) as f:
         return f.read()
+
 
 
 def remove_duplicates(seq,remove_empty=False):
@@ -2984,40 +1759,7 @@ def remove_duplicates(seq,remove_empty=False):
 
 
 
-def rename_folders(from_name,to_name,rootdir,ask=True):
-    to_replace=[]
-    from_path,to_path='',''
-    for root,dirs,fn in sorted(os.walk(rootdir)):
-        for dirname in dirs:
-            if dirname == from_name:
-                from_path = os.path.join(root,from_name)
-                to_path=os.path.join(root,to_name)
-                to_replace.append((from_path,to_path))
-    
-    if not to_replace:
-        print('Nothing to replace.')
-        return
-    if ask:
-        yn = input(f'''{len(to_replace)} directories to replace, e.g.
 
-{from_path}
-
--->
-
-{to_path}
-
-Replace all? [Y/n]
-''')
-        if not yn or yn.strip().lower()[0]=='n': return
-    
-    for from_path,to_path in to_replace:
-        os.rename(from_path, to_path)
-    
-
-
-
-
-PSALT=b'\x8f\x12\x18W@\x86\xb4O&y\x10\xea\x95\xa0\xde\xc8'
 def get_passkey(password):
     from cryptography.fernet import Fernet
     from cryptography.hazmat.primitives import hashes
@@ -3031,6 +1773,7 @@ def get_passkey(password):
     )
     key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
     return Fernet(key)
+
 
 
 def get_pkey(): return get_passkey('''THIS great purple butterfly,
@@ -3050,20 +1793,12 @@ To take the roses for his meat.''')
 
 
 
-def email_is_valid(email):
-    import re
-    return re.match(r"(^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$)", email)
-
 
 def get_user_info():
     path=PATH_LLTK_CONFIG_USR
     data = read_json(path)
     return data
 
-def set_user_info(**meta):
-    path=PATH_LLTK_CONFIG_USR
-    data = {**get_user_info(), **meta}
-    write_json(data,path)
 
 def get_user_email(message='please enter your email address: ',force=False):
     data = get_user_info()
@@ -3081,3 +1816,4 @@ def get_user_email(message='please enter your email address: ',force=False):
 
     # if log: log.error(f'invalid email: {email}')
     return None
+

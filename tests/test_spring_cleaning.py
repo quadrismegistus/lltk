@@ -435,7 +435,7 @@ class TestOptionalDeps:
         # Should import without error even if duckdb missing
         assert hasattr(metadb, 'duckdb')
 
-    def test_tinydb_guarded_in_db(self):
-        from lltk.tools import db
-        # Should import without error even if tinydb missing
-        assert hasattr(db, 'tinydb')
+    def test_db_module_removed(self):
+        import importlib
+        with pytest.raises(ModuleNotFoundError):
+            importlib.import_module('lltk.tools.db')
