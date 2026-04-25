@@ -64,13 +64,8 @@ class BaseText(BaseObject):
         self._rels={}
         self._gcache={}
         self.__meta={}
-        self._reld={}
         self._meta={}
         self._meta_hydrated=False
-        self._gdb=None
-        self._db=None
-        self._init=set()
-        self._cacheworthy=False
         self._txt=_txt
         self._xml=_xml
         self._node=None
@@ -93,29 +88,6 @@ class BaseText(BaseObject):
             self._meta,
             meta,
         ))
-        self._last_cache=None
-
-        ### asynchronous leap!
-        # self.init(cache=_cache)
-
-    def init_local(self,meta={},force=False,remote=None,cache=True,**kwargs):
-        if log: log('making synchronous moves')
-        self._last_cache = dlocal = self.cachedb('meta').get(self.addr,{})
-        if log>1: log(f'dlocal = {dlocal}')
-
-        # quick meta
-        self._meta=self.ensure_id(merge_dict(self._last_cache,self._meta))
-        if log>1: log(f'self._meta = {self._meta}')
-
-        # quick rels
-        with self.cachedb('match') as odb:
-            self._rels={**odb.get(self.addr,{}), **self._rels}
-            if log: log(f'self._rels = {self._rels}')
-        
-
-    def init(self,**kwargs):
-        self.init_local(**kwargs)
-        return self
 
 
 
@@ -486,79 +458,9 @@ class BaseText(BaseObject):
 
 
 
-    ####################################################################
-    # Loading 
-    ####################################################################
-
-
-    def init_(self,remote=None,cache=True,**kwargs):
-        remote=is_logged_on()
-        kwargs['from_sources']=False
-        kwargs['cache']=True
-        kwargs['remote']=remote
-        return self.init(**kwargs)
-        
-
-
-    def get_cacheable_meta(self,ometa={}):
-        #return #self.ensure_id(
-        return just_meta_no_id(
-                {
-                    **(self.__meta if self.__meta else {}),
-                    **(self._meta if self._meta else {}),
-                    **(ometa if ometa else {})
-                }
-            )#,
-            # allow_sep=False
-        # )
-
-    def cache(self,ometa={},force=False,**y):
-        # pkg
-        res=None
-        if log: log(f'?')
-        if self._last_cache is None:
-            if log: log('self._last_cache does not exist. waiting for result of last cache')
-            try:
-                # future = self.init_async()
-                self.init()
-                # future.result()
-                # if log: log(f'result done. self._last_cache = {self._last_cache}')
-            except Exception as e:
-                if log: log(f'CANNOT CONNECT: {e}')
-            
-            if self._last_cache is None:
-                if log: log('last cache could not be loaded')
-                self._last_cache={}
-
-        ometa = merge_dict(self._last_cache, self.get_cacheable_meta(ometa))
-        if log>1: log(f'old = {self._last_cache}')
-        if log>1: log(f'new = {ometa}')
-
-        if force or ometa != self._last_cache:
-            if log: log(f'<<< {self}')
-            self._last_cache = ometa
-            if 'data' in ometa: del ometa['data']
-
-            with self.cachedb('meta') as odb:
-                odb[self.addr]=ometa
-                if log: log(f'saved to local cache: {self.addr} --> {ometa}')
-
-        return res
-        
-
-
-
-    def update(self,meta={},_force=False,_cache=True,**metad):
+    def update(self, meta={}, **metad):
         if meta or metad:
-            imeta = {**meta, **metad}
-            self.cache(imeta)
-
-            # if log>1: log(f'<- {imeta}')
-            # if _cache:
-            #     ometa = self.cache(imeta,force=_force)
-            #     self._meta = {**self._meta, **ometa}
-            # else:
-            #     self._meta = {**self._meta, **imeta}
+            self._meta = {**self._meta, **meta, **metad}
 
 
     
@@ -570,52 +472,6 @@ class BaseText(BaseObject):
     def qdb(self): return self.corpus.qdb
     
     def query(self,*x,**y): return {}
-
-    def metadata_remote(self,meta={},sep=META_KEY_SEP,remote=REMOTE_REMOTE_DEFAULT,cache=True,force=False,**kwargs):
-        if log>1: log(self)
-        ometa=meta
-        if self.id_is_valid() and (force or not self.meta_is_valid(meta)):
-            query_meta = self.query(**kwargs)
-            if query_meta:
-                self._meta=merge_dict(self._meta, query_meta)
-                if log: log(f'self.query({kwargs}) -> {query_meta.keys()}')
-                ometa={**ometa, **query_meta}
-                if '_sources' in ometa: self._sources |= set(ometa.pop('_sources'))
-                if '_source' in ometa: self._sources |= {ometa.pop('_source')}
-                if log: log(f'{len(ometa)} keys')
-                self._cacheworthy=True
-                self.cache(ometa)
-        return self.ensure_id(ometa)
-
-    def metadata_from_cache(self,meta={},**kwargs):
-        if log>1: log(self)
-        #return self.ensure_id(merge_dict(self.init_cache(),**meta))
-        self.init_meta_async()
-        return {**self._meta}
-
-    def metadata_from_sources(self,meta={},sep=META_KEY_SEP,remote=None,force=False,**kwargs):
-        if log: log(self)
-        remote=is_logged_on()
-        kwargs['from_sources']=False
-        sources_present = {k.split(sep)[-1] for k in meta if sep in k}
-        if log: log(f'sources_present = {sources_present}')
-        sources_needed = [src for src in self.dsources if force or src.corpus.id not in sources_present]
-        if log: log(f'sources_needed = {sources_needed}')
-
-
-        odset = OrderedSetDict()
-        for src in sources_needed:
-            src_meta=src.metadata(remote=remote,**kwargs)
-            src_meta = flattendict(src_meta)
-            for k,v in src_meta.items():
-                if k and k[0]!='_':
-                    odset[k+sep+src.corpus.id] = v    
-                        
-        if log: log(odset)
-        odx=merge_dict(meta,odset.to_dict())
-        return self.ensure_id(odx)
-
-
 
     def metadata_initial(
             self,meta={},
@@ -629,61 +485,11 @@ class BaseText(BaseObject):
         self._meta={k:v for k,v in ometa.items() if not sep in k}
         return ometa
 
-    def metadata(
-            self,
-            meta={},
-            from_initial=True,
-            from_query=False,
-            from_cache=False,
-            from_sources=False,
-            cache=False,
-            remote=None,
-            sep=META_KEY_SEP,
-            to_numeric=True,
-            **kwargs):
-        if log>1: log(self)
-        # begin dict
-        ometa={**meta}
-        if log: log(f'<- remote = {remote} ?')
-        remote=is_logged_on()
-        
-        # initial (self.__meta, self._meta, ...)
-        if from_initial: ometa = self.metadata_initial(ometa)
-        
-        # db caches
-        try:
-            if from_cache: ometa = self.metadata_from_cache(ometa,**kwargs)
-        except Exception as e:
-            pass
-        
-        # query for myself?
-        try:
-            if remote and is_logged_on() and from_query: ometa = self.metadata_remote(ometa,**kwargs)
-        except Exception as e:
-            pass
-        
-        # source metadata (incl remote sources?)
-        if from_sources:
-            # make sure remote sources present
-            try:
-                if remote and is_logged_on(): self.get_remote_sources()
-            except Exception as e:
-                pass
-
-            # get metadata
-            ometa = self.metadata_from_sources(
-                ometa,
-                from_cache=from_cache,
-                remote=remote,
-                cache=cache,
-                **kwargs
-            )
-        # set temp cache meta
+    def metadata(self, meta={}, to_numeric=True, **kwargs):
+        ometa = self.metadata_initial(meta)
         self.__meta = ometa = self.ensure_id(ometa)
-        # cache?
-        if cache: self.cache(ometa)
-        # return final meta dict
-        if to_numeric: ometa=to_numeric_dict(ometa)
+        if to_numeric:
+            ometa = to_numeric_dict(ometa)
         return ometa
     
 
@@ -1044,52 +850,6 @@ class BaseText(BaseObject):
         return self._sources
 
 
-    def queue_remote_sources(self,callback=None,**kwargs):
-        if self.au and self.shorttitle and self.qstr:
-            log.info(f'querying remote sources for "{self.qstr}"')
-            import time, json
-            now=time.time()
-            meta=just_meta_no_id(self._meta)
-            if not meta: return
-            num_srcs_now=len(self.matches)
-            code="""
-d=%s
-self=lltk.Text('%s',**d)
-with lltk.online: self.get_remote_sources()
-""" % (json.dumps(safejson(meta)),self.addr)
-            def callback_srcs(res):
-                self.init_local()
-                num_srcs_nownow=len(self.matches)
-                log.info(f'processing completed in {round(time.time()-now,2)}s. {num_srcs_nownow} found, {num_srcs_nownow-num_srcs_now} of which are new')
-            obj = llcode(code,callback=callback_srcs,**kwargs)
-            return obj
-
-    def get_remote_sources(self,corpora=None,cache=True,remote=REMOTE_REMOTE_DEFAULT,lim=1,progress=False,*args,**kwargs):
-        from lltk.corpus.corpus import Corpus
-        if corpora is None: corpora = self.corpus.REMOTE_SOURCES
-        o=[]
-        # other corpora?
-        if corpora:
-            if log: log(f'corpora = {corpora}')
-            desc=f'[{self.addr}] '
-            iterr=corpora
-            if progress: iterr=get_tqdm(iterr,desc=desc,position=0)
-            for i,c in enumerate(iterr):
-                C=Corpus(c)
-                if progress: iterr.set_description(f'{desc}: Querying {C.name}')
-                
-                if log: log(f'Remote corpus: {C} ({self.addr})')
-                cl=[]
-                for tsrc in C.texts_from(self,remote=remote,**kwargs):
-                    if tsrc is not None:
-                        cl.append(tsrc)
-                        self.match(tsrc)
-                        if progress: iterr.set_description(f'{desc}: Found {tsrc})')
-                        if len(cl)>=lim: break
-                o+=cl
-                
-        return o
-    
     @property
     def sources(self): return [Text(x) for x in self.matches]
 

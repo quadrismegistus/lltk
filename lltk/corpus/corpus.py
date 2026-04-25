@@ -244,27 +244,6 @@ class BaseCorpus(TextList):
 
 
 
-    ####################################################################
-    # SYNCING to db
-    ####################################################################
-
-
-    def sync(self,progress=True,force=False,**kwargs):
-        iterr = list(self.init_meta_csv())
-        iterr = [(self.get_addr(id),d) for id,d in iterr]
-        if progress: iterr = get_tqdm(iterr, desc=f'[{self.name}] Syncing texts to db')
-        o=[]
-        with log.silent:
-            for addr,d in iterr:
-                # if not force and addr in ids_done: continue
-                meta = safebool(just_meta_no_id(d))
-                t=Text(addr,**meta)
-                t.cache(force=True)
-                o.append(t)
-        return TextList(o)
-
-        
-
     def init_meta(self,sources=['csv'],merger=None,allow_hidden=False,*x,**y):
         
         def _filter(odx): 
@@ -508,21 +487,8 @@ class BaseCorpus(TextList):
         if log>1: log(f'-> {t}' if is_text_obj(t) else "-> ?")
         return t
 
-    def text_from(self,text,**kwargs):
-        for newtext in self.texts_from(text,**kwargs):
-            return newtext
-
-    def texts_from(self, id: Union[str,BaseText], add_source=True, remote=REMOTE_REMOTE_DEFAULT, cache=True,**kwargs):
-        # Sublcass this in query-like corpus classes (Wikidata, Hathi)
-        # so that the resulting text can be of a very different kind
-        # (i.e. query on incoming text's title, sort through results, etc)
-        # by default this will just use .text() and an incoming text's
-        # address will be used as the ID
-        #if log: log(f'<- remote = {remote} ?')
-        oldtext=Text(id)
-        newtext=self.text(oldtext,**kwargs).init_(remote=remote,cache=cache,**kwargs)
-        newtext.match(oldtext)
-        yield newtext
+    def text_from(self, text, **kwargs):
+        return self.text(text, **kwargs)
 
 
     def get_text(self,id:str,_use_db:bool=True) -> Union[BaseText,None]:
@@ -605,8 +571,6 @@ class BaseCorpus(TextList):
         if id is None: id = self.get_text_id(id, _source=_source, **meta)
         # gen text in my image        
         t = self.TEXT_CLASS(id=id, _corpus=self, _source=_source, _remote=_remote, **meta)
-        t._cacheworthy=True
-        if _cache: t.cache()
         if log>1: log(f'-> {t}' if is_text_obj(t) else "-> ?")
         return t
 
