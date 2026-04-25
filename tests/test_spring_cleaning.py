@@ -430,10 +430,9 @@ class TestTextPassages:
 # ──────────────────────────────────────────────────────────────────────
 
 class TestOptionalDeps:
-    def test_duckdb_guarded_in_metadb(self):
+    def test_metadb_has_no_duckdb(self):
         from lltk.tools import metadb
-        # Should import without error even if duckdb missing
-        assert hasattr(metadb, 'duckdb')
+        assert not hasattr(metadb, 'duckdb')
 
     def test_db_module_removed(self):
         import importlib

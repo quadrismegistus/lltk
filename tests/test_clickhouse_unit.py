@@ -245,11 +245,9 @@ class TestPrepareCorpusDf:
         return pd.DataFrame(base)
 
     def test_basic_prepare(self):
-        from lltk.tools.metadb import MetaDB
-        # Use __new__ to bypass __init__ (no DuckDB connection needed)
-        m = MetaDB.__new__(MetaDB)
+        from lltk.tools.metadb import prepare_corpus_df
         df = self._make_df()
-        out = MetaDB.prepare_corpus_df(m, df, 'test_corpus')
+        out = prepare_corpus_df(df, 'test_corpus')
         assert list(out.columns)[:3] == ['_id', 'corpus', 'id']
         assert out['_id'].tolist() == ['_test_corpus/t001', '_test_corpus/t002']
         assert out['corpus'].tolist() == ['test_corpus', 'test_corpus']
@@ -257,42 +255,37 @@ class TestPrepareCorpusDf:
         assert out['author_norm'].iloc[0] == 'austen'
 
     def test_drops_empty_ids(self):
-        from lltk.tools.metadb import MetaDB
-        m = MetaDB.__new__(MetaDB)
+        from lltk.tools.metadb import prepare_corpus_df
         df = self._make_df()
         df.loc[1, 'id'] = ''
-        out = MetaDB.prepare_corpus_df(m, df, 'test_corpus')
+        out = prepare_corpus_df(df, 'test_corpus')
         assert len(out) == 1
 
     def test_dedupes_id(self):
-        from lltk.tools.metadb import MetaDB
-        m = MetaDB.__new__(MetaDB)
+        from lltk.tools.metadb import prepare_corpus_df
         df = self._make_df(id=['t001', 't001'])
-        out = MetaDB.prepare_corpus_df(m, df, 'test_corpus')
+        out = prepare_corpus_df(df, 'test_corpus')
         assert len(out) == 1
 
     def test_year_to_int(self):
-        from lltk.tools.metadb import MetaDB
-        m = MetaDB.__new__(MetaDB)
+        from lltk.tools.metadb import prepare_corpus_df
         df = self._make_df(year=['1813', 'circa 1818'])
-        out = MetaDB.prepare_corpus_df(m, df, 'test_corpus')
+        out = prepare_corpus_df(df, 'test_corpus')
         assert int(out['year'].iloc[0]) == 1813
 
     def test_extra_cols_pack_into_meta(self):
-        from lltk.tools.metadb import MetaDB
+        from lltk.tools.metadb import prepare_corpus_df
         import json
-        m = MetaDB.__new__(MetaDB)
         df = self._make_df(custom_field=['hello', 'world'])
-        out = MetaDB.prepare_corpus_df(m, df, 'test_corpus')
+        out = prepare_corpus_df(df, 'test_corpus')
         assert 'meta' in out.columns
         meta = json.loads(out['meta'].iloc[0])
         assert meta.get('custom_field') == 'hello'
 
     def test_default_lang(self):
-        from lltk.tools.metadb import MetaDB
-        m = MetaDB.__new__(MetaDB)
+        from lltk.tools.metadb import prepare_corpus_df
         df = self._make_df()
-        out = MetaDB.prepare_corpus_df(m, df, 'test_corpus', default_lang='en')
+        out = prepare_corpus_df(df, 'test_corpus', default_lang='en')
         assert out['lang'].iloc[0] == 'en'
 
 
