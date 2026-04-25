@@ -41,8 +41,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install pytest pytest-cov
           pip install -r requirements.txt
-          pip install -e ".[clickhouse]"
-          pip install chdb pyarrow duckdb
+          pip install -e ".[all,legacy]"
+          pip install chdb pyarrow
 
       - name: Download NLTK data
         run: python -c "import nltk; nltk.download('punkt_tab')"
