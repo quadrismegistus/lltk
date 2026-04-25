@@ -1,5 +1,31 @@
-from lltk.imports import *
+import json
+import os
+import re
 import re as _re
+from urllib.parse import quote_plus
+
+import numpy as np
+import pandas as pd
+
+from lltk.imports import (
+    BaseCorpus,
+    BaseText,
+    Capturing,
+    OrderedSetDict,
+    PATH_CORPUS,
+    REMOTE_REMOTE_DEFAULT,
+    Text,
+    get_imsg,
+    is_addr_str,
+    is_logged_on,
+    just_meta_no_id,
+    load_corpus,
+    log,
+    merge_dict,
+    readgen_csv,
+    to_corpus_and_id,
+    tools,
+)
 
 HATHI_FULL_META_NUMLINES = 17430652
 HATHI_FULL_META_PATH=os.path.join(PATH_CORPUS,'hathi','metadata.csv.gz')

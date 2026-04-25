@@ -1,4 +1,19 @@
-from lltk.imports import *
+import json
+import os
+
+import pandas as pd
+
+from lltk.imports import (
+    BaseCorpus,
+    BaseText,
+    DEFAULT_NUM_PROC,
+    download,
+    extract,
+    fix_meta,
+    pmap,
+    save_df,
+    xml2txt_default,
+)
 from lltk.corpus.hathi import htid2id
 
 GIT_REPO = 'https://github.com/tedunderwood/horizon.git'

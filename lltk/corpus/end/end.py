@@ -8,10 +8,14 @@ cross-references (ESTC, Raven, Garside, Block, McBurney, etc.).
 
 Source: github.com/earlynovels/end-dataset
 """
-from lltk.imports import *
+import os
 import re
-import xml.etree.ElementTree as ET
 import urllib.request
+import xml.etree.ElementTree as ET
+
+import pandas as pd
+
+from lltk.imports import BaseCorpus, BaseText, log
 
 GITHUB_XML_URL = (
     'https://raw.githubusercontent.com/earlynovels/end-dataset/master/'

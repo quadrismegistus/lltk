@@ -17,7 +17,11 @@ Usage:
     lltk preprocess earlyprint  # generates txt and freqs from XML
 """
 
-from lltk.imports import *
+import os
+
+import pandas as pd
+
+from lltk.imports import DEFAULT_NUM_PROC, fix_meta, pmap
 from lltk.corpus.tcp import TextTCP, TCP, extract_metadata, xml2txt_tcp
 
 

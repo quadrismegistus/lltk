@@ -1,4 +1,14 @@
-from lltk.imports import *
+import gzip
+import logging
+import os
+import random
+import time
+
+import networkx as nx
+import numpy as np
+import pandas as pd
+
+from lltk.imports import BaseText
 from lltk.model import BaseModel
 from scipy.spatial.distance import cosine,pdist,squareform,cdist
 from scipy.stats import pearsonr,spearmanr
@@ -1364,7 +1374,6 @@ def smart_procrustes_align_gensim(base_embed, other_embed, words=None):
 
 
 
-import numpy as np
 def normalize(v):
 	'''normalize' a vector, in the traditional linear algebra sense.'''
 	norm=np.linalg.norm(v)

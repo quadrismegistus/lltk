@@ -1,5 +1,5 @@
 import sys; sys.path.insert(0,'../../..')
-from lltk.imports import *
+from lltk.imports import BaseCorpus, BaseText
 
 class TextSemanticCohort(BaseText): pass
 

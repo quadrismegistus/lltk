@@ -1,4 +1,7 @@
-from lltk.imports import *
+import pandas as pd
+
+from lltk.imports import get_tqdm
+
 
 def ner_parse_flair(txt):
     from collections import defaultdict

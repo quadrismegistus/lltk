@@ -1,5 +1,4 @@
-from lltk.imports import *
-from lltk.imports import BaseText,BaseCorpus
+from lltk.imports import BaseCorpus, BaseText
 
 class TextMarkMark(BaseText): pass
 

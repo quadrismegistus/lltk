@@ -1,4 +1,7 @@
-from lltk.imports import *
+import os
+
+import pandas as pd
+from lltk.imports import BaseCorpus, BaseText, fix_meta, tools
 
 
 def get_meta_from_file(path_xml_meta):

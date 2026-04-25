@@ -1,4 +1,13 @@
-from lltk.imports import *
+import json
+import os
+
+import networkx as nx
+import numpy as np
+import pandas as pd
+
+from lltk.imports import DEFAULT_NUM_PROC, get_tqdm, pmap
+
+LATLONG_CACHE_FN = os.path.join(os.path.expanduser('~'), 'lltk_data', 'data', 'latlong_cache.json')
 
 
 class CharacterNetwork:

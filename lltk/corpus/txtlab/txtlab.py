@@ -1,4 +1,11 @@
-from lltk.imports import *
+import os
+import shutil
+from zipfile import ZipFile
+
+import pandas as pd
+
+from lltk.imports import BaseCorpus, BaseText, clean_meta, fix_meta, get_tqdm, save_df
+from lltk.tools import tools
 from lltk.tools.tools import camel_case_split
 
 class TextTxtLab(BaseText):

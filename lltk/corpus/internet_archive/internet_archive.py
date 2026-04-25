@@ -1,6 +1,13 @@
-from lltk.imports import *
+import os
+import shutil
+
+import numpy as np
+from tqdm import tqdm
+
 import internetarchive as ia
 from internetarchive import search_items
+
+from lltk.imports import BaseCorpus, BaseText, get_tqdm, tools
 
 
 DEFAULT_COLLECTION='19thcennov'

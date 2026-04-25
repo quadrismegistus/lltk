@@ -1,4 +1,4 @@
-from lltk.imports import *
+from lltk.imports import BaseCorpus, BaseText
 
 # genre2Genre={u'Drama':'Drama',
 # 	 u'LET':'Letter',

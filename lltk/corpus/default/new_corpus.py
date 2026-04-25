@@ -1,4 +1,4 @@
-from lltk.imports import *
+from lltk.imports import BaseCorpus, BaseText, xml2txt_default
 
 
 class TextNewCorpus(BaseText):

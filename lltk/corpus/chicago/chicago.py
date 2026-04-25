@@ -1,4 +1,6 @@
-from lltk.imports import *
+import os
+
+from lltk.imports import BaseCorpus, BaseText, get_tqdm
 
 
 

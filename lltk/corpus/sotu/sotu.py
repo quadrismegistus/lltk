@@ -1,4 +1,8 @@
-from lltk.imports import *
+import os
+
+import pandas as pd
+
+from lltk.imports import BaseCorpus, save_df
 
 class SOTU(BaseCorpus):
 	def load_metadata(self, *x, **y):

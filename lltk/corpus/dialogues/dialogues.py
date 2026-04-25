@@ -1,4 +1,4 @@
-from lltk.imports import *
+from lltk.imports import BaseCorpus, BaseText
 
 class TextEnglishDialogues(BaseText):
 	STANZA_TAGS = ['stanza','versepara','pdiv']

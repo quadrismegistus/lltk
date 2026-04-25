@@ -1,5 +1,10 @@
-from lltk.imports import *
-from lltk.corpus.tcp import *
+import codecs
+import os
+
+import pandas as pd
+
+from lltk.imports import zeropunc
+from lltk.corpus.tcp import TCP, TextTCP
 from lltk.corpus.eebo_tcp.eebo_tcp import _normalize_estc_id
 
 class TextECCO_TCP(TextTCP):

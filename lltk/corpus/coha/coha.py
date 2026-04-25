@@ -1,4 +1,4 @@
-from lltk.imports import *
+from lltk.imports import BaseCorpus, BaseText, tools
 
 class TextCOHA(BaseText):
 	def text_plain(self):

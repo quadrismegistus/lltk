@@ -1,6 +1,29 @@
-from lltk.imports import *
+import os
+from collections import Counter
+
+import bs4
+import networkx as nx
+import nltk
+import pandas as pd
+
+from lltk.imports import (
+    BAD_CHAR_IDS,
+    BAD_TAGS,
+    BOOKNLP_NARRATOR_ID,
+    BaseCorpus,
+    BaseText,
+    TextSection,
+    clean_text,
+    ensure_dir_exists,
+    get_tqdm,
+    grab_tag_text,
+    log,
+    remove_bad_tags,
+    tokenize_fast,
+    unhtml,
+    zeropunc,
+)
 from lltk.model.characters import CharacterSystem
-from lltk.model.charnet import *
 from lltk.corpus.corpus import SectionCorpus
 
 

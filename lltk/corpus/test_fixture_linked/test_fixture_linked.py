@@ -1,4 +1,6 @@
-from lltk.imports import *
+import os
+
+from lltk.imports import BaseCorpus, BaseText
 
 FIXTURE_PATH = os.path.dirname(os.path.abspath(__file__))
 

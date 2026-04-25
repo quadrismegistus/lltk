@@ -1,4 +1,7 @@
-from lltk.imports import *
+import os
+from typing import Union
+
+from lltk.imports import BaseCorpus, get_ideal_cpu_count, log, pmap, save_freqs_json
 
 
 #################

@@ -1,4 +1,19 @@
-from lltk.imports import *
+import gzip
+import json
+import os
+import tarfile
+
+from lltk.imports import (
+    BaseCorpus,
+    BaseText,
+    DEFAULT_NUM_PROC,
+    clean_text,
+    fix_meta,
+    get_tqdm,
+    pmap,
+    read_df,
+    tools,
+)
 from lltk.corpus.hathi import htid2id
 from lltk.corpus.hathi.hathi import hathi_id_normalize, _build_freqs_index
 

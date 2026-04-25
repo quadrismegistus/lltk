@@ -1,9 +1,8 @@
 """
 A set of classes and functions for doing logistic regression and classification
 """
-from lltk.imports import *
+from collections import defaultdict
 
-# imports
 from sklearn.linear_model import LogisticRegression
 from sklearn.neural_network import MLPClassifier
 from sklearn.model_selection import cross_val_predict,cross_val_score
