@@ -446,69 +446,14 @@ from typing import (
 )
 
 
-class TinyTable(tinydb.table.Table):
-    document_id_class = str
-    def _get_next_id(self):
-        from lltk.text.utils import get_idx
-        return get_idx()
+if tinydb is not None:
+    class TinyTable(tinydb.table.Table):
+        document_id_class = str
+        def _get_next_id(self):
+            from lltk.text.utils import get_idx
+            return get_idx()
 
-    def insert_multiple(self, documents: Iterable[Mapping]) -> List[int]:
-        """
-        Insert multiple documents into the table.
-
-        :param documents: an Iterable of documents to insert
-        :returns: a list containing the inserted documents' IDs
-        """
-        doc_ids = []
-
-        def updater(table: dict):
-            from lltk.imports import log
-            from lltk.text.utils import safebool
-
-            for document in documents:
-
-                # Make sure the document implements the ``Mapping`` interface
-                if not isinstance(document, Mapping):
-                    log.error('Document is not a Mapping')
-                    continue
-
-                if isinstance(document, Document):
-                    # Check if document does not override an existing document
-                    if document.doc_id in table:
-                        old = table[document.doc_id]
-                        new = {**safebool(old), **safebool(old)}
-                        if old != new:
-                            doc_id_l = self.upsert(document)
-                            if not doc_id_l: 
-                                log.error('no doc id returned on upsert')
-                                continue
-                            doc_id = doc_id_l[0]
-                        else:
-                            # if log: log('cache unchanged')
-                            doc_id = document.doc_id
-                    else:
-                        # Store the doc_id, so we can return all document IDs
-                        # later. Then save the document with its doc_id and
-                        # skip the rest of the current loop
-                        doc_id = document.doc_id
-                    doc_ids.append(doc_id)
-                    table[doc_id] = dict(document)
-                    continue
-
-                # Generate new document ID for this document
-                # Store the doc_id, so we can return all document IDs
-                # later, then save the document with the new doc_id
-                doc_id = self._get_next_id()
-                doc_ids.append(doc_id)
-                table[doc_id] = dict(document)
-
-        # See below for details on ``Table._update``
-        self._update_table(updater)
-
-        return doc_ids
-
-
-TinyDB.table_class = TinyTable
+    TinyDB.table_class = TinyTable
 
 
 
