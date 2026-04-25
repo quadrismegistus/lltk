@@ -432,6 +432,44 @@ class BaseText(BaseObject):
             return None
         return prosodic.Text(txt, **kwargs)
     
+    def task_dir(self, task_name: str) -> str:
+        """Return the directory for a rich-JSON task output.
+
+        Layout: {corpus.path}/tasks/{task_name}/{text.id}/
+        Files inside are named {model_slug}.json.
+        """
+        return os.path.join(self.corpus.path_tasks, task_name, self.id)
+
+    def task(self, task_name: str, source: str = None):
+        """Read a rich-JSON task result. Returns dict or None.
+
+        With no source, returns the most recently modified result.
+        """
+        d = self.task_dir(task_name)
+        if not os.path.isdir(d):
+            return None
+        if source:
+            p = os.path.join(d, f'{source}.json')
+            if not os.path.isfile(p):
+                return None
+            import json
+            with open(p) as f:
+                return json.load(f)
+        files = [f for f in os.listdir(d) if f.endswith('.json')]
+        if not files:
+            return None
+        best = max(files, key=lambda f: os.path.getmtime(os.path.join(d, f)))
+        import json
+        with open(os.path.join(d, best)) as f:
+            return json.load(f)
+
+    def task_sources(self, task_name: str) -> list:
+        """List available model sources for a task (e.g. ['qwen36-27b', 'gemini-25-pro'])."""
+        d = self.task_dir(task_name)
+        if not os.path.isdir(d):
+            return []
+        return sorted(f[:-5] for f in os.listdir(d) if f.endswith('.json'))
+
     def get_path_xml(self):
         if not os.path.exists(self.path_xml):
             tsrc = self.source

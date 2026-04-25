@@ -15,7 +15,6 @@ class ArcFiction(CuratedCorpus):
     SOURCES = {
         'bpo': {'genre': 'Fiction', 'year_max': 2009},
         'chadwyck': {'year_max': 2009},
-        'canon_fiction': {'genre': 'Fiction', 'year_max': 2009},
         'chicago': {'year_max': 2009},
         'clmet': {'genre': 'Fiction', 'year_max': 2009},
         'gale_amfic': {'year_max': 2009},

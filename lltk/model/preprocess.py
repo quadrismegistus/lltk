@@ -5,6 +5,40 @@ from lltk.imports import *
 #### XML -> TXT
 #################
 
+def _func_ref(func):
+    """Return a pickle-safe (file_path, func_name) pair for a function.
+
+    Works for functions in dynamically loaded modules (e.g. corpus classes
+    loaded via importlib.util.spec_from_file_location) where the module
+    isn't in sys.modules under a standard import path.
+    """
+    import inspect
+    try:
+        fpath = inspect.getfile(func)
+    except (TypeError, OSError):
+        return None
+    name = getattr(func, '__name__', None)
+    if fpath and name:
+        return (fpath, name)
+    return None
+
+
+_func_cache = {}
+
+def _resolve_func_ref(ref):
+    """Load and return a function from a (file_path, func_name) pair."""
+    if ref in _func_cache:
+        return _func_cache[ref]
+    fpath, name = ref
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('_preproc_mod', fpath)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    func = getattr(mod, name)
+    _func_cache[ref] = func
+    return func
+
+
 def preprocess_txt(
         self: BaseCorpus,
         force: bool = False,
@@ -16,28 +50,42 @@ def preprocess_txt(
 
     self.init(force=False)
 
-    objs = [
-        (t.path_xml,t.path_txt,t.xml2txt_func)
-        for t in self.texts()
-        if t.path_xml and t.path_txt and t.xml2txt_func
-        and os.path.exists(t.path_xml) and (force or not os.path.exists(t.path_txt))
-    ][:lim]
+    objs = []
+    for t in self.texts():
+        if not (t.path_xml and t.path_txt and t.xml2txt_func):
+            continue
+        if not os.path.exists(t.path_xml):
+            continue
+        if not force and os.path.exists(t.path_txt):
+            continue
+        ref = _func_ref(t.xml2txt_func)
+        if ref:
+            objs.append((t.path_xml, t.path_txt, ref))
+        else:
+            objs.append((t.path_xml, t.path_txt, t.xml2txt_func))
+    objs = objs[:lim]
+
     if preview: return objs
     if not objs:
         if log>0: log.error('No XML files to produce plain text files from')
     else:
+        can_multiprocess = objs and isinstance(objs[0][2], tuple)
         pmap(
             do_preprocess_txt,
             objs,
             num_proc=num_proc if num_proc else get_ideal_cpu_count(),
-            use_threads=True,  # threads avoid pickle issues with dynamically loaded modules
+            use_threads=not can_multiprocess,
             desc=f'[{self.name}] Saving plain text versions of XML files',
             kwargs=kwargs
         )
 
 
 def do_preprocess_txt(obj):
-    ifnfn, ofnfn, func = obj
+    ifnfn, ofnfn, func_or_ref = obj
+    if isinstance(func_or_ref, tuple):
+        func = _resolve_func_ref(func_or_ref)
+    else:
+        func = func_or_ref
     otxt = func(ifnfn)
     odir=os.path.dirname(ofnfn)
     if not os.path.exists(odir):

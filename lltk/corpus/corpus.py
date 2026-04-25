@@ -32,6 +32,7 @@ class BaseCorpus(TextList):
     # Per-text prosodic output dir lives under {corpus.path}/prosodic/{text.id}/
     # (override via manifest `path_prosodic = ...` or instance `_path_prosodic`)
     _path_prosodic = 'prosodic'
+    _path_tasks = 'tasks'
 
 
 

@@ -136,23 +136,8 @@ def build_passages_ch(adapter, n: int = 500, num_proc: int | None = None,
         "SELECT DISTINCT _id FROM lltk.passages_meta FINAL"
     )
     done_ids = set(done_df['_id'].tolist()) if len(done_df) else set()
-    if done_ids:
-        # Expand to all _ids sharing a match group with any done text —
-        # avoids ingesting duplicate passages from different corpora
-        group_df = adapter.query_df("""
-            SELECT DISTINCT _id
-            FROM (SELECT * FROM lltk.match_groups FINAL) mg
-            WHERE mg.group_id IN (
-                SELECT group_id FROM lltk.match_groups FINAL
-                WHERE _id IN (SELECT _id FROM lltk.passages_meta FINAL)
-            )
-        """)
-        group_ids = set(group_df['_id'].tolist()) if len(group_df) else set()
-        n_skipped = len(group_ids - done_ids)
-        done_ids |= group_ids
-        if log:
-            log(f'[passages] {len(done_df)} texts already in passages table'
-                f' (+{n_skipped} match-group siblings skipped)')
+    if done_ids and log:
+        log(f'[passages] {len(done_df)} texts already in passages table')
 
     # Gather tasks — pre-built list takes precedence over corpus enumeration
     if tasks is not None:
