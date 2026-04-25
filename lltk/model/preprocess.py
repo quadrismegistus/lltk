@@ -86,7 +86,13 @@ def do_preprocess_txt(obj):
         func = _resolve_func_ref(func_or_ref)
     else:
         func = func_or_ref
-    otxt = func(ifnfn)
+    try:
+        otxt = func(ifnfn)
+    except Exception as e:
+        print(f'!! Error processing {ifnfn}: {e}')
+        return
+    if not otxt:
+        return
     odir=os.path.dirname(ofnfn)
     if not os.path.exists(odir):
         try:
