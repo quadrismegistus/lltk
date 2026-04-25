@@ -1,5 +1,5 @@
 from lltk.imports import *
-from lltk.tools import ensure_dir_exists,get_tqdm,no_id,just_metadata
+from lltk.tools import ensure_dir_exists,get_tqdm,just_metadata
 from lltk.tools.logs import *
 
 COL_ID='id'

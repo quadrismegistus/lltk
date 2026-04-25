@@ -143,7 +143,6 @@ class BaseText(BaseObject):
             col_id=COL_ID,
             col_corpus='_corpus',
             col_addr='_id',
-            col_rels='_rels',
             sep=META_KEY_SEP,
             allow_sep=True):
         if meta is None: meta=self._meta
@@ -157,7 +156,7 @@ class BaseText(BaseObject):
             col_addr:self.addr,
             col_corpus:self.corpus.id,
             col_id:self.id,
-            # col_rels:self.rels,
+
             **{k:v for k,v in items if k.startswith(col_id+META_KEY_SEP)},
             **{k:v for k,v in items if not k.startswith(col_id+META_KEY_SEP)},
         }
