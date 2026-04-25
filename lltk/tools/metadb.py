@@ -23,7 +23,10 @@ import json
 import os
 import re
 import time
-import duckdb
+try:
+    import duckdb
+except ImportError:
+    duckdb = None
 import networkx as nx
 import numpy as np
 import orjson

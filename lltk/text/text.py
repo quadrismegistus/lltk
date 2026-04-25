@@ -1047,7 +1047,7 @@ class BaseText(BaseObject):
     def queue_remote_sources(self,callback=None,**kwargs):
         if self.au and self.shorttitle and self.qstr:
             log.info(f'querying remote sources for "{self.qstr}"')
-            import time
+            import time, json
             now=time.time()
             meta=just_meta_no_id(self._meta)
             if not meta: return
@@ -1056,7 +1056,7 @@ class BaseText(BaseObject):
 d=%s
 self=lltk.Text('%s',**d)
 with lltk.online: self.get_remote_sources()
-""" % (ujson.dumps(safejson(meta)),self.addr)
+""" % (json.dumps(safejson(meta)),self.addr)
             def callback_srcs(res):
                 self.init_local()
                 num_srcs_nownow=len(self.matches)

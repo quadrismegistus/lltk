@@ -294,7 +294,6 @@ def flattendict(d,pref='',sep='_'):
             odset[pref+sep+k if pref else k]=v
     return odset.to_dict()
 
-from ordered_set import OrderedSet
 from collections.abc import MutableMapping
 from collections import UserList
 
@@ -620,51 +619,23 @@ def rmfn(fn):
 def read_json(path):
     if os.path.exists(path):
         try:
-            import orjson
-            with open(path,'rb') as f: return orjson.loads(f.read())
-        except AssertionError as e:
-            log.error(e)
-            try:
-                import ujson
-                with open(path) as f: return ujson.load(f)
-            except AssertionError as e:
-                log.error(e)
-                try:
-                    import json as jsonog
-                    with open(path) as f: return jsonog.load(f)
-                except AssertionError as e:
-                    log.error(e)
-                    pass
+            with open(path, 'rb') as f:
+                return orjson.loads(f.read())
+        except Exception:
+            import json
+            with open(path) as f:
+                return json.load(f)
     return {}
-    
+
 def write_json(obj, path, indent=4):
     ensure_dir_exists(path)
-
     try:
-        import orjson
-        with open(path,'wb') as f:
-            f.write(
-                orjson.dumps(
-                    obj,
-                    option=orjson.OPT_INDENT_2
-                )
-            )
-            return True
-    except AssertionError as e:
-        log.error(e)
-        try:
-            import ujson
-            with open(path,'w') as f: ujson.dump(obj, f, indent=indent)
-            return True
-        except AssertionError as e:
-            log.error(e)
-            try:
-                import json as jsonog
-                with open(path,'w') as f: jsonog.dump(obj, f, indent=indent)
-                return True
-            except AssertionError as e:
-                log.error(e)
-                pass
+        with open(path, 'wb') as f:
+            f.write(orjson.dumps(obj, option=orjson.OPT_INDENT_2))
+    except Exception:
+        import json
+        with open(path, 'w') as f:
+            json.dump(obj, f, indent=indent)
     
 
 # save txt

@@ -5,10 +5,7 @@ from lltk.corpus.hathi.hathi import hathi_id_normalize, _build_freqs_index
 from tqdm import tqdm
 from lltk import tools
 import gzip,tarfile,sys
-try:
-	import ujson as json
-except ImportError:
-	import json
+import json
 
 CORPUS_URL="https://wiki.htrc.illinois.edu/display/COM/Word+Frequencies+in+English-Language+Literature%2C+1700-1922"
 

@@ -285,7 +285,7 @@ import numpy as np,pandas as pd
 import networkx as nx
 from xopen import xopen
 from base64 import b64decode, b64encode
-import ujson,orjson
+import orjson
 
 ## Setup logger
 from lltk.tools import *

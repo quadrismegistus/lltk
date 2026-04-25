@@ -426,9 +426,12 @@ class LLDBGraph(LLDBBase):
 
 
 
-import tinydb
-from tinydb import TinyDB,Query#,where
-from tinydb.table import Document
+try:
+    import tinydb
+    from tinydb import TinyDB, Query
+    from tinydb.table import Document
+except ImportError:
+    tinydb = None
 from typing import (
     Callable,
     Dict,
