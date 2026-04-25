@@ -185,7 +185,7 @@ class BaseText(BaseObject):
     def __delitem__(self, key):
         if key in self._meta: del self._meta[key]
     def __iter__(self): return iter(self.meta.items())
-    def __len__(self): return self.num_words
+    def __len__(self): return self.n_words
 
     def _corpus_meta_row(self):
         """Look up this text's row. Tries MetaDB first, falls back to corpus DataFrame."""
@@ -467,11 +467,6 @@ class BaseText(BaseObject):
     def id_is_valid(self,*x,**y):
         if self.id in {None,'','None'}: return False 
         return True
-    def num_words(self,keys=['num_words','length']):
-        for k in keys:
-            if k in self.meta:
-                return int(self.meta[k])
-        return sum(self.counts().values())
     @property
     def words_recognized(self):
         wordlist=get_wordlist(lang=self.lang)
@@ -507,9 +502,50 @@ class BaseText(BaseObject):
     @property
     def century_str(self): return self.yearbin(100,as_str=True)
     @property
-    def title(self): return str(self.get('title','',ish=True))
+    def title(self):
+        self._hydrate_meta()
+        return str(self._meta.get('title', ''))
     @property
-    def author(self): return str(self.get('author','',ish=True))
+    def author(self):
+        self._hydrate_meta()
+        return str(self._meta.get('author', ''))
+    @property
+    def genre(self):
+        self._hydrate_meta()
+        return str(self._meta.get('genre', ''))
+    @property
+    def genre_raw(self):
+        self._hydrate_meta()
+        return str(self._meta.get('genre_raw', ''))
+    @property
+    def genre_enriched_source(self):
+        self._hydrate_meta()
+        return str(self._meta.get('genre_enriched_source', ''))
+    @property
+    def title_norm(self):
+        self._hydrate_meta()
+        return str(self._meta.get('title_norm', ''))
+    @property
+    def author_norm(self):
+        self._hydrate_meta()
+        return str(self._meta.get('author_norm', ''))
+    @property
+    def n_words(self):
+        self._hydrate_meta()
+        v = self._meta.get('n_words')
+        return int(v) if v and str(v) != 'nan' else 0
+    @property
+    def is_translated(self):
+        self._hydrate_meta()
+        return bool(self._meta.get('is_translated'))
+    @property
+    def original_lang(self):
+        self._hydrate_meta()
+        return self._meta.get('original_lang', '')
+    @property
+    def lang_detected(self):
+        self._hydrate_meta()
+        return self._meta.get('lang_detected', '')
     @property
     def au(self):
         from lltk.corpus.utils import to_authorkey
@@ -839,8 +875,8 @@ class BaseText(BaseObject):
         return nltk.sent_tokenize(self.txt, language=_lang_to_punkt(lang or self.lang))
     @property
     def counts(self,*x,**y): return self.freqs(*x,**y)
-    def len():
-        return self.num_words()
+    def len(self):
+        return self.n_words
     @property
     def tfs(self,*x,**y): 
         counts=self.freqs(*x,**y)
