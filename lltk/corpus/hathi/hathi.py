@@ -105,7 +105,7 @@ def _build_freqs_index(freqs_dir):
             index[norm_id] = path
 
     _FREQS_INDEX_CACHE[freqs_dir] = index
-    if log: log(f'Built freqs index for {freqs_dir}: {len(index)} files')
+    log(f'Built freqs index for {freqs_dir}: {len(index)} files')
     return index
 
 class TextHathi(BaseText):
@@ -144,11 +144,11 @@ class TextHathiRecord(TextHathi):
         return bool((meta if meta else self._meta).get('url'))
     
     # def get_remote_sources(self, *args, remote=REMOTE_REMOTE_DEFAULT, lim=1, **kwargs):
-    #     #if log: log(f'<- remote = {remote} ?')
+    #     #log(f'<- remote = {remote} ?')
     #     o=[]
     #     for htid in self.htid_l:
     #         t=self.corpus.text(f'htid/{htid}',_source=self).init_(remote=remote,**kwargs)
-    #         if log: log(f'-> {t}')
+    #         log(f'-> {t}')
     #         o.append(t)
     #         if lim and len(o)>=lim: break
     #     return o
@@ -160,14 +160,14 @@ class TextHathiRecord(TextHathi):
 
     def init(self,*x,remote=None,**y):
         remote=is_logged_on()
-        #if log: log(f'<- remote = {remote} ?')
+        #log(f'<- remote = {remote} ?')
         super().init(*x,remote=remote,**y)
         htid_srcs=set(t.htid for t in self.dsources if t.corpus.id.startswith('htid/'))
         for htid in set(self.htid_l) - htid_srcs:
-            if log: log(htid)
+            log(htid)
             t=self.corpus.text(f'htid/{htid}').init(remote=remote,**y)
             t.add_source(self)
-            if log: log(t)
+            log(t)
         return self
 
 
@@ -175,7 +175,7 @@ class TextHathiRecord(TextHathi):
         _ = force_inner  # unused; kept for API compat
         odx=self.qdb.get(self.id)
         if force or not odx:
-            if log: log(self)
+            log(self)
             import rispy
             mapd=rispy.TAG_KEY_MAPPING
             mapd['SN']='isbn'
@@ -221,7 +221,7 @@ class TextHathiVolume(TextHathi):
 
 
         if not odx or not just_meta_no_id(odx):
-            if log: log(self)
+            log(self)
             odx={}
             try:
                 with Capturing() as __:
@@ -238,7 +238,7 @@ class TextHathiVolume(TextHathi):
             except Exception as e:
                 log.error(f'query failed: {e}')
 
-        if log: log(f'-> {odx}')
+        log(f'-> {odx}')
         return odx
         
 
@@ -354,7 +354,7 @@ class Hathi(BaseCorpus):
         return t
 
     def get_text_id(self,text,**kwargs):
-        if log>0: log(f'<- {get_imsg(text,**kwargs)}')
+        log.info(f'<- {get_imsg(text,**kwargs)}')
         if is_addr_str(text): text=to_corpus_and_id(text)[1]
         if type(text)==str:
             # Known ID formats: htrn/NNN, htid/lib.vol, or lib/vol (e.g. mdp/39015...)
@@ -368,14 +368,14 @@ class Hathi(BaseCorpus):
     # Corpus, Hathi
     def query_for_ids(self,text):
         import bs4
-        if log: log(f'<- {text}')
+        log(f'<- {text}')
         text=Text(text)
         if not text.shorttitle or not text.au: return []
 
         url = HATHI_TITLE_QUERY_URL
         url = url.replace('[[[QSTR_TITLE]]]', quote_plus(text.shorttitle))
         url = url.replace('[[[QSTR_AUTHOR]]]', quote_plus(text.au))
-        if log: log(f'<- {url}')
+        log(f'<- {url}')
 
         html = self.qdb.query(url)
         dom = bs4.BeautifulSoup(html,'lxml')
@@ -386,9 +386,9 @@ class Hathi(BaseCorpus):
             if '/Record/' in a.attrs['href']
         ]
         if o:
-            if log: log(f'found result on website ({len(o)} records)')
+            log(f'found result on website ({len(o)} records)')
             self.query_db().set(url,o)
-        if log: log(f'-> {o}')
+        log(f'-> {o}')
         return o
 
     def text_from(self,text,**kwargs):
@@ -401,7 +401,7 @@ class Hathi(BaseCorpus):
             t=self.text(htrnid).init_(remote=remote,**kwargs)
             t.add_source(text)
             yield t
-        #if log: log(f'<- remote = {remote} ?')
+        #log(f'<- remote = {remote} ?')
         # tobjs = [src for src in text.sources if src.corpus==self and src.id.startswith('htrn/')]
         # if tobjs:
         #     yield from tobjs

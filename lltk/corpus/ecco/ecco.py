@@ -314,7 +314,7 @@ class ECCO(BaseCorpus):
 					gz.write(f.read())
 				count += 1
 
-		if log: log(f'Done. Extracted {count} XML files, skipped {skipped} (already existed).')
+		log(f'Done. Extracted {count} XML files, skipped {skipped} (already existed).')
 
 	def match_estc(self):
 		from lltk.corpus.estc import ESTC

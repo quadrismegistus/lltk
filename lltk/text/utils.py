@@ -54,9 +54,9 @@ def get_prop_ish(meta,key,before_suf='|',default=None):
     if numkeys==1: 
         keyname = keys[0]
     else:
-        if log>0: log.warning(f'more than one metadata key begins with "{key}": {keys}.')
+        log.warning(f'more than one metadata key begins with "{key}": {keys}.')
         keyname=keys[0]
-        if log>0: log.warning(f'using key: {keyname}')
+        log.warning(f'using key: {keyname}')
     
     res = meta.get(keyname,default)
 
@@ -141,7 +141,7 @@ def get_idx(
 
     if is_text_obj(id): return id.id
     id1=id
-    if log>1: log(f'<- id = {id}, i = {i}')
+    log.debug(f'<- id = {id}, i = {i}')
     # already given?
     if safebool(id):
         if type(id)==str:
@@ -149,12 +149,11 @@ def get_idx(
                 str(id).strip(),
                 allow=allow,
             )
-            if log>2:
-                if log: log(f'id set via `id` str: {id1} -> {id}')
+            log.debug(f'id set via `id` str: {id1} -> {id}')
         
         elif type(id) in {int,float}:
             id = get_idx_from_int(int(id))
-            if log>1: log(f'id set via `id` int: {id1} -> {id}')
+            log.debug(f'id set via `id` int: {id1} -> {id}')
         
         else:
             raise Exception(f'What kind of ID is this? {type(id1)}')
@@ -162,19 +161,19 @@ def get_idx(
     else:
         if meta and (force_meta or (use_meta and not i)):
             id = get_idx_from_meta(meta)
-            if log>1: log(f'id set via `meta`: {id1} -> {id}')
+            log.debug(f'id set via `meta`: {id1} -> {id}')
         elif i:
             id = get_idx_from_int(i,numzero=numzero,prefstr=prefstr)
-            if log>1: log(f'id set via `i` int: {id1} -> {id}')
+            log.debug(f'id set via `i` int: {id1} -> {id}')
 
     
     if not id:
         id = get_idx_from_int(numzero=numzero,prefstr=prefstr) # last resort
-        if log>1: log(f'id set via random int: {id1} -> {id}')
+        log.debug(f'id set via random int: {id1} -> {id}')
     
     if not id: raise Exception('what happened?')
         
-    if log>1: log(f'-> {id}')
+    log.debug(f'-> {id}')
     return id
 
     
@@ -183,7 +182,7 @@ def get_addr(*x,**y): return get_addr_str(*x,**y)
 def is_addr(*x,**y): return id_is_addr(*x,**y)
 
 def get_addr_str(text=None,corpus=None,source=None,**kwargs):
-    if log>3: log(f'<- {get_imsg(text,corpus,source,**kwargs)}')
+    log.debug(f'<- {get_imsg(text,corpus,source,**kwargs)}')
     from lltk.corpus.corpus import Corpus
     corpus=Corpus(corpus)
 
@@ -212,7 +211,7 @@ def get_addr_str(text=None,corpus=None,source=None,**kwargs):
     idx=get_idx(text)
     cpref=IDSEP_START + corpus + IDSEP
     o=cpref + idx if not idx.startswith(cpref) else idx
-    if log>3: log(f'-> {o}')
+    log.debug(f'-> {o}')
     return o
 
 def get_imsg(__id=None,__corpus=None,__source=None,**kwargs):
@@ -226,7 +225,7 @@ def get_imsg(__id=None,__corpus=None,__source=None,**kwargs):
     return ', '.join(o) if o else ''
 
 def get_id_str(text=None,corpus=None,source=None,**kwargs):
-    if log>3: log(f'<- {get_imsg(text,corpus,source,**kwargs)}')
+    log.debug(f'<- {get_imsg(text,corpus,source,**kwargs)}')
     addr=get_addr_str(text,corpus,source,**kwargs)
     id_corp,id_text=to_corpus_and_id(addr)
     o=id_text if corpus==id_corp else addr
@@ -744,20 +743,20 @@ def to_lastname(name):
 def xml2txt_default(xml, *x, OK={'p','l'}, BAD=None, body_tags={'text','doc'}, **args):
     #print '>> text_plain from stored XML file...'
     import bs4
-    if log>1: log(f'xml = {xml}')
+    log.debug(f'xml = {xml}')
     if '\n' not in xml and os.path.exists(xml):
-        if log>1: log(f'is filename = {xml}')
+        log.debug(f'is filename = {xml}')
         with open(xml) as f: xml=f.read()
 
     # clean
     xml = clean_text(xml)
-    if log>1: log([xml[:1000]])
+    log.debug([xml[:1000]])
 
     ## get dom
     dom = bs4.BeautifulSoup(xml,'lxml') if type(xml)==str else xml
     ## remove bad tags
     if BAD is None: BAD = BAD_TAGS
-    if log>1: log([str(dom)[:1000]])
+    log.debug([str(dom)[:1000]])
     for tag in BAD: [x.extract() for x in dom.findAll(tag)]
     ## get text
     txt=[]
@@ -777,7 +776,7 @@ def xml2txt_default(xml, *x, OK={'p','l'}, BAD=None, body_tags={'text','doc'}, *
             elif tag.name=='l':
                 txt+=tag.text.strip()+'\n'
     o=''.join(txt).strip()
-    if log>1: log([o[:1000]])
+    log.debug([o[:1000]])
     return o
 
 xml2txt_prose = xml2txt_default

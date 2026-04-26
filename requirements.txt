@@ -9,6 +9,6 @@ orjson
 xopen
 ftfy
 unidecode
-loguru
+logmap>=0.3
 tqdm
 pyyaml

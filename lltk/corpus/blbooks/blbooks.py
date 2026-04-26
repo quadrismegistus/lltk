@@ -16,7 +16,7 @@ class BLBooks(BaseCorpus):
     def compile(self, force=False):
         """Download BL Books from HuggingFace and build metadata + txt files."""
         if not force and os.path.exists(self.path_metadata) and os.path.isdir(self.path_txt):
-            if log: log('Already compiled. Use force=True to recompile.')
+            log('Already compiled. Use force=True to recompile.')
             return
 
         try:
@@ -27,7 +27,7 @@ class BLBooks(BaseCorpus):
                 'Install it with: pip install "datasets<4"'
             )
 
-        if log: log('Downloading BL Books from HuggingFace (this may take a while)...')
+        log('Downloading BL Books from HuggingFace (this may take a while)...')
         ds = load_dataset(
             'TheBritishLibrary/blbooks',
             split='train',
@@ -35,14 +35,14 @@ class BLBooks(BaseCorpus):
         )
 
         # Filter: English only, non-empty pages
-        if log: log(f'Loaded {len(ds)} pages. Filtering...')
+        log(f'Loaded {len(ds)} pages. Filtering...')
         ds = ds.filter(
             lambda row: row.get('Language_1') == 'English' and not row.get('empty_pg', True)
         )
-        if log: log(f'{len(ds)} English non-empty pages after filtering.')
+        log(f'{len(ds)} English non-empty pages after filtering.')
 
         # Group pages by record_id
-        if log: log('Grouping pages by record...')
+        log('Grouping pages by record...')
         from collections import defaultdict
         records = defaultdict(lambda: {'pages': [], 'meta': {}})
         for row in get_tqdm(ds, desc='[BLBooks] Grouping pages'):
@@ -64,7 +64,7 @@ class BLBooks(BaseCorpus):
                 records[rid]['meta'] = meta
 
         # Write txt files and collect metadata
-        if log: log(f'Writing {len(records)} texts...')
+        log(f'Writing {len(records)} texts...')
         os.makedirs(self.path_txt, exist_ok=True)
         meta_rows = []
         for rid, data in get_tqdm(records.items(), desc='[BLBooks] Writing texts'):
@@ -92,7 +92,7 @@ class BLBooks(BaseCorpus):
         # Write metadata
         df = pd.DataFrame(meta_rows)
         df.to_csv(self.path_metadata, index=False)
-        if log: log(f'Saved {len(df)} records to {self.path_metadata}')
+        log(f'Saved {len(df)} records to {self.path_metadata}')
 
     # Conservative title keywords for BL Books (19th century)
     BLBOOKS_GENRE_KEYWORDS = {

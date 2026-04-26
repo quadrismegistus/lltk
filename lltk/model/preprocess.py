@@ -70,7 +70,7 @@ def preprocess_txt(
 
     if preview: return objs
     if not objs:
-        if log>0: log.error('No XML files to produce plain text files from')
+        log.error('No XML files to produce plain text files from')
     else:
         can_multiprocess = objs and isinstance(objs[0][2], tuple)
         pmap(
@@ -105,7 +105,7 @@ def do_preprocess_txt(obj):
 
     with open(ofnfn,'w',encoding='utf-8',errors='ignore') as f:
         f.write(otxt)
-        if log>1: log(f'>> saved: {ofnfn}')
+        log.debug(f'>> saved: {ofnfn}')
 
 
 #################
@@ -128,7 +128,7 @@ def preprocess_freqs(
     ][:lim]
     if preview: return objs
     if not objs:
-        if log>0: log('Word freqs already saved')
+        log.info('Word freqs already saved')
     else:
         pmap(
             save_freqs_json,

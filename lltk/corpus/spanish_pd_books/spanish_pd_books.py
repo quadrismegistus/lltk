@@ -23,7 +23,7 @@ class SpanishPDBooks(BaseCorpus):
                 language, lang (original lang label), real_lang (detected lang)
         """
         if not force and os.path.exists(self.path_metadata) and os.path.isdir(self.path_txt):
-            if log: log('Already compiled. Use force=True to recompile.')
+            log('Already compiled. Use force=True to recompile.')
             return
 
         from huggingface_hub import HfFileSystem
@@ -31,7 +31,7 @@ class SpanishPDBooks(BaseCorpus):
 
         fs = HfFileSystem()
         parquet_files = sorted(fs.glob(f'datasets/{self.HF_DATASET}/**/*.parquet'))
-        if log: log(f'{len(parquet_files)} parquet shards found.')
+        log(f'{len(parquet_files)} parquet shards found.')
 
         os.makedirs(self.path_txt, exist_ok=True)
         meta_rows = []
@@ -42,7 +42,7 @@ class SpanishPDBooks(BaseCorpus):
                 with fs.open(pf, 'rb') as f:
                     table = pq.read_table(f)
             except Exception as e:
-                if log: log(f'Skipping {pf}: {e}')
+                log(f'Skipping {pf}: {e}')
                 continue
             for row in table.to_pylist():
                 pbar.update(1)
@@ -89,7 +89,7 @@ class SpanishPDBooks(BaseCorpus):
         df = pd.DataFrame(meta_rows)
         df = df.drop_duplicates(subset='id', keep='first')
         df.to_csv(self.path_metadata, index=False)
-        if log: log(f'Saved {len(df)} records to {self.path_metadata}')
+        log(f'Saved {len(df)} records to {self.path_metadata}')
 
     # Conservative genre keywords — precision over recall.
     # Excludes: historia (ambiguous), cuentos (too broad), memorias/crónica (memoir/journalism),

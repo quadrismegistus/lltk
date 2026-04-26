@@ -72,7 +72,7 @@ class TextList(BaseObject, UserList):
             list(self.iter_texts_uniq(self.data_all,**kwargs)),
             key=lambda t: t.year
         )
-        if log: log(f'data_all = {len(self.data_all)}, _data_uniq = {len(self._data_uniq)}')
+        log(f'data_all = {len(self.data_all)}, _data_uniq = {len(self._data_uniq)}')
         return self._data_uniq
     filtered=filter
 

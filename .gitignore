@@ -59,3 +59,4 @@ Untitled*
 *.pkl
 
 docs/superpowerscoverage.json
+coverage.json

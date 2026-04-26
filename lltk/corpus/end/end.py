@@ -43,15 +43,15 @@ class END(BaseCorpus):
             xml_path = os.path.join(self.path, 'end-full.xml')
 
         if not os.path.exists(xml_path):
-            if log: log(f'Downloading END XML from GitHub...')
+            log(f'Downloading END XML from GitHub...')
             urllib.request.urlretrieve(GITHUB_XML_URL, xml_path)
-            if log: log(f'Saved to {xml_path}')
+            log(f'Saved to {xml_path}')
 
-        if log: log(f'Parsing {xml_path}')
+        log(f'Parsing {xml_path}')
         tree = ET.parse(xml_path)
         root = tree.getroot()
         records = root.findall('marc:record', MARC_NS)
-        if log: log(f'Found {len(records)} records')
+        log(f'Found {len(records)} records')
 
         rows = []
         for rec in records:
@@ -60,7 +60,7 @@ class END(BaseCorpus):
                 rows.append(row)
 
         meta = pd.DataFrame(rows)
-        if log: log(f'Parsed {len(meta)} records')
+        log(f'Parsed {len(meta)} records')
 
         # Assign IDs
         meta['id'] = ['end_{:05d}'.format(i + 1) for i in range(len(meta))]
@@ -79,7 +79,7 @@ class END(BaseCorpus):
         # Save
         out_path = os.path.join(self.path, 'metadata.csv')
         meta.to_csv(out_path)
-        if log: log(f'Wrote {len(meta)} records to {out_path}')
+        log(f'Wrote {len(meta)} records to {out_path}')
 
         # Clear parquet cache
         parquet_path = os.path.join(self.path, 'metadata.parquet')

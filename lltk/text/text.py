@@ -103,7 +103,7 @@ class BaseText(BaseObject):
             **kwargs):
         
         meta = just_meta_no_id(kwargs)
-        if log>1:  log(f'<- {get_imsg(id,_corpus,_source,**meta)}')
+        log.debug(f'<- {get_imsg(id,_corpus,_source,**meta)}')
         # if log>0:  log(f'<- remote = {_remote}')
         from lltk import Corpus
         self.corpus=Corpus(_corpus)
@@ -127,7 +127,7 @@ class BaseText(BaseObject):
         self._sources={x for x in _sources} if _sources else set()
         if id is None:
             id = self.corpus.get_text_id(id, _source=_source, **meta)
-            if log: log(f'blank id set to {id}')
+            log(f'blank id set to {id}')
         self.id=id
         self.corpus.add_text(self)
         self._meta=self.ensure_id(merge_dict(
@@ -282,7 +282,7 @@ class BaseText(BaseObject):
         if key in self._gcache: return self._gcache[key]
         self._hydrate_meta()
 
-        if log>1: log(f'? {key}')
+        log.debug(f'? {key}')
         key=str(key)
         if key.startswith('_'): ish=False
         if key.endswith('_l'): return self.meta_l(key[:-2],ish=ish,**kwargs)
@@ -1211,7 +1211,7 @@ def Text(
             meta = {**meta, **just_meta_no_id(text)}
             taddr = get_addr_from_d(text)
     else:
-        if log>1: log(f'<- {get_imsg(text,_corpus,_source,**meta)}')
+        log.debug(f'<- {get_imsg(text,_corpus,_source,**meta)}')
         taddr = get_addr_str(**{
             **_params_or_meta,
             **dict(
@@ -1222,17 +1222,17 @@ def Text(
         })
     if not taddr:
         taddr = get_addr_str(get_idx(),TMP_CORPUS_ID)
-        if log: log(f"cannot get address for {(text,_corpus)}")
+        log(f"cannot get address for {(text,_corpus)}")
     if taddr and not is_textish(taddr):
         taddr=get_addr_str(taddr,TMP_CORPUS_ID)
     
-    if log>1: log(f'<- addr = {taddr}')
+    log.debug(f'<- addr = {taddr}')
 
     # set kwargs
     
 
     if not _force and is_text_obj(TEXT_CACHE.get(taddr)) and TEXT_CACHE[taddr].is_valid():
-        if log>1: log('found in `TEXT_CACHE`')
+        log.debug('found in `TEXT_CACHE`')
         t = TEXT_CACHE[taddr]
         if is_text_obj(t) and meta: t.update(meta)
         t = t if is_valid_text_obj(t) else NullText()
@@ -1240,7 +1240,7 @@ def Text(
     
     tcorp,tid = to_corpus_and_id(taddr)
     if tcorp and tid:
-        if log>1: log(f'Corpus( {tcorp} ).text( {tid} ) ->')
+        log.debug(f'Corpus( {tcorp} ).text( {tid} ) ->')
         
         from lltk.corpus.corpus import Corpus
         t = Corpus(tcorp).text(
@@ -1256,7 +1256,7 @@ def Text(
         if is_valid_text_obj(t): TEXT_CACHE[t.addr] = t
     
     t = t if is_valid_text_obj(t) else NullText()
-    if log>1: log(f'-> {t}')
+    log.debug(f'-> {t}')
     return t
 
 

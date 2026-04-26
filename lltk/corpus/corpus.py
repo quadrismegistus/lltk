@@ -141,8 +141,7 @@ class BaseCorpus(TextList):
         self._gdb=None
         self.name=_name
 
-        if log>1: log(f'{self.__class__.__name__}({get_imsg(id,**attrs)})')
-        elif log>0: log(f'{self.__class__.__name__}({id})')
+        log.debug(f'{self.__class__.__name__}({get_imsg(id,**attrs)})')
 
         # make sure we have a name and ID
         if self.id is None and self.ID: self.id=self.ID
@@ -306,7 +305,7 @@ class BaseCorpus(TextList):
                 yield (id,_filter(d))
         else:
             if merger is None: merger = merge_dict
-            if log>0: log(self)
+            log.info(self)
             id2ld=defaultdict(list)
             for source in sources:
                 if source=='csv':
@@ -327,7 +326,7 @@ class BaseCorpus(TextList):
 
     def init_meta_json(self,force=False,bad_cols=BAD_COLS,meta_fn='meta.json',**kwargs):
         # log(f'Initializing from json files: {self.addr}')
-        if log>0: log(self)
+        log.info(self)
         for root,dirs,fns in os.walk(self.path_texts):
             if meta_fn in set(fns):
                 meta_root=os.path.abspath(root)
@@ -337,7 +336,7 @@ class BaseCorpus(TextList):
                 yield idx, read_json(meta_fnfn)
 
     def init_meta_csv(self,*x,**y):
-        if log>0: log(self)
+        log.info(self)
         if not os.path.exists(self.path_metadata): self.install_metadata()
         if os.path.exists(self.path_metadata):
             df=read_df_anno(self.path_metadata,dtype=str)
@@ -505,9 +504,9 @@ class BaseCorpus(TextList):
         """        
 
         # log incoming
-        # if log: log(f'<- {kwargs}')
+        # log(f'<- {kwargs}')
         meta = just_metadata(kwargs)
-        if log>1:  log(f'<- {get_imsg(id,self,_source,**meta)}')
+        log.debug(f'<- {get_imsg(id,self,_source,**meta)}')
 
         # Init corpus?
         if _init: self.init()
@@ -535,7 +534,7 @@ class BaseCorpus(TextList):
         if _source: t.add_source(_source)
 
         # Return text
-        if log>1: log(f'-> {t}' if is_text_obj(t) else "-> ?")
+        log.debug(f'-> {t}' if is_text_obj(t) else "-> ?")
         return t
 
     def text_from(self, text, **kwargs):
@@ -558,17 +557,17 @@ class BaseCorpus(TextList):
             Either a text object if found, or None if not.
         """
 
-        if log>1: log(f'<- id = {id}')
+        log.debug(f'<- id = {id}')
         
         t=self._textd.get(id)
-        if log>1: log(f'-> {t}' if is_text_obj(t) else "-> ?")
+        log.debug(f'-> {t}' if is_text_obj(t) else "-> ?")
         return t
         
 
 
     def remove_text(self,id,db=True,matches=True):
         if id in self._textd:
-            if log>0: log(f'removing {id} from {self.id}._textd')
+            log.info(f'removing {id} from {self.id}._textd')
             del self._textd[id]
         if db: self.db().delete(id)
         if matches: self.matcher.remove_node(self.get_addr(id))
@@ -581,7 +580,7 @@ class BaseCorpus(TextList):
             **kwargs):
 
         meta=just_metadata(kwargs)
-        if log>1: log(f'<- {get_imsg(id,self,_source,**meta)}')
+        log.debug(f'<- {get_imsg(id,self,_source,**meta)}')
         
         if type(id)!=str or not id:
             if is_addr_str(id): id=id
@@ -597,13 +596,13 @@ class BaseCorpus(TextList):
             )
         if not id: id=get_idx()
         if _new: id = self.iter_text_id(id)
-        if log>1: log(f'-> {id}')
+        log.debug(f'-> {id}')
         return id
 
 
     def iter_text_id(self,id,_new=True,newsep='/v'):        
         while _new and id in self._textd:
-            if log>0: log(f'<- {id}')
+            log.info(f'<- {id}')
             idsuf=id.split(newsep)[-1]
             if idsuf.isdigit():
                 isuf=int(idsuf)+1
@@ -611,18 +610,18 @@ class BaseCorpus(TextList):
             else:
                 isuf=2
                 id=f'{id}{newsep}{isuf}'
-        if log: log(f'-> {id}')
+        log(f'-> {id}')
         return id
 
 
     def init_text(self,id=None,_source=None,_cache=True,_remote=None,**kwargs):
-        # if log: log('...')
+        # log('...')
         meta=just_meta_no_id(kwargs)
-        if log>1: log(f'<- {get_imsg(id,self,_source,**meta)}')
+        log.debug(f'<- {get_imsg(id,self,_source,**meta)}')
         if id is None: id = self.get_text_id(id, _source=_source, **meta)
         # gen text in my image        
         t = self.TEXT_CLASS(id=id, _corpus=self, _source=_source, _remote=_remote, **meta)
-        if log>1: log(f'-> {t}' if is_text_obj(t) else "-> ?")
+        log.debug(f'-> {t}' if is_text_obj(t) else "-> ?")
         return t
 
 
@@ -721,7 +720,7 @@ class BaseCorpus(TextList):
     # Get texts
     @property
     def textd(self):
-        # if log: log('...')
+        # log('...')
         self.init()
         return self._textd
         
@@ -784,7 +783,7 @@ class BaseCorpus(TextList):
     
 
     def iter_init(self,progress=True,_init=True,_cache=False,remote=False,lim=None,shuffle=False,**kwargs):
-        #if log: log(f'<- remote = {remote}')
+        #log(f'<- remote = {remote}')
         remote=is_logged_on()
 
         # Ensure corpus metadata is loaded (load_metadata caches itself)
@@ -994,7 +993,7 @@ class BaseCorpus(TextList):
                     arcname = os.path.relpath(abspath, basedir)
                     zipf.write(abspath, arcname)
 
-            if log: log(f'Created {opath} ({os.path.getsize(opath)/1024:.0f} KB)')
+            log(f'Created {opath} ({os.path.getsize(opath)/1024:.0f} KB)')
 
         for part in part2ok:
             if not part2ok[part]: continue
@@ -1024,18 +1023,18 @@ class BaseCorpus(TextList):
         if isinstance(parts, str): parts = [p.strip() for p in parts.split(',')]
         dbu = self._dropbox_cmd()
         if not dbu:
-            if log: log.error('dropbox_uploader.sh not found. Install from https://github.com/andreafabrizi/Dropbox-Uploader')
+            log.error('dropbox_uploader.sh not found. Install from https://github.com/andreafabrizi/Dropbox-Uploader')
             return
         zipdir = os.path.expanduser(PATH_CORPUS_ZIP)
         for part in parts:
             local = os.path.join(zipdir, f'{self.id}_{part}.zip')
             if not os.path.exists(local):
-                if log: log.warning(f'No zip for {part}: {local}')
+                log.warning(f'No zip for {part}: {local}')
                 continue
             remote = f'{dest}/{self.id}_{part}.zip'
-            if log: log(f'Uploading {os.path.basename(local)} to {remote}...')
+            log(f'Uploading {os.path.basename(local)} to {remote}...')
             subprocess.run([dbu, 'upload', local, remote], check=True)
-            if log: log(f'  Done.')
+            log(f'  Done.')
 
     def share(self, parts=None, dest=DEST_LLTK_CORPORA):
         """Get Dropbox share links. Returns dict of {part: url}."""
@@ -1044,7 +1043,7 @@ class BaseCorpus(TextList):
         if isinstance(parts, str): parts = [p.strip() for p in parts.split(',')]
         dbu = self._dropbox_cmd()
         if not dbu:
-            if log: log.error('dropbox_uploader.sh not found.')
+            log.error('dropbox_uploader.sh not found.')
             return {}
         urls = {}
         for part in parts:
@@ -1062,7 +1061,7 @@ class BaseCorpus(TextList):
             url = re.sub(r'[&?]dl=\d', '', url)
             url += ('&' if '?' in url else '?') + 'dl=1'
             urls[part] = url
-            if log: log(f'url_{part} = {url}')
+            log(f'url_{part} = {url}')
         return urls
 
     def publish(self, public=None, private=None, parts=None):
@@ -1085,22 +1084,22 @@ class BaseCorpus(TextList):
         private = private or []
         all_parts = public + private
         if not all_parts:
-            if log: log.error('No parts specified.')
+            log.error('No parts specified.')
             return {}
 
         # 1. Zip
-        if log: log(f'[{self.name}] Zipping {all_parts}...')
+        log(f'[{self.name}] Zipping {all_parts}...')
         self.zip(parts=all_parts)
 
         # 2. Upload
-        if log: log(f'[{self.name}] Uploading to Dropbox...')
+        log(f'[{self.name}] Uploading to Dropbox...')
         self.upload(parts=all_parts)
 
         # 3. Share
-        if log: log(f'[{self.name}] Getting share links...')
+        log(f'[{self.name}] Getting share links...')
         urls = self.share(parts=all_parts)
         if not urls:
-            if log: log.error('No share links generated.')
+            log.error('No share links generated.')
             return {}
 
         # 4. Update manifests
@@ -1153,7 +1152,7 @@ class BaseCorpus(TextList):
             config.write(f)
 
         n_urls = len(urls) if urls else 0
-        if log: log(f'Updated {manifest_path} with {n_urls} URL(s) for [{section}]')
+        log(f'Updated {manifest_path} with {n_urls} URL(s) for [{section}]')
 
     def get_tqdm(self,*x,desc='',**y):
         if desc: desc=f'[{self.name}] {desc}'
@@ -1181,7 +1180,7 @@ class BaseCorpus(TextList):
             xstr=x
             v=getattr(self,x)
             if v: ol+=[f'{xstr}: {v}']
-        if log: log('\n'.join(ol))
+        log('\n'.join(ol))
 
     def install_metadata(
             self,
@@ -1244,11 +1243,11 @@ class BaseCorpus(TextList):
             fname='preprocess_'+part
             if not hasattr(self,fname): continue
             func=getattr(self,fname)
-            if log>0: log(f'Running {fname}...')
+            log.info(f'Running {fname}...')
             try:
                 x=func(verbose=verbose,num_proc=int(num_proc),force=force, **attrs)
             except TypeError as e:
-                if log: log(f'!! ERROR in {fname}: {e}')
+                log(f'!! ERROR in {fname}: {e}')
                 pass
 
     def preprocess_misc(self): pass
@@ -1264,7 +1263,7 @@ class BaseCorpus(TextList):
 
         txt_root = self.path_txt
         if not txt_root or not os.path.isdir(txt_root):
-            if log: log(f'[{self.name}] path_txt not found: {txt_root}')
+            log(f'[{self.name}] path_txt not found: {txt_root}')
             return
 
         txt_files = [
@@ -1274,10 +1273,10 @@ class BaseCorpus(TextList):
             if fn.endswith('.txt')
         ]
         if not txt_files:
-            if log: log(f'[{self.name}] No .txt files found under {txt_root}')
+            log(f'[{self.name}] No .txt files found under {txt_root}')
             return
 
-        if log: log(f'[{self.name}] Gzipping {len(txt_files):,} .txt files...')
+        log(f'[{self.name}] Gzipping {len(txt_files):,} .txt files...')
 
         def _gzip_file(path):
             gz_path = path + '.gz'
@@ -1297,7 +1296,7 @@ class BaseCorpus(TextList):
                 desc=f'[{self.name}] gzip_txt',
             ))
 
-        if log: log(f'[{self.name}] Done. Update manifest: ext_txt = .txt.gz')
+        log(f'[{self.name}] Done. Update manifest: ext_txt = .txt.gz')
 
     def has_data(self,part):
 
@@ -1306,7 +1305,7 @@ class BaseCorpus(TextList):
         path=getattr(self,ppart)
         if not os.path.exists(path): return False
         if os.path.isdir(path) and not os.listdir(path): return False
-        # if log: log(part,ppart,path,os.path.exists(path))
+        # log(part,ppart,path,os.path.exists(path))
 
         return path
 
@@ -1673,7 +1672,7 @@ def Corpus(corpus=None,force=False,init=False,clear=False,**kwargs):
         C=corpus
         logg=False
     else:
-        if log>1: log(f'<- id = {corpus}')
+        log.debug(f'<- id = {corpus}')
         logg=True
         
         if type(corpus)==str and corpus:

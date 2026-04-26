@@ -23,7 +23,7 @@ class Paige(BaseCorpus):
     def compile(self, force=False):
         """Download Paige referential-mode datasets from Zenodo and build merged metadata."""
         if not force and os.path.exists(self.path_metadata):
-            if log: log('Already compiled. Use force=True to recompile.')
+            log('Already compiled. Use force=True to recompile.')
             return
 
         import requests
@@ -31,7 +31,7 @@ class Paige(BaseCorpus):
         raw_dir = os.path.join(self.path_root, 'raw')
         os.makedirs(raw_dir, exist_ok=True)
 
-        if log: log(f'Fetching Zenodo record listing from {ZENODO_API_URL}...')
+        log(f'Fetching Zenodo record listing from {ZENODO_API_URL}...')
         record = requests.get(ZENODO_API_URL).json()
         for f in record.get('files', []):
             key = f.get('key')
@@ -41,7 +41,7 @@ class Paige(BaseCorpus):
             out_path = os.path.join(raw_dir, key)
             if os.path.exists(out_path) and not force:
                 continue
-            if log: log(f'Downloading {key}...')
+            log(f'Downloading {key}...')
             r = requests.get(url, stream=True, timeout=120)
             r.raise_for_status()
             with open(out_path, 'wb') as fh:
@@ -53,7 +53,7 @@ class Paige(BaseCorpus):
         for short, info in CSV_SOURCES.items():
             path = os.path.join(raw_dir, info['filename'])
             if not os.path.exists(path):
-                if log: log(f'Missing CSV: {path}')
+                log(f'Missing CSV: {path}')
                 continue
             df = pd.read_csv(path, encoding='mac_roman')
             df.columns = [str(c).strip() for c in df.columns]
@@ -90,7 +90,7 @@ class Paige(BaseCorpus):
         cols = front + [c for c in out.columns if c not in front]
         out = out[cols]
         out.to_csv(self.path_metadata, index=False)
-        if log: log(f'Saved {len(out)} records to {self.path_metadata}')
+        log(f'Saved {len(out)} records to {self.path_metadata}')
 
     def load_metadata(self):
         meta = super().load_metadata()

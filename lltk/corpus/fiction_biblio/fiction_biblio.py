@@ -89,11 +89,11 @@ class FictionBiblio(BaseCorpus):
             df['biblio'] = biblio
             # Assign sequential IDs
             df['id'] = [f'{biblio}_{str(i+1).zfill(4)}' for i in range(len(df))]
-            if log: log(f'Read {len(df)} entries from {biblio}')
+            log(f'Read {len(df)} entries from {biblio}')
             frames.append(df)
 
         meta = pd.concat(frames, ignore_index=True)
-        if log: log(f'Total: {len(meta)} entries from {len(csv_files)} sources')
+        log(f'Total: {len(meta)} entries from {len(csv_files)} sources')
 
         # Infer is_dubious from entry_num starting with X (McBurney's dubious titles)
         if 'entry_num' in meta.columns:
@@ -178,14 +178,14 @@ class FictionBiblio(BaseCorpus):
         has_estc = meta['id_estc'] != ''
         meta.loc[has_estc & (meta['estc_match_source'] == ''), 'estc_match_source'] = 'direct'
         if has_estc.sum():
-            if log: log(f'Pre-existing ESTC IDs: {has_estc.sum()}')
+            log(f'Pre-existing ESTC IDs: {has_estc.sum()}')
 
         # ── Step 3: Auto-match to ESTC via STC/Wing ─────────────────
         estc_meta = self._load_estc_metadata()
         if estc_meta is not None:
             meta = self._match_stc_wing(meta, estc_meta)
         elif not has_estc.any():
-            if log: log('ESTC metadata not available — skipping STC/Wing matching')
+            log('ESTC metadata not available — skipping STC/Wing matching')
 
         # ── Step 4: Auto-match to ESTC via shelfmarks ────────────────
         if estc_meta is not None and 'references' in meta.columns:
@@ -211,11 +211,11 @@ class FictionBiblio(BaseCorpus):
 
         # Report match stats
         has_estc = (meta['id_estc'].replace('', pd.NA).notna()).sum()
-        if log: log(f'ESTC matched: {has_estc}/{len(meta)} ({has_estc/len(meta)*100:.1f}%)')
+        log(f'ESTC matched: {has_estc}/{len(meta)} ({has_estc/len(meta)*100:.1f}%)')
 
         out_path = os.path.join(self.path, 'metadata.csv')
         meta.to_csv(out_path)
-        if log: log(f'Wrote {out_path}')
+        log(f'Wrote {out_path}')
 
         # Clear parquet cache
         parquet_path = os.path.join(self.path, 'metadata.parquet')
@@ -233,7 +233,7 @@ class FictionBiblio(BaseCorpus):
             if df is not None and len(df):
                 return df.reset_index().fillna('')
         except Exception as e:
-            if log: log(f'Could not load ESTC: {e}')
+            log(f'Could not load ESTC: {e}')
         return None
 
     def _match_stc_wing(self, meta, estc_meta):
@@ -250,7 +250,7 @@ class FictionBiblio(BaseCorpus):
             if wing and eid:
                 estc_by_wing[wing] = eid
 
-        if log: log(f'ESTC lookup: {len(estc_by_stc)} STC, {len(estc_by_wing)} Wing entries')
+        log(f'ESTC lookup: {len(estc_by_stc)} STC, {len(estc_by_wing)} Wing entries')
 
         # Match (skip entries that already have an ESTC ID)
         matched_stc = 0
@@ -268,7 +268,7 @@ class FictionBiblio(BaseCorpus):
                 meta.at[idx, 'id_estc'] = estc_by_wing[wing]
                 meta.at[idx, 'estc_match_source'] = 'wing'
                 matched_wing += 1
-        if log: log(f'STC/Wing matching: {matched_stc} STC, {matched_wing} Wing, {matched_stc+matched_wing} total')
+        log(f'STC/Wing matching: {matched_stc} STC, {matched_wing} Wing, {matched_stc+matched_wing} total')
         return meta
 
     def _match_shelfmarks(self, meta, estc_meta):
@@ -279,7 +279,7 @@ class FictionBiblio(BaseCorpus):
         shelfmarks in ESTC's holdings JSON column.
         """
         if 'holdings' not in estc_meta.columns:
-            if log: log('ESTC has no holdings column — run lltk compile estc first')
+            log('ESTC has no holdings column — run lltk compile estc first')
             return meta
 
         # Build shelfmark index: (institution_code, shelfmark) → estc_id
@@ -299,10 +299,10 @@ class FictionBiblio(BaseCorpus):
                     n_holdings += 1
 
         if not shelfmark_index:
-            if log: log('No shelfmark index built — skipping shelfmark matching')
+            log('No shelfmark index built — skipping shelfmark matching')
             return meta
 
-        if log: log(f'Shelfmark index: {n_holdings} entries from {len(estc_meta[estc_meta.holdings.replace("", pd.NA).notna()])} ESTC records')
+        log(f'Shelfmark index: {n_holdings} entries from {len(estc_meta[estc_meta.holdings.replace("", pd.NA).notna()])} ESTC records')
 
         # Sort library map by abbreviation length (longest first) to avoid
         # 'N' matching before 'NYPL'
@@ -342,7 +342,7 @@ class FictionBiblio(BaseCorpus):
                 if meta.at[idx, 'id_estc']:
                     break  # found a match, stop trying other refs
 
-        if log: log(f'Shelfmark matching: {matched} new matches')
+        log(f'Shelfmark matching: {matched} new matches')
         return meta
 
     def _match_mcburney_crossrefs(self, meta):
@@ -377,7 +377,7 @@ class FictionBiblio(BaseCorpus):
                 meta.at[idx, 'estc_match_source'] = f'mcburney_xref:{mcb_ref}'
                 matched += 1
 
-        if log: log(f'McBurney cross-ref matching: {matched} new matches (from {len(mcb_lookup)} McBurney entries with ESTC IDs)')
+        log(f'McBurney cross-ref matching: {matched} new matches (from {len(mcb_lookup)} McBurney entries with ESTC IDs)')
         return meta
 
     def _apply_verified_matches(self, meta):
@@ -389,7 +389,7 @@ class FictionBiblio(BaseCorpus):
         """
         verified = pd.read_csv(self.path_matches_verified).fillna('')
         if 'id' not in verified.columns or 'id_estc' not in verified.columns:
-            if log: log(f'matches_verified.csv missing id/id_estc columns')
+            log(f'matches_verified.csv missing id/id_estc columns')
             return meta
 
         applied = 0
@@ -413,7 +413,7 @@ class FictionBiblio(BaseCorpus):
                     meta.loc[mask, 'estc_match_source'] = 'verified'
                 applied += 1
 
-        if log: log(f'Manual verifications: {applied} applied, {cleared} cleared')
+        log(f'Manual verifications: {applied} applied, {cleared} cleared')
         return meta
 
     def _write_matches_to_verify(self, meta, estc_meta):
@@ -501,9 +501,9 @@ class FictionBiblio(BaseCorpus):
         if rows:
             verify_df = pd.DataFrame(rows).sort_values('fuzzy_score')
             verify_df.to_csv(self.path_matches_to_verify, index=False)
-            if log: log(f'Wrote {len(verify_df)} matches to verify → {self.path_matches_to_verify}')
+            log(f'Wrote {len(verify_df)} matches to verify → {self.path_matches_to_verify}')
         else:
-            if log: log('No new matches to verify')
+            log('No new matches to verify')
 
     def load_metadata(self, *x, **y):
         df = super().load_metadata(*x, **y)

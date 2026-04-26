@@ -32,10 +32,7 @@ MINIMETAD={
 	'year':['year','date']
 }
 
-LOG_TO_SCREEN = False
-LOG_TO_FILE = True
-
-from lltk.tools.logs import Logger, Log, log_hidden, log_shown, LOGGER
+from lltk.tools.logs import log, log_on, log_off, logger
 from lltk.tools.tools import config, remove_duplicates
 
 ### IMPORTANT: SET WHERE LLTK ROOT IS BASED:
@@ -80,7 +77,6 @@ PATH_MANIFESTS = remove_duplicates([
 PATH_DEFAULT_DATA = os.path.join(PATH_LLTK_HOME_DATA,'default.zip')
 PATH_MANIFEST_GLOBAL = os.path.join(ROOT,'corpus','manifest.txt')
 PATH_LLTK_REPO=os.path.abspath(os.path.join(LLTK_ROOT,'..'))
-PATH_LLTK_LOG_FN = os.path.join(PATH_LLTK_HOME, 'logs','debug.log')
 DIR_SECTION_NAME='sections'
 TEXT_META_DEFAULT = {'id':'', 'author':'', 'title':'', 'year':''}
 
@@ -101,8 +97,6 @@ ANNO_EXTS=['.anno.xlsx','.anno.xls','.anno.csv','.xlsx','.xls']
 
 EMPTY_GROUP='(all)'
 TMP_CORPUS_ID='tmp'
-LOG_VERBOSE_TERMINAL=1
-LOG_VERBOSE_JUPYTER=1
 
 MODERNIZE_SPELLING=False
 ZIP_PART_DEFAULTS={'txt','freqs','metadata','xml','data'}
@@ -287,20 +281,13 @@ from xopen import xopen
 from base64 import b64decode, b64encode
 import orjson
 
-## Setup logger
+## Setup tools (re-exports pmap, get_tqdm, etc.)
 from lltk.tools import *
-log = Log(
-	to_screen=LOG_TO_SCREEN,
-	to_file=LOG_TO_FILE,
-	fn=PATH_LLTK_LOG_FN,
-	force=True,
-	verbose=LOG_VERBOSE_JUPYTER if in_jupyter() else LOG_VERBOSE_TERMINAL
-)
 
 from lltk.text import *
 from lltk.corpus import *
 from lltk.model import *
 
-log_on() if REMOTE_DEFAULT else log_off()
+log_off()
 T=Text
 C=Corpus

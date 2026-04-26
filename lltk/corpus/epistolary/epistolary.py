@@ -283,7 +283,7 @@ class SectionCorpusLetterChadwyck(SectionCorpusLetter):
         super().init(force=force)
         if not force and self._init: return
         
-        if log>0: log(f'Initializing: {self.addr}')
+        log.info(f'Initializing: {self.addr}')
         from string import ascii_lowercase
         alpha=ascii_lowercase#.replace('x','')
         alpha = (alpha*1000)

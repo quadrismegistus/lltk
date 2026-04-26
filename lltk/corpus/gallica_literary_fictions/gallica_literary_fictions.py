@@ -24,7 +24,7 @@ class GallicaLiteraryFictions(BaseCorpus):
         concatenate pages into one txt per book.
         """
         if not force and os.path.exists(self.path_metadata) and os.path.isdir(self.path_txt):
-            if log: log('Already compiled. Use force=True to recompile.')
+            log('Already compiled. Use force=True to recompile.')
             return
 
         import csv
@@ -34,14 +34,14 @@ class GallicaLiteraryFictions(BaseCorpus):
         import requests
         from collections import defaultdict
 
-        if log: log(f'Fetching Zenodo record listing from {ZENODO_API_URL}...')
+        log(f'Fetching Zenodo record listing from {ZENODO_API_URL}...')
         record = requests.get(ZENODO_API_URL).json()
         urls = sorted(
             f['links']['self']
             for f in record['files']
             if (f.get('key') or '').lower().endswith('.zip')
         )
-        if log: log(f'{len(urls)} year-zip files to download.')
+        log(f'{len(urls)} year-zip files to download.')
 
         os.makedirs(self.path_txt, exist_ok=True)
         meta_rows = []
@@ -52,7 +52,7 @@ class GallicaLiteraryFictions(BaseCorpus):
                 r = requests.get(url, stream=True, timeout=120)
                 r.raise_for_status()
             except Exception as e:
-                if log: log(f'Failed {url}: {e}')
+                log(f'Failed {url}: {e}')
                 time.sleep(2)
                 continue
 
@@ -68,7 +68,7 @@ class GallicaLiteraryFictions(BaseCorpus):
                 with zipfile.ZipFile(zip_path) as zf:
                     zf.extractall(extract_dir)
             except zipfile.BadZipFile:
-                if log: log(f'Bad zip: {url}')
+                log(f'Bad zip: {url}')
                 os.remove(zip_path)
                 time.sleep(1)
                 continue
@@ -142,7 +142,7 @@ class GallicaLiteraryFictions(BaseCorpus):
 
         df = pd.DataFrame(meta_rows)
         df.to_csv(self.path_metadata, index=False)
-        if log: log(f'Saved {len(df)} records to {self.path_metadata}')
+        log(f'Saved {len(df)} records to {self.path_metadata}')
 
         import shutil
         shutil.rmtree(tmp_root, ignore_errors=True)
