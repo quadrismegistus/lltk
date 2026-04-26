@@ -110,63 +110,6 @@ def pmap_iter(func, objs, args=(), kwargs=None, num_proc=1, use_threads=False,
 
 
 
-def to_bs64(x):
-    if type(x)!=bytes: x=x.encode()
-    return base64.b64encode(x)
-
-def serialize(obj):
-    from pickle import dumps
-    from base64 import b64encode
-    return b64encode(compressed(dumps(obj)))
-
-
-def deserialize(obj):
-    from base64 import b64decode
-    from pickle import loads
-    return loads(decompressed(b64decode(obj)))
-
-
-
-def compressed(bytes):
-    import blosc
-    return blosc.compress(bytes, cname='lz4')
-
-def llmap(
-        addrs,
-        func,
-        num_proc=1,
-        each_args=[],
-        each_kwargs=[],
-        desc_prefix='[LLTK] ',
-        desc=None,
-        *all_args,
-        **all_kwargs):
-    
-    # args
-    if each_args and each_kwargs: objs = list(zip(func,each_args,each_kwargs))
-    else: objs = [(addr,[],{}) for addr in addrs]
-    
-    # func
-    if type(func)!=str:
-        if hasattr(func,'__name__'): func=func.__name__
-        else: raise Exception('func not valid')
-        
-    # setup
-    from joblib import Parallel, delayed
-    if not desc: desc = f'Mapping {func} across {len(objs)} texts'
-    if num_proc>1: desc+=f' [x{num_proc}]'
-    with tqdm_joblib(get_tqdm(addrs,desc=desc_prefix+desc)):
-        # run
-        return Parallel(n_jobs=num_proc)(
-            delayed(llfunc)(
-                addr,
-                func=func,
-                *SetList(list(args)+list(all_args)).data,
-                **{**all_kwargs, **kwargs}
-            ) for addr,args,kwargs in objs
-        )
-    
-
 def is_hashable_rly(v):
     try:
         hash(v)
@@ -319,34 +262,6 @@ def safebool(x,bad_vals={np.nan}):
         return None
 
 
-def safeget(x,k):
-    try:
-        return x.get(k)
-    except AssertionError:    
-        try:
-            return x[k]
-        except AssertionError:
-            pass
-    
-
-
-def safejson(obj):
-    import orjson
-    return orjson.loads(orjson.dumps(obj, option=orjson.OPT_SERIALIZE_NUMPY))
-
-
-
-
-def get_ideal_cpu_count():
-    mp_cpu_count=mp.cpu_count()
-    DEFAULT_NUM_PROC = mp_cpu_count - 2
-    if mp_cpu_count==1: DEFAULT_NUM_PROC=1
-    if mp_cpu_count==2: DEFAULT_NUM_PROC=2
-    if mp_cpu_count==3: DEFAULT_NUM_PROC=2
-    from lltk.imports import log
-    if log>0: log(f'ideal cpu count = {DEFAULT_NUM_PROC}')
-    return DEFAULT_NUM_PROC
-
 
 def gethtml(url,timeout=10):
     from lltk import log
@@ -381,10 +296,6 @@ def just_meta_no_id(d,**y):
     from lltk.imports import COL_ADDR,COL_ID,COL_CORPUS
     bad_keys={COL_ADDR,COL_ID,COL_CORPUS}
     return {k:v for k,v in just_metadata(d).items() if k not in bad_keys and META_KEY_SEP not in k}
-
-
-def no_id(d,col_id='id'):
-    return {k:v for k,v in d.items() if k!=col_id}
 
 
 def to_numeric_dict(d):
@@ -452,9 +363,6 @@ def fillna(x,y=''):
         return x
 
 
-def escape_linebreaks(txt,sep='↵'):
-    return txt.strip().replace('\n',sep)
-
 def snake2camel(x,sep='_'):
     return ''.join(
         xx.title()
@@ -511,24 +419,6 @@ def human_format(num):
         num /= 1000.0
     # add more suffixes if you need them
     return '%.0f%s' % (num, ['', 'K', 'M', 'B', 'T', 'P'][magnitude])
-
-
-def get_url_or_path(url_or_path):
-    # download
-    path=None
-    print(f'Downloading URL ({url_or_path[:10]}...{url_or_path[-10:]})')
-    if url_or_path.startswith('http'):
-        
-        #with tempfile.TemporaryDirectory() as tmpdirname:
-        ext=url_or_path.split('output=',1)[-1].split('&',1)[0]
-        ext=os.path.splitext(ext) if '.' in ext else ext
-        tmpfn = os.path.join('/tmp/',f'dl.lltk.{datetime.now().timestamp()}.{ext}')
-        urllib.request.urlretrieve(url_or_path, tmpfn)
-        print(tmpfn)
-        return tmpfn
-    return url_or_path
-
-
 
 
 def get_tqdm(*args,**kwargs):
@@ -687,17 +577,14 @@ def read_df(ifn,key='',fmt='',on_bad_lines='skip',**attrs):
     return pd.DataFrame()
 
 
-def get_backup_fn(fn, suffix='bak'):
-    name, ext = os.path.splitext(fn)
-    return f'{name}.bak{ext}'
-
 def backup_fn(fn,suffix='bak',copy=True,move=True,**kwargs):
     """
     `move` is reset to False if copy == True
     """
     if copy: move=False
     if os.path.exists(fn):
-        ofn=get_backup_fn(fn)
+        name, ext = os.path.splitext(fn)
+        ofn = f'{name}.bak{ext}'
         if copy: shutil.copy(fn,ofn)
         if move: shutil.move(fn,ofn)
 
@@ -761,31 +648,6 @@ def ensure_dir_exists(path,fn=None):
 
 
 MDETOK=None
-
-
-def worddb(abs_key = 'Complex Substance (Locke) <> Mixed Modes (Locke)_max',conc_key='Complex Substance (Locke) <> Mixed Modes (Locke)_min',cutoff_abs=0.1,cutoff_conc=-0.1,allow_names=False,only_content_words=True):
-    WORDDB_PATH = config.get('PATH_TO_WORDDB')
-    if not WORDDB_PATH: raise Exception('!! PATH_TO_WORDDB not set in config.txt')
-    if not WORDDB_PATH.startswith(os.path.sep): WORDDB_PATH=os.path.join(ROOT,WORDDB_PATH)
-
-
-    worddb = read_ld(WORDDB_PATH)
-    for d in worddb:
-        d['Abstract/Concrete'] = ''
-
-        abs_score = float(d[abs_key])
-        conc_score = float(d[conc_key])
-        if only_content_words and d['is_content_word']!='True': continue
-        if not allow_names and d['is_name']=='True': continue
-
-        if abs_score >= cutoff_abs:
-            d['Abstract/Concrete'] = 'Abstract'
-        elif conc_score <= cutoff_conc:
-            d['Abstract/Concrete'] = 'Concrete'
-        else:
-            d['Abstract/Concrete'] = 'Neither'
-
-    return worddb
 
 
 ###
@@ -868,16 +730,6 @@ def writegen(fnfn,generator,header=None,args=[],kwargs={},find_all_keys=False,to
 # 				dx[k] = str(v).replace('\r\n',' ').replace('\r',' ').replace('\n',' ').replace('\t',' ')
 # 			writer.writerow(dx)
 # 	print('>> saved:',fnfn)
-
-
-def writegengen(fnfn,generator,header=None,save=True):
-    if save: of = codecs.open(fnfn,'w',encoding='utf-8')
-    for dx in generator():
-        if not header:
-            header=sorted(dx.keys())
-            if save: of.write('\t'.join(header) + '\n')
-        if save: of.write('\t'.join([str(dx.get(h,'')) for h in header]) + '\n')
-        yield dx
 
 
 def readgen_csv(fnfn,sep=None,encoding='utf-8',errors='ignore',header=[],progress=True,num_lines=0,desc='Reading CSV file'):
@@ -1077,10 +929,6 @@ def tsv2ld(fn,tsep='\t',nsep='\n',u=True,header=[],keymap={},zero='',removeEmpti
 
 
 
-def write_ld(fn,ld,zero='',timestamp=None):
-    return write(fn,ld2ll(ld,zero=zero),timestamp=timestamp)
-
-
 def ld2dld(ld,key='rownamecol'):
     dld={}
     for d in ld:
@@ -1243,64 +1091,6 @@ def tokenize_fast(line):
 
 
 
-### multiprocessing
-
-def crunch(objects,function_or_methodname,ismethod=None,nprocs=8,args=[],kwargs={}):
-    import time,random
-    #ismethod=type(function_or_methodname) in [str,six.text_type] if ismethod is None else ismethod
-    ismethod=type(function_or_methodname) in [str] if ismethod is None else ismethod
-
-    def do_preparse(text,args=[],kwargs={}):
-        threadid=os.getpid()
-        time.sleep(random.uniform(0,5))
-        print("[{2}] Starting working on {0} at {1}".format('ObjectX', now(), threadid))
-        #print ismethod,function_or_methodname,args,kwargs
-        if ismethod:
-            x=getattr(text,function_or_methodname)(*args,**kwargs)
-        else:
-            x=function_or_methodname(text, *args, **kwargs)
-
-        print("[{2}] Finished working on {0} at {1}".format('ObjectX', now(), threadid))
-        return x
-
-    import multiprocessing,os
-    from multiprocessing import Process
-    #from itertools import zip
-    izip=zip
-
-    def spawn(f):
-        def fun(q_in,q_out):
-            numdone=0
-            while True:
-                numdone+=1
-                i,x = q_in.get()
-                if i == None:
-                    break
-                q_out.put((i,f(x,args=args,kwargs=kwargs)))
-        return fun
-
-    def parmap(f, X, nprocs = multiprocessing.cpu_count()):
-        q_in   = multiprocessing.Queue(1)
-        q_out  = multiprocessing.Queue()
-
-        proc = [multiprocessing.Process(target=spawn(f),args=(q_in,q_out)) for _ in range(nprocs)]
-        for p in proc:
-            p.daemon = True
-            p.start()
-
-        sent = [q_in.put((i,x)) for i,x in enumerate(X)]
-        [q_in.put((None,None)) for _ in range(nprocs)]
-        res = [q_out.get() for _ in range(len(sent))]
-
-        [p.join() for p in proc]
-
-        return [x for i,x in sorted(res)]
-
-    parmap(do_preparse, objects, nprocs=nprocs)
-    return True
-
-
-
 
 
 def bigrams(l):
@@ -1352,47 +1142,6 @@ write = write2
 
 
 
-def variant2standard():
-    global V2S
-    if not V2S:
-        V2S = dict((d['variant'],d['standard']) for d in tools.tsv2ld(SPELLING_VARIANT_PATH,header=['variant','standard','']))
-    return V2S
-
-
-def standard2variant():
-    v2s=variant2standard()
-    d={}
-    for v,s in list(v2s.items()):
-        if not s in d: d[s]=[]
-        d[s]+=[v]
-    return d
-
-
-
-
-def phrase2variants(phrase):
-    s2v=standard2variant()
-    words = phrase.split()
-    word_opts = [[s]+s2v[s] for s in words]
-    word_combos = list(tools.product(*word_opts))
-    phrase_combos = [' '.join(x) for x in word_combos]
-    return phrase_combos
-###
-
-
-
-
-ENGLISH = None
-
-def load_english():
-    global ENGLISH
-    print('>> loading english dictionary...')
-    ENGLISH = set(codecs.open('/Dropbox/LITLAB/TOOLS/english.txt','r','utf-8').read().split('\n'))
-    #ENGLISH = (eng - load_stopwords())
-    return ENGLISH
-
-
-
 
 
 
@@ -1414,12 +1163,6 @@ def product(*args):
         return iter(((),)) # yield tuple()
     return (items + (item,)
         for items in product(*args[:-1]) for item in args[-1])
-
-
-
-def zfy(data):
-    from scipy.stats import zscore
-    return zscore(data)
 
 
 
@@ -1475,17 +1218,6 @@ def linreg(X, Y):
     #print "s^2= %g" % ss
     return a, b, RR
 
-
-
-def download_wget(url, save_to, **attrs):
-    import wget
-    save_to_dir,save_to_fn=os.path.split(save_to)
-    if save_to_dir:
-        if not os.path.exists(save_to_dir): os.makedirs(save_to_dir)
-        os.chdir(save_to_dir)
-    fn=wget.download(url,bar=wget.bar_adaptive)
-    os.rename(fn,save_to_fn)
-    # print('\n>> saved:',save_to)
 
 
 def download(url,save_to,force=False,desc=''):
@@ -1609,24 +1341,6 @@ def get_num_lines(filename):
 
 
 
-def cloud_list(tmpfn='.tmp_lltk_cloud_list'):
-    import subprocess
-    try:
-        #out=subprocess.check_output(config['PATH_CLOUD_LIST_CMD'],shell=True)
-        clist=config.get('PATH_CLOUD_LIST_CMD',PATH_CLOUD_LIST_CMD)
-        cdir=config.get('PATH_CLOUD_DEST',PATH_CLOUD_DEST)
-        if clist and cdir:
-            cmd=f'{clist} {cdir} > {tmpfn}'
-            print('>>',cmd)
-            os.system(cmd)
-            with open(tmpfn) as f:
-                txt = f.read()
-            os.unlink(tmpfn)
-            return txt
-    except AssertionError:
-        return ''
-
-
 def check_make_dir(path,ask=True,default='y'):
     if os.path.exists(path) and os.path.isdir(path): return True
     if os.path.splitext(path)[0]!=path: return # return if a filename, not a dirname
@@ -1666,41 +1380,6 @@ def symlink(path,link_to,default='y',ask=True):
                 print('>> linking to:',link_to)
                 if os.path.exists(link_to): os.remove(link_to)
                 os.symlink(path, link_to)
-
-
-def check_move_file(src,dst):
-    try:
-        if check_make_dir(os.path.dirname(dst)):
-            if input(f'\nMove\n    {src}\nto\n    {dst}\n[Y/n] ').strip()!='n':
-                shutil.copyfile(src,dst)
-                os.unlink(src)
-                print('\n>> renamed:',dst,'\n')
-    except (KeyboardInterrupt,EOFError) as e:
-        return False
-
-
-def check_move_link_file(src,dst):
-    src=os.path.abspath(src)
-    dst=os.path.abspath(dst)
-    try:
-        if check_make_dir(os.path.dirname(dst)):
-            if input(f'\nMove and link\n    {src}\nto\n    {dst}\n[Y/n] ').strip()!='n':
-                print('\n>> moving {src} to {dst}')
-                shutil.copyfile(src,dst)
-                os.unlink(src)
-                print(f'>> linking {src} to {dst}')
-                os.symlink(dst,src)
-    except (KeyboardInterrupt,EOFError) as e:
-        return False
-
-
-
-def check_make_dirs(paths,ask=True):
-    l=[]
-    for path in paths:
-        l+=[check_make_dir(path,ask=ask)]
-    return l
-
 
 
 SOURCES=[]
@@ -1758,42 +1437,6 @@ def remove_duplicates(seq,remove_empty=False):
 
 
 ### UTILS
-
-
-
-
-
-
-def get_passkey(password):
-    from cryptography.fernet import Fernet
-    from cryptography.hazmat.primitives import hashes
-    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-
-    kdf = PBKDF2HMAC(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=PSALT,
-        iterations=390000,
-    )
-    key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
-    return Fernet(key)
-
-
-
-def get_pkey(): return get_passkey('''THIS great purple butterfly,
-In the prison of my hands,
-Has a learning in his eye
-Not a poor fool understands.
-
-Once he lived a schoolmaster
-With a stark, denying look;
-A string of scholars went in fear
-Of his great birch and his great book.
-
-Like the clangour of a bell,
-Sweet and harsh, harsh and sweet.
-That is how he learnt so well
-To take the roses for his meat.''')
 
 
 

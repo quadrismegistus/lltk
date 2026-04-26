@@ -38,7 +38,7 @@ class TextECCO(BaseText):
 
 	def extract_metadata(self,mtxt,word_stats=True):
 		_ = word_stats  # unused; word stats always computed below
-		from lltk import load_english
+		from lltk.text.utils import load_english
 		ENGLISH=load_english()
 
 		md={}

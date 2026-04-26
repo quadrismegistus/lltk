@@ -37,7 +37,6 @@ from lltk.imports import (
     ZIP_PART_DEFAULTS,
     ensure_dir_exists,
     ensure_snake,
-    get_pkey,
     get_tqdm,
     get_user_email,
     get_user_info,
@@ -50,7 +49,6 @@ from lltk.imports import (
     read_json,
     rmfn,
     snake2camel,
-    to_bs64,
     to_camel_case,
     tools,
 )
@@ -268,28 +266,7 @@ class BaseCorpus(TextList):
         return keyb
 
     def acquire_key(self,url=KEYSERVER_URL):
-        infod = get_user_info()
-        email = get_user_email()
-
-        optname='always_accept_corpus_permissions'
-        if infod.get(optname)!='y':
-            yn = input(f'Do you, {email}, agree to use all data from the corpus "{self.name}" for lawful purposes of non-consumptive research? Type "Y" for yes, "N" for no, or "A" to consent to all such requests in the future.').strip().lower()
-            if yn=='n': return
-            if yn=='a': set_usr_info(**{optname:'y'})
-
-        msg=f'{self.id}|{email}'
-        msg_encr = get_pkey().encrypt(msg.encode())
-        msg_encr64 = to_bs64(msg_encr)
-        url = url + msg_encr64.decode()
-        keystr = gethtml(url)
-        keyb_encr = keystr.encode()
-        with open(self.path_key,'wb') as of: of.write(keyb_encr)
-        
-        # f=get_passkey(email)
-        # keyb=f.decrypt(keyb_encr)
-        # with open(self.path_key,'wb') as of: of.write(keyb)
-        # self._key=keyb
-        # return keyb    
+        raise NotImplementedError("Corpus key acquisition has been removed.")
 
     def generate_key(self,force=False):
         if force or not os.path.exists(self.path_key):
