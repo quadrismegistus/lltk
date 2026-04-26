@@ -297,92 +297,13 @@ class TextECCO(BaseText):
 		return txt
 
 
-	def text_plain(self, OK_word=['wd'], OK_page=['bodyPage'], remove_catchwords=True, return_lists=False, save_when_gen=True):
-		cache=self.text_plain_from_file
+	def text_plain(self, save_when_gen=True, **kw):
+		cache = self.text_plain_from_file
 		if cache:
-			print('>>',self.fnfn_txt,'from cache')
 			return cache
-
-		
-
-		"""
-		Get the plain text from the ECCO xml files.
-		OK_word sets the tags that define a word: in ECCO, <wd>.
-		OK_page sets the tags that define a page we want:
-		- bodyPage are the body pages
-		- frontmatter are frontmatter paggers;
-			-- I've decided not to include them, but you can add them by adding it to the OK_page list
-		"""
-
-		print('>>', self.fnfn)
-
-		txt=[]
-		dom = self.dom
-		body = dom.find('text')
-		if not body: return ''
-		for page in body.find_all('page'):
-			if page.get('type','') in OK_page:
-				page_txt=[]
-				para_txt=[]
-				line_txt=[]
-				lastParent=None
-				lastLineOffset=None
-				for tag in page.find_all():
-					if tag.name in OK_word:
-
-
-						## Check for new paragraph
-						if tag.parent != lastParent:
-							if line_txt:
-									para_txt+=[line_txt]
-									line_txt=[]
-							if para_txt:
-								page_txt+=[para_txt]
-								para_txt=[]
-						lastParent=tag.parent
-
-						## Check for new line
-						lineOffset = int(tag['pos'].split(',')[0])
-						if lastLineOffset is None:
-							lastLineOffset=lineOffset
-						elif lineOffset < lastLineOffset:
-							if line_txt:
-								para_txt+=[line_txt]
-								line_txt=[]
-						lastLineOffset = lineOffset
-
-						text=clean_text(tag.text)
-						line_txt+=[text]
-
-				if line_txt:
-					para_txt+=[line_txt]
-				if para_txt:
-					page_txt+=[para_txt]
-				if page_txt:
-					txt+=[page_txt]
-
-		for page_i,page in enumerate(txt):
-			#print '>> page:',page_i
-			if remove_catchwords:
-				last_word_this_page = page[-1][-1][-1]
-				first_word_next_page = txt[page_i+1][0][0][0] if len(txt)>page_i+1 else None
-				if last_word_this_page == first_word_next_page:
-					# if last word is a catchword for first word of next page,
-					# remove the last line
-					page[-1][-1].pop()
-
-			page = [para for para in page if len(para) and sum(len(line) for line in para)>0]
-			txt[page_i] = page
-
-		if return_lists:
-			return txt
-
-		## otherwise, make plain text
-		plain_text = u"\n\n\n".join(u"\n\n".join(u"\n".join(u" ".join(word for word in line) for line in para) for para in page) for page in txt)
-
+		plain_text = ecco_xml2txt(self.fnfn)
 		if save_when_gen:
-			self.save_plain_text(txt=plain_text,compress=True)
-
+			self.save_plain_text(txt=plain_text, compress=True)
 		return plain_text
 
 
