@@ -288,13 +288,14 @@ def fix_meta(metadf, badcols={'_llp_','_lltk_','corpus','index','id.1','url_word
     return metadf
 
 def clean_meta(meta):
-    # clean year?
     meta=fix_meta(meta)
     if 'year' in set(meta.columns):
-        newyears=pd.to_numeric(meta.year,errors='coerce',downcast='integer')
-        if False in {(x==y) for x,y in zip(meta.year, newyears)}:
-            meta['year_orig']=meta.year
-        meta['year']=newyears
+        from lltk.db.metadb import _parse_year
+        raw = meta['year']
+        parsed = raw.apply(_parse_year)
+        if not raw.equals(parsed):
+            meta['year_orig'] = raw
+        meta['year'] = parsed
     return meta
 
 
