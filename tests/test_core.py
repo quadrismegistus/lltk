@@ -692,7 +692,6 @@ class TestTextMetadataHydration:
 
     def test_get_exact_by_default(self, text):
         """get('au') with default ish=False should not fuzzy-match."""
-        text._gcache = None
         assert text.get('au') is None
 
     def test_get_nonexistent_returns_none(self, text):
