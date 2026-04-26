@@ -217,9 +217,6 @@ class BaseCorpus(TextList):
     
     @property
     def path_data(self): return os.path.join(self.path,'data')
-    @property
-    def path_matches(self): return os.path.join(self.path_data,'rels')
-
 
 
     ####################################################################
@@ -274,7 +271,7 @@ class BaseCorpus(TextList):
                         df = df.set_index(self.col_id)
                     self._metadf = df
                     return df
-            except Exception:
+            except (OSError, IOError, ValueError, KeyError):
                 pass
 
         df = read_df_anno(self.path_metadata, dtype=str)
@@ -286,7 +283,7 @@ class BaseCorpus(TextList):
 
         try:
             df.to_parquet(pq_path)
-        except Exception:
+        except (OSError, IOError, PermissionError):
             pass
 
         self._metadf = df
@@ -430,9 +427,6 @@ class BaseCorpus(TextList):
         log.debug(f'-> {t}' if is_text_obj(t) else "-> ?")
         return t
 
-    def text_from(self, text, **kwargs):
-        return self.text(text, **kwargs)
-
     # @log.fn
     def get_text(self,id:str,_use_db:bool=True) -> Union[BaseText,None]:
         """Attempt to get a pre-existing text.
@@ -524,11 +518,6 @@ class BaseCorpus(TextList):
             if force or self._textd.get(t.id) is None:
                 self._textd[t.id]=t
     
-    def add_texts_from(self,corpus_or_texts,**kwargs):
-        c_t = corpus_or_texts
-        texts = Corpus(c_t).texts(**kwargs) if type(c_t)!=list else c_t
-        for t in texts: self.text(t,**kwargs)
-
 
 
     def query_db(self,fn='query_cache'):
@@ -569,7 +558,7 @@ class BaseCorpus(TextList):
                 "SELECT id FROM texts WHERE corpus = ? ORDER BY random() LIMIT 1",
                 [self.id],
             ).fetchone()
-        except Exception:
+        except (ImportError, AttributeError, RuntimeError, OSError):
             pass
         if row and row[0]:
             return self.TEXT_CLASS(id=row[0], _corpus=self)
@@ -579,7 +568,7 @@ class BaseCorpus(TextList):
             ids = self._cached_id_list()
             if ids:
                 return self.TEXT_CLASS(id=random.choice(ids), _corpus=self)
-        except Exception:
+        except (FileNotFoundError, OSError, KeyError, ValueError):
             pass
         # 3. Memory, if already populated by prior iteration
         loaded = [t for t in self._textd.values() if t is not None]
@@ -601,7 +590,7 @@ class BaseCorpus(TextList):
         import pandas as _pd
         try:
             ids = _pd.read_csv(path, usecols=['id'], dtype=str)['id'].dropna().tolist()
-        except Exception:
+        except (FileNotFoundError, OSError, KeyError, ValueError):
             ids = []
         self._cached_ids = ids
         return ids
@@ -632,8 +621,6 @@ class BaseCorpus(TextList):
             yield from o
         else:
             yield from self.iter_init(progress=progress, shuffle=shuffle, lim=lim)
-    
-    def corpus_texts(self,*args,**kwargs): yield from self.texts(*args,**kwargs)
     
     # Convenience
     @property
@@ -723,15 +710,6 @@ class BaseCorpus(TextList):
 
 
     @property
-    def addr2meta(self):
-        if not hasattr(self,'_addr2meta'):
-            self._addr2meta=a2m={}
-            for t in self.texts():
-                meta=t.meta
-                a2m[t.addr]=meta
-        return self._addr2meta
-
-    @property
     def metad(self):
         if not hasattr(self,'_metad'):
             self._metad=dict(list(zip(self.text_ids,self.meta)))
@@ -809,11 +787,6 @@ class BaseCorpus(TextList):
         for part in part2ok:
             if not part2ok[part]: continue
             do_zip(getattr(self,f'path_{part}'), f'{self.id}_{part}.zip', pathpart=part)
-
-
-    def uninstall(self):
-        # Start from scratch
-        pass
 
 
     @staticmethod
@@ -970,10 +943,6 @@ class BaseCorpus(TextList):
         return get_tqdm(*x,desc=desc,**y)
 
 
-    def mkdir_root(self):
-        if not os.path.exists(self.path_root): os.makedirs(self.path_root)
-
-
     def urls(self):
         urls=[(x[4:], getattr(self,x)) for x in dir(self) if x.startswith('url_') and getattr(self,x)]
         return urls
@@ -1040,9 +1009,6 @@ class BaseCorpus(TextList):
     def path_zip(self,part):
         return os.path.join(PATH_CORPUS_ZIP,f'{self.id}_{part}.zip')
 
-    def get_path_text(self,text,*x,**y): return text.get_path(*x,**y)
-
-
     def compile_download(self,unzip=True):
         return self.install(part='raw',unzip=unzip)
 
@@ -1060,54 +1026,6 @@ class BaseCorpus(TextList):
             except TypeError as e:
                 log(f'!! ERROR in {fname}: {e}')
                 pass
-
-    def preprocess_misc(self): pass
-
-    def preprocess_gzip_txt(self, verbose=True, force=False, num_proc=DEFAULT_NUM_PROC, **attrs):
-        """Gzip all .txt files under path_txt in-place, updating ext_txt to .txt.gz.
-
-        Not in PREPROC_CMDS defaults — run explicitly with --parts gzip_txt.
-        Safe to re-run: skips files that are already .txt.gz unless force=True.
-        """
-        import gzip as _gzip
-        from lltk.tools.tools import get_tqdm
-
-        txt_root = self.path_txt
-        if not txt_root or not os.path.isdir(txt_root):
-            log(f'[{self.name}] path_txt not found: {txt_root}')
-            return
-
-        txt_files = [
-            os.path.join(root, fn)
-            for root, _, files in os.walk(txt_root)
-            for fn in files
-            if fn.endswith('.txt')
-        ]
-        if not txt_files:
-            log(f'[{self.name}] No .txt files found under {txt_root}')
-            return
-
-        log(f'[{self.name}] Gzipping {len(txt_files):,} .txt files...')
-
-        def _gzip_file(path):
-            gz_path = path + '.gz'
-            if os.path.exists(gz_path) and not force:
-                os.remove(path)
-                return
-            with open(path, 'rb') as f_in:
-                with _gzip.open(gz_path, 'wb') as f_out:
-                    f_out.write(f_in.read())
-            os.remove(path)
-
-        from concurrent.futures import ThreadPoolExecutor
-        with ThreadPoolExecutor(max_workers=int(num_proc)) as pool:
-            list(get_tqdm(
-                pool.map(_gzip_file, txt_files),
-                total=len(txt_files),
-                desc=f'[{self.name}] gzip_txt',
-            ))
-
-        log(f'[{self.name}] Done. Update manifest: ext_txt = .txt.gz')
 
     def has_data(self,part):
 
@@ -1159,13 +1077,6 @@ class BaseCorpus(TextList):
             shutil.copyfile(ifnfn,ofnfn)
             #break
 
-    @property
-    def path_mfw(self):
-        return os.path.join(self.path_data,'mfw')
-    @property
-    def path_dtm(self):
-        return os.path.join(self.path_data,'dtm')
-
     def mfw(self, n=10000, texts=None, force=False):
         cache_key = f'mfw_n{n}'
         if not force and cache_key in self._mfwd:
@@ -1205,49 +1116,6 @@ class BaseCorpus(TextList):
             dtm = pd.DataFrame(tfidf_matrix.toarray(), index=dtm.index, columns=dtm.columns)
 
         return dtm
-
-    def find_duplicates(self, n=5000, threshold=0.8, k=10, texts=None, tfidf=True):
-        """
-        Find near-duplicate texts within this corpus using cosine similarity
-        on TF-IDF word frequency vectors.
-
-        Returns a DataFrame of matched pairs sorted by similarity:
-            id_1, id_2, similarity
-        """
-        from sklearn.neighbors import NearestNeighbors
-        from scipy.sparse import csr_matrix
-
-        dtm = self.dtm(n=n, texts=texts, tfidf=tfidf)
-        if dtm is None or not len(dtm):
-            return pd.DataFrame(columns=['id_1', 'id_2', 'similarity'])
-
-        # Use sparse matrix for memory efficiency
-        sparse_dtm = csr_matrix(dtm.values)
-        ids = list(dtm.index)
-
-        # k+1 because each text is its own nearest neighbor
-        nn = NearestNeighbors(n_neighbors=min(k + 1, len(ids)), metric='cosine', algorithm='brute')
-        nn.fit(sparse_dtm)
-        distances, indices = nn.kneighbors(sparse_dtm)
-
-        # Build results: cosine distance → similarity
-        rows = []
-        seen = set()
-        for i in range(len(ids)):
-            for j_idx in range(1, distances.shape[1]):  # skip self (index 0)
-                j = indices[i, j_idx]
-                sim = 1.0 - distances[i, j_idx]
-                if sim < threshold:
-                    continue
-                pair = (min(ids[i], ids[j]), max(ids[i], ids[j]))
-                if pair not in seen:
-                    seen.add(pair)
-                    rows.append({'id_1': pair[0], 'id_2': pair[1], 'similarity': round(sim, 4)})
-
-        result = pd.DataFrame(rows)
-        if len(result):
-            result = result.sort_values('similarity', ascending=False).reset_index(drop=True)
-        return result
 
     @property
     def path_home(self):

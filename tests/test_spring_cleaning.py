@@ -386,11 +386,6 @@ class TestCorpusPathResolution:
     def test_path_prosodic_under_corpus(self, corpus):
         assert 'prosodic' in corpus.path_prosodic
 
-    def test_text_from_returns_text(self, corpus):
-        t = corpus.text_from('austen_pride')
-        assert t is not None
-        assert t.id == 'austen_pride'
-
 
 # ──────────────────────────────────────────────────────────────────────
 # Text passages() method

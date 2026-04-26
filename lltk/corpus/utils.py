@@ -107,7 +107,7 @@ def corpora(load=True,load_meta=False,incl_meta_corpora=True):
         try:
             corpus_obj=load_corpus(corpus_name,load_meta=load_meta) if load else manifest[corpus_name]
             if is_corpus_obj(corpus_obj): yield (corpus_name, corpus_obj)
-        except Exception as e:
+        except Exception as e:  # broad: load_corpus exec's arbitrary user .py modules
             log.error(e)
 
 def check_corpora(paths=['path_raw','path_xml','path_txt','path_freqs','path_metadata'],incl_meta_corpora=False):

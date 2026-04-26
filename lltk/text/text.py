@@ -218,7 +218,7 @@ class BaseText(BaseObject):
             row = metadb.get(self.corpus.id, self.id)
             if row:
                 return row
-        except Exception as e:
+        except (ImportError, AttributeError, RuntimeError, OSError) as e:
             pass
         # Fallback: corpus load_metadata() — can be slow for large corpora with enrichment
         # Only use if DB lookup failed (no DB, text not in DB, etc.)
@@ -232,7 +232,7 @@ class BaseText(BaseObject):
             if df is not None and self.id in df.index:
                 row = df.loc[self.id]
                 return {k: v for k, v in row.items() if pd.notna(v)}
-        except Exception:
+        except (KeyError, AttributeError, FileNotFoundError, OSError):
             pass
         return {}
 
@@ -452,7 +452,7 @@ class BaseText(BaseObject):
         try:
             binval=self.year//ybin*ybin
             return binval if not as_str else f'{str(binval).zfill(zfill)}-{str(binval+ybin).zfill(zfill)}'
-        except Exception:
+        except (TypeError, ValueError, ZeroDivisionError):
             return np.nan
     @property
     def halfdecade(self): return self.yearbin(5)
@@ -592,7 +592,7 @@ class BaseText(BaseObject):
         try:
             from lltk.db.metadb import metadb
             return metadb.get_group(self.addr)
-        except Exception:
+        except (ImportError, AttributeError, RuntimeError, OSError):
             return None
 
     @property
@@ -612,7 +612,7 @@ class BaseText(BaseObject):
             try:
                 t = Corpus(parts[0]).text(parts[1])
                 texts.append(t)
-            except Exception:
+            except (KeyError, AttributeError, FileNotFoundError, OSError):
                 continue
         return texts or [self]
     
