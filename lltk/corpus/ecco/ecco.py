@@ -361,7 +361,7 @@ class TextECCO(BaseText):
 		return txt
 
 
-	def text_plain(self, save_when_gen=True, **kw):
+	def text_plain(self, **kw):
 		clean_dir = getattr(self.corpus, 'path_txt_clean', None)
 		if clean_dir:
 			clean_path = os.path.join(clean_dir, self.id + '.txt')
@@ -371,10 +371,13 @@ class TextECCO(BaseText):
 		cache = self.text_plain_from_file
 		if cache:
 			return cache
-		plain_text = ecco_xml2txt(self.fnfn)
-		if save_when_gen:
-			self.save_plain_text(txt=plain_text, compress=True)
-		return plain_text
+		if self.path_txt and os.path.exists(self.path_txt):
+			from lltk.text.text import _open_file
+			with _open_file(self.path_txt) as f:
+				return f.read()
+		if os.path.exists(self.fnfn):
+			return ecco_xml2txt(self.fnfn)
+		return ''
 
 	def clean_txt(self, task=None, model=None, force=False):
 		"""Clean OCR via LLM using ECCO XML page structure.
