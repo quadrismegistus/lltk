@@ -396,7 +396,7 @@ class TextECCO(BaseText):
 
 		if task is None:
 			from largeliterarymodels.tasks import OCRCleanTask
-			task = OCRCleanTask(model=model or 'lmstudio/gemma-4-e2b-it')
+			task = OCRCleanTask(model=model)
 
 		if not os.path.exists(self.fnfn):
 			return 'skipped'

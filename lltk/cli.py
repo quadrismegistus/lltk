@@ -244,8 +244,8 @@ def main():
 	p_cocr = subparsers.add_parser('clean-ocr',
 		help='LLM-based OCR cleaning (requires largeliterarymodels)')
 	p_cocr.add_argument('corpus', help='Corpus ID (e.g. ecco)')
-	p_cocr.add_argument('--model', default=None,
-		help='LLM model (default: lmstudio/gemma-4-e2b-it)')
+	p_cocr.add_argument('--model', required=True,
+		help='LLM model (recommended: qwen3.6-35b-a3b locally, vllm/qwen3.6-27b on GPU)')
 	p_cocr.add_argument('--ids', nargs='+', default=None, help='Specific text IDs')
 	p_cocr.add_argument('--genre', default=None, help='Genre filter (queries CH)')
 	p_cocr.add_argument('--year-min', type=int, default=None)
@@ -595,7 +595,7 @@ def main():
 		from largeliterarymodels.tasks import OCRCleanTask
 
 		corpus = lltk.load(args.corpus)
-		task = OCRCleanTask(model=args.model or 'lmstudio/gemma-4-e2b-it')
+		task = OCRCleanTask(model=args.model)
 
 		if args.ids:
 			text_ids = args.ids
