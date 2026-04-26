@@ -669,12 +669,12 @@ class BaseCorpus(TextList):
             for t in self.iter_init(): pass
             self._init = True
         return self._textd
-        
+
+    @logmap.fn(log_return=False)    
     def texts(self,*args,**kwargs):
         return self.iter_texts(*args,**kwargs)
     
-    def itexts(self,*x,**y): return self.iter_texts(*x,**y)
-
+    @logmap.fn(log_return=False)
     def iter_texts(self, texts=None, progress=True, shuffle=False, lim=None, **kwargs):
         if texts:
             o = list(texts)
@@ -728,7 +728,7 @@ class BaseCorpus(TextList):
 
         
     
-
+    @logmap.fn(log_return=False)
     def iter_init(self,progress=True,_init=True,_cache=False,remote=False,lim=None,shuffle=False,**kwargs):
         # Ensure corpus metadata is loaded (load_metadata caches itself)
         df = self.load_metadata()
@@ -739,51 +739,32 @@ class BaseCorpus(TextList):
         if shuffle: random.shuffle(ids)
         if lim: ids = ids[:lim]
 
-        # if progress:
-        desc=f'[{self.name}] Loading corpus'
-
-        # Pre-convert DataFrame rows to dicts for fast lookup
-        records = df.to_dict('index')
-
+        desc = f'[{self.name}] Loading corpus'
         with logmap(desc) as lm:
             for id in lm.progress(ids) if progress else ids:
                 id = to_corpus_and_id(id)[1]
                 if id in self._textd and self._textd[id] is not None:
                     t = self._textd[id]
                 else:
-                    # Pass row metadata directly — avoids lazy hydration overhead
-                    row_meta = {}
-                    for k, v in records.get(id, {}).items():
-                        if v is None or (isinstance(v, float) and v != v):
-                            continue
-                        s = str(v)
-                        if s == 'nan' or s == '':
-                            continue
-                        # Convert non-scalar values to strings
-                        if isinstance(v, (list, tuple, set)):
-                            v = ' | '.join(str(x) for x in v)
-                        try:
-                            import numpy as np
-                            if isinstance(v, np.ndarray):
-                                v = ' | '.join(str(x) for x in v)
-                        except ImportError:
-                            pass
-                        row_meta[k] = v
+                    row = df.loc[id] if id in df.index else pd.Series(dtype=object)
+                    row_meta = {k: v for k, v in row.items() if pd.notna(v) and str(v) not in ('', 'nan')}
                     t = self.TEXT_CLASS(id=id, _corpus=self, _remote=remote, **row_meta)
-                    t._meta_hydrated = True  # skip DB lookup — we already have the data
+                    t._meta_hydrated = True
                     self._textd[id] = t
                 yield t
 
+    @logmap.fn(log_return=False)
     def init(self, force=False, **kwargs):
         if not force and self._init: return self
         _ = self.textd  # triggers iter_init via @property
         return self
 
+    @logmap.fn(log_return=False)
     def metadata(self, force=False, **kwargs):
         return self.load_metadata(force=force, **kwargs)
 
     @property
-    @log.fn(log_return=False)
+    @logmap.fn(log_return=False)
     def meta(self): return self.load_metadata()
     @property
     def metadf(self): return self.meta
