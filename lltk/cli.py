@@ -205,10 +205,40 @@ def main():
 	p_pros_agg = subparsers.add_parser('prosodic-aggregate', help='Build {corpus.path}/prosodic.parquet from per-text parsed.parquet files')
 	p_pros_agg.add_argument('corpus', help='Corpus ID')
 
-	# annotate
+	# annotate (web app)
 	p_annotate = subparsers.add_parser('annotate', help='Launch annotation web app for a corpus')
 	p_annotate.add_argument('corpus', help='Corpus ID (e.g. arc_fiction)')
 	p_annotate.add_argument('--port', type=int, default=8989, help='Port (default: 8989)')
+
+	# annotate-llm
+	p_allm = subparsers.add_parser('annotate-llm',
+		help='Run LLM annotation task over texts (requires largeliterarymodels)')
+	p_allm.add_argument('task', help='Task name (genre, frye, social_network, etc.)')
+	p_allm.add_argument('--ids', nargs='+', default=None, help='Specific text _ids')
+	p_allm.add_argument('--corpus', default=None, help='Corpus ID filter')
+	p_allm.add_argument('--genre', default=None, help='Genre filter')
+	p_allm.add_argument('--lang', default=None, help='Language filter')
+	p_allm.add_argument('--year-min', type=int, default=None)
+	p_allm.add_argument('--year-max', type=int, default=None)
+	p_allm.add_argument('--where', default=None, help='Raw SQL WHERE clause')
+	p_allm.add_argument('--model', default=None, help='LLM model (default: task-specific)')
+	p_allm.add_argument('--source', default=None, help='Annotation source label')
+	p_allm.add_argument('-n', '--limit', type=int, default=None, help='Max texts')
+	p_allm.add_argument('--batch-size', type=int, default=100, help='Annotation write batch size')
+	p_allm.add_argument('--no-skip', action='store_true', help='Re-annotate already-done texts')
+	p_allm.add_argument('--no-save', action='store_true', help='Skip writing to annotations')
+	p_allm.add_argument('--save-tasks', action='store_true', help='Save full JSON to task_path')
+	p_allm.add_argument('--force', action='store_true', help='Bypass LLM cache')
+
+	# ingest-tasks
+	p_ingest = subparsers.add_parser('ingest-tasks',
+		help='Ingest task result JSONs from Colab/HPC into task_path + annotations')
+	p_ingest.add_argument('task', help='Task name (e.g. social_network)')
+	p_ingest.add_argument('results_dir', help='Directory of JSON result files')
+	p_ingest.add_argument('--source', default=None, help='Annotation source label for scalars')
+	p_ingest.add_argument('--extract-scalars', action='store_true',
+		help='Extract derived scalar metrics to lltk.annotations')
+	p_ingest.add_argument('--dry-run', action='store_true', help='Show what would happen')
 
 	# app (explorer)
 	p_app = subparsers.add_parser('app', help='Launch LLTK explorer web app')
@@ -505,6 +535,44 @@ def main():
 	elif args.cmd == 'annotate':
 		from lltk.web.annotate import run_annotate
 		run_annotate(args.corpus, port=args.port)
+
+	elif args.cmd == 'annotate-llm':
+		from lltk.annotate import run_task
+		stats = run_task(
+			args.task,
+			ids=args.ids,
+			corpus=args.corpus,
+			genre=args.genre,
+			lang=args.lang,
+			year_min=args.year_min,
+			year_max=args.year_max,
+			where=args.where,
+			limit=args.limit,
+			model=args.model,
+			source=args.source,
+			batch_size=args.batch_size,
+			skip_existing=not args.no_skip,
+			save_annotations=not args.no_save,
+			save_tasks=args.save_tasks,
+			force=args.force,
+		)
+		print(f"\nProcessed: {stats['n_processed']}, "
+			  f"Skipped: {stats['n_skipped']}, "
+			  f"Errors: {stats['n_errors']}, "
+			  f"Time: {stats['elapsed_seconds']}s")
+
+	elif args.cmd == 'ingest-tasks':
+		from lltk.annotate import ingest_tasks
+		stats = ingest_tasks(
+			args.task,
+			args.results_dir,
+			source=args.source,
+			extract_scalars=args.extract_scalars,
+			dry_run=args.dry_run,
+		)
+		print(f"\nIngested: {stats['n_ingested']}, "
+			  f"Skipped: {stats['n_skipped']}, "
+			  f"Errors: {stats['n_errors']}")
 
 	elif args.cmd == 'app':
 		from lltk.web.app import run_app
