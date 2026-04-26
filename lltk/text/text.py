@@ -617,7 +617,13 @@ class BaseText(BaseObject):
 
     @property
     def year(self):
-        years = self.years  # comes sorted
+        self._hydrate_meta()
+        v = self._meta.get('year')
+        if v is not None:
+            v = pd.to_numeric(v, errors='coerce')
+            if pd.notna(v):
+                return v
+        years = self.years
         if len(years)==0: return np.nan
         if len(years)==1: return years[0]
         if len(years)==2: return years[0]
