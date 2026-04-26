@@ -620,7 +620,7 @@ def main():
 		for text_id in get_tqdm(text_ids, desc=f'[clean-ocr] {args.corpus}'):
 			try:
 				t = corpus.text(text_id)
-				result = t.clean_txt(task=task, force=args.force)
+				result = t.clean_txt(task=task, force=args.force, num_workers=args.num_workers)
 				if result is not None:
 					n_cleaned += 1
 				else:

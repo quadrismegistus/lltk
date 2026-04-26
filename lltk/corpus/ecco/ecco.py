@@ -379,7 +379,7 @@ class TextECCO(BaseText):
 			return ecco_xml2txt(self.fnfn)
 		return ''
 
-	def clean_txt(self, task=None, model=None, force=False):
+	def clean_txt(self, task=None, model=None, force=False, num_workers=1):
 		"""Clean OCR via LLM using ECCO XML page structure.
 
 		Returns cleaned text string, or None if nothing to clean.
@@ -406,7 +406,7 @@ class TextECCO(BaseText):
 		if not pages:
 			return None
 
-		cleaned_pages = task.map([p['text'] for p in pages])
+		cleaned_pages = task.map([p['text'] for p in pages], num_workers=num_workers)
 
 		cleaned_text = '\n\n\n'.join(cleaned_pages)
 		cleaned_text = _remove_catchwords_from_text(cleaned_text)

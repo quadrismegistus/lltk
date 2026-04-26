@@ -773,7 +773,7 @@ class BaseText(BaseObject):
         if os.path.exists(self.path_xml): return self.XML2TXT.__func__(self.path_xml)
         return ''
 
-    def clean_txt(self, task=None, model=None, force=False):
+    def clean_txt(self, task=None, model=None, force=False, num_workers=1):
         """Clean OCR via LLM. Writes result to txt_clean/.
 
         Returns 'cleaned', 'skipped', or 'error'.
@@ -797,7 +797,7 @@ class BaseText(BaseObject):
         if not txt or not txt.strip():
             return None
         chunks = _chunk_on_paragraphs(txt)
-        cleaned = task.map(chunks)
+        cleaned = task.map(chunks, num_workers=num_workers)
         cleaned_text = '\n\n'.join(cleaned)
 
         os.makedirs(os.path.dirname(clean_path), exist_ok=True)
