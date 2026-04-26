@@ -298,40 +298,14 @@ class BaseText(BaseObject):
 
     
 
-    def get_path_old(t,part='texts',**kwargs):
-        if not t.corpus: return ''
-        partattr='path_'+part
-        extattr='ext_'+part
-        res=getattr(t.corpus, partattr, None)
+    def get_path(self, part, **kwargs):
+        if part.startswith('path_'): part = part[5:]
+        if not self.corpus: return ''
+        res = getattr(self.corpus, 'path_' + part, None)
         if res:
-            o=os.path.join(res,t.id)
-            resext=getattr(t.corpus, extattr, None)
-            if resext: o+=resext
-            return o
-
-
-    def get_path(self,part,**kwargs):
-        try:
-            if part.startswith('path_'): part=part[5:]
-            path_old = self.get_path_old(part,**kwargs)
-            if path_old:
-                return path_old
-            path_new = self.get_path_new(part,**kwargs)
-            if path_new:
-                return path_new
-        except Exception as e:
-            log.error(e)
+            ext = getattr(self.corpus, 'ext_' + part, None)
+            return os.path.join(res, self.id) + (ext or '')
         return ''
-            
-
-
-    def get_path_new(self,part,**kwargs):
-        if part == 'txt': return os.path.join(self.path,'text.txt')
-        if part == 'xml': return os.path.join(self.path,'text.xml')
-        if part in {'json','meta','meta_json'}:
-            return os.path.join(self.path,'meta.json')
-        if part == 'freqs': return os.path.join(self.path,'freqs.json')
-        return None
 
     @property
     def path(self):

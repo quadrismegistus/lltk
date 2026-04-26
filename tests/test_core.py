@@ -691,9 +691,9 @@ class TestTextPathResolution:
         assert text.path.endswith(text.id)
         assert 'texts' in text.path
 
-    def test_get_path_old_used(self, text):
-        """get_path_old should find flat-directory paths when corpus.path_* exists."""
-        path = text.get_path_old('txt')
+    def test_get_path_finds_flat_layout(self, text):
+        """get_path should find flat-directory paths when corpus.path_* exists."""
+        path = text.get_path('txt')
         assert path is not None
         assert text.id in path
 

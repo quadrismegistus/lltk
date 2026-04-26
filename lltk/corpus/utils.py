@@ -896,14 +896,14 @@ def do_gen_mfw_grp(group,*x,**y):
     return df
 
 
-CORPUSOBJD={}
-def load(name_or_id,load_meta=False,force=False,install_if_nec=False,**y):
-    global CORPUSOBJD
-    # log([force, name_or_id, name_or_id in CORPUSOBJD, CORPUSOBJD.get(name_or_id)])
-    if force or not name_or_id in CORPUSOBJD or CORPUSOBJD[name_or_id] is None:
-        # log('Loading...')
-        CORPUSOBJD[name_or_id] = load_corpus(name_or_id,load_meta=load_meta,install_if_nec=install_if_nec,**y)
-    return CORPUSOBJD[name_or_id]
+def load(name_or_id, load_meta=False, force=False, install_if_nec=False, **y):
+    from lltk.corpus.corpus import CORPUS_CACHE
+    if not force and name_or_id in CORPUS_CACHE and CORPUS_CACHE[name_or_id] is not None:
+        return CORPUS_CACHE[name_or_id]
+    C = load_corpus(name_or_id, load_meta=load_meta, install_if_nec=install_if_nec, **y)
+    if C is not None:
+        CORPUS_CACHE[C.id] = CORPUS_CACHE[C.name] = C
+    return C
 #################################################################
 
 # Attach meta
