@@ -945,10 +945,6 @@ class BaseText(BaseObject):
             return 'Prose'
         elif t.corpus.name in {'ChadwyckPoetry'}:
             return 'Verse'
-        # else:
-        # 	txt_verse, txt_prose = t.txt_verse, t.txt_prose
-        # 	if txt_verse or txt_prose:
-        # 		return 'Verse' if len(txt_verse)>len(txt_prose) else 'Prose'
         return ''
     @property
     def is_prose(self): return self.prose_or_verse=='Prose'
@@ -985,21 +981,7 @@ class BaseText(BaseObject):
     @property
     def paras(self):
         return self.paras_txt
-        # paras = self.paras_xml
-        # if not paras: paras = self.paras_txt
-        # return paras
 
-    @property
-    # def minhash -- removed, see scripts/minhash_match.py for standalone version
-
-    #             if cache:
-    #                 buf = bytearray(lm.bytesize())
-    #                 lm.serialize(buf)
-    #                 buf64=b64encode(buf)
-    #                 self.update(_minhash = buf64)
-    #                 self.cache()
-    #     return self._minhash
-    
     def minhash(self,cache=True,force=False):
         from datasketch import MinHash,LeanMinHash
         from base64 import b64decode,b64encode
@@ -1299,4 +1281,3 @@ def proc_minhash(taddr):
         Text(taddr).minhash()
     except Exception as e:
         log.error(e)
-# def proc_minhash(t): t.minhash()

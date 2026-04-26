@@ -677,38 +677,6 @@ def writegen(fnfn,generator,header=None,args=[],kwargs={},find_all_keys=False,to
     print('>> saved:',fnfn)
     
 
-# def writegen(fnfn,generator,header=None,args=[],kwargs={},find_all_keys=False,total=None):
-# 	from tqdm import tqdm
-# 	import codecs,csv
-# 	if 'jsonl' in fnfn.split('.'): return writegen_jsonl(fnfn,generator,args=args,kwargs=kwargs)
-
-# 	iterator=generator(*args,**kwargs)
-# 	if total: iterator=get_tqdm(iterator,total=total)
-# 	if not header:
-# 		if not find_all_keys:
-# 			first=next(iterator)
-# 			header=sorted(first.keys())
-# 		else:
-# 			print('>> finding keys:')
-# 			keys=set()
-# 			for dx in iterator:
-# 				keys|=set(dx.keys())
-# 			header=sorted(list(keys))
-# 			print('>> found:',len(header),'keys')
-
-# 	iterator=generator(*args,**kwargs)
-# 	with open(fnfn, 'w') as csvfile:
-# 		writer = csv.DictWriter(csvfile,fieldnames=header,extrasaction='ignore',delimiter='\t')
-# 		writer.writeheader()
-# 		for i,dx in enumerate(iterator):
-# 			for k,v in dx.items():
-# 				#if type(v) in [str]:
-# 				#	dx[k]=v.encode('utf-8')
-# 				dx[k] = str(v).replace('\r\n',' ').replace('\r',' ').replace('\n',' ').replace('\t',' ')
-# 			writer.writerow(dx)
-# 	print('>> saved:',fnfn)
-
-
 def readgen_csv(fnfn,sep=None,encoding='utf-8',errors='ignore',header=[],progress=True,num_lines=0,desc='Reading CSV file'):
     from smart_open import open
     from csv import reader
@@ -768,34 +736,6 @@ def header(fnfn,tsep='\t',encoding='utf-8'):
     of.close()
     return header
 
-# def read(fnfn,to_unicode=True):
-# 	if fnfn.endswith('.gz'):
-# 		import gzip
-# 		try:
-# 			with gzip.open(fnfn,'rb') as f:
-# 				x=f.read()
-# 				if to_unicode: x=x.decode('utf-8')
-# 				return x
-# 		except IOError as e:
-# 			print("!! error:",e, end=' ')
-# 			print("!! opening:",fnfn)
-# 			print()
-# 			return ''
-#
-# 	elif fnfn.endswith('.txt'):
-# 		if to_unicode:
-# 			try:
-# 				with codecs.open(fnfn,encoding='utf-8') as f:
-# 					return f.read()
-# 			except UnicodeDecodeError:
-# 				return read(fnfn,to_unicode=False)
-# 		else:
-# 			with open(fnfn) as f:
-# 				return f.read()
-#
-# 	return ''
-
-
 def read(fnfn):
     try:
         if fnfn.endswith('.gz'):
@@ -842,13 +782,7 @@ def noPunc(token):
 
 def zeropunc(s,allow={}):
     allow=set(allow)
-    # return ''.join([x for x in s if x.isalpha() or x in allow])
     return ''.join([x for x in s if x.isalnum() or x in allow])
-
-    # # ok={' '} if spaces_ok else {}
-    # import string
-    # return s.translate(str.maketrans('', '', string.punctuation))
-    # # return ''.join(x for x in s if x.isalpha() or x in ok)
 
 
 

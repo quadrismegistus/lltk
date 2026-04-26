@@ -132,12 +132,6 @@ def check_corpora(paths=['path_raw','path_xml','path_txt','path_freqs','path_met
             print('{:12s}'.format(cell),end=' ')
 
         print()
-            #odx={'name':cname,'id':corpus.id,'path_type':path, 'path_value':pathval, 'exists':exists}
-            #old+=[odx]
-    #import pandas as pd
-    #df=pd.DataFrame(old)
-    #print(df)
-    #return df
 
 def induct_corpus(name_or_id_or_C):
     C=lltk.load(name_or_id) if type(name_or_id_or_C)==str else name_or_id_or_C
@@ -145,14 +139,8 @@ def induct_corpus(name_or_id_or_C):
     ifn_ipynb=C.path_notebook
     ofn_py=os.path.join(PATH_TO_CORPUS_CODE, C.id, os.path.basename(C.path_python))
     ofn_ipynb=os.path.join(PATH_TO_CORPUS_CODE, C.id, os.path.basename(C.path_notebook))
-    # print(ifn_py,'-->',ofn_py)
-    # print(ifn_ipynb,'-->',ofn_ipynb)
-    # check_move_file(ifn_py,ofn_py)
-    # check_move_file(ifn_ipynb,ofn_ipynb)
     manifestd=load_corpus_manifest_unique(C.id,C.name)
     if not manifestd: return
-    #check_move_link_file(ifn_py,ofn_py)
-    #check_move_link_file(ifn_ipynb,ofn_ipynb)
     shutil.copyfile(ifn_py,ofn_py)
     shutil.copyfile(ifn_ipynb,ofn_ipynb)
 
@@ -510,44 +498,29 @@ def start_new_corpus(attrs):
 
 
 
-    #check_make_dirs([ns.path_root,ns.path_txt,ns.path_xml,ns.path_metadata_dir],consent=True)
-
-
     ### Create new code folder
     ns.path_python=os.path.join(ns.path_root,ns.path_python) if not os.path.isabs(ns.path_python) else ns.path_python
     path_python_dir,path_python_fn=os.path.split(ns.path_python)
     python_module=os.path.splitext(path_python_fn)[0]
-    #if not path_python_dir: path_python_dir=os.path.join(PATH_TO_CORPUS_CODE,python_module)
-    #if not path_python_dir: path_python_dir=os.path.abspath(os.path.join(ns.path_root,python_module))
 
     if not os.path.exists(path_python_dir):
         print('>> creating:',path_python_dir)
         os.makedirs(path_python_dir)
 
     python_fnfn=os.path.join(path_python_dir,path_python_fn)
-    #python_fnfn2=os.path.join(path_python_dir,'__init__.py')
     python_ifnfn=os.path.join(PATH_TO_CORPUS_CODE,'default','new_corpus.py')
     ipython_ifnfn=os.path.join(PATH_TO_CORPUS_CODE,'default','notebook.ipynb')
 
-    #if not os.path.exists(python_fnfn) and not os.path.exists(python_fnfn2) and os.path.exists(python_ifnfn):
-    #if not os.path.exists(python_fnfn) and os.path.exists(python_ifnfn):
-    # ofn=tools.iter_filename(python_fnfn)
     ofn=python_fnfn
     ofnipy = os.path.join(ns.path_root, 'notebook.ipynb')
     if os.path.exists(python_ifnfn):
-        #with open(python_fnfn,'w') as of, open(python_fnfn2,'w') as of2, open(python_ifnfn) as f:
         with open(ofn,'w') as of, open(ofnipy,'w') as of2, open(python_ifnfn) as f, open(ipython_ifnfn) as f2:
             of.write(f.read().replace('NewCorpus',ns.class_name))
             of2.write(f2.read().replace('NewCorpus',ns.class_name))
-            #of2.write('from .%s import *\n' % python_module)
             print('>> saved:',ofn)
             print('>> saved:',ofnipy)
 
 
-
-        #print('>> creating:',ns.path_metadata)
-        #from pathlib import Path
-        #Path(ns.path_metadata).touch()
 
     print(f'\n>> Corpus finalized with the following manifest configuration.')
     print(f'   Relative paths are relative to {PATH_CORPUS}.')
