@@ -670,11 +670,9 @@ class BaseCorpus(TextList):
             self._init = True
         return self._textd
 
-    @logmap.fn(log_return=False)    
     def texts(self,*args,**kwargs):
         return self.iter_texts(*args,**kwargs)
-    
-    @logmap.fn(log_return=False)
+
     def iter_texts(self, texts=None, progress=True, shuffle=False, lim=None, **kwargs):
         if texts:
             o = list(texts)
@@ -728,7 +726,6 @@ class BaseCorpus(TextList):
 
         
     
-    @logmap.fn(log_return=False)
     def iter_init(self,progress=True,_init=True,_cache=False,remote=False,lim=None,shuffle=False,**kwargs):
         # Ensure corpus metadata is loaded (load_metadata caches itself)
         df = self.load_metadata()
@@ -753,18 +750,15 @@ class BaseCorpus(TextList):
                     self._textd[id] = t
                 yield t
 
-    @logmap.fn(log_return=False)
     def init(self, force=False, **kwargs):
         if not force and self._init: return self
-        _ = self.textd  # triggers iter_init via @property
+        _ = self.textd
         return self
 
-    @logmap.fn(log_return=False)
     def metadata(self, force=False, **kwargs):
         return self.load_metadata(force=force, **kwargs)
 
     @property
-    @logmap.fn(log_return=False)
     def meta(self): return self.load_metadata()
     @property
     def metadf(self): return self.meta
