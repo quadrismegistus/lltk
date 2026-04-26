@@ -578,11 +578,6 @@ def merge_dict(*l,bad_keys_final=set()):
                 od[k]=v
     return {k:v for k,v in od.items() if k not in bad_keys_final}
 
-def merge_dict(*l,bad_keys_final=set()):
-    od={}
-    for d in l: od={**od, **safebool(d)}
-    return od
-
 
 
 def merge_dict_list(*l):

@@ -198,6 +198,40 @@ def _jaro_winkler(s1, s2):
     return jaro + prefix * 0.1 * (1 - jaro)
 
 
+def _parse_year(val):
+    """Parse a year value to integer. Handles ranges, circa dates, etc."""
+    import re
+    import numpy as np
+    if val is None or (isinstance(val, float) and np.isnan(val)):
+        return None
+    s = str(val).strip()
+    if not s or s in ('nan', 'None', ''):
+        return None
+    for prefix in ('c.', 'c ', 'ca.', 'ca ', '[', ']', '?', '~'):
+        s = s.replace(prefix, '')
+    s = s.strip()
+    try:
+        return int(float(s))
+    except (ValueError, OverflowError):
+        pass
+    if '-' in s:
+        parts = s.split('-')
+        try:
+            years = [int(float(p.strip())) for p in parts if p.strip()]
+            years = [y for y in years if 100 < y < 2100]
+            if years:
+                return years[0]
+        except (ValueError, OverflowError):
+            pass
+    m = re.search(r'\b(\d{4})\b', s)
+    if m:
+        try:
+            return int(m.group(1))
+        except (ValueError, OverflowError):
+            pass
+    return None
+
+
 def chunk_sentences(sents, n=500):
     """Split a list of sentences into ~n-word chunks.
 

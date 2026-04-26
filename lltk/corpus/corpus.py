@@ -714,14 +714,23 @@ class BaseCorpus(TextList):
         
     
     def iter_init(self, progress=True, lim=None, shuffle=False, **kwargs):
+        if self._init:
+            o = [t for t in self._textd.values() if t is not None]
+            if shuffle: random.shuffle(o)
+            if lim: o = o[:lim]
+            yield from o
+            return
+
         df = self.load_metadata()
         if df is None or not len(df):
+            self._init = True
             return
 
         ids = list(df.index)
         if shuffle: random.shuffle(ids)
         if lim: ids = ids[:lim]
 
+        full_init = (not lim or lim >= len(df.index))
         desc = f'[{self.name}] Loading corpus'
         with logmap(desc) as lm:
             for id in lm.progress(ids) if progress else ids:
@@ -735,6 +744,8 @@ class BaseCorpus(TextList):
                     t._meta_hydrated = True
                     self._textd[id] = t
                 yield t
+        if full_init:
+            self._init = True
 
     def init(self, force=False, **kwargs):
         if not force and self._init: return self

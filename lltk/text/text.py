@@ -105,7 +105,6 @@ class BaseText(BaseObject):
         self._section_corpus=_section_corpus
         self._sections={}
         self._rels={}
-        self._gcache={}
         self.__meta={}
         self._meta={}
         self._meta_hydrated=False
@@ -258,40 +257,32 @@ class BaseText(BaseObject):
                 self._meta,
             ))
 
-    def get(self,key,default=None,ish=False,ish_all=None,**kwargs):
-        if self._gcache is None: self._gcache={}
-        if key in self._gcache: return self._gcache[key]
+    def get(self, key, default=None, ish=False, ish_all=None, **kwargs):
         self._hydrate_meta()
+        key = str(key)
+        if key.startswith('_'): ish = False
+        if key.endswith('_l'): return self.meta_l(key[:-2], ish=True, **kwargs)
+        if key.endswith('_1'): return self.meta_1(key[:-2], ish=True, **kwargs)
+        if key.endswith('_'): return self.meta_(key[:-1], ish=True, **kwargs)
 
-        log.debug(f'? {key}')
-        key=str(key)
-        if key.startswith('_'): ish=False
-        if key.endswith('_l'): return self.meta_l(key[:-2],ish=True,**kwargs)
-        if key.endswith('_1'): return self.meta_1(key[:-2],ish=True,**kwargs)
-        if key.endswith('_'): return self.meta_(key[:-1],ish=True,**kwargs)
-
-        meta=merge_dict(self._meta,self.__meta)
+        meta = merge_dict(self._meta, self.__meta)
         if not ish:
-            res=meta.get(key,default)
-        else:
-            vals = []
-            hvals = set()
-            for k in meta:
-                if k.startswith(key):
-                    l=meta[k]
-                    if type(l)!=list: l=[l]
-                    for v in l:
-                        if v and (not is_hashable(v) or v not in hvals):
-                            if is_hashable(v): hvals|={v}
-                            vals.append(v)
-            if vals:
-                o=(vals if ish_all else vals[0])
-                res=o if o is not None else default
-            else:
-                res = default
+            return meta.get(key, default)
 
-        self._gcache[key]=res
-        return res
+        vals = []
+        hvals = set()
+        for k in meta:
+            if k.startswith(key):
+                l = meta[k]
+                if type(l) != list: l = [l]
+                for v in l:
+                    if v and (not is_hashable(v) or v not in hvals):
+                        if is_hashable(v): hvals |= {v}
+                        vals.append(v)
+        if vals:
+            o = (vals if ish_all else vals[0])
+            return o if o is not None else default
+        return default
         
 
 
@@ -446,6 +437,7 @@ class BaseText(BaseObject):
     def update(self, meta={}, **metad):
         if meta or metad:
             self._meta = {**self._meta, **meta, **metad}
+            self._node = None
 
 
     

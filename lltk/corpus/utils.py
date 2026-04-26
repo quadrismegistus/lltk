@@ -1,7 +1,7 @@
 import math
 import os
 import shutil
-
+from logmap import logmap
 import pandas as pd
 
 from collections import defaultdict
@@ -290,7 +290,7 @@ def fix_meta(metadf, badcols={'_llp_','_lltk_','corpus','index','id.1','url_word
 def clean_meta(meta):
     meta=fix_meta(meta)
     if 'year' in set(meta.columns):
-        from lltk.db.metadb import _parse_year
+        from lltk.tools.constants import _parse_year
         raw = meta['year']
         parsed = raw.apply(_parse_year)
         if not raw.equals(parsed):
@@ -630,7 +630,7 @@ def write_manifest(ofn, path_manifests=PATH_MANIFESTS, new_config={}):
     with open(ofn, 'w') as configfile:
         config.write(configfile)
 
-def load_manifest(force=True,corpus_name=None,path_manifests=PATH_MANIFESTS):
+def load_manifest(force=False,corpus_name=None,path_manifests=PATH_MANIFESTS):
     if MANIFEST and not force: return MANIFEST
 
     # read config
@@ -701,6 +701,7 @@ def to_yearbin(year,yearbin):
 
 
 
+@logmap.fn
 def load_corpus(id,manifestd={},load_meta=False,force=False,install_if_nec=True,**input_kwargs):
     from lltk.imports import log
     if not manifestd: manifestd=load_corpus_manifest(id,make_path_abs=True)
@@ -717,7 +718,6 @@ def load_corpus(id,manifestd={},load_meta=False,force=False,install_if_nec=True,
 
     from lltk.text.utils import merge_dict
     inpd = merge_dict(manifestd, input_kwargs)
-    log.info(f'Importing corpus class "{class_name}" from {path_python}')
     
     try:
         import importlib.util
@@ -726,7 +726,6 @@ def load_corpus(id,manifestd={},load_meta=False,force=False,install_if_nec=True,
         spec.loader.exec_module(module)
         class_class = getattr(module,class_name)
         C = class_class(**inpd)
-        log.info(f'-> {C}')
         return C
     # except AssertionError as e:
     except AssertionError:
