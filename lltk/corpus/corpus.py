@@ -10,6 +10,8 @@ import pandas as pd
 from collections import Counter, defaultdict
 from typing import Union
 
+from logmap import logmap
+
 from lltk.imports import (
     BAD_COLS,
     Bunch,
@@ -721,21 +723,25 @@ class BaseCorpus(TextList):
         
     def texts(self,*args,**kwargs):
         return self.iter_texts(*args,**kwargs)
+    
     def itexts(self,*x,**y): return self.iter_texts(*x,**y)
 
-    def iter_texts(self,texts=None,progress=False,shuffle=False,lim=None,verbose=False,**kwargs):
+    def iter_texts(self,texts=None,progress=True,shuffle=False,lim=None,verbose=False,**kwargs):
         if not texts: texts=list(self.textd.values())
         if not texts: return []
         o=list(texts)
         if shuffle: random.shuffle(o)
         if lim: o=o[:lim]
         if progress:
-            iterr=get_tqdm(o,desc=f'[{self.name}] iterating texts')
+            from logmap import logmap
+            desc=f'[{self.name}] iterating texts'
+            with logmap(desc) as lm:
+                for t in lm.progress(o):
+                    yield t
         else:
-            iterr=o
-        for t in iterr:
-            if type(progress)==int and progress>1: iterr.set_description(f'[{self.name}] yielding: {t.id}')
-            yield t
+            yield from o
+            # if type(progress)==int and progress>1: iterr.set_description(f'[{self.name}] yielding: {t.id}')
+            # yield t
     
     def corpus_texts(self,*args,**kwargs): yield from self.texts(*args,**kwargs)
     
@@ -778,9 +784,6 @@ class BaseCorpus(TextList):
     
 
     def iter_init(self,progress=True,_init=True,_cache=False,remote=False,lim=None,shuffle=False,**kwargs):
-        #log(f'<- remote = {remote}')
-        remote=is_logged_on()
-
         # Ensure corpus metadata is loaded (load_metadata caches itself)
         df = self.load_metadata()
         if df is None or not len(df):
@@ -790,42 +793,43 @@ class BaseCorpus(TextList):
         if shuffle: random.shuffle(ids)
         if lim: ids = ids[:lim]
 
-        if progress:
-            ids = get_tqdm(ids, desc=f'[{self.name}] Loading corpus')
+        # if progress:
+        desc=f'[{self.name}] Loading corpus'
 
         # Pre-convert DataFrame rows to dicts for fast lookup
         records = df.to_dict('index')
 
-        for id in ids:
-            id = to_corpus_and_id(id)[1]
-            if id in self._textd and self._textd[id] is not None:
-                t = self._textd[id]
-            else:
-                # Pass row metadata directly — avoids lazy hydration overhead
-                row_meta = {}
-                for k, v in records.get(id, {}).items():
-                    if v is None or (isinstance(v, float) and v != v):
-                        continue
-                    s = str(v)
-                    if s == 'nan' or s == '':
-                        continue
-                    # Convert non-scalar values to strings
-                    if isinstance(v, (list, tuple, set)):
-                        v = ' | '.join(str(x) for x in v)
-                    try:
-                        import numpy as np
-                        if isinstance(v, np.ndarray):
+        with logmap(desc) as lm:
+            for id in lm.progress(ids) if progress else ids:
+                id = to_corpus_and_id(id)[1]
+                if id in self._textd and self._textd[id] is not None:
+                    t = self._textd[id]
+                else:
+                    # Pass row metadata directly — avoids lazy hydration overhead
+                    row_meta = {}
+                    for k, v in records.get(id, {}).items():
+                        if v is None or (isinstance(v, float) and v != v):
+                            continue
+                        s = str(v)
+                        if s == 'nan' or s == '':
+                            continue
+                        # Convert non-scalar values to strings
+                        if isinstance(v, (list, tuple, set)):
                             v = ' | '.join(str(x) for x in v)
-                    except ImportError:
-                        pass
-                    row_meta[k] = v
-                t = self.TEXT_CLASS(id=id, _corpus=self, _remote=remote, **row_meta)
-                t._meta_hydrated = True  # skip DB lookup — we already have the data
-                self._textd[id] = t
-            yield t
+                        try:
+                            import numpy as np
+                            if isinstance(v, np.ndarray):
+                                v = ' | '.join(str(x) for x in v)
+                        except ImportError:
+                            pass
+                        row_meta[k] = v
+                    t = self.TEXT_CLASS(id=id, _corpus=self, _remote=remote, **row_meta)
+                    t._meta_hydrated = True  # skip DB lookup — we already have the data
+                    self._textd[id] = t
+                yield t
 
     def init_(self,remote=REMOTE_REMOTE_DEFAULT,cache=True,progress=2,**kwargs):
-        with log.silent:
+        with logmap.disabled():
             for t in self.texts(progress=progress,**kwargs):
                 t.init(remote=remote,cache=cache,**kwargs)
         
