@@ -240,6 +240,21 @@ def main():
 		help='Extract derived scalar metrics to lltk.annotations')
 	p_ingest.add_argument('--dry-run', action='store_true', help='Show what would happen')
 
+	# clean-ocr
+	p_cocr = subparsers.add_parser('clean-ocr',
+		help='LLM-based OCR cleaning (requires largeliterarymodels)')
+	p_cocr.add_argument('corpus', help='Corpus ID (e.g. ecco)')
+	p_cocr.add_argument('--model', default=None,
+		help='LLM model (default: lmstudio/gemma-4-e2b-it)')
+	p_cocr.add_argument('--ids', nargs='+', default=None, help='Specific text IDs')
+	p_cocr.add_argument('--genre', default=None, help='Genre filter (queries CH)')
+	p_cocr.add_argument('--year-min', type=int, default=None)
+	p_cocr.add_argument('--year-max', type=int, default=None)
+	p_cocr.add_argument('-n', '--limit', type=int, default=None, help='Max texts')
+	p_cocr.add_argument('-j', '--num-workers', type=int, default=4,
+		help='Parallel LLM workers (default: 4)')
+	p_cocr.add_argument('--force', action='store_true', help='Re-clean existing txt_clean/')
+
 	# app (explorer)
 	p_app = subparsers.add_parser('app', help='Launch LLTK explorer web app')
 	p_app.add_argument('--port', type=int, default=8899, help='Port (default: 8899)')
@@ -573,6 +588,50 @@ def main():
 		print(f"\nIngested: {stats['n_ingested']}, "
 			  f"Skipped: {stats['n_skipped']}, "
 			  f"Errors: {stats['n_errors']}")
+
+	elif args.cmd == 'clean-ocr':
+		import time as _time
+		from lltk.tools.tools import get_tqdm
+		from largeliterarymodels.tasks import OCRCleanTask
+
+		corpus = lltk.load(args.corpus)
+		task = OCRCleanTask(model=args.model or 'lmstudio/gemma-4-e2b-it')
+
+		if args.ids:
+			text_ids = args.ids
+		elif args.genre or args.year_min or args.year_max:
+			df = lltk.db.texts_df(
+				corpora=[args.corpus], genre=args.genre,
+				year_min=args.year_min, year_max=args.year_max,
+				dedup=True,
+			)
+			text_ids = df['id'].tolist()
+		else:
+			meta = corpus.load_metadata()
+			text_ids = list(meta.index) if meta is not None else []
+
+		if args.limit:
+			text_ids = text_ids[:args.limit]
+
+		t0 = _time.time()
+		n_cleaned = 0
+		n_skipped = 0
+		n_errors = 0
+		for text_id in get_tqdm(text_ids, desc=f'[clean-ocr] {args.corpus}'):
+			try:
+				t = corpus.text(text_id)
+				status = t.clean_txt(task=task, force=args.force)
+				if status == 'cleaned':
+					n_cleaned += 1
+				else:
+					n_skipped += 1
+			except Exception as e:
+				n_errors += 1
+				print(f'  {text_id}: {e!s:.80s}')
+
+		elapsed = _time.time() - t0
+		print(f"\nCleaned: {n_cleaned}, Skipped: {n_skipped}, "
+			  f"Errors: {n_errors}, Time: {elapsed:.0f}s")
 
 	elif args.cmd == 'app':
 		from lltk.web.app import run_app

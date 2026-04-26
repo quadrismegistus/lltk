@@ -101,6 +101,7 @@ PATH_TO_BOOKNLP_BINARY = 'bin/book-nlp/runjava'
 
 MANIFEST_DEFAULTS = dict(
     path_txt='txt',
+    path_txt_clean='txt_clean',
     path_xml='xml',
     path_nlp='nlp',
     path_pos='pos',

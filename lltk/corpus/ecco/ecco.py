@@ -108,6 +108,59 @@ def ecco_df(source: Union[str, etree._Element], **kwargs) -> pd.DataFrame:
 	return pd.DataFrame(ecco_lines(source, **kwargs))
 
 
+def ecco_page_texts(source: Union[str, etree._Element], **kwargs) -> list[dict]:
+	"""Extract per-page text strings with metadata from ECCO XML.
+
+	Returns list of dicts: page_i, page_num, page_type, page_ocr, text.
+	Lines within paragraphs joined with spaces, paragraphs with double newlines.
+	"""
+	lines = ecco_lines(source, **kwargs)
+	if not lines:
+		return []
+
+	pages = []
+	current_page_i = lines[0]['page_i']
+	current_meta = {
+		'page_i': lines[0]['page_i'],
+		'page_num': lines[0]['page_num'],
+		'page_type': lines[0]['page_type'],
+		'page_ocr': lines[0]['page_ocr'],
+	}
+	current_paras = []
+	current_para_num = lines[0]['para_num']
+	current_lines = []
+
+	def _flush_page():
+		if current_lines:
+			current_paras.append(' '.join(current_lines))
+		if current_paras:
+			pages.append({**current_meta, 'text': '\n\n'.join(current_paras)})
+
+	for rec in lines:
+		if rec['page_i'] != current_page_i:
+			_flush_page()
+			current_paras = []
+			current_lines = []
+			current_page_i = rec['page_i']
+			current_para_num = rec['para_num']
+			current_meta = {
+				'page_i': rec['page_i'],
+				'page_num': rec['page_num'],
+				'page_type': rec['page_type'],
+				'page_ocr': rec['page_ocr'],
+			}
+		elif rec['para_num'] != current_para_num:
+			if current_lines:
+				current_paras.append(' '.join(current_lines))
+				current_lines = []
+			current_para_num = rec['para_num']
+
+		current_lines.append(rec['line_txt'])
+
+	_flush_page()
+	return pages
+
+
 def ecco_xml2txt(
 	source: Union[str, etree._Element],
 	page_types: set[str] | None = None,
@@ -176,6 +229,17 @@ def _remove_catchwords(lines: list[dict]) -> list[dict]:
 					group = group[:-1]
 		result.extend(group)
 	return result
+
+
+def _remove_catchwords_from_text(text):
+	"""Remove catchwords from cleaned text (split on triple-newline pages)."""
+	pages = text.split('\n\n\n')
+	for i in range(len(pages) - 1):
+		words_this = pages[i].split()
+		words_next = pages[i + 1].split()
+		if words_this and words_next and words_this[-1] == words_next[0]:
+			pages[i] = ' '.join(words_this[:-1])
+	return '\n\n\n'.join(pages)
 
 
 def _fix_dangling_hyphens(text, hyphens=frozenset({'¬', '-'})):
@@ -298,6 +362,12 @@ class TextECCO(BaseText):
 
 
 	def text_plain(self, save_when_gen=True, **kw):
+		clean_dir = getattr(self.corpus, 'path_txt_clean', None)
+		if clean_dir:
+			clean_path = os.path.join(clean_dir, self.id + '.txt')
+			if os.path.exists(clean_path):
+				with open(clean_path, encoding='utf-8') as f:
+					return f.read()
 		cache = self.text_plain_from_file
 		if cache:
 			return cache
@@ -306,7 +376,47 @@ class TextECCO(BaseText):
 			self.save_plain_text(txt=plain_text, compress=True)
 		return plain_text
 
+	def clean_txt(self, task=None, model=None, force=False):
+		"""Clean OCR via LLM using ECCO XML page structure.
 
+		Returns 'cleaned', 'skipped', or 'error'.
+		"""
+		import json as _json
+
+		clean_dir = getattr(self.corpus, 'path_txt_clean', None)
+		if not clean_dir:
+			return 'skipped'
+		clean_path = os.path.join(clean_dir, self.id + '.txt')
+		meta_path = os.path.join(clean_dir, self.id + '.json')
+		if not force and os.path.exists(clean_path):
+			return 'skipped'
+
+		if task is None:
+			from largeliterarymodels.tasks import OCRCleanTask
+			task = OCRCleanTask(model=model or 'lmstudio/gemma-4-e2b-it')
+
+		if not os.path.exists(self.fnfn):
+			return 'skipped'
+		pages = ecco_page_texts(self.fnfn)
+		if not pages:
+			return 'skipped'
+
+		cleaned_pages = task.map([p['text'] for p in pages])
+
+		cleaned_text = '\n\n\n'.join(cleaned_pages)
+		cleaned_text = _remove_catchwords_from_text(cleaned_text)
+		cleaned_text = _fix_dangling_hyphens(cleaned_text)
+
+		os.makedirs(os.path.dirname(clean_path), exist_ok=True)
+		with open(clean_path, 'w', encoding='utf-8') as f:
+			f.write(cleaned_text)
+
+		meta = [{'page_i': p['page_i'], 'page_num': p['page_num'],
+				 'page_type': p['page_type'], 'page_ocr': p['page_ocr']}
+				for p in pages]
+		with open(meta_path, 'w', encoding='utf-8') as f:
+			_json.dump(meta, f, indent=2)
+		return 'cleaned'
 
 
 class ECCO(BaseCorpus):

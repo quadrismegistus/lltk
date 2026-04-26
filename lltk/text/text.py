@@ -67,6 +67,25 @@ def _lang_to_punkt(lang):
     return _PUNKT_LANG.get(lang, 'english')
 
 
+def _chunk_on_paragraphs(txt, target_words=500):
+    """Split text on paragraph boundaries into ~target_words chunks."""
+    paras = [p for p in txt.split('\n\n') if p.strip()]
+    chunks = []
+    current = []
+    current_words = 0
+    for para in paras:
+        n = len(para.split())
+        current.append(para)
+        current_words += n
+        if current_words >= target_words:
+            chunks.append('\n\n'.join(current))
+            current = []
+            current_words = 0
+    if current:
+        chunks.append('\n\n'.join(current))
+    return chunks
+
+
 class BaseText(BaseObject):
     BAD_TAGS={'note','footnote','greek','latin'}
     # BODY_TAG=None
@@ -295,6 +314,13 @@ class BaseText(BaseObject):
     def get_path(self, part, **kwargs):
         if part.startswith('path_'): part = part[5:]
         if not self.corpus: return ''
+        if part == 'txt':
+            clean_dir = getattr(self.corpus, 'path_txt_clean', None)
+            if clean_dir:
+                ext = getattr(self.corpus, 'ext_txt', None)
+                clean_path = os.path.join(clean_dir, self.id) + (ext or '')
+                if os.path.exists(clean_path):
+                    return clean_path
         res = getattr(self.corpus, 'path_' + part, None)
         if res:
             ext = getattr(self.corpus, 'ext_' + part, None)
@@ -746,6 +772,36 @@ class BaseText(BaseObject):
         # Otherwise, load from XML?
         if os.path.exists(self.path_xml): return self.XML2TXT.__func__(self.path_xml)
         return ''
+
+    def clean_txt(self, task=None, model=None, force=False):
+        """Clean OCR via LLM. Writes result to txt_clean/.
+
+        Returns 'cleaned', 'skipped', or 'error'.
+        Override in subclasses for corpus-specific chunking (e.g. ECCO XML pages).
+        """
+        clean_dir = getattr(self.corpus, 'path_txt_clean', None)
+        if not clean_dir:
+            return 'skipped'
+        ext = getattr(self.corpus, 'ext_txt', None) or ''
+        clean_path = os.path.join(clean_dir, self.id + ext)
+        if not force and os.path.exists(clean_path):
+            return 'skipped'
+
+        if task is None:
+            from largeliterarymodels.tasks import OCRCleanTask
+            task = OCRCleanTask(model=model or 'lmstudio/gemma-4-e2b-it')
+
+        txt = self.text_plain()
+        if not txt or not txt.strip():
+            return 'skipped'
+        chunks = _chunk_on_paragraphs(txt)
+        cleaned = task.map(chunks)
+        cleaned_text = '\n\n'.join(cleaned)
+
+        os.makedirs(os.path.dirname(clean_path), exist_ok=True)
+        with open(clean_path, 'w', encoding='utf-8') as f:
+            f.write(cleaned_text)
+        return 'cleaned'
 
 
     
