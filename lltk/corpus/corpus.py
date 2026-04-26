@@ -136,7 +136,7 @@ class BaseCorpus(TextList):
         self._textd=defaultdict(lambda: None)
         self._dtmd={}
         self._mfwd={}
-        self._init=set()
+        self._init=False
         self._source=None
         self._authors=None
         self._gdb=None
@@ -295,57 +295,6 @@ class BaseCorpus(TextList):
 
 
 
-    def init_meta(self,sources=['csv'],merger=None,allow_hidden=False,*x,**y):
-        
-        def _filter(odx): 
-            if allow_hidden: return odx
-            return {k:v for k,v in odx.items() if k and k[0]!='_'}
-
-        if sources == 'csv' or sources == ['csv']:
-            for id,d in self.init_meta_csv(*x,**y):
-                yield (id,_filter(d))
-        else:
-            if merger is None: merger = merge_dict
-            log.info(self)
-            id2ld=defaultdict(list)
-            for source in sources:
-                if source=='csv':
-                    # log('Init from csv')
-                    for id,dx in self.init_meta_csv(*x,**y):
-                        id2ld[id].append(dx)
-                elif source=='json':
-                    # log('Init from json')
-                    for id,dx in self.init_meta_json(*x,**y):
-                        id2ld[id].append(dx)
-            
-            # yield merged
-            for id,ld in sorted(id2ld.items()):
-                if type(ld)!=list or not ld: continue
-                odx=merger(*ld) if len(ld)>1 else ld[0]    
-                yield (id, _filter(odx))
-
-
-    def init_meta_json(self,force=False,bad_cols=BAD_COLS,meta_fn='meta.json',**kwargs):
-        # log(f'Initializing from json files: {self.addr}')
-        log.info(self)
-        for root,dirs,fns in os.walk(self.path_texts):
-            if meta_fn in set(fns):
-                meta_root=os.path.abspath(root)
-                meta_fnfn=os.path.join(root,meta_fn)
-                idx = meta_root.replace(self.path_texts,'')
-                idx = idx[1:] if idx.startswith('/') else idx
-                yield idx, read_json(meta_fnfn)
-
-    def init_meta_csv(self,*x,**y):
-        log.info(self)
-        if not os.path.exists(self.path_metadata): self.install_metadata()
-        if os.path.exists(self.path_metadata):
-            df=read_df_anno(self.path_metadata,dtype=str)
-            if type(df)==pd.DataFrame and len(df) and self.col_id in set(df.columns):
-                df=df.set_index(self.col_id)
-                o1=df.index
-                o2=df.to_dict('records')
-                yield from zip(o1,o2)
 
 
     @property
@@ -714,11 +663,11 @@ class BaseCorpus(TextList):
 
 
 
-    # Get texts
     @property
     def textd(self):
-        # log('...')
-        self.init()
+        if not self._init:
+            for t in self.iter_init(): pass
+            self._init = True
         return self._textd
         
     def texts(self,*args,**kwargs):
@@ -726,22 +675,19 @@ class BaseCorpus(TextList):
     
     def itexts(self,*x,**y): return self.iter_texts(*x,**y)
 
-    def iter_texts(self,texts=None,progress=True,shuffle=False,lim=None,verbose=False,**kwargs):
-        if not texts: texts=list(self.textd.values())
-        if not texts: return []
-        o=list(texts)
-        if shuffle: random.shuffle(o)
-        if lim: o=o[:lim]
-        if progress:
-            from logmap import logmap
-            desc=f'[{self.name}] iterating texts'
-            with logmap(desc) as lm:
-                for t in lm.progress(o):
-                    yield t
-        else:
+    def iter_texts(self, texts=None, progress=True, shuffle=False, lim=None, **kwargs):
+        if texts:
+            o = list(texts)
+            if shuffle: random.shuffle(o)
+            if lim: o = o[:lim]
             yield from o
-            # if type(progress)==int and progress>1: iterr.set_description(f'[{self.name}] yielding: {t.id}')
-            # yield t
+        elif self._init:
+            o = [t for t in self._textd.values() if t is not None]
+            if shuffle: random.shuffle(o)
+            if lim: o = o[:lim]
+            yield from o
+        else:
+            yield from self.iter_init(progress=progress, shuffle=shuffle, lim=lim)
     
     def corpus_texts(self,*args,**kwargs): yield from self.texts(*args,**kwargs)
     
@@ -828,17 +774,11 @@ class BaseCorpus(TextList):
                     self._textd[id] = t
                 yield t
 
-    def init_(self,remote=REMOTE_REMOTE_DEFAULT,cache=True,progress=2,**kwargs):
-        with logmap.disabled():
-            for t in self.texts(progress=progress,**kwargs):
-                t.init(remote=remote,cache=cache,**kwargs)
-        
-
-    def init(self,force=False):
+    def init(self, force=False, **kwargs):
         if not force and self._init: return self
-        for t in self.iter_init(): pass
-        self._init=True
-    
+        _ = self.textd  # triggers iter_init via @property
+        return self
+
     def metadata(self, force=False, **kwargs):
         return self.load_metadata(force=force, **kwargs)
 
