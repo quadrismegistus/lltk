@@ -149,29 +149,21 @@ class BaseText(BaseObject):
     def nsrc(self): return len(self._sources)
     
     @property
-    def node(self,force=True):
+    def node(self, force=True):
         if force or not self._node:
-            au,ti,addr = self.au, self.ti, self.addr
-            if au and ti and addr:
-                # starter
-                ol=[f'{au}, {ti.replace("_"," ").title()[:50].strip()}']
-                
-                # year
+            addr = self.addr
+            au = self.au
+            ti = self.ti
+            if au and ti:
+                ol = [f'{au}, {ti.replace("_"," ").title()[:50].strip()}']
                 yr = self.year
                 if safebool(yr): ol.append(f' ({int(yr)})')
-                
-                # addr
                 ol.append(f' [{addr}]')
-                # num src?
-                
-                nsrc=self.nsrc + 1
-                if nsrc and nsrc>1: ol.append(f' ({nsrc})')
+                nsrc = self.nsrc + 1
+                if nsrc > 1: ol.append(f' ({nsrc})')
                 self._node = ''.join(ol)
             elif addr:
-                self._node=f'({addr})'
-            else:
-                raise Exception('every text ought to have an addr')
-        
+                self._node = f'({addr})'
         return self._node
 
             
@@ -654,6 +646,7 @@ class BaseText(BaseObject):
             ):
 
         ti=self.title
+        if not ti: return ''
         ti=ti.strip().replace('—','--').replace('–','-')
         ti=ti.title()
         for x,y in replacements.items(): ti=ti.replace(x.title(),y)
