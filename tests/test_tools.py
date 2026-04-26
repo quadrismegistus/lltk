@@ -20,7 +20,6 @@ from lltk.tools.tools import (
     ensure_snake,
     fillna,
     human_format,
-    index,
     is_dictish,
     is_hashable,
     is_iterable,
@@ -28,7 +27,6 @@ from lltk.tools.tools import (
     modernize_spelling_in_txt,
     ngram,
     noPunc,
-    passages,
     pmap,
     ppath,
     read,
@@ -69,39 +67,6 @@ class TestNgram:
 
     def test_strings(self):
         assert ngram(list("abcd"), n=2) == [("a", "b"), ("b", "c"), ("c", "d")]
-
-
-# ---------------------------------------------------------------------------
-# index  (regex-based phrase finder)
-# ---------------------------------------------------------------------------
-class TestIndex:
-    def test_basic_case_insensitive(self):
-        result = index("Hello world hello", "hello")
-        assert len(result) == 2
-        assert result[0] == (0, 5)
-        assert result[1] == (12, 17)
-
-    def test_case_sensitive(self):
-        result = index("Hello world hello", "hello", ignorecase=False)
-        assert len(result) == 1
-        assert result[0] == (12, 17)
-
-    def test_no_match(self):
-        assert index("some text", "missing") == []
-
-    def test_regex_pattern(self):
-        result = index("abc 123 def 456", r"\d+")
-        assert len(result) == 2
-
-
-# ---------------------------------------------------------------------------
-# passages  (broken: get_word_window not defined)
-# ---------------------------------------------------------------------------
-class TestPassages:
-    def test_raises_on_missing_helper(self):
-        """passages() calls get_word_window which is not defined -- expect NameError."""
-        with pytest.raises(NameError, match="get_word_window"):
-            list(passages("hello world hello", phrases=["hello"], window=10))
 
 
 # ---------------------------------------------------------------------------

@@ -1643,47 +1643,20 @@ class PassageSectionCorpus(SectionCorpus):
         if source is None: return
         txt = source.txt
         if not txt: return
-        n = self._passage_n
 
         import nltk
         from lltk.text.text import _lang_to_punkt
+        from lltk.tools.constants import chunk_sentences
         sents = nltk.sent_tokenize(txt, language=_lang_to_punkt(source.lang))
 
-        chunk_sents = []
-        chunk_word_count = 0
-        word_offset = 0
-        tokenizer = source.TOKENIZER.__func__
-
-        for sent in sents:
-            sent_words = tokenizer(sent)
-            sent_n = len(sent_words)
-            chunk_sents.append(sent)
-            chunk_word_count += sent_n
-
-            if chunk_word_count >= n:
-                chunk_txt = ' '.join(chunk_sents)
-                section_id = f'{self.SECTION_PREFIX}{word_offset:05}_{word_offset + chunk_word_count:05}'
-                self.init_text(
-                    id=section_id,
-                    _txt=chunk_txt,
-                    word_start=word_offset,
-                    word_end=word_offset + chunk_word_count,
-                    num_words=chunk_word_count,
-                )
-                word_offset += chunk_word_count
-                chunk_sents = []
-                chunk_word_count = 0
-
-        # emit final chunk
-        if chunk_sents:
-            chunk_txt = ' '.join(chunk_sents)
-            section_id = f'{self.SECTION_PREFIX}{word_offset:05}_{word_offset + chunk_word_count:05}'
+        for chunk_txt, word_start, word_end, num_words in chunk_sentences(sents, self._passage_n):
+            section_id = f'{self.SECTION_PREFIX}{word_start:05}_{word_end:05}'
             self.init_text(
                 id=section_id,
                 _txt=chunk_txt,
-                word_start=word_offset,
-                word_end=word_offset + chunk_word_count,
-                num_words=chunk_word_count,
+                word_start=word_start,
+                word_end=word_end,
+                num_words=num_words,
             )
 
         if self._textd: self._init = True

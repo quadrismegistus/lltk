@@ -198,6 +198,29 @@ def _jaro_winkler(s1, s2):
     return jaro + prefix * 0.1 * (1 - jaro)
 
 
+def chunk_sentences(sents, n=500):
+    """Split a list of sentences into ~n-word chunks.
+
+    Yields (chunk_text, word_start, word_end, num_words) tuples.
+    Word counting uses str.split() for consistency between
+    in-memory sectioning and ClickHouse passage ingest.
+    """
+    chunk_sents = []
+    chunk_word_count = 0
+    word_offset = 0
+    for sent in sents:
+        sent_n = len(sent.split())
+        chunk_sents.append(sent)
+        chunk_word_count += sent_n
+        if chunk_word_count >= n:
+            yield (' '.join(chunk_sents), word_offset, word_offset + chunk_word_count, chunk_word_count)
+            word_offset += chunk_word_count
+            chunk_sents = []
+            chunk_word_count = 0
+    if chunk_sents:
+        yield (' '.join(chunk_sents), word_offset, word_offset + chunk_word_count, chunk_word_count)
+
+
 def _chunk_text_to_passages(args):
     """Chunk a single text file into ~n-word passages using sentence splitting."""
     _id, corpus_id, txt_path, lang, n = args
@@ -211,20 +234,8 @@ def _chunk_text_to_passages(args):
         punkt_lang = _lang_to_punkt(lang)
         sents = nltk.sent_tokenize(txt, language=punkt_lang)
         passages = []
-        chunk_sents = []
-        chunk_word_count = 0
-        seq = 0
-        for sent in sents:
-            sent_n = len(sent.split())
-            chunk_sents.append(sent)
-            chunk_word_count += sent_n
-            if chunk_word_count >= n:
-                passages.append((_id, seq, ' '.join(chunk_sents), chunk_word_count, lang))
-                seq += 1
-                chunk_sents = []
-                chunk_word_count = 0
-        if chunk_sents:
-            passages.append((_id, seq, ' '.join(chunk_sents), chunk_word_count, lang))
+        for seq, (chunk_txt, word_start, word_end, num_words) in enumerate(chunk_sentences(sents, n)):
+            passages.append((_id, seq, chunk_txt, num_words, lang))
         return (_id, corpus_id, passages)
     except Exception:
         return (_id, corpus_id, [])
