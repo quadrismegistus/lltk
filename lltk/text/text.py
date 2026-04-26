@@ -220,6 +220,7 @@ class BaseText(BaseObject):
     def __getitem__(self, key): return self.get(key)
 
     def __getattr__(self, name):
+        if name.startswith('_'): raise AttributeError(name)
         if name.startswith('path_'): return self.get_path(name)
 
         res = self.get(name)
