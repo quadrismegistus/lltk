@@ -1,5 +1,53 @@
-from lltk.imports import *
-from .utils import *
+import os
+
+import numpy as np
+import pandas as pd
+
+from collections import Counter, defaultdict
+
+from lltk.imports import (
+    BAD_TAGS,
+    BaseObject,
+    COL_ID,
+    DIR_SECTION_NAME,
+    IDSEP,
+    IDSEP_START,
+    MATCHRELNAME,
+    META_KEY_SEP,
+    PATH_CORPUS,
+    SetList,
+    TEXT_META_DEFAULT,
+    TMP_CORPUS_ID,
+    YEARKEYS,
+    ensure_snake,
+    get_wordlist,
+    is_dictish,
+    is_hashable,
+    just_meta_no_id,
+    log,
+    noPunc,
+    safebool,
+    to_numeric_dict,
+    zeropunc,
+)
+from .utils import (
+    clean_text,
+    filter_freqs,
+    get_addr_str,
+    get_idx,
+    get_imsg,
+    is_addr_str,
+    is_corpus_obj,
+    is_text_obj,
+    is_textish,
+    is_valid_text_obj,
+    merge_dict,
+    remove_bad_tags,
+    save_freqs_json,
+    to_corpus_and_id,
+    tokenize,
+    xml2txt_default,
+)
 
 
 def _open_file(path, **kwargs):
@@ -897,10 +945,6 @@ class BaseText(BaseObject):
             return 'Prose'
         elif t.corpus.name in {'ChadwyckPoetry'}:
             return 'Verse'
-        # else:
-        # 	txt_verse, txt_prose = t.txt_verse, t.txt_prose
-        # 	if txt_verse or txt_prose:
-        # 		return 'Verse' if len(txt_verse)>len(txt_prose) else 'Prose'
         return ''
     @property
     def is_prose(self): return self.prose_or_verse=='Prose'
@@ -937,21 +981,7 @@ class BaseText(BaseObject):
     @property
     def paras(self):
         return self.paras_txt
-        # paras = self.paras_xml
-        # if not paras: paras = self.paras_txt
-        # return paras
 
-    @property
-    # def minhash -- removed, see scripts/minhash_match.py for standalone version
-
-    #             if cache:
-    #                 buf = bytearray(lm.bytesize())
-    #                 lm.serialize(buf)
-    #                 buf64=b64encode(buf)
-    #                 self.update(_minhash = buf64)
-    #                 self.cache()
-    #     return self._minhash
-    
     def minhash(self,cache=True,force=False):
         from datasketch import MinHash,LeanMinHash
         from base64 import b64decode,b64encode
@@ -1251,4 +1281,3 @@ def proc_minhash(taddr):
         Text(taddr).minhash()
     except Exception as e:
         log.error(e)
-# def proc_minhash(t): t.minhash()

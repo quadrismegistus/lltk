@@ -7,8 +7,13 @@ fiction (Mish 1475-1700, Odell 1475-1700, McBurney 1700-1739, etc.).
 compile() reads Gemini-parsed CSVs from sources_parsed/, assigns IDs,
 auto-matches to ESTC via STC/Wing IDs and shelfmarks, and writes metadata.csv.
 """
-from lltk.imports import *
 import json as _json
+import os
+import re
+
+import pandas as pd
+
+from lltk.imports import BaseCorpus, BaseText, log
 
 
 # McBurney library abbreviations → ESTC institution codes

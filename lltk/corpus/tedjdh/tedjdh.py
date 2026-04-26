@@ -1,4 +1,4 @@
-from lltk.imports import *
+from lltk.imports import BaseCorpus
 
 TEDJDH_GENRE_MAP = {
 	'Fiction': 'Fiction',

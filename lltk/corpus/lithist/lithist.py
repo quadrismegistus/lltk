@@ -17,7 +17,6 @@ class LitHist(BaseCorpus):
 """
 
 
-from lltk.corpus.corpus import BaseCorpusMeta,name2corpus
 import os
 
 def lithist_load_corpus(name,medium={},genre={}):

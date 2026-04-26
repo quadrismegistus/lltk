@@ -1,4 +1,8 @@
-from lltk.imports import *
+import os
+
+import pandas as pd
+
+from lltk.imports import BaseCorpus, BaseText, clean_text, get_tqdm, log, tools
 
 
 
@@ -33,7 +37,8 @@ class TextECCO(BaseText):
 		return self._meta
 
 	def extract_metadata(self,mtxt,word_stats=True):
-		from lltk import load_english
+		_ = word_stats  # unused; word stats always computed below
+		from lltk.text.utils import load_english
 		ENGLISH=load_english()
 
 		md={}

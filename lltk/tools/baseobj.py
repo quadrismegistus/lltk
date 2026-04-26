@@ -1,6 +1,5 @@
-from lltk.imports import *
-from lltk.tools import ensure_dir_exists,get_tqdm,just_metadata
-from lltk.tools.logs import *
+import os
+from lltk.tools.tools import ensure_dir_exists, get_tqdm, just_metadata
 
 COL_ID='id'
 MATCHRELNAME='rdf:type'

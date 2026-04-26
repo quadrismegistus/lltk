@@ -1,0 +1,16 @@
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+    patch:
+      default:
+        target: 80%
+
+ignore:
+  - "lltk/corpus/*/*.py"
+  - "lltk/web/**"
+  - "lltk/model/booknlp.py"
+  - "lltk/model/networks.py"
+  - "lltk/model/classifier.py"

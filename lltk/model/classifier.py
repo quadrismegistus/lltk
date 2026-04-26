@@ -1,17 +1,15 @@
 """
 A set of classes and functions for doing logistic regression and classification
 """
-from lltk.imports import *
+from collections import defaultdict
 
-# imports
 from sklearn.linear_model import LogisticRegression
 from sklearn.neural_network import MLPClassifier
-from sklearn.model_selection import cross_val_predict,cross_val_score
 from sklearn.metrics import classification_report
 from sklearn.model_selection import LeaveOneOut
 from sklearn.model_selection import KFold
 import numpy as np
-from lltk.model import Model,NullModel
+from lltk.model import Model
 import pandas as pd
 import os
 
@@ -62,7 +60,7 @@ class Classifier(Model):
                  standardize=True,
                  leave_one_out=False,
                  n_splits=5,
-                 zscore_axis=0,
+                 _zscore_axis=0,
                  C=None,
                  resample=True,
                  fillna=0):

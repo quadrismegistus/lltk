@@ -1,4 +1,4 @@
-from lltk.imports import *
+from lltk.imports import BaseCorpus, BaseText
 
 class TextOldBailey(BaseText):
 	STANZA_TAGS = ['stanza','versepara','pdiv']
@@ -30,7 +30,7 @@ class TextOldBailey(BaseText):
 		import bs4
 		dom=bs4.BeautifulSoup(self.text_xml,'lxml')
 		for tag in BAD: [x.extract() for x in dom.findAll(tag)]
-		if dialogue_only or True: # @TODO other option hasn't been implemented yet
+		if True: # @TODO dialogue_only=False option hasn't been implemented yet
 			for dtag in dom('u'):
 				utt=dtag.text
 				utt=utt.replace('\r\n',' ').replace('\r',' ').replace('\n',' ')

@@ -1,4 +1,8 @@
-from lltk.imports import *
+import os
+import re
+
+import pandas as pd
+from lltk.imports import BaseCorpus, BaseText, get_tqdm, log
 
 
 class TextSpanishPDBooks(BaseText):

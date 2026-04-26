@@ -1,4 +1,6 @@
-from lltk.imports import *
+import os
+
+from lltk.imports import BaseCorpus, BaseText, tools
 
 ### TEXT
 
@@ -111,6 +113,7 @@ class ChadwyckDrama(BaseCorpus):
 		Mapping from raw to this corpus's data.
 		Will generate XML snippets from raw data, one per poem, stored in author folders.
 		"""
+		_, _, _, _ = split_start, split_end, id_split_start, id_split_end  # unused; splitting done in subfunc
 		import multiprocessing as mp
 
 		objects = []

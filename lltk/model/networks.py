@@ -1,4 +1,12 @@
-from lltk.imports import *
+import math
+import os
+import random
+import tempfile
+
+import networkx as nx
+import numpy as np
+import pandas as pd
+
 
 def filter_graph(g,min_weight=None,remove_isolates=True,min_degree=2,**kwargs):
     if min_weight:
@@ -237,7 +245,6 @@ def draw_graph_pyvis(networkx_graph,notebook=True,output_filename='graph.html',s
 
 
 
-import math,numpy as np
 def merc(lat, lon):
     try:
         r_major = 6378137.000
@@ -251,59 +258,10 @@ def merc(lat, lon):
 
 
 def layout_graph_force(g,pos=None,iterations=10000,**attrs):
-
     try:
-        import nevermind
-        from fa2 import ForceAtlas2
-        defaults=dict(
-            # Behavior alternatives
-            outboundAttractionDistribution=False,  # Dissuade hubs
-            linLogMode=False,  # NOT IMPLEMENTED
-            adjustSizes=False,  # Prevent overlap (NOT IMPLEMENTED)
-            edgeWeightInfluence=1.0,
-
-            # Performance
-            jitterTolerance=1.0,  # Tolerance
-            barnesHutOptimize=True,
-            barnesHutTheta=1.2,
-            multiThreaded=False,  # NOT IMPLEMENTED
-
-            # Tuning
-            scalingRatio=1.0,
-            strongGravityMode=False,
-            gravity=1.0,
-
-            # Log
-            verbose=False
-        )
-        newattrs={
-            **defaults,
-            **dict((k,v) for k,v in attrs.items() if k in defaults)
-        }
-        # if pos is None: pos={}
-        # print(pos.keys())
-        # print(pos,'!!')
-        # print(g.nodes())
-        forceatlas2=ForceAtlas2(**newattrs)
-        # print('inp',pos,'?!?!?')
-        #print(type(pos), pos.get('ClarisasHarlowe') if type(pos)==dict else None)
-        pos=dict(
-            forceatlas2.forceatlas2_networkx_layout(
-                g,
-                pos=pos,
-                iterations=iterations
-            ).items()
-        )
-        # print('\nres',pos,'\n')
-        return pos
-    
-    except (ImportError,ModuleNotFoundError,AttributeError) as e:
-        # print(f'!! {e}, trying graphviz for layout')
-        try:
-            return nx.nx_agraph.graphviz_layout(g,prog='neato')
-        except (ImportError,ModuleNotFoundError) as e2:
-            # print(f'!! {e}, trying networkx for layout')
-            return nx.spring_layout(g,k=0.15, iterations=20)
+        return nx.nx_agraph.graphviz_layout(g,prog='neato')
+    except (ImportError,ModuleNotFoundError):
+        return nx.spring_layout(g,k=0.15, iterations=20)
 
 
 
@@ -424,7 +382,7 @@ def draw_bokeh(g,
     size_max_val=None,
     weight_max_val=None,
     default_color='skyblue',
-    default_size=15,
+    _default_size=15,
     pos_by='force',
     min_size=5,
     max_size=30,
@@ -446,14 +404,10 @@ def draw_bokeh(g,
     **attrs
 ):
     from bokeh.io import output_notebook, show, save
-    from bokeh.models import Range1d, Circle, ColumnDataSource, MultiLine, EdgesAndLinkedNodes, NodesAndLinkedEdges, LabelSet
+    from bokeh.models import Range1d, Circle, ColumnDataSource, LabelSet
     from bokeh.plotting import figure
     from bokeh.plotting import from_networkx
-    from bokeh.palettes import Blues8, Reds8, Purples8, Oranges8, Viridis8, Spectral8
-    from bokeh.transform import linear_cmap
-    from networkx.algorithms import community
     from bokeh.io import export_png
-    from bokeh.models import Ellipse, GraphRenderer, StaticLayoutProvider
     import networkx as nx
 
 

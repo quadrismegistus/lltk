@@ -1,4 +1,33 @@
-from lltk.imports import *
+import os
+import random
+import re
+
+import numpy as np
+import pandas as pd
+
+from collections import defaultdict
+from collections.abc import MutableMapping
+
+from lltk.imports import (
+    ANNO_EXTS,
+    BAD_TAGS,
+    BROKENSTATE,
+    ENGLISH,
+    IDSEP,
+    IDSEP_START,
+    META_KEY_SEP,
+    MINIMETAD,
+    OrderedSetDict,
+    TMP_CORPUS_ID,
+    get_spelling_modernizer,
+    get_wordlist,
+    log,
+    read_df,
+    readgen,
+    safebool,
+    tools,
+    zeropunc,
+)
 
 
 
@@ -69,15 +98,6 @@ def yield_ids(meta,*args,**kwargs):
         yield id_name,idx
 
 
-# def get_addr_str(addr=None,corpus=None,**kwargs):
-# 	if is_text_obj(addr): addr=addr.addr
-# 	if not addr: addr=''
-# 	if corpus and addr:
-# 		if is_corpus_obj(corpus): corpus=corpus.id
-# 		addr=f'_{corpus}/{addr}'
-# 	return addr
-
-
 META_KEYS_USED_IN_AUTO_IDX = {
     'author',
     'title',
@@ -86,14 +106,6 @@ META_KEYS_USED_IN_AUTO_IDX = {
     'publisher',
     'vol',
 }
-
-# def get_idx_from_meta(meta,sep_kv='=',sep='/',hidden='_'):
-#     o=[]
-#     for k,v in sorted(meta.items()):
-#         if k and k[0]!=hidden:
-#             o.append(f'{k}{sep_kv}{v}')
-#     ostr=sep.join(o)
-#     return get_idx(ostr)
 
 def get_idx_from_meta(
         meta,
@@ -290,8 +302,6 @@ def read_df_anno(fn,anno_exts=ANNO_EXTS,**kwargs) :
     return None
 
 
-# def load_with_anno(fn,anno_exts=['xlsx','xls','csv'],suffix='anno',**kwargs):
-
 def load_with_anno(fn,anno_exts=ANNO_EXTS,suffix='anno',**kwargs):
     fnbase,fnext = os.path.splitext(fn)
     for anno_ext in anno_exts:
@@ -414,32 +424,6 @@ def do_parse_spacy(obj):
     
 
 
-## Spelling
-V2S = None
-def variant2standard():
-    global V2S
-    if not V2S:
-        V2S = dict((d['variant'],d['standard']) for d in tools.tsv2ld(SPELLING_VARIANT_PATH,header=['variant','standard','']))
-    return V2S
-
-def standard2variant():
-    v2s=variant2standard()
-    d={}
-    for v,s in list(v2s.items()):
-        if not s in d: d[s]=[]
-        d[s]+=[v]
-    return d
-
-
-
-def phrase2variants(phrase):
-    s2v=standard2variant()
-    words = phrase.split()
-    word_opts = [[s]+s2v[s] for s in words]
-    word_combos = list(tools.product(*word_opts))
-    phrase_combos = [' '.join(x) for x in word_combos]
-    return phrase_combos
-###
 
 
 
@@ -599,12 +583,6 @@ def merge_dict(*l,bad_keys_final=set()):
     od={}
     for d in l: od={**od, **safebool(d)}
     return od
-    # for d in l:
-    #     if not issubclass(type(d), MutableMapping): continue
-    #     for k,v in d.items():
-    #         if safebool(k) and safebool(v):
-    #             od[k]=v
-    # return {k:v for k,v in od.items() if k not in bad_keys_final}
 
 
 
@@ -755,28 +733,6 @@ def to_lastname(name):
 
 
 
-
-# def xml2txt_prose(path_xml, para_tag='p', bad_tags=BAD_TAGS, body_tag='doc'):
-#     import bs4
-
-#     if not os.path.exists(path_xml): return ''
-#     with open(path_xml) as f: xml=f.read()
-#     xml = clean_text(xml)
-#     dom = bs4.BeautifulSoup(xml,'lxml')
-#     body = dom.find(body_tag)    
-#     if body is None: body = dom
-#     for tag in bad_tags:
-#         for x in body(tag):
-#             x.extract()
-    
-#     paras = [para.text.strip() for para in body(para_tag)]
-#     if paras:
-#         paras=[' '.join(para.strip().split()) for para in paras]
-#         paras=[para for para in paras if para]
-#         txt='\n\n'.join(paras)
-#     else:
-#         txt = body.text.strip()
-#     return txt
 
 
 

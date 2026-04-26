@@ -57,3 +57,5 @@ Preview*
 !lltk/web/templates/*.html
 Untitled*
 *.pkl
+
+docs/superpowers

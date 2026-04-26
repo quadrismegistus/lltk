@@ -1,4 +1,10 @@
-from lltk.imports import *
+import json
+import os
+import re
+
+import pandas as pd
+
+from lltk.imports import BaseText, logger
 
 # Re-export genre functions for backward compat (used by evans_tcp, tests)
 from lltk.corpus.estc.parse_estc_genre import (

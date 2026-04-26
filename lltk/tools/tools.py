@@ -1,4 +1,9 @@
-from lltk.imports import *
+import os
+import sys
+import re
+import shutil
+import warnings
+import multiprocessing as mp
 import time
 import csv
 import numpy as np
@@ -6,6 +11,11 @@ from collections import UserList, defaultdict
 from collections.abc import MutableMapping
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from io import StringIO
+from lltk.imports import (
+    HOME, ROOT, LLTK_ROOT, PATH_HERE,
+    PATH_DEFAULT_LLTK_HOME, PATH_DEFAULT_CONF,
+    META_KEY_SEP, DEFAULT_NUM_PROC, mp_cpu_count,
+)
 
 
 def _load_config():
@@ -99,63 +109,6 @@ def pmap_iter(func, objs, args=(), kwargs=None, num_proc=1, use_threads=False,
                      use_threads=use_threads, progress=progress, desc=desc))
 
 
-
-def to_bs64(x):
-    if type(x)!=bytes: x=x.encode()
-    return base64.b64encode(x)
-
-def serialize(obj):
-    from pickle import dumps
-    from base64 import b64encode
-    return b64encode(compressed(dumps(obj)))
-
-
-def deserialize(obj):
-    from base64 import b64decode
-    from pickle import loads
-    return loads(decompressed(b64decode(obj)))
-
-
-
-def compressed(bytes):
-    import blosc
-    return blosc.compress(bytes, cname='lz4')
-
-def llmap(
-        addrs,
-        func,
-        num_proc=1,
-        each_args=[],
-        each_kwargs=[],
-        desc_prefix='[LLTK] ',
-        desc=None,
-        *all_args,
-        **all_kwargs):
-    
-    # args
-    if each_args and each_kwargs: objs = list(zip(func,each_args,each_kwargs))
-    else: objs = [(addr,[],{}) for addr in addrs]
-    
-    # func
-    if type(func)!=str:
-        if hasattr(func,'__name__'): func=func.__name__
-        else: raise Exception('func not valid')
-        
-    # setup
-    from joblib import Parallel, delayed
-    if not desc: desc = f'Mapping {func} across {len(objs)} texts'
-    if num_proc>1: desc+=f' [x{num_proc}]'
-    with tqdm_joblib(get_tqdm(addrs,desc=desc_prefix+desc)):
-        # run
-        return Parallel(n_jobs=num_proc)(
-            delayed(llfunc)(
-                addr,
-                func=func,
-                *SetList(list(args)+list(all_args)).data,
-                **{**all_kwargs, **kwargs}
-            ) for addr,args,kwargs in objs
-        )
-    
 
 def is_hashable_rly(v):
     try:
@@ -278,8 +231,6 @@ class OrderedSetDict(MutableMapping):
 
 
 
-import numpy as np
-
 def safebool(x,bad_vals={np.nan}):
     if is_dictish(x):
         return {
@@ -311,57 +262,6 @@ def safebool(x,bad_vals={np.nan}):
         return None
 
 
-def safeget(x,k):
-    try:
-        return x.get(k)
-    except AssertionError:    
-        try:
-            return x[k]
-        except AssertionError:
-            pass
-    
-
-
-def safejson(obj):
-    import orjson
-    return orjson.loads(orjson.dumps(obj, option=orjson.OPT_SERIALIZE_NUMPY))
-
-
-
-
-def get_ideal_cpu_count():
-    mp_cpu_count=mp.cpu_count()
-    DEFAULT_NUM_PROC = mp_cpu_count - 2
-    if mp_cpu_count==1: DEFAULT_NUM_PROC=1
-    if mp_cpu_count==2: DEFAULT_NUM_PROC=2
-    if mp_cpu_count==3: DEFAULT_NUM_PROC=2
-    from lltk.imports import log
-    if log>0: log(f'ideal cpu count = {DEFAULT_NUM_PROC}')
-    return DEFAULT_NUM_PROC
-
-
-def gethtml(url,timeout=10):
-    from lltk import log
-    import requests
-    from requests.adapters import HTTPAdapter
-    from requests.packages.urllib3.util.retry import Retry
-
-    if log: log(f'? {url}')
-    session = requests.Session()
-    retry = Retry(connect=3, backoff_factor=0.5)
-    adapter = HTTPAdapter(max_retries=retry)
-    session.mount('http://', adapter)
-    session.mount('https://', adapter)
-    
-    res = session.get(url)
-    url2 = res.url
-    if url!=url2:
-        if log: log(f'? {url2}')
-        res = session.get(url2)
-    o = res.text
-    if log: log(f'-> {" ".join(o.split())[:100]} ... ({len(o)} chars)')
-    return o
-
 
 def just_metadata(d,prefix_params='_',ok_keys=None):
     from lltk.imports import COL_ADDR,COL_ID,COL_CORPUS
@@ -373,10 +273,6 @@ def just_meta_no_id(d,**y):
     from lltk.imports import COL_ADDR,COL_ID,COL_CORPUS
     bad_keys={COL_ADDR,COL_ID,COL_CORPUS}
     return {k:v for k,v in just_metadata(d).items() if k not in bad_keys and META_KEY_SEP not in k}
-
-
-def no_id(d,col_id='id'):
-    return {k:v for k,v in d.items() if k!=col_id}
 
 
 def to_numeric_dict(d):
@@ -444,9 +340,6 @@ def fillna(x,y=''):
         return x
 
 
-def escape_linebreaks(txt,sep='↵'):
-    return txt.strip().replace('\n',sep)
-
 def snake2camel(x,sep='_'):
     return ''.join(
         xx.title()
@@ -503,24 +396,6 @@ def human_format(num):
         num /= 1000.0
     # add more suffixes if you need them
     return '%.0f%s' % (num, ['', 'K', 'M', 'B', 'T', 'P'][magnitude])
-
-
-def get_url_or_path(url_or_path):
-    # download
-    path=None
-    print(f'Downloading URL ({url_or_path[:10]}...{url_or_path[-10:]})')
-    if url_or_path.startswith('http'):
-        
-        #with tempfile.TemporaryDirectory() as tmpdirname:
-        ext=url_or_path.split('output=',1)[-1].split('&',1)[0]
-        ext=os.path.splitext(ext) if '.' in ext else ext
-        tmpfn = os.path.join('/tmp/',f'dl.lltk.{datetime.now().timestamp()}.{ext}')
-        urllib.request.urlretrieve(url_or_path, tmpfn)
-        print(tmpfn)
-        return tmpfn
-    return url_or_path
-
-
 
 
 def get_tqdm(*args,**kwargs):
@@ -679,17 +554,14 @@ def read_df(ifn,key='',fmt='',on_bad_lines='skip',**attrs):
     return pd.DataFrame()
 
 
-def get_backup_fn(fn, suffix='bak'):
-    name, ext = os.path.splitext(fn)
-    return f'{name}.bak{ext}'
-
 def backup_fn(fn,suffix='bak',copy=True,move=True,**kwargs):
     """
     `move` is reset to False if copy == True
     """
     if copy: move=False
     if os.path.exists(fn):
-        ofn=get_backup_fn(fn)
+        name, ext = os.path.splitext(fn)
+        ofn = f'{name}.bak{ext}'
         if copy: shutil.copy(fn,ofn)
         if move: shutil.move(fn,ofn)
 
@@ -727,10 +599,6 @@ _SPLITTER_ = r"([-.,/:!?\";)(])"
 
 
 
-from io import StringIO 
-import sys
-
-
 class Capturing(list):
     def __enter__(self):
         self._stdout = sys.stdout
@@ -757,31 +625,6 @@ def ensure_dir_exists(path,fn=None):
 
 
 MDETOK=None
-
-
-def worddb(abs_key = 'Complex Substance (Locke) <> Mixed Modes (Locke)_max',conc_key='Complex Substance (Locke) <> Mixed Modes (Locke)_min',cutoff_abs=0.1,cutoff_conc=-0.1,allow_names=False,only_content_words=True):
-    WORDDB_PATH = config.get('PATH_TO_WORDDB')
-    if not WORDDB_PATH: raise Exception('!! PATH_TO_WORDDB not set in config.txt')
-    if not WORDDB_PATH.startswith(os.path.sep): WORDDB_PATH=os.path.join(ROOT,WORDDB_PATH)
-
-
-    worddb = read_ld(WORDDB_PATH)
-    for d in worddb:
-        d['Abstract/Concrete'] = ''
-
-        abs_score = float(d[abs_key])
-        conc_score = float(d[conc_key])
-        if only_content_words and d['is_content_word']!='True': continue
-        if not allow_names and d['is_name']=='True': continue
-
-        if abs_score >= cutoff_abs:
-            d['Abstract/Concrete'] = 'Abstract'
-        elif conc_score <= cutoff_conc:
-            d['Abstract/Concrete'] = 'Concrete'
-        else:
-            d['Abstract/Concrete'] = 'Neither'
-
-    return worddb
 
 
 ###
@@ -833,48 +676,6 @@ def writegen(fnfn,generator,header=None,args=[],kwargs={},find_all_keys=False,to
             writer.writerow(dx)
     print('>> saved:',fnfn)
     
-
-# def writegen(fnfn,generator,header=None,args=[],kwargs={},find_all_keys=False,total=None):
-# 	from tqdm import tqdm
-# 	import codecs,csv
-# 	if 'jsonl' in fnfn.split('.'): return writegen_jsonl(fnfn,generator,args=args,kwargs=kwargs)
-
-# 	iterator=generator(*args,**kwargs)
-# 	if total: iterator=get_tqdm(iterator,total=total)
-# 	if not header:
-# 		if not find_all_keys:
-# 			first=next(iterator)
-# 			header=sorted(first.keys())
-# 		else:
-# 			print('>> finding keys:')
-# 			keys=set()
-# 			for dx in iterator:
-# 				keys|=set(dx.keys())
-# 			header=sorted(list(keys))
-# 			print('>> found:',len(header),'keys')
-
-# 	iterator=generator(*args,**kwargs)
-# 	with open(fnfn, 'w') as csvfile:
-# 		writer = csv.DictWriter(csvfile,fieldnames=header,extrasaction='ignore',delimiter='\t')
-# 		writer.writeheader()
-# 		for i,dx in enumerate(iterator):
-# 			for k,v in dx.items():
-# 				#if type(v) in [str]:
-# 				#	dx[k]=v.encode('utf-8')
-# 				dx[k] = str(v).replace('\r\n',' ').replace('\r',' ').replace('\n',' ').replace('\t',' ')
-# 			writer.writerow(dx)
-# 	print('>> saved:',fnfn)
-
-
-def writegengen(fnfn,generator,header=None,save=True):
-    if save: of = codecs.open(fnfn,'w',encoding='utf-8')
-    for dx in generator():
-        if not header:
-            header=sorted(dx.keys())
-            if save: of.write('\t'.join(header) + '\n')
-        if save: of.write('\t'.join([str(dx.get(h,'')) for h in header]) + '\n')
-        yield dx
-
 
 def readgen_csv(fnfn,sep=None,encoding='utf-8',errors='ignore',header=[],progress=True,num_lines=0,desc='Reading CSV file'):
     from smart_open import open
@@ -935,34 +736,6 @@ def header(fnfn,tsep='\t',encoding='utf-8'):
     of.close()
     return header
 
-# def read(fnfn,to_unicode=True):
-# 	if fnfn.endswith('.gz'):
-# 		import gzip
-# 		try:
-# 			with gzip.open(fnfn,'rb') as f:
-# 				x=f.read()
-# 				if to_unicode: x=x.decode('utf-8')
-# 				return x
-# 		except IOError as e:
-# 			print("!! error:",e, end=' ')
-# 			print("!! opening:",fnfn)
-# 			print()
-# 			return ''
-#
-# 	elif fnfn.endswith('.txt'):
-# 		if to_unicode:
-# 			try:
-# 				with codecs.open(fnfn,encoding='utf-8') as f:
-# 					return f.read()
-# 			except UnicodeDecodeError:
-# 				return read(fnfn,to_unicode=False)
-# 		else:
-# 			with open(fnfn) as f:
-# 				return f.read()
-#
-# 	return ''
-
-
 def read(fnfn):
     try:
         if fnfn.endswith('.gz'):
@@ -979,187 +752,12 @@ def read(fnfn):
         return ''
 
 
-def ld2dl(ld):
-    keys = list(ld[0].keys())
-    dl={}
-    for k in keys:
-        dl[k] = [d[k] for d in ld]
-    return dl
-
-
-def tsv2ld(fn,tsep='\t',nsep='\n',u=True,header=[],keymap={},zero='',removeEmpties=False):
-    import time
-    now=time.time()
-    if tsep=='\t':
-        print('>> reading as tsv:',fn)
-    elif tsep==',':
-        print('>> reading as csv:',fn)
-
-    import os
-    if fn.startswith('http'):
-        print('>> reading webpage...')
-        import urllib
-        f=urllib.urlopen(fn)
-        t=f.read()
-        if fn.endswith('/pubhtml'):
-            return goog2tsv(t)
-        f.close()
-    elif not os.path.exists(fn):
-        t=fn
-    elif u:
-        import codecs
-        f=codecs.open(fn,encoding='utf-8')
-        t=f.read()
-        f.close()
-    else:
-        f=open(fn,'r')
-        t=f.read()
-        f.close()
-    t=t.replace('\r\n','\n')
-    t=t.replace('\r','\n')
-
-    #header=[]
-    listdict=[]
-
-
-    for line in t.split(nsep):
-        if not line.strip(): continue
-        line=line.replace('\n','')
-        ln=line.split(tsep)
-        #print ln
-        if not header:
-            header=ln
-            for i,v in enumerate(header):
-                if v.startswith('"') and v.endswith('"'):
-                    header[i]=v[1:-1]
-            continue
-        edict={}
-        for i in range(len(ln)):
-            try:
-                k=header[i]
-            except IndexError:
-                #print "!! unknown column for i={0} and val={1}".format(i,ln[i])
-                continue
-            v=ln[i].strip()
-
-            if '*' in keymap:
-                v=keymap['*'](v)
-            elif k in keymap:
-                #print v, type(v)
-                v=keymap[k](v)
-                #print v, type(v)
-            else:
-                if v.startswith('"') and v.endswith('"'):
-                    v=v[1:-1]
-                try:
-                    v=float(v)
-                except ValueError:
-                    v=v
-
-            if type(v) is str and not v:
-                if zero=='' and removeEmpties:
-                    continue
-                else:
-                    v=zero
-            edict[k]=v
-        if edict:
-            listdict.append(edict)
-
-    nownow=time.time()
-    print('>> done ['+str(round(nownow-now,1))+' seconds]')
-
-    return listdict
-
-
-
-
-def write_ld(fn,ld,zero='',timestamp=None):
-    return write(fn,ld2ll(ld,zero=zero),timestamp=timestamp)
-
-
-def ld2dld(ld,key='rownamecol'):
-    dld={}
-    for d in ld:
-        if not d[key] in dld: dld[d[key]]=[]
-        dld[d[key]]+=[d]
-    return dld
-
-
 def ld2dd(ld,rownamecol='rownamecol'):
     dd={}
     for d in ld:
         dd[d[rownamecol]]=d
         #del dd[d[rownamecol]][rownamecol]
     return dd
-
-
-def datatype(data,depth=0,v=False):
-    def echo(dt):
-        if not v: return
-        for n in range(depth): print("\t", end=' ')
-        print('['+dt[0]+']'+dt[1:], end=' ')
-        try:
-            print("[{0} records]".format(len(data),dt))
-        except:
-            print()
-
-    if type(data) is str:
-        echo('string')
-        return 's'
-    elif type(data) in [float,int]:
-        echo('number')
-        return 'n'
-    elif type(data) in [list]:
-        echo('list')
-        if not len(data):
-            return 'l'
-        else:
-            return 'l'+datatype(data[0],depth=depth+1,v=v)
-    elif type(data) in [dict]:
-        echo('dictionary')
-        if not len(data):
-            return 'd'
-        else:
-            return 'd'+datatype(list(data.values())[0],depth=depth+1,v=v)
-    else:
-        #print "WHAT TYPE OF DATA IS THIS:"
-        #print data
-        #print type(data)
-        #print
-        return '?'
-
-
-
-def write2(fn,data,uni=True,join_cell=u'\t',join_line=u'\n',limcol=None,toprint=True):
-    ## pass off to other write functions if necessary
-    if fn.endswith('.xls'): return write_xls(fn,data)
-    if fn.endswith('.csv'): join_cell=','
-
-    ## get datatyoe
-    dt=datatype(data)
-
-    ## get str output for datatype
-    if dt.startswith('ld'):
-        o=ld2str(data,join_cell=join_cell,limcol=limcol)
-    elif dt.startswith('dl'):
-        o=dl2str(data,uni=uni)
-    elif dt.startswith('ll'):
-        o=ll2str(data,uni=uni)
-    elif dt.startswith('dd'):
-        o=dd2str(data,uni=uni)
-    elif dt.startswith('l'):
-        o=l2str(data,uni=uni)
-    elif dt.startswith('d'):
-        o=d2str(data,uni=uni)
-    else:
-        o=data
-
-    ## write
-    import codecs
-    of = codecs.open(fn,'w',encoding='utf-8') if True else open(fn,'w')
-    for line in o: of.write(line)
-    of.close()
-    if toprint: print('>> saved:',fn)
 
 
 def slice(l,num_slices=None,slice_length=None,runts=True,random=False):
@@ -1184,13 +782,7 @@ def noPunc(token):
 
 def zeropunc(s,allow={}):
     allow=set(allow)
-    # return ''.join([x for x in s if x.isalpha() or x in allow])
     return ''.join([x for x in s if x.isalnum() or x in allow])
-
-    # # ok={' '} if spaces_ok else {}
-    # import string
-    # return s.translate(str.maketrans('', '', string.punctuation))
-    # # return ''.join(x for x in s if x.isalpha() or x in ok)
 
 
 
@@ -1239,68 +831,6 @@ def tokenize_fast(line):
 
 
 
-### multiprocessing
-
-def crunch(objects,function_or_methodname,ismethod=None,nprocs=8,args=[],kwargs={}):
-    import time,random
-    #ismethod=type(function_or_methodname) in [str,six.text_type] if ismethod is None else ismethod
-    ismethod=type(function_or_methodname) in [str] if ismethod is None else ismethod
-
-    def do_preparse(text,args=[],kwargs={}):
-        threadid=os.getpid()
-        time.sleep(random.uniform(0,5))
-        print("[{2}] Starting working on {0} at {1}".format(text if False else 'ObjectX', now(), threadid))
-        #print ismethod,function_or_methodname,args,kwargs
-        if ismethod:
-            x=getattr(text,function_or_methodname)(*args,**kwargs)
-        else:
-            x=function_or_methodname(text, *args, **kwargs)
-
-        print("[{2}] Finished working on {0} at {1}".format(text if False else 'ObjectX', now(), threadid))
-        return x
-
-    import _thread,multiprocessing,os
-    from multiprocessing import Process, Pipe
-    #from itertools import zip
-    izip=zip
-
-    def spawn(f):
-        def fun(q_in,q_out):
-            numdone=0
-            while True:
-                numdone+=1
-                i,x = q_in.get()
-                if i == None:
-                    break
-                q_out.put((i,f(x,args=args,kwargs=kwargs)))
-        return fun
-
-    def parmap(f, X, nprocs = multiprocessing.cpu_count()):
-        q_in   = multiprocessing.Queue(1)
-        q_out  = multiprocessing.Queue()
-
-        proc = [multiprocessing.Process(target=spawn(f),args=(q_in,q_out)) for _ in range(nprocs)]
-        for p in proc:
-            p.daemon = True
-            p.start()
-
-        sent = [q_in.put((i,x)) for i,x in enumerate(X)]
-        [q_in.put((None,None)) for _ in range(nprocs)]
-        res = [q_out.get() for _ in range(len(sent))]
-
-        [p.join() for p in proc]
-
-        return [x for i,x in sorted(res)]
-
-    parmap(do_preparse, objects, nprocs=nprocs)
-    return True
-
-
-
-
-
-def bigrams(l):
-    return ngram(l,2)
 
 
 def ngram(l,n=3):
@@ -1344,51 +874,6 @@ def passages(text,phrases=[],window=200,indices=None,ignorecase=True,marker='***
                 dx={'index':ia, 'index_end':ib, 'passage':window,'phrase':phrase}
                 yield dx
 
-write = write2
-
-
-
-def variant2standard():
-    global V2S
-    if not V2S:
-        V2S = dict((d['variant'],d['standard']) for d in tools.tsv2ld(SPELLING_VARIANT_PATH,header=['variant','standard','']))
-    return V2S
-
-
-def standard2variant():
-    v2s=variant2standard()
-    d={}
-    for v,s in list(v2s.items()):
-        if not s in d: d[s]=[]
-        d[s]+=[v]
-    return d
-
-
-
-
-def phrase2variants(phrase):
-    s2v=standard2variant()
-    words = phrase.split()
-    word_opts = [[s]+s2v[s] for s in words]
-    word_combos = list(tools.product(*word_opts))
-    phrase_combos = [' '.join(x) for x in word_combos]
-    return phrase_combos
-###
-
-
-
-
-ENGLISH = None
-
-def load_english():
-    global ENGLISH
-    print('>> loading english dictionary...')
-    ENGLISH = set(codecs.open('/Dropbox/LITLAB/TOOLS/english.txt','r','utf-8').read().split('\n'))
-    #ENGLISH = (eng - load_stopwords())
-    return ENGLISH
-
-
-
 
 
 
@@ -1405,83 +890,6 @@ def yank(text,tag,none=None):
 
 
 
-def product(*args):
-    if not args:
-        return iter(((),)) # yield tuple()
-    return (items + (item,)
-        for items in product(*args[:-1]) for item in args[-1])
-
-
-
-def zfy(data):
-    from scipy.stats import zscore
-    return zscore(data)
-
-
-
-
-
-
-
-
-
-
-
-
-def linreg(X, Y):
-    from math import sqrt
-    from numpy import nan, isnan
-    from numpy import array, mean, std, random
-
-    if len(X)<2 or len(Y)<2:
-        return 0,0,0
-    """
-    Summary
-        Linear regression of y = ax + b
-    Usage
-        real, real, real = linreg(list, list)
-    Returns coefficients to the regression line "y=ax+b" from x[] and y[], and R^2 Value
-    """
-
-
-    if len(X) != len(Y):  raise ValueError('unequal length')
-    N = len(X)
-    Sx = Sy = Sxx = Syy = Sxy = 0.0
-    for x, y in map(None, X, Y):
-        Sx = Sx + x
-        Sy = Sy + y
-        Sxx = Sxx + x*x
-        Syy = Syy + y*y
-        Sxy = Sxy + x*y
-    det = Sxx * N - Sx * Sx
-    a, b = (Sxy * N - Sy * Sx)/det, (Sxx * Sy - Sx * Sxy)/det
-    meanerror = residual = 0.0
-    for x, y in map(None, X, Y):
-        meanerror = meanerror + (y - Sy/N)**2
-        residual = residual + (y - a * x - b)**2
-
-    RR = 1 - residual/meanerror if meanerror else 1
-    ss = residual / (N-2) if (N-2) else 0
-    Var_a, Var_b = ss * N / det, ss * Sxx / det
-    #print "y=ax+b"
-    #print "N= %d" % N
-    #print "a= %g \\pm t_{%d;\\alpha/2} %g" % (a, N-2, sqrt(Var_a))
-    #print "b= %g \\pm t_{%d;\\alpha/2} %g" % (b, N-2, sqrt(Var_b))
-    #print "R^2= %g" % RR
-    #print "s^2= %g" % ss
-    return a, b, RR
-
-
-
-def download_wget(url, save_to, **attrs):
-    import wget
-    save_to_dir,save_to_fn=os.path.split(save_to)
-    if save_to_dir:
-        if not os.path.exists(save_to_dir): os.makedirs(save_to_dir)
-        os.chdir(save_to_dir)
-    fn=wget.download(url,bar=wget.bar_adaptive)
-    os.rename(fn,save_to_fn)
-    # print('\n>> saved:',save_to)
 
 
 def download(url,save_to,force=False,desc=''):
@@ -1605,24 +1013,6 @@ def get_num_lines(filename):
 
 
 
-def cloud_list(tmpfn='.tmp_lltk_cloud_list'):
-    import subprocess
-    try:
-        #out=subprocess.check_output(config['PATH_CLOUD_LIST_CMD'],shell=True)
-        clist=config.get('PATH_CLOUD_LIST_CMD',PATH_CLOUD_LIST_CMD)
-        cdir=config.get('PATH_CLOUD_DEST',PATH_CLOUD_DEST)
-        if clist and cdir:
-            cmd=f'{clist} {cdir} > {tmpfn}'
-            print('>>',cmd)
-            os.system(cmd)
-            with open(tmpfn) as f:
-                txt = f.read()
-            os.unlink(tmpfn)
-            return txt
-    except AssertionError:
-        return ''
-
-
 def check_make_dir(path,ask=True,default='y'):
     if os.path.exists(path) and os.path.isdir(path): return True
     if os.path.splitext(path)[0]!=path: return # return if a filename, not a dirname
@@ -1662,41 +1052,6 @@ def symlink(path,link_to,default='y',ask=True):
                 print('>> linking to:',link_to)
                 if os.path.exists(link_to): os.remove(link_to)
                 os.symlink(path, link_to)
-
-
-def check_move_file(src,dst):
-    try:
-        if check_make_dir(os.path.dirname(dst)):
-            if input(f'\nMove\n    {src}\nto\n    {dst}\n[Y/n] ').strip()!='n':
-                shutil.copyfile(src,dst)
-                os.unlink(src)
-                print('\n>> renamed:',dst,'\n')
-    except (KeyboardInterrupt,EOFError) as e:
-        return False
-
-
-def check_move_link_file(src,dst):
-    src=os.path.abspath(src)
-    dst=os.path.abspath(dst)
-    try:
-        if check_make_dir(os.path.dirname(dst)):
-            if input(f'\nMove and link\n    {src}\nto\n    {dst}\n[Y/n] ').strip()!='n':
-                print('\n>> moving {src} to {dst}')
-                shutil.copyfile(src,dst)
-                os.unlink(src)
-                print(f'>> linking {src} to {dst}')
-                os.symlink(dst,src)
-    except (KeyboardInterrupt,EOFError) as e:
-        return False
-
-
-
-def check_make_dirs(paths,ask=True):
-    l=[]
-    for path in paths:
-        l+=[check_make_dir(path,ask=ask)]
-    return l
-
 
 
 SOURCES=[]
@@ -1749,71 +1104,4 @@ def remove_duplicates(seq,remove_empty=False):
     if not remove_empty: return l
     return [x for x in l if x]
 
-
-
-
-
-### UTILS
-
-
-
-
-
-
-def get_passkey(password):
-    from cryptography.fernet import Fernet
-    from cryptography.hazmat.primitives import hashes
-    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-
-    kdf = PBKDF2HMAC(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=PSALT,
-        iterations=390000,
-    )
-    key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
-    return Fernet(key)
-
-
-
-def get_pkey(): return get_passkey('''THIS great purple butterfly,
-In the prison of my hands,
-Has a learning in his eye
-Not a poor fool understands.
-
-Once he lived a schoolmaster
-With a stark, denying look;
-A string of scholars went in fear
-Of his great birch and his great book.
-
-Like the clangour of a bell,
-Sweet and harsh, harsh and sweet.
-That is how he learnt so well
-To take the roses for his meat.''')
-
-
-
-
-def get_user_info():
-    path=PATH_LLTK_CONFIG_USR
-    data = read_json(path)
-    return data
-
-
-def get_user_email(message='please enter your email address: ',force=False):
-    data = get_user_info()
-    email = data.get('email') if not force else None
-    if email and email_is_valid(email):
-        # if log: log(f'got right away: {email}')
-        return email
-
-    email = input(message)
-    if email_is_valid(email):
-        data['email'] = email
-        write_json(data, path)
-        # if log: log(f'got from input: {email}')
-        return email
-
-    # if log: log.error(f'invalid email: {email}')
-    return None
 

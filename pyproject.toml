@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lltk-dh"
-version = "0.8.0"
+version = "0.9.0"
 description = "Literary Language Toolkit (LLTK): corpora, models, and tools for the digital humanities"
 readme = "README.md"
 license = {text = "MIT"}
@@ -57,20 +57,13 @@ include-package-data = true
 testpaths = ["tests"]
 
 [tool.coverage.run]
+source = ["lltk", "tests"]
 omit = [
-    "lltk/corpus/*/[!_]*.py",
-    "lltk/corpus/*/*/*.py",
-    "lltk/web/*",
-    "lltk/model/booknlp.py",
-    "lltk/model/characters.py",
-    "lltk/model/charnet.py",
-    "lltk/model/ner.py",
-    "lltk/model/networks.py",
-    "lltk/model/semnet.py",
-    "lltk/model/word2vec.py",
-    "lltk/model/word2vecs.py",
-    "lltk/model/classifier.py",
-    "lltk/lib/*",
+    "*/lltk/corpus/*/*.py",
+    "*/lltk/web/*",
+    "*/lltk/model/booknlp.py",
+    "*/lltk/model/networks.py",
+    "*/lltk/model/classifier.py",
 ]
 
 [tool.coverage.report]

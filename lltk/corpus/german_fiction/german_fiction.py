@@ -1,4 +1,8 @@
-from lltk.imports import *
+import os
+import re
+
+import pandas as pd
+from lltk.imports import BaseCorpus, BaseText, log
 
 
 FIGSHARE_ARTICLE_ID = '4524680'

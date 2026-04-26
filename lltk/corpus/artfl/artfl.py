@@ -1,4 +1,5 @@
-from lltk.imports import *
+import pandas as pd
+from lltk.imports import BaseCorpus, BaseText
 
 
 # Manual overrides for keyword false positives

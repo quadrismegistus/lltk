@@ -1,5 +1,31 @@
-from lltk.imports import *
+import json
+import os
+import re
 import re as _re
+from urllib.parse import quote_plus
+
+import numpy as np
+import pandas as pd
+
+from lltk.imports import (
+    BaseCorpus,
+    BaseText,
+    Capturing,
+    OrderedSetDict,
+    PATH_CORPUS,
+    REMOTE_REMOTE_DEFAULT,
+    Text,
+    get_imsg,
+    is_addr_str,
+    is_logged_on,
+    just_meta_no_id,
+    load_corpus,
+    log,
+    merge_dict,
+    readgen_csv,
+    to_corpus_and_id,
+    tools,
+)
 
 HATHI_FULL_META_NUMLINES = 17430652
 HATHI_FULL_META_PATH=os.path.join(PATH_CORPUS,'hathi','metadata.csv.gz')
@@ -146,6 +172,7 @@ class TextHathiRecord(TextHathi):
 
 
     def query(self,force=False,force_inner=False,sep='  - ',**kwargs):
+        _ = force_inner  # unused; kept for API compat
         odx=self.qdb.get(self.id)
         if force or not odx:
             if log: log(self)
@@ -491,8 +518,8 @@ class HathiRomances(HathiSubcorpus):
 
 
 def compile_text(idx,by_page=False):
+    _ = by_page  # unused; kept for API compat
     from htrc_features import Volume
-    from urllib.error import HTTPError
 
     try:
         path_freqs = os.path.join(load_corpus('Hathi').path_freqs,idx+'.json')

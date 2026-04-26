@@ -1,5 +1,3 @@
-from lltk.imports import *
-
 class BaseModel(object):
 	def __getattr__(self,key):
 		if key.startswith('path_') and hasattr(self,'paths') and getattr(self,'paths') is not None:

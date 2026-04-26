@@ -1,4 +1,7 @@
-from lltk.imports import *
+import os
+
+import pandas as pd
+from lltk.imports import BaseCorpus, BaseText, log
 
 
 ZENODO_API_URL = 'https://zenodo.org/api/records/3939066'

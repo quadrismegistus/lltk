@@ -145,6 +145,7 @@ class ChadwyckPoetry(BaseCorpus):
 		Mapping from raw to this corpus's data.
 		Will generate XML snippets from raw data, one per poem, stored in author folders.
 		"""
+		_, _, _, _ = split_start, split_end, id_split_start, id_split_end  # unused; splitting done in subfunc
 		import multiprocessing as mp
 
 		objects = []
@@ -272,6 +273,7 @@ class ChadwyckPoetrySample(ChadwyckPoetry):
 		Logic of this sample:
 		Just get everything posthumous.
 		"""
+		_ = n_texts, per_n_years  # unused; stub method
 		pass
 
 

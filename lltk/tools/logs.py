@@ -1,4 +1,5 @@
-from lltk.imports import *
+import os
+import sys
 from loguru import logger
 LOGGER=None
 HIDDEN_NOW=False
@@ -103,10 +104,6 @@ class Logger():
             logger.remove(self.id_file)
             self.id_file = None
 
-            # if self.fn_clear and self.fn:
-                #logger.debug(f'removing log file: {self.fn}')
-                # rmfn(self.fn)
-
     def __getattr__(self,name):
         return getattr(logger,name)
 
@@ -143,16 +140,6 @@ class Logger():
         self.start_screen()
     on=show
 
-    
-    # def hide(self,verbose=0):
-    #     if self.verbose>1: self('hiding log')
-    #     self.verbose_was=self.verbose
-    #     self.verbose=verbose
-    # def show(self,verbose=1):
-    #     self.verbose_was=self.verbose
-    #     self.verbose=verbose
-    #     if self.verbose>1: self('showing log')
-    
     __call__ = logger.debug
 
 

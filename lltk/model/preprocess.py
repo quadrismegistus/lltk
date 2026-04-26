@@ -1,4 +1,7 @@
-from lltk.imports import *
+import os
+from typing import Union
+
+from lltk.imports import BaseCorpus, DEFAULT_NUM_PROC, log, pmap, save_freqs_json
 
 
 #################
@@ -73,7 +76,7 @@ def preprocess_txt(
         pmap(
             do_preprocess_txt,
             objs,
-            num_proc=num_proc if num_proc else get_ideal_cpu_count(),
+            num_proc=num_proc if num_proc else DEFAULT_NUM_PROC,
             use_threads=not can_multiprocess,
             desc=f'[{self.name}] Saving plain text versions of XML files',
             kwargs=kwargs
@@ -130,7 +133,7 @@ def preprocess_freqs(
         pmap(
             save_freqs_json,
             objs,
-            num_proc=num_proc if num_proc else get_ideal_cpu_count(),
+            num_proc=num_proc if num_proc else DEFAULT_NUM_PROC,
             desc=f'[{self.name}] Saving word freqs as jsons',
         )
 

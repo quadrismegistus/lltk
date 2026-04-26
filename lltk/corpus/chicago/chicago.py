@@ -1,4 +1,6 @@
-from lltk.imports import *
+import os
+
+from lltk.imports import BaseCorpus, BaseText, get_tqdm
 
 
 
@@ -70,7 +72,7 @@ First, place into the folder {self.path_raw} the following files:
 			#print(fnfn,'-->',ofnfn)
 
 	def compile_metadata(self):
-		from lltk.tools import read_ld,ld2dd,write_ld
+		from lltk.tools import read_ld,ld2dd
 		"""
 		Generates a single metadata table from AUTHORS_METADATA.csv and NOVELS_METADATA.csv
 		"""

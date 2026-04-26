@@ -35,8 +35,8 @@ MINIMETAD={
 LOG_TO_SCREEN = False
 LOG_TO_FILE = True
 
-from lltk.tools.logs import *
-from lltk.tools.tools import *
+from lltk.tools.logs import Logger, Log, log_hidden, log_shown, LOGGER
+from lltk.tools.tools import config, remove_duplicates
 
 ### IMPORTANT: SET WHERE LLTK ROOT IS BASED:
 PATH_LLTK_HOME = PATH_DEFAULT_LLTK_HOME

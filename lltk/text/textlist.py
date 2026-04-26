@@ -1,6 +1,22 @@
-from lltk.imports import *
-from .utils import *
-from .text import *
+import random
+
+import networkx as nx
+
+from collections import UserList
+
+from lltk.imports import (
+    BaseObject,
+    CORPUS_SOURCE_RANKS,
+    IDSEP,
+    IDSEP_START,
+    TMP_CORPUS_ID,
+    get_tqdm,
+    is_iterable,
+    log,
+    pmap,
+)
+from .utils import to_corpus_and_id
+from .text import BaseText, Text
 
 class TextList(BaseObject, UserList):
     def __init__(self, data=[], progress=False, unique=True):
@@ -132,9 +148,9 @@ class TextList(BaseObject, UserList):
         return o
 
     def run(self,func,text_iter=None,*args,**kwargs):
-        return llmap(
-            self.addrs,
+        return pmap(
             func,
+            self.addrs,
             *args,
             **kwargs
         )

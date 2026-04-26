@@ -42,7 +42,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from datetime import date, datetime
-from typing import Any, Callable, Iterable, Optional
+from typing import Any, Iterable, Optional
 
 import pandas as pd
 

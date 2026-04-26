@@ -1,4 +1,11 @@
-from lltk.imports import *
+import os
+import shutil
+from zipfile import ZipFile
+
+import pandas as pd
+
+from lltk.imports import BaseCorpus, BaseText, clean_meta, fix_meta, get_tqdm, save_df
+from lltk.tools import tools
 from lltk.tools.tools import camel_case_split
 
 class TextTxtLab(BaseText):
@@ -22,6 +29,7 @@ class TxtLab(BaseCorpus):
 		This is a custom installation function. By default, it will simply try to download itself,
 		unless a custom function is written here which either installs or provides installation instructions.
 		"""
+		_ = zipdir_name  # unused; extraction handled by compile_extract
 		# download file
 		self.compile_download(unzip=False)
 		# extract

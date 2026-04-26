@@ -1,6 +1,78 @@
-from lltk.imports import *
-from lltk.text import *
-from .utils import *
+import configparser
+import os
+import random
+import re
+import shutil
+
+import numpy as np
+import pandas as pd
+
+from collections import Counter, defaultdict
+from typing import Union
+
+from lltk.imports import (
+    BAD_COLS,
+    Bunch,
+    DEFAULT_NUM_PROC,
+    DEFAULT_PATH_TO_MANIFEST,
+    DEST_LLTK_CORPORA,
+    DIR_SECTION_NAME,
+    DIR_TEXTS_NAME,
+    DOWNLOAD_PART_DEFAULTS,
+    IDSEP,
+    IDSEP_START,
+    KEYSERVER_URL,
+    MANIFEST_DEFAULTS,
+    META_KEY_SEP,
+    MODERNIZE_SPELLING,
+    PATH_CORPUS,
+    PATH_CORPUS_ZIP,
+    PATH_LLTK_KEYS,
+    PATH_LLTK_REPO,
+    PATH_MANIFEST_GLOBAL,
+    PREPROC_CMDS,
+    REMOTE_REMOTE_DEFAULT,
+    REMOTE_SOURCES,
+    TMP_CORPUS_ID,
+    ZIP_PART_DEFAULTS,
+    ensure_dir_exists,
+    ensure_snake,
+    get_tqdm,
+    is_logged_on,
+    just_meta_no_id,
+    just_metadata,
+    log,
+    mask_home_dir,
+    read_json,
+    rmfn,
+    snake2camel,
+    to_camel_case,
+    tools,
+)
+from lltk.text import (
+    BaseText,
+    TextList,
+    clean_text,
+    get_idx,
+    get_imsg,
+    grab_tag_text,
+    is_addr,
+    is_addr_str,
+    is_text_obj,
+    is_textish,
+    merge_dict,
+    read_df_anno,
+    to_corpus_and_id,
+    tokenize,
+    unhtml,
+    xml2txt_default,
+)
+from .utils import (
+    AuthorBunch,
+    get_inducted_corpus_ids,
+    is_corpus_obj,
+    load_corpus,
+)
 
 class BaseCorpus(TextList):
     ID=None
@@ -191,28 +263,7 @@ class BaseCorpus(TextList):
         return keyb
 
     def acquire_key(self,url=KEYSERVER_URL):
-        infod = get_user_info()
-        email = get_user_email()
-
-        optname='always_accept_corpus_permissions'
-        if infod.get(optname)!='y':
-            yn = input(f'Do you, {email}, agree to use all data from the corpus "{self.name}" for lawful purposes of non-consumptive research? Type "Y" for yes, "N" for no, or "A" to consent to all such requests in the future.').strip().lower()
-            if yn=='n': return
-            if yn=='a': set_usr_info(**{optname:'y'})
-
-        msg=f'{self.id}|{email}'
-        msg_encr = get_pkey().encrypt(msg.encode())
-        msg_encr64 = to_bs64(msg_encr)
-        url = url + msg_encr64.decode()
-        keystr = gethtml(url)
-        keyb_encr = keystr.encode()
-        with open(self.path_key,'wb') as of: of.write(keyb_encr)
-        
-        # f=get_passkey(email)
-        # keyb=f.decrypt(keyb_encr)
-        # with open(self.path_key,'wb') as of: of.write(keyb)
-        # self._key=keyb
-        # return keyb    
+        raise NotImplementedError("Corpus key acquisition has been removed.")
 
     def generate_key(self,force=False):
         if force or not os.path.exists(self.path_key):
@@ -785,65 +836,6 @@ class BaseCorpus(TextList):
                 t.init(remote=remote,cache=cache,**kwargs)
         
 
-    # def init(self):
-    #     if not self._data_all:
-    #         log.info('loading csv')
-    #         self._data_all=[
-    #             {
-    #                 **d, 
-    #                 **{'_id':self.get_addr(id)}
-    #             }
-    #             for id,d in self.init_meta_csv()
-    #         ]
-
-
-    # def init(self,force=False,progress=False,remote=None,**kwargs):
-    #     if log: log(self)
-    #     remote=is_logged_on()
-    #     if not self._texts or not remote in self._init:
-    #         o = []
-    #         if log: log('....')
-    #         corp_ld = self.mdb.get(corpus=self.id)
-    #         iterr = (Text(d) for d in corp_ld)
-    #         if progress:
-    #             iterr=get_tqdm(iterr,total=len(corp_ld),desc=f'[{self.id}] init')
-    #         with log.silent:
-    #             for t in iterr:
-    #                 o.append(t.init())
-    #         self._texts = o
-    #         self._init |= {remote}
-    #     return self._texts
-
-    # def init(self,force=False,quiet=False,sync=True,progress=True,remote=False,cache=False,_init=True,lim=None,**kwargs):
-    #     if not force and self._init: return self
-    #     # if log: log('...')
-    #     if log>0: log(self)
-    #     remote=is_logged_on()
-    #     #if log: log(f'<- remote = {remote}')
-
-    #     texts=[]
-    #     def go():
-    #         numdone=0
-    #         for t in self.iter_init(_init=_init,progress=progress,remote=remote,lim=lim,_cache=cache,**kwargs): numdone+=1
-    #         return numdone
-    #     def run():
-    #         if not quiet: return go()
-    #         with log.silent: return go()
-
-    #     numdone=run()
-
-    #     if numdone:
-    #         if log: log(f'initialized {numdone} texts')
-    #         self._init=True
-    #     elif sync:
-    #         if log: log(f'no texts initialized. corpus in db? trying to sync...')
-    #         res = self.sync()
-    #         if type(res)==list:
-    #             texts = [Text(addr) for addr in res]
-    #             if log and texts: log(f'{len(ids)} texts synced')
-            
-    #     return texts
-
     def init(self,force=False):
         if not force and self._init: return self
         for t in self.iter_init(): pass
@@ -1237,14 +1229,6 @@ class BaseCorpus(TextList):
 
     def path_zip(self,part):
         return os.path.join(PATH_CORPUS_ZIP,f'{self.id}_{part}.zip')
-
-    # def get_path_text(self,text,part):
-    #     if part.startswith('path_'): part=part[5:]
-    #     if part == 'txt': return os.path.join(text.path,'text.txt')
-    #     if part == 'xml': return os.path.join(text.path,'text.xml')
-    #     if part in {'json','meta','meta_json'}: return os.path.join(text.path,'meta.json')
-    #     if part == 'freqs': return os.path.join(text.path,'freqs.json')
-    #     return None
 
     def get_path_text(self,text,*x,**y): return text.get_path(*x,**y)
 

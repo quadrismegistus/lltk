@@ -1,5 +1,17 @@
 #encoding=utf-8
-from lltk.imports import *
+import os
+
+import pandas as pd
+
+from lltk.imports import (
+    DEFAULT_NUM_PROC,
+    get_tqdm,
+    pmap,
+    tools,
+)
+from lltk.text import BaseText, clean_text
+from lltk.corpus.corpus import BaseCorpus
+from lltk.corpus.utils import fix_meta
 
 
 def estimate_genre(text_xml):
@@ -44,6 +56,7 @@ def extract_metadata(mtxt):
 
 
 def xml2txt_tcp(xmlfn,OK=['p','l'], BAD=[], body_tag='text', force_xml=False, text_only_within_medium=False):
+    _ = force_xml, text_only_within_medium  # unused; kept for API compat
     import bs4
     # get dom
     with open(xmlfn,encoding='utf-8',errors='ignore') as f: xml=f.read()

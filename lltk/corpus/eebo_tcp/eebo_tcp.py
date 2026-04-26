@@ -1,5 +1,8 @@
-from lltk.imports import *
-from lltk.corpus.tcp import *
+import os
+
+import pandas as pd
+
+from lltk.corpus.tcp import TCP, TextTCP
 
 class TextEEBO_TCP(TextTCP):
 	@property

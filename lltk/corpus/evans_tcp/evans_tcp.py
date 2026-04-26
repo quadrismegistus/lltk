@@ -1,5 +1,4 @@
-from lltk.imports import *
-from lltk.corpus.tcp import *
+from lltk.corpus.tcp import TCP, TextTCP, xml2txt_tcp
 
 
 class TextEvansTCP(TextTCP):
