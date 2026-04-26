@@ -603,13 +603,16 @@ def main():
 		elif args.genre or args.lang or args.year_min or args.year_max:
 			where_parts = []
 			if args.lang:
-				where_parts.append(f"lang_detected = '{args.lang}'")
+				where_parts.append(f"lang = '{args.lang}'")
 			where = ' AND '.join(where_parts) if where_parts else None
 			df = lltk.db.texts_df(
 				corpora=[args.corpus], genre=args.genre,
 				year_min=args.year_min, year_max=args.year_max,
 				where=where, dedup=True,
 			)
+			if len(df) == 0 or 'id' not in df.columns:
+				print(f'No matching texts found.')
+				sys.exit(0)
 			text_ids = df['id'].tolist()
 		else:
 			meta = corpus.load_metadata()
