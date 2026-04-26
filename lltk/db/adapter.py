@@ -7,7 +7,7 @@ queries. Engine-specific SQL can bypass the adapter when needed.
 
 Usage:
 
-    from lltk.tools.db_adapter import get_adapter
+    from lltk.db.adapter import get_adapter
 
     # DuckDB (default)
     db = get_adapter('duckdb:///~/lltk_data/data/metadb.duckdb')

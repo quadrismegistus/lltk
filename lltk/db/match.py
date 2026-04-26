@@ -138,7 +138,7 @@ def match_clickhouse(ch_adapter, corpora=None, fuzzy=False, containment=True,
 
 def _match_by_links_ch(ch_adapter, corpora=None):
     from lltk.corpus.utils import load_manifest, load_corpus
-    from lltk.tools.metadb import DB_BLACKLIST
+    from lltk.db.metadb import DB_BLACKLIST
 
     manifest = load_manifest()
     corpus_ids = set(corpora or [d.get('id', name) for name, d in manifest.items()])
@@ -311,7 +311,7 @@ def _containment_pass(ch_adapter, corpora=None, corpus_where='', progress=True):
 def _fuzzy_pass(ch_adapter, corpora=None, corpus_where='', progress=True):
     """Tier 3: Jaro-Winkler > 0.85 within author blocks. Opt-in, slower."""
     from lltk.tools.tools import get_tqdm
-    from lltk.tools.metadb import _jaro_winkler
+    from lltk.db.metadb import _jaro_winkler
     import pyarrow as pa
 
     print('Fuzzy title matching within author blocks...')
@@ -371,7 +371,7 @@ def _fuzzy_pass(ch_adapter, corpora=None, corpus_where='', progress=True):
 
 
 def _compute_match_groups_ch(ch_adapter):
-    from lltk.tools.metadb import CORPUS_SOURCE_RANKS
+    from lltk.db.metadb import CORPUS_SOURCE_RANKS
     import pyarrow as pa
 
     pairs = ch_adapter.query("SELECT _id_a, _id_b FROM lltk.matches FINAL")
@@ -420,7 +420,7 @@ def find_matches_ch(ch_adapter, query):
 
 def get_group_ch(ch_adapter, _id):
     """Return all texts in the same match group as `_id`."""
-    from lltk.tools.metadb_ch import _validate_id, _sql_str
+    from lltk.db.metadb_ch import _validate_id, _sql_str
     _validate_id(_id)
     _id_esc = _sql_str(_id)
     return ch_adapter.query_df(f"""

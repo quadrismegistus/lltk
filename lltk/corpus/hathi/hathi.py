@@ -13,11 +13,9 @@ from lltk.imports import (
     Capturing,
     OrderedSetDict,
     PATH_CORPUS,
-    REMOTE_REMOTE_DEFAULT,
     Text,
     get_imsg,
     is_addr_str,
-    is_logged_on,
     just_meta_no_id,
     load_corpus,
     log,
@@ -105,7 +103,7 @@ def _build_freqs_index(freqs_dir):
             index[norm_id] = path
 
     _FREQS_INDEX_CACHE[freqs_dir] = index
-    if log: log(f'Built freqs index for {freqs_dir}: {len(index)} files')
+    log(f'Built freqs index for {freqs_dir}: {len(index)} files')
     return index
 
 class TextHathi(BaseText):
@@ -143,31 +141,8 @@ class TextHathiRecord(TextHathi):
     def meta_is_valid(self,meta={}):
         return bool((meta if meta else self._meta).get('url'))
     
-    # def get_remote_sources(self, *args, remote=REMOTE_REMOTE_DEFAULT, lim=1, **kwargs):
-    #     #if log: log(f'<- remote = {remote} ?')
-    #     o=[]
-    #     for htid in self.htid_l:
-    #         t=self.corpus.text(f'htid/{htid}',_source=self).init_(remote=remote,**kwargs)
-    #         if log: log(f'-> {t}')
-    #         o.append(t)
-    #         if lim and len(o)>=lim: break
-    #     return o
-    
-    # def have_remote_sources(self,*x,**y):
-    #     print([self.sources])
-    #     print([self.id])
-    #     return any('htid' in src.id for src in self.sources if src and src.id)
-
-    def init(self,*x,remote=None,**y):
-        remote=is_logged_on()
-        #if log: log(f'<- remote = {remote} ?')
-        super().init(*x,remote=remote,**y)
-        htid_srcs=set(t.htid for t in self.dsources if t.corpus.id.startswith('htid/'))
-        for htid in set(self.htid_l) - htid_srcs:
-            if log: log(htid)
-            t=self.corpus.text(f'htid/{htid}').init(remote=remote,**y)
-            t.add_source(self)
-            if log: log(t)
+    def init(self,*x,**y):
+        super().init(*x,**y)
         return self
 
 
@@ -175,7 +150,7 @@ class TextHathiRecord(TextHathi):
         _ = force_inner  # unused; kept for API compat
         odx=self.qdb.get(self.id)
         if force or not odx:
-            if log: log(self)
+            log(self)
             import rispy
             mapd=rispy.TAG_KEY_MAPPING
             mapd['SN']='isbn'
@@ -221,7 +196,7 @@ class TextHathiVolume(TextHathi):
 
 
         if not odx or not just_meta_no_id(odx):
-            if log: log(self)
+            log(self)
             odx={}
             try:
                 with Capturing() as __:
@@ -238,7 +213,7 @@ class TextHathiVolume(TextHathi):
             except Exception as e:
                 log.error(f'query failed: {e}')
 
-        if log: log(f'-> {odx}')
+        log(f'-> {odx}')
         return odx
         
 
@@ -254,7 +229,6 @@ class Hathi(BaseCorpus):
     name='Hathi'
     LANGS=['eng']
     name=[]
-    REMOTE_SOURCES=[]
     METADATA_HEADER='htid	access	rights	ht_bib_key	description	source	source_bib_num	oclc_num	isbn	issn	lccn	title	imprint	rights_reason_code	rights_timestamp	us_gov_doc_flag	rights_date_used	pub_place	lang	bib_fmt	collection_code	content_provider_code	responsible_entity_code	digitization_agent_code	access_profile_code	author'.split('\t')
 
     @property
@@ -354,7 +328,7 @@ class Hathi(BaseCorpus):
         return t
 
     def get_text_id(self,text,**kwargs):
-        if log>0: log(f'<- {get_imsg(text,**kwargs)}')
+        log.info(f'<- {get_imsg(text,**kwargs)}')
         if is_addr_str(text): text=to_corpus_and_id(text)[1]
         if type(text)==str:
             # Known ID formats: htrn/NNN, htid/lib.vol, or lib/vol (e.g. mdp/39015...)
@@ -368,14 +342,14 @@ class Hathi(BaseCorpus):
     # Corpus, Hathi
     def query_for_ids(self,text):
         import bs4
-        if log: log(f'<- {text}')
+        log(f'<- {text}')
         text=Text(text)
         if not text.shorttitle or not text.au: return []
 
         url = HATHI_TITLE_QUERY_URL
         url = url.replace('[[[QSTR_TITLE]]]', quote_plus(text.shorttitle))
         url = url.replace('[[[QSTR_AUTHOR]]]', quote_plus(text.au))
-        if log: log(f'<- {url}')
+        log(f'<- {url}')
 
         html = self.qdb.query(url)
         dom = bs4.BeautifulSoup(html,'lxml')
@@ -386,30 +360,20 @@ class Hathi(BaseCorpus):
             if '/Record/' in a.attrs['href']
         ]
         if o:
-            if log: log(f'found result on website ({len(o)} records)')
+            log(f'found result on website ({len(o)} records)')
             self.query_db().set(url,o)
-        if log: log(f'-> {o}')
+        log(f'-> {o}')
         return o
 
     def text_from(self,text,**kwargs):
         for newtext in self.texts_from(text,**kwargs):
             return newtext
 
-    def texts_from(self,text,remote=REMOTE_REMOTE_DEFAULT,**kwargs):
+    def texts_from(self,text,**kwargs):
         for htrn in self.query_for_ids(text):
             htrnid = f'htrn/{htrn}'
-            t=self.text(htrnid).init_(remote=remote,**kwargs)
-            t.add_source(text)
+            t=self.text(htrnid, _source=text)
             yield t
-        #if log: log(f'<- remote = {remote} ?')
-        # tobjs = [src for src in text.sources if src.corpus==self and src.id.startswith('htrn/')]
-        # if tobjs:
-        #     yield from tobjs
-        # else:
-        #     for htrn in self.query_for_ids(text):
-        #         htrnid = f'htrn/{htrn}'
-        #         t=self.text(htrnid,_source=text).init_(remote=remote,**kwargs)
-        #         yield t
 
 
 

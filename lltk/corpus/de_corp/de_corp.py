@@ -36,7 +36,7 @@ class DeCorp(BaseCorpus):
         author_gender, n_tokens, n_sents, source, work_type, lang.
         """
         if not force and os.path.exists(self.path_metadata) and os.path.isdir(self.path_txt):
-            if log: log('Already compiled. Use force=True to recompile.')
+            log('Already compiled. Use force=True to recompile.')
             return
 
         import zipfile, tempfile, shutil, requests
@@ -44,7 +44,7 @@ class DeCorp(BaseCorpus):
         raw_dir = os.path.join(self.path_root, 'raw')
         os.makedirs(raw_dir, exist_ok=True)
 
-        if log: log(f'Fetching Zenodo record listing from {ZENODO_API_URL}...')
+        log(f'Fetching Zenodo record listing from {ZENODO_API_URL}...')
         record = requests.get(ZENODO_API_URL, timeout=30).json()
         file_map = {f['key']: f['links']['self'] for f in record.get('files', [])
                     if f.get('key') and f.get('links', {}).get('self')}
@@ -56,7 +56,7 @@ class DeCorp(BaseCorpus):
             out_path = os.path.join(raw_dir, key)
             if os.path.exists(out_path) and os.path.getsize(out_path) > 0 and not force:
                 continue
-            if log: log(f'Downloading {key}...')
+            log(f'Downloading {key}...')
             r = requests.get(file_map[key], stream=True, timeout=600, allow_redirects=True)
             r.raise_for_status()
             with open(out_path, 'wb') as fh:
@@ -67,7 +67,7 @@ class DeCorp(BaseCorpus):
         # Extract zip into temp dir (flat or nested — we scan for filenames)
         zip_path = os.path.join(raw_dir, 'de-corp_txt.zip')
         tmp_dir = tempfile.mkdtemp(prefix='de_corp_')
-        if log: log('Extracting zip...')
+        log('Extracting zip...')
         with zipfile.ZipFile(zip_path) as zf:
             zf.extractall(tmp_dir)
 
@@ -96,7 +96,7 @@ class DeCorp(BaseCorpus):
                     continue
                 src = txt_index.get(fn)
                 if not src:
-                    if log: log(f'Missing txt for {fn}')
+                    log(f'Missing txt for {fn}')
                     continue
 
                 year = r.get('year')
@@ -151,7 +151,7 @@ class DeCorp(BaseCorpus):
 
         out = pd.DataFrame(rows)
         out.to_csv(self.path_metadata, index=False)
-        if log: log(f'Saved {len(out)} records to {self.path_metadata}')
+        log(f'Saved {len(out)} records to {self.path_metadata}')
 
         shutil.rmtree(tmp_dir, ignore_errors=True)
 

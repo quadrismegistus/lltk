@@ -38,7 +38,7 @@ def _insert_text(ch, _id, corpus, title, author='', year=None, genre='',
 @needs_chdb
 class TestSchemaCreation:
     def test_all_tables_created(self, ch):
-        from lltk.tools.clickhouse_schema import CLICKHOUSE_SCHEMA
+        from lltk.db.schema import CLICKHOUSE_SCHEMA
         for name in CLICKHOUSE_SCHEMA:
             assert ch.table_exists(f'lltk.{name}'), f'{name} not created'
 
@@ -47,7 +47,7 @@ class TestSchemaCreation:
         assert ch.table_exists('lltk.annotations_by_source')
 
     def test_idempotent_recreation(self, ch):
-        from lltk.tools.clickhouse_schema import create_all_tables
+        from lltk.db.schema import create_all_tables
         tables = create_all_tables(ch, database='lltk')
         assert 'texts' in tables
 

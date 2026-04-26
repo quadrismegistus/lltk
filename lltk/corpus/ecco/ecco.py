@@ -1,5 +1,5 @@
 import os
-
+from logmap import logmap
 import pandas as pd
 
 from lltk.imports import BaseCorpus, BaseText, clean_text, get_tqdm, log, tools
@@ -219,6 +219,9 @@ class ECCO(BaseCorpus):
 		return os.path.join(self.path, 'metadata_enriched.parquet')
 
 	def load_metadata(self, force=False, **kwargs):
+		if not force and self._metadf is not None:
+			return self._metadf
+
 		# Fast path: enriched parquet cache
 		enriched_path = self.path_metadata_enriched
 		if not force and os.path.exists(enriched_path) and os.path.exists(self.path_metadata):
@@ -227,11 +230,12 @@ class ECCO(BaseCorpus):
 					meta = pd.read_parquet(enriched_path)
 					if self.col_id in meta.columns:
 						meta = meta.set_index(self.col_id)
+					self._metadf = meta
 					return meta
 				except Exception:
 					pass
 
-		meta = super().load_metadata()
+		meta = super().load_metadata(force=force)
 		if not len(meta):
 			return meta
 		# Normalize ESTC IDs: zero-pad to Letter+6 digits
@@ -245,15 +249,8 @@ class ECCO(BaseCorpus):
 			meta['genre'] = meta['estc_genre']
 		if 'estc_genre_raw' in meta.columns:
 			meta['genre_raw'] = meta['estc_genre_raw']
-		if 'estc_title' in meta.columns:
-			meta['title'] = meta['estc_title']
-		else:
-			meta['title'] = meta['fullTitle']
-
-		if 'estc_author' in meta.columns:
-			meta['author'] = meta['estc_author']
-		else:
-			meta['author'] = meta['marcName']
+		meta['title'] = meta.get('estc_title', pd.Series(dtype=object)).fillna(meta.get('fullTitle', ''))
+		meta['author'] = meta.get('estc_author', pd.Series(dtype=object)).fillna(meta.get('marcName', ''))
 
 		if 'estc_is_translated' in meta.columns:
 			meta['is_translated'] = meta['estc_is_translated']
@@ -263,6 +260,7 @@ class ECCO(BaseCorpus):
 		except Exception:
 			pass
 
+		self._metadf = meta
 		return meta
 
 	def compile(self, tar_path=None, **kwargs):
@@ -314,7 +312,7 @@ class ECCO(BaseCorpus):
 					gz.write(f.read())
 				count += 1
 
-		if log: log(f'Done. Extracted {count} XML files, skipped {skipped} (already existed).')
+		log(f'Done. Extracted {count} XML files, skipped {skipped} (already existed).')
 
 	def match_estc(self):
 		from lltk.corpus.estc import ESTC

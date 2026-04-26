@@ -25,7 +25,7 @@ class GermanFiction(BaseCorpus):
         Translated texts (no year in filename) are in a separate subfolder.
         """
         if not force and os.path.exists(self.path_metadata) and os.path.isdir(self.path_txt):
-            if log: log('Already compiled. Use force=True to recompile.')
+            log('Already compiled. Use force=True to recompile.')
             return
 
         import zipfile
@@ -38,20 +38,20 @@ class GermanFiction(BaseCorpus):
         zip_path = os.path.join(raw_dir, 'german_fiction.zip')
 
         if not os.path.exists(zip_path) or os.path.getsize(zip_path) == 0 or force:
-            if log: log(f'Fetching download URL from Figshare API...')
+            log(f'Fetching download URL from Figshare API...')
             files = requests.get(FIGSHARE_API_URL, timeout=30).json()
             download_url = files[0]['download_url']
-            if log: log(f'Downloading {files[0]["name"]} ({files[0]["size"] / 1e6:.0f} MB)...')
+            log(f'Downloading {files[0]["name"]} ({files[0]["size"] / 1e6:.0f} MB)...')
             r = requests.get(download_url, stream=True, timeout=300, allow_redirects=True)
             r.raise_for_status()
             with open(zip_path, 'wb') as f:
                 for chunk in r.iter_content(chunk_size=1 << 20):
                     if chunk:
                         f.write(chunk)
-            if log: log(f'Downloaded {os.path.getsize(zip_path) / 1e6:.0f} MB')
+            log(f'Downloaded {os.path.getsize(zip_path) / 1e6:.0f} MB')
 
         tmp_dir = tempfile.mkdtemp(prefix='german_fiction_')
-        if log: log('Extracting zip...')
+        log('Extracting zip...')
         with zipfile.ZipFile(zip_path) as zf:
             zf.extractall(tmp_dir)
 
@@ -91,7 +91,7 @@ class GermanFiction(BaseCorpus):
 
         df = pd.DataFrame(meta_rows)
         df.to_csv(self.path_metadata, index=False)
-        if log: log(f'Saved {len(df)} records to {self.path_metadata}')
+        log(f'Saved {len(df)} records to {self.path_metadata}')
 
         shutil.rmtree(tmp_dir, ignore_errors=True)
 

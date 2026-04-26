@@ -16,8 +16,8 @@ def ch(tmp_path):
     if not _HAS_CHDB:
         pytest.skip('chdb not installed')
 
-    from lltk.tools.db_adapter import ChDBAdapter
-    from lltk.tools.clickhouse_schema import create_all_tables
+    from lltk.db.adapter import ChDBAdapter
+    from lltk.db.schema import create_all_tables
 
     adapter = ChDBAdapter(database='lltk')
     create_all_tables(adapter, database='lltk')

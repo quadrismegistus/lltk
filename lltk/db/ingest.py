@@ -10,8 +10,8 @@ exist only when explicitly exported (e.g. for `corpus.publish()`).
 
 Usage:
 
-    from lltk.tools.db_adapter import get_adapter
-    from lltk.tools.clickhouse_ingest import ingest_freqs_from_jsons
+    from lltk.db.adapter import get_adapter
+    from lltk.db.ingest import ingest_freqs_from_jsons
 
     ch = get_adapter('clickhouse://lltk:lltk@localhost:8123/lltk')
     ingest_freqs_from_jsons(ch, corpora=['ecco'])   # one corpus
@@ -48,7 +48,7 @@ _WORKER_CH_CLIENT = None
 def _worker_get_client(ch_url):
     global _WORKER_CH_CLIENT
     if _WORKER_CH_CLIENT is None:
-        from lltk.tools.db_adapter import get_adapter
+        from lltk.db.adapter import get_adapter
         ch = get_adapter(ch_url)
         # async_insert: ClickHouse buffers rows server-side and flushes them
         # as fewer, larger parts — prevents the "too many tiny parts" slowdown

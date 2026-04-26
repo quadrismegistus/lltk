@@ -11,7 +11,7 @@ from collections import UserList, defaultdict
 from collections.abc import MutableMapping
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from io import StringIO
-from lltk.imports import (
+from lltk.tools.constants import (
     HOME, ROOT, LLTK_ROOT, PATH_HERE,
     PATH_DEFAULT_LLTK_HOME, PATH_DEFAULT_CONF,
     META_KEY_SEP, DEFAULT_NUM_PROC, mp_cpu_count,
@@ -50,8 +50,11 @@ def _load_config():
 config = _load_config()
 
 
+from logmap import pmap as _logmap_pmap, pmap_iter as _logmap_pmap_iter
+
+
 class _PmapCaller:
-    """Picklable callable for pmap — avoids unpicklable closures."""
+    """Picklable callable for pmap — wraps func + extra args/kwargs."""
     def __init__(self, func, args, kwargs):
         self.func = func
         self.args = args
@@ -60,21 +63,13 @@ class _PmapCaller:
         return self.func(obj, *self.args, **self.kwargs)
 
 
-
 def pmap(func, objs, args=(), kwargs=None, num_proc=1, use_threads=False,
          progress=True, desc='', **_ignored):
-    """
-    Parallel map with progress bar. Replaces yapmap.pmap.
+    """Parallel map with progress bar.
 
-    Args:
-        func: function to apply to each object
-        objs: iterable of objects
-        args: extra positional args passed to func
-        kwargs: extra keyword args passed to func
-        num_proc: number of workers (1 = sequential)
-        use_threads: use threads instead of processes (good for I/O-bound work)
-        progress: show tqdm progress bar
-        desc: progress bar description
+    Delegates to ``logmap.pmap`` for process-based parallelism.
+    Falls back to ``ThreadPoolExecutor`` when *use_threads* is True and
+    *num_proc* > 1 (logmap does not support threads).
     """
     if kwargs is None:
         kwargs = {}
@@ -82,31 +77,29 @@ def pmap(func, objs, args=(), kwargs=None, num_proc=1, use_threads=False,
     if not objs:
         return []
 
-    caller = _PmapCaller(func, args, kwargs)
+    if use_threads and num_proc > 1:
+        caller = _PmapCaller(func, args, kwargs)
+        results = []
+        with ThreadPoolExecutor(max_workers=num_proc) as pool:
+            futures = pool.map(caller, objs)
+            if progress:
+                from tqdm import tqdm
+                futures = tqdm(futures, total=len(objs), desc=desc)
+            results = list(futures)
+        return results
 
-    if num_proc <= 1:
-        # Sequential
-        iterr = get_tqdm(objs, desc=desc) if progress else objs
-        return [caller(obj) for obj in iterr]
-
-    # Parallel
-    Executor = ThreadPoolExecutor if use_threads else ProcessPoolExecutor
-    results = []
-    with Executor(max_workers=num_proc) as pool:
-        futures = pool.map(caller, objs)
-        if progress:
-            from tqdm import tqdm
-            futures = tqdm(futures, total=len(objs), desc=desc)
-        results = list(futures)
-    return results
-
+    return _logmap_pmap(func, objs, args=args, kwargs=kwargs,
+                        num_proc=num_proc, progress=progress, desc=desc)
 
 
 def pmap_iter(func, objs, args=(), kwargs=None, num_proc=1, use_threads=False,
               progress=True, desc='', **_ignored):
     """Iterator version of pmap."""
-    return iter(pmap(func, objs, args=args, kwargs=kwargs, num_proc=num_proc,
-                     use_threads=use_threads, progress=progress, desc=desc))
+    if use_threads and num_proc > 1:
+        return iter(pmap(func, objs, args=args, kwargs=kwargs, num_proc=num_proc,
+                         use_threads=True, progress=progress, desc=desc))
+    return _logmap_pmap_iter(func, objs, args=args, kwargs=kwargs,
+                             num_proc=num_proc, progress=progress, desc=desc)
 
 
 
@@ -240,16 +233,17 @@ def safebool(x,bad_vals={np.nan}):
         }
 
     import pandas as pd
+    from lltk.tools.logs import log
     try:
         if is_hashable(x) and x in bad_vals: return False
     except AssertionError as e:
         log.error(e)
-    
+
     try:
         if is_iterable(x): return bool(len(x))
     except AssertionError as e:
         log.error(e)
-    
+
     try:
         if pd.isnull(x) is True: return False
     except AssertionError as e:
@@ -548,7 +542,7 @@ def read_df(ifn,key='',fmt='',on_bad_lines='skip',**attrs):
             raise Exception(f'[save_df()] What kind of df is this: {ifn}')
     except AssertionError as e:
         from lltk import log
-        if log>0: log(f'Error: {e}')
+        log.info(f'Error: {e}')
         pass
     
     return pd.DataFrame()
@@ -850,29 +844,6 @@ def ngram(l,n=3):
 
 
 
-### PASSAGES
-
-
-
-def index(text,phrase,ignorecase=True):
-    compiled = re.compile(phrase, re.IGNORECASE) if ignorecase else re.compile(phrase)
-    passage_indices = [(match.start(), match.end()) for match in re.finditer(compiled, text)]
-    return passage_indices
-
-
-def passages(text,phrases=[],window=200,indices=None,ignorecase=True,marker='***'):
-    txt_lower = text.lower()
-    window_radius=int(window/2)
-    for phrase in phrases:
-        if phrase.lower() in txt_lower:
-            if not indices: indices = index(text,phrase,ignorecase=ignorecase)
-
-            for ia,ib in indices:
-                pre,post=text[:ia],text[ib:]
-                match = text[ia:ib]
-                window=get_word_window(pre,window_radius,True) + marker+match+marker+get_word_window(post,window_radius,False)
-                dx={'index':ia, 'index_end':ib, 'passage':window,'phrase':phrase}
-                yield dx
 
 
 

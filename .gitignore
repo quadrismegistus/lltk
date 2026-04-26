@@ -58,4 +58,5 @@ Preview*
 Untitled*
 *.pkl
 
-docs/superpowers
+docs/superpowerscoverage.json
+coverage.json

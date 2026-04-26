@@ -11,8 +11,8 @@ ClickHouse is the target.
 
 Usage:
 
-    from lltk.tools.db_adapter import get_adapter
-    from lltk.tools.clickhouse_rebuild import rebuild_clickhouse
+    from lltk.db.adapter import get_adapter
+    from lltk.db.rebuild import rebuild_clickhouse
 
     ch = get_adapter('clickhouse://lltk:lltk@localhost:8123/lltk')
     rebuild_clickhouse(ch, corpora=['gildedage'])   # one corpus
@@ -25,7 +25,7 @@ import json
 import pandas as pd
 import pyarrow as pa
 
-from lltk.tools.metadb import (
+from lltk.db.metadb import (
     prepare_corpus_df, _resolve_freqs_paths,
     CORE_COLS, DB_BLACKLIST,
 )

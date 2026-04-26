@@ -12,7 +12,6 @@ from lltk.imports import (
     DIR_SECTION_NAME,
     IDSEP,
     IDSEP_START,
-    MATCHRELNAME,
     META_KEY_SEP,
     PATH_CORPUS,
     SetList,
@@ -21,7 +20,6 @@ from lltk.imports import (
     YEARKEYS,
     ensure_snake,
     get_wordlist,
-    is_dictish,
     is_hashable,
     just_meta_no_id,
     log,
@@ -34,13 +32,9 @@ from .utils import (
     clean_text,
     filter_freqs,
     get_addr_str,
-    get_idx,
-    get_imsg,
     is_addr_str,
     is_corpus_obj,
     is_text_obj,
-    is_textish,
-    is_valid_text_obj,
     merge_dict,
     remove_bad_tags,
     save_freqs_json,
@@ -95,23 +89,17 @@ class BaseText(BaseObject):
             _corpus=None,
             _section_corpus=None,
             _source=None,
-            _sources=None,
             _txt=None,
             _xml=None,
-            _remote=None,
             _cache=True,
             **kwargs):
         
         meta = just_meta_no_id(kwargs)
-        if log>1:  log(f'<- {get_imsg(id,_corpus,_source,**meta)}')
-        # if log>0:  log(f'<- remote = {_remote}')
         from lltk import Corpus
         self.corpus=Corpus(_corpus)
         self._section_corpus=_section_corpus
         self._sections={}
         self._rels={}
-        self._gcache={}
-        self.__meta={}
         self._meta={}
         self._meta_hydrated=False
         self._txt=_txt
@@ -124,10 +112,9 @@ class BaseText(BaseObject):
         self._booknlp=None
         self._txt_offsets=None
         self._source=_source
-        self._sources={x for x in _sources} if _sources else set()
         if id is None:
             id = self.corpus.get_text_id(id, _source=_source, **meta)
-            if log: log(f'blank id set to {id}')
+            log(f'blank id set to {id}')
         self.id=id
         self.corpus.add_text(self)
         self._meta=self.ensure_id(merge_dict(
@@ -145,33 +132,21 @@ class BaseText(BaseObject):
 
     @property
     def addr(self): return f'{IDSEP_START}{self.corpus.id}{IDSEP}{self.id}'
+
     @property
-    def nsrc(self): return len(self._sources)
-    
-    @property
-    def node(self,force=True):
+    def node(self, force=True):
         if force or not self._node:
-            au,ti,addr = self.au, self.ti, self.addr
-            if au and ti and addr:
-                # starter
-                ol=[f'{au}, {ti.replace("_"," ").title()[:50].strip()}']
-                
-                # year
+            addr = self.addr
+            au = self.au
+            ti = self.ti
+            if au and ti:
+                ol = [f'{au}, {ti.replace("_"," ").title()[:50].strip()}']
                 yr = self.year
                 if safebool(yr): ol.append(f' ({int(yr)})')
-                
-                # addr
                 ol.append(f' [{addr}]')
-                # num src?
-                
-                nsrc=self.nsrc + 1
-                if nsrc and nsrc>1: ol.append(f' ({nsrc})')
                 self._node = ''.join(ol)
             elif addr:
-                self._node=f'({addr})'
-            else:
-                raise Exception('every text ought to have an addr')
-        
+                self._node = f'({addr})'
         return self._node
 
             
@@ -220,6 +195,7 @@ class BaseText(BaseObject):
     def __getitem__(self, key): return self.get(key)
 
     def __getattr__(self, name):
+        if name.startswith('_'): raise AttributeError(name)
         if name.startswith('path_'): return self.get_path(name)
 
         res = self.get(name)
@@ -238,18 +214,16 @@ class BaseText(BaseObject):
         """Look up this text's row. Tries MetaDB first, falls back to corpus DataFrame."""
         # Fast path: DuckDB indexed lookup (returns dict with meta JSON unpacked)
         try:
-            from lltk.tools.metadb import metadb
+            from lltk.db.metadb import metadb
             row = metadb.get(self.corpus.id, self.id)
             if row:
                 return row
-        except Exception as e:
+        except (ImportError, AttributeError, RuntimeError, OSError) as e:
             pass
         # Fallback: corpus load_metadata() — can be slow for large corpora with enrichment
         # Only use if DB lookup failed (no DB, text not in DB, etc.)
         try:
-            cache_key = ('load_metadata', True)
-            # Check if already cached — avoid triggering expensive enrichment
-            cached = self.corpus._metadfd.get(cache_key)
+            cached = self.corpus._metadf
             if cached is not None and self.id in cached.index:
                 row = cached.loc[self.id]
                 return {k: v for k, v in row.items() if pd.notna(v)}
@@ -258,7 +232,7 @@ class BaseText(BaseObject):
             if df is not None and self.id in df.index:
                 row = df.loc[self.id]
                 return {k: v for k, v in row.items() if pd.notna(v)}
-        except Exception:
+        except (KeyError, AttributeError, FileNotFoundError, OSError):
             pass
         return {}
 
@@ -277,40 +251,32 @@ class BaseText(BaseObject):
                 self._meta,
             ))
 
-    def get(self,key,default=None,ish=True,ish_all=None,**kwargs):
-        if self._gcache is None: self._gcache={}
-        if key in self._gcache: return self._gcache[key]
+    def get(self, key, default=None, ish=False, ish_all=None, **kwargs):
         self._hydrate_meta()
+        key = str(key)
+        if key.startswith('_'): ish = False
+        if key.endswith('_l'): return self.meta_l(key[:-2], ish=True, **kwargs)
+        if key.endswith('_1'): return self.meta_1(key[:-2], ish=True, **kwargs)
+        if key.endswith('_'): return self.meta_(key[:-1], ish=True, **kwargs)
 
-        if log>1: log(f'? {key}')
-        key=str(key)
-        if key.startswith('_'): ish=False
-        if key.endswith('_l'): return self.meta_l(key[:-2],ish=ish,**kwargs)
-        if key.endswith('_1'): return self.meta_1(key[:-2],ish=ish,**kwargs)
-        if key.endswith('_'): return self.meta_(key[:-1],ish=ish,**kwargs)
-
-        meta=merge_dict(self._meta,self.__meta)
+        meta = self._meta
         if not ish:
-            res=meta.get(key,default)
-        else:
-            vals = []
-            hvals = set()
-            for k in meta:
-                if k.startswith(key):
-                    l=meta[k]
-                    if type(l)!=list: l=[l]
-                    for v in l:
-                        if v and (not is_hashable(v) or v not in hvals):
-                            if is_hashable(v): hvals|={v}
-                            vals.append(v)
-            if vals:
-                o=(vals if ish_all else vals[0])
-                res=o if o is not None else default
-            else:
-                res = default
+            return meta.get(key, default)
 
-        self._gcache[key]=res
-        return res
+        vals = []
+        hvals = set()
+        for k in meta:
+            if k.startswith(key):
+                l = meta[k]
+                if type(l) != list: l = [l]
+                for v in l:
+                    if v and (not is_hashable(v) or v not in hvals):
+                        if is_hashable(v): hvals |= {v}
+                        vals.append(v)
+        if vals:
+            o = (vals if ish_all else vals[0])
+            return o if o is not None else default
+        return default
         
 
 
@@ -326,41 +292,14 @@ class BaseText(BaseObject):
 
     
 
-    def get_path_old(t,part='texts',**kwargs):
-        if not t.corpus: return ''
-        partattr='path_'+part
-        extattr='ext_'+part
-        res=getattr(t.corpus, partattr, None)
+    def get_path(self, part, **kwargs):
+        if part.startswith('path_'): part = part[5:]
+        if not self.corpus: return ''
+        res = getattr(self.corpus, 'path_' + part, None)
         if res:
-            o=os.path.join(res,t.id)
-            resext=getattr(t.corpus, extattr, None)
-            if resext: o+=resext
-            return o
-
-
-    def get_path(self,part,**kwargs):
-        try:
-            if part.startswith('path_'): part=part[5:]
-            path_old = self.get_path_old(part,**kwargs)
-            if path_old:
-                return path_old
-            path_new = self.get_path_new(part,**kwargs)
-            if path_new:
-                return path_new
-        except Exception as e:
-            log.error(e)
+            ext = getattr(self.corpus, 'ext_' + part, None)
+            return os.path.join(res, self.id) + (ext or '')
         return ''
-            
-
-
-    def get_path_new(self,part,**kwargs):
-        if part == 'txt': return os.path.join(self.path,'text.txt')
-        if part == 'xml': return os.path.join(self.path,'text.xml')
-        if part in {'json','meta','meta_json'}:
-            return os.path.join(self.path,'meta.json')
-        if part == 'sources': return os.path.join(self.path,'_sources')
-        if part == 'freqs': return os.path.join(self.path,'freqs.json')
-        return None
 
     @property
     def path(self):
@@ -447,25 +386,13 @@ class BaseText(BaseObject):
             return []
         return sorted(f[:-5] for f in os.listdir(d) if f.endswith('.json'))
 
-    def get_path_xml(self):
-        if not os.path.exists(self.path_xml):
-            tsrc = self.source
-            if tsrc is not None and os.path.exists(tsrc.path_xml):
-                return tsrc.path_xml
-        return self.path_xml
-
-    def get_path_text(self,part='txt'):
-        if part=='txt':
-            return os.path.join(self.path, 'text.txt')
-        elif part=='xml':
-            return os.path.join(self.path, 'text.xml')
-        return ''
 
 
 
     def update(self, meta={}, **metad):
         if meta or metad:
             self._meta = {**self._meta, **meta, **metad}
+            self._node = None
 
 
     
@@ -480,10 +407,9 @@ class BaseText(BaseObject):
 
     def metadata(self, meta={}, to_numeric=True, sep=META_KEY_SEP, **kwargs):
         self._hydrate_meta()
-        imeta = merge_dict(TEXT_META_DEFAULT, self.META, self.__meta, self._meta, meta)
+        imeta = merge_dict(TEXT_META_DEFAULT, self.META, self._meta, meta)
         ometa = self.ensure_id(imeta, allow_sep=False)
         self._meta = {k: v for k, v in ometa.items() if sep not in k}
-        self.__meta = ometa
         if to_numeric:
             ometa = to_numeric_dict(ometa)
         return ometa
@@ -497,7 +423,7 @@ class BaseText(BaseObject):
 
     def meta_(self, key='', ish=True, **kwargs):
         self._hydrate_meta()
-        meta = merge_dict(self._meta, self.__meta)
+        meta = self._meta
         o = []
         for k, v in meta.items():
             if (ish and k.startswith(key)) or (not ish and k == key):
@@ -526,7 +452,7 @@ class BaseText(BaseObject):
         try:
             binval=self.year//ybin*ybin
             return binval if not as_str else f'{str(binval).zfill(zfill)}-{str(binval+ybin).zfill(zfill)}'
-        except Exception:
+        except (TypeError, ValueError, ZeroDivisionError):
             return np.nan
     @property
     def halfdecade(self): return self.yearbin(5)
@@ -548,51 +474,31 @@ class BaseText(BaseObject):
     def halfcentury_str(self): return self.yearbin(50,as_str=True)
     @property
     def century_str(self): return self.yearbin(100,as_str=True)
+    # These properties delegate to get(), which is the single hydration gateway.
     @property
-    def title(self):
-        self._hydrate_meta()
-        return str(self._meta.get('title', ''))
+    def title(self): return str(self.get('title') or '')
     @property
-    def author(self):
-        self._hydrate_meta()
-        return str(self._meta.get('author', ''))
+    def author(self): return str(self.get('author') or '')
     @property
-    def genre(self):
-        self._hydrate_meta()
-        return str(self._meta.get('genre', ''))
+    def genre(self): return str(self.get('genre') or '')
     @property
-    def genre_raw(self):
-        self._hydrate_meta()
-        return str(self._meta.get('genre_raw', ''))
+    def genre_raw(self): return str(self.get('genre_raw') or '')
     @property
-    def genre_enriched_source(self):
-        self._hydrate_meta()
-        return str(self._meta.get('genre_enriched_source', ''))
+    def genre_enriched_source(self): return str(self.get('genre_enriched_source') or '')
     @property
-    def title_norm(self):
-        self._hydrate_meta()
-        return str(self._meta.get('title_norm', ''))
+    def title_norm(self): return str(self.get('title_norm') or '')
     @property
-    def author_norm(self):
-        self._hydrate_meta()
-        return str(self._meta.get('author_norm', ''))
+    def author_norm(self): return str(self.get('author_norm') or '')
     @property
     def n_words(self):
-        self._hydrate_meta()
-        v = self._meta.get('n_words')
+        v = self.get('n_words')
         return int(v) if v and str(v) != 'nan' else 0
     @property
-    def is_translated(self):
-        self._hydrate_meta()
-        return bool(self._meta.get('is_translated'))
+    def is_translated(self): return bool(self.get('is_translated'))
     @property
-    def original_lang(self):
-        self._hydrate_meta()
-        return self._meta.get('original_lang', '')
+    def original_lang(self): return self.get('original_lang') or ''
     @property
-    def lang_detected(self):
-        self._hydrate_meta()
-        return self._meta.get('lang_detected', '')
+    def lang_detected(self): return self.get('lang_detected') or ''
     @property
     def au(self):
         from lltk.corpus.utils import to_authorkey
@@ -617,7 +523,12 @@ class BaseText(BaseObject):
 
     @property
     def year(self):
-        years = self.years  # comes sorted
+        v = self.get('year')
+        if v is not None:
+            v = pd.to_numeric(v, errors='coerce')
+            if pd.notna(v):
+                return v
+        years = self.years
         if len(years)==0: return np.nan
         if len(years)==1: return years[0]
         if len(years)==2: return years[0]
@@ -649,6 +560,7 @@ class BaseText(BaseObject):
             ):
 
         ti=self.title
+        if not ti: return ''
         ti=ti.strip().replace('—','--').replace('–','-')
         ti=ti.title()
         for x,y in replacements.items(): ti=ti.replace(x.title(),y)
@@ -678,9 +590,9 @@ class BaseText(BaseObject):
     def match_group(self):
         """Return DataFrame of all texts in this text's match group from CH."""
         try:
-            from lltk.tools.metadb import metadb
+            from lltk.db.metadb import metadb
             return metadb.get_group(self.addr)
-        except Exception:
+        except (ImportError, AttributeError, RuntimeError, OSError):
             return None
 
     @property
@@ -700,34 +612,13 @@ class BaseText(BaseObject):
             try:
                 t = Corpus(parts[0]).text(parts[1])
                 texts.append(t)
-            except Exception:
+            except (KeyError, AttributeError, FileNotFoundError, OSError):
                 continue
         return texts or [self]
     
 
 
     
-    
-    def get_sources(self,force=False,**kwargs):
-        if not self.id_is_valid(): return []
-        if force or not self._sources:
-            srcs=set(self.get_matches())
-            self._sources=[
-                t
-                for t in sorted(srcs,key=lambda tx: tx.addr)
-                if t.id_is_valid() and t!=self
-            ]
-        return self._sources
-
-
-    @property
-    def sources(self): return [Text(x) for x in self.matches]
-
-    @property
-    def dsources(self,rel=MATCHRELNAME):
-        #dneighbs={Text(addr) for addr in self.gdb.get_neighbs(self.addr,rel=rel,direct=True)} - {self.addr}
-        #return [src for src in self.get_sources() if src in dneighbs]
-        return {Text(addr) for addr in self.rels}
     
     _linked_cache = {}
 
@@ -793,10 +684,6 @@ class BaseText(BaseObject):
     @property
     def source(self):
         if self._source is not None: return Text(self._source)
-        srcs=[x for x in self._sources]
-        if srcs: return Text(srcs[0])
-        srcs=self.sources
-        if srcs: return list(srcs)[0]
 
 
 
@@ -808,13 +695,21 @@ class BaseText(BaseObject):
     # load text?
     
     @property
-    def txt(self): return self.get_txt()
+    def txt(self):
+        if not self._txt:
+            self._txt = self.text_plain()
+        return clean_text(self._txt) if self._txt else ''
 
     @property
     def xml(self):
         if self._xml: return self._xml
-        path_xml = self.get_path_xml()
-        if not os.path.exists(path_xml): return ''
+        path_xml = self.path_xml
+        if not path_xml or not os.path.exists(path_xml):
+            src = getattr(self, '_source', None)
+            if src is not None and hasattr(src, 'path_xml') and os.path.exists(src.path_xml):
+                path_xml = src.path_xml
+            else:
+                return ''
         with _open_file(path_xml) as f: return clean_text(f.read())
     
     
@@ -852,30 +747,6 @@ class BaseText(BaseObject):
         if os.path.exists(self.path_xml): return self.XML2TXT.__func__(self.path_xml)
         return ''
 
-    def get_txt(self,force=False,prefer_sections=False,section_type=None,force_xml=False):
-        # Subclass text_plain overrides may not accept `force_xml`; only pass
-        # it when it's set so legacy corpora (chadwyck_poetry, chadwyck_drama,
-        # ecco, dialogues, etc.) keep working.
-        def _call_text_plain():
-            if force_xml:
-                try:
-                    return self.text_plain(force_xml=force_xml)
-                except TypeError:
-                    pass  # subclass override doesn't accept force_xml
-            return self.text_plain()
-        if force or not self._txt:
-            if not prefer_sections:
-                self._txt=_call_text_plain()
-                self._txt_offsets={}
-            else:
-                secs=self.sections(section_type)
-                if secs is not None and secs.txt:
-                    self._txt=secs.txt
-                    self._txt_offsets=secs._txt_offsets
-                else:
-                    self._txt=_call_text_plain()
-                    self._txt_offsets={}
-        return clean_text(self._txt) if self._txt else ''
 
     
     # freqs
@@ -907,7 +778,7 @@ class BaseText(BaseObject):
     @property
     def lang(self):
         """Best-effort language as ISO 639-1 two-letter code."""
-        from lltk.tools.metadb import normalize_lang
+        from lltk.db.metadb import normalize_lang
         meta = self._meta or {}
         for key in ('lang', 'language', 'language_1', 'estc_lang', 'language1'):
             val = meta.get(key)
@@ -1006,10 +877,6 @@ class BaseText(BaseObject):
                     db.set(qkey,buf64)
         return self._minhash
 
-    def hashdist(self,text,cache=True):
-        m1=self.minhash(cache=cache)
-        m2=text.minhash(cache=cache)
-        return 1 - m1.jaccard(m2)
 
     def get_section_class(self,section_class=None):
         if section_class is not None: return section_class
@@ -1067,22 +934,7 @@ class BaseText(BaseObject):
         if issubclass(self.__class__,TextSection): return self.source
         return self
 
-    def characters(self,id='default',systems={'booknlp'},**kwargs):
-        if type(self._characters)!=dict: self._characters={}
-        if not id in self._characters:
-            from lltk.model.characters import CharacterSystem
-            CS=self._characters[id]=CharacterSystem(self.text_root)
-            for sysname in systems:
-                system=getattr(self,sysname)
-                CS.add_system(system)
-        return self._characters[id]
 
-    def get_character_id(self,char_tok_or_id,**kwargs):
-        return self.characters().get_character_id(char_tok_or_id,**kwargs)
-
-    @property
-    def charsys(self): return self.characters()
-    def interactions(self,**kwargs): return self.charsys.interactions(**kwargs)
 
     @property
     def booknlp(self):
@@ -1114,9 +966,9 @@ class TextSection(BaseText):
         # override corpus set by BaseText.__init__
         self.corpus = _section_corpus
     @property
-    def path_txt(self): return self.get_path_text('txt')
+    def path_txt(self): return os.path.join(self.path, 'text.txt')
     @property
-    def path_xml(self): return self.get_path_text('xml')
+    def path_xml(self): return os.path.join(self.path, 'text.xml')
 
     @property
     def txt(self):
@@ -1167,99 +1019,61 @@ class TextSection(BaseText):
         return filter_freqs(self._freqs, modernize=modernize_spelling, lower=lower)
 
 
-def get_addr_from_d(d,keys=['_id','_addr','id']):
-    for k in keys:
-        if k in d and d[k] and is_textish(d[k]):
-            return d[k]
-    return None
+TEXT_CACHE = {}
 
 
+def Text(id=None, _corpus=None, _source=None, **kwargs):
+    """Factory: resolve an address string to a cached text object.
 
+    Common usage: ``Text('_corpus/id')`` -- parse the address, look up the
+    corpus, and return a (possibly cached) text object.
 
+    Parameters
+    ----------
+    id : str or BaseText
+        An address string like ``'_corpus/id'``, or an already-resolved text.
+    _corpus : str, optional
+        Explicit corpus name (used when *id* is a bare ID without prefix).
+    _source : str or BaseText, optional
+        Source text for linking.
+    **kwargs
+        Extra keyword arguments forwarded to ``Corpus.text()``.
+    """
 
-TEXT_CACHE=defaultdict(type(None))
-def Text(
-        id=None,
-        _corpus=None,
-        _source=None,
-        _force=False,
-        _new=False,
-        _add=True,
-        _init=False,
-        _cache=False,
-        _use_db=True,
-        # _col_id=COL_ID,
-        **_params_or_meta):
-    global TEXT_CACHE
-    t=None
-    text=id
-    if is_text_obj(text) and not _corpus: return text
-    if is_corpus_obj(text): return text
+    # Already a text object -- return as-is.
+    if is_text_obj(id):
+        return id
 
-    if _new: _force=True
-    
-    meta = just_meta_no_id(_params_or_meta)
-    if is_addr_str(text): 
-        taddr=text
-    elif is_dictish(text):
-        tdata=text.get('data')
-        if tdata and text.get('id'):
-            id=text.get('id')
-            meta=dict(tdata)
-            taddr = id
-        else:
-            meta = {**meta, **just_meta_no_id(text)}
-            taddr = get_addr_from_d(text)
+    # Resolve the address string.
+    if is_addr_str(id):
+        taddr = id
+    elif isinstance(id, str) and _corpus:
+        taddr = f"{IDSEP_START}{_corpus}{IDSEP}{id}"
     else:
-        if log>1: log(f'<- {get_imsg(text,_corpus,_source,**meta)}')
-        taddr = get_addr_str(**{
-            **_params_or_meta,
-            **dict(
-                text=text,
-                corpus=_corpus,
-                source=_source,
-            )
-        })
-    if not taddr:
-        taddr = get_addr_str(get_idx(),TMP_CORPUS_ID)
-        if log: log(f"cannot get address for {(text,_corpus)}")
-    if taddr and not is_textish(taddr):
-        taddr=get_addr_str(taddr,TMP_CORPUS_ID)
-    
-    if log>1: log(f'<- addr = {taddr}')
+        taddr = get_addr_str(text=id, corpus=_corpus, source=_source)
 
-    # set kwargs
-    
+    if not taddr or not is_addr_str(taddr):
+        return NullText()
 
-    if not _force and is_text_obj(TEXT_CACHE.get(taddr)) and TEXT_CACHE[taddr].is_valid():
-        if log>1: log('found in `TEXT_CACHE`')
-        t = TEXT_CACHE[taddr]
-        if is_text_obj(t) and meta: t.update(meta)
-        t = t if is_valid_text_obj(t) else NullText()
+    # Cache hit?
+    cached = TEXT_CACHE.get(taddr)
+    if cached is not None and is_text_obj(cached):
+        return cached
+
+    # Parse into corpus + id, then delegate to Corpus.text().
+    tcorp, tid = to_corpus_and_id(taddr)
+    if not tcorp or not tid:
+        return NullText()
+
+    from lltk.corpus.corpus import Corpus
+    t = Corpus(tcorp).text(id=tid, _source=_source, **kwargs)
+
+    # Cache and return.
+    if is_text_obj(t) and t.id_is_valid():
+        TEXT_CACHE[t.addr] = t
         return t
-    
-    tcorp,tid = to_corpus_and_id(taddr)
-    if tcorp and tid:
-        if log>1: log(f'Corpus( {tcorp} ).text( {tid} ) ->')
-        
-        from lltk.corpus.corpus import Corpus
-        t = Corpus(tcorp).text(
-            id=tid,
-            _source=_source,
-            _add=_add,
-            _init=_init,
-            _cache=_cache,
-            _force=_force,
-            _new=_new,
-            **meta
-        )
-        if is_valid_text_obj(t): TEXT_CACHE[t.addr] = t
-    
-    t = t if is_valid_text_obj(t) else NullText()
-    if log>1: log(f'-> {t}')
-    return t
 
-
+    return NullText()
 
 
 class NullText(BaseText):
@@ -1267,17 +1081,3 @@ class NullText(BaseText):
 
 
 
-
-
-
-
-
-
-
-
-
-def proc_minhash(taddr):
-    try:
-        Text(taddr).minhash()
-    except Exception as e:
-        log.error(e)

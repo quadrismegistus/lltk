@@ -38,8 +38,8 @@ def pipeline(corpus, request):
     if os.environ.get('LLTK_TEST_CH_HOST') is None:
         pytest.skip('Set LLTK_TEST_CH_HOST to enable')
 
-    from lltk.tools.db_adapter import ClickHouseAdapter
-    from lltk.tools.clickhouse_schema import create_all_tables
+    from lltk.db.adapter import ClickHouseAdapter
+    from lltk.db.schema import create_all_tables
 
     # Connect to fresh CH server (Docker in CI)
     adapter = ClickHouseAdapter(
@@ -61,20 +61,20 @@ def pipeline(corpus, request):
     create_all_tables(adapter, database='lltk')
 
     # 1. Rebuild
-    from lltk.tools.clickhouse_rebuild import ingest_corpus_to_clickhouse
+    from lltk.db.rebuild import ingest_corpus_to_clickhouse
     ingest_corpus_to_clickhouse(corpus.id, adapter)
 
     # 2. Freqs
-    from lltk.tools.clickhouse_ingest import ingest_freqs_from_jsons
+    from lltk.db.ingest import ingest_freqs_from_jsons
     ingest_freqs_from_jsons(adapter, corpora=[corpus.id])
 
     # 3. Text words + stats
-    from lltk.tools.clickhouse_text_words import build_text_words, build_text_stats
+    from lltk.db.text_words import build_text_words, build_text_stats
     build_text_words(adapter, corpora=[corpus.id], force=True)
     build_text_stats(adapter, force=True)
 
     # 4. Passages
-    from lltk.tools.clickhouse_passages import build_passages_ch
+    from lltk.db.passages import build_passages_ch
     tasks = []
     for t in corpus.texts():
         txt_path = getattr(t, 'path_txt', None)
@@ -192,18 +192,18 @@ class TestPassages:
             assert int(row['n_words']) > 0
 
     def test_passage_retrieval(self, pipeline):
-        from lltk.tools.clickhouse_passages import get_passages_ch
+        from lltk.db.passages import get_passages_ch
         df = get_passages_ch(pipeline, ['_test_fixture/austen_pride'], scheme='p500')
         assert len(df) > 0
         assert 'text' in df.columns
 
     def test_passage_search(self, pipeline):
-        from lltk.tools.clickhouse_passages import search_passages_ch
+        from lltk.db.passages import search_passages_ch
         results = search_passages_ch(pipeline, 'the', limit=5)
         assert isinstance(results, list)
 
     def test_passage_count(self, pipeline):
-        from lltk.tools.clickhouse_passages import search_passages_count_ch
+        from lltk.db.passages import search_passages_count_ch
         n = search_passages_count_ch(pipeline, 'the')
         assert n > 0
 
@@ -213,7 +213,7 @@ class TestPassages:
 @needs_ch
 class TestExport:
     def test_export_creates_files(self, pipeline, tmp_path):
-        from lltk.tools.clickhouse_passages import export_passages_ch
+        from lltk.db.passages import export_passages_ch
         n_texts, n_passages = export_passages_ch(
             pipeline, corpus='test_fixture', out_dir=str(tmp_path),
         )
@@ -222,7 +222,7 @@ class TestExport:
         assert len(list(tmp_path.rglob('*.jsonl'))) == 3
 
     def test_export_jsonl_format(self, pipeline, tmp_path):
-        from lltk.tools.clickhouse_passages import export_passages_ch
+        from lltk.db.passages import export_passages_ch
         export_passages_ch(
             pipeline, ids=['_test_fixture/austen_pride'],
             out_dir=str(tmp_path),
@@ -237,7 +237,7 @@ class TestExport:
         assert len(passages) > 0
 
     def test_export_year_filter(self, pipeline, tmp_path):
-        from lltk.tools.clickhouse_passages import export_passages_ch
+        from lltk.db.passages import export_passages_ch
         n_texts, _ = export_passages_ch(
             pipeline, corpus='test_fixture', year_max=1800,
             out_dir=str(tmp_path),

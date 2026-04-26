@@ -7,8 +7,8 @@ either side paying the complex-type serialization cost in Python.
 
 Usage (module):
 
-    from lltk.tools.db_adapter import get_adapter
-    from lltk.tools.db_migrate import migrate_tables
+    from lltk.db.adapter import get_adapter
+    from lltk.db.migrate import migrate_tables
 
     src = get_adapter('duckdb:///~/lltk_data/data/metadb.duckdb')
     dst = get_adapter('clickhouse://lltk:lltk@localhost:8123/lltk')
@@ -16,7 +16,7 @@ Usage (module):
 
 Usage (CLI):
 
-    python -m lltk.tools.db_migrate --tables texts matches match_groups
+    python -m lltk.db.migrate --tables texts matches match_groups
 """
 
 import argparse
@@ -24,8 +24,8 @@ import os
 import tempfile
 import time
 
-from lltk.tools.db_adapter import get_adapter, DuckDBAdapter, ClickHouseAdapter
-from lltk.tools.clickhouse_schema import create_all_tables
+from lltk.db.adapter import get_adapter, DuckDBAdapter, ClickHouseAdapter
+from lltk.db.schema import create_all_tables
 
 
 # Map: ClickHouse table name → (DuckDB source query, optional column projection)

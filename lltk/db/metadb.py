@@ -109,36 +109,7 @@ def normalize_genre_raw(val):
 
 # ── Year parsing ─────────────────────────────────────────────────────
 
-def _parse_year(val):
-    """Parse a year value to integer. Handles ranges, circa dates, etc."""
-    if val is None or (isinstance(val, float) and np.isnan(val)):
-        return None
-    s = str(val).strip()
-    if not s or s in ('nan', 'None', ''):
-        return None
-    for prefix in ('c.', 'c ', 'ca.', 'ca ', '[', ']', '?', '~'):
-        s = s.replace(prefix, '')
-    s = s.strip()
-    try:
-        return int(float(s))
-    except (ValueError, OverflowError):
-        pass
-    if '-' in s:
-        parts = s.split('-')
-        try:
-            years = [int(float(p.strip())) for p in parts if p.strip()]
-            years = [y for y in years if 100 < y < 2100]
-            if years:
-                return years[0]
-        except (ValueError, OverflowError):
-            pass
-    m = re.search(r'\b(\d{4})\b', s)
-    if m:
-        try:
-            return int(m.group(1))
-        except (ValueError, OverflowError):
-            pass
-    return None
+from lltk.tools.constants import _parse_year
 
 
 # ── Corpus DataFrame preparation ─────────────────────────────────────
@@ -277,5 +248,5 @@ def prepare_corpus_df(df, corpus_id, corpus=None, default_lang=None):
 
 # ── Singleton ────────────────────────────────────────────────────────
 
-from lltk.tools.metadb_ch import MetaDBCH
+from lltk.db.metadb_ch import MetaDBCH
 metadb = MetaDBCH()

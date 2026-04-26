@@ -7,7 +7,7 @@ without pulling in ClickHouse or DuckDB deps. `from lltk.tools.vocabs import
 GENRE_VOCAB` works in any environment with lltk installed.
 
 Historical note: GENRE_VOCAB and LANG_NORMALIZE originally lived in
-`lltk.tools.metadb`. They are still re-exported from there for
+`lltk.db.metadb`. They are still re-exported from there for
 backwards-compat; new code should import from here.
 """
 

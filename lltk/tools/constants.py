@@ -1,11 +1,218 @@
 """
 Shared constants and utility functions used across lltk.tools modules.
 
-Extracted from metadb.py to eliminate the 3,500-line DuckDB legacy module.
+This module is the single source of truth for all lltk constants.
+Imported by lltk.imports (which re-exports everything) and by
+lltk.tools.tools (which needs a few constants at module level without
+triggering circular imports through lltk.imports).
 """
 
 import os
 import re
+import multiprocessing as mp
+from collections import defaultdict
+
+
+# ── Process / CPU constants ─────────────────────────────────────────
+
+try:
+    mp.set_start_method('fork')
+except RuntimeError:
+    pass
+mp_cpu_count = mp.cpu_count()
+DEFAULT_NUM_PROC = max(1, mp_cpu_count - 2)
+
+# ── Paths (no config dependency) ────────────────────────────────────
+
+HOME = os.path.expanduser('~')
+LLTK_ROOT = PATH_HERE = ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+PATH_BASE_CONF = os.path.join(HOME, '.lltk_config')
+PATH_DEFAULT_LLTK_HOME = os.path.join(HOME, 'lltk_data')
+PATH_DEFAULT_CONF = os.path.abspath(os.path.join(PATH_DEFAULT_LLTK_HOME, 'config_default.txt'))
+PATH_LLTK_CONFIG_DIR = os.path.abspath(os.path.join(PATH_DEFAULT_LLTK_HOME, 'config'))
+PATH_LLTK_CONFIG_USR = os.path.join(PATH_DEFAULT_LLTK_HOME, '.user.json')
+
+# ── Separators / keys ──────────────────────────────────────────────
+
+META_KEY_SEP = '__'
+MATCHRELNAME = 'rdf:type'
+
+# ── Minimal metadata schema ────────────────────────────────────────
+
+MINIMETAD = {
+    'author': ['author'],
+    'title': ['title'],
+    'year': ['year', 'date'],
+}
+
+# ── Mutable singletons ────────────────────────────────────────────
+
+DATABOX = defaultdict(dict)
+
+# ── Text / column constants ────────────────────────────────────────
+
+DIR_SECTION_NAME = 'sections'
+TEXT_META_DEFAULT = {'id': '', 'author': '', 'title': '', 'year': ''}
+
+BAD_COLS = {'Unnamed: 0', '_llp_'}
+CHECKMARK = '✓'
+CROSSMARK = '✗'
+DIR_TEXTS_NAME = 'texts'
+
+COL_ID = 'id'
+COL_ADDR = '_id'
+COL_CORPUS = '_corpus'
+IDSEP_START = '_'
+IDSEP = '/'
+
+NULL_QID = 'Q0'
+ANNO_EXTS = ['.anno.xlsx', '.anno.xls', '.anno.csv', '.xlsx', '.xls']
+
+EMPTY_GROUP = '(all)'
+TMP_CORPUS_ID = 'tmp'
+
+MODERNIZE_SPELLING = False
+ZIP_PART_DEFAULTS = {'txt', 'freqs', 'metadata', 'xml', 'data'}
+DOWNLOAD_PART_DEFAULTS = ['metadata']
+PREPROC_CMDS = ['txt', 'freqs', 'mfw', 'dtm']
+DEFAULT_MFW_N = 25000
+DEFAULT_DTM_N = 25000
+DEFAULT_MFW_YEARBIN = 100
+MANIFEST_REQUIRED_DATA = ['name', 'id']
+TEXT_PATH_KEYS = [
+    'path_freqs',
+    'path_txt',
+    'path_xml',
+]
+BROKENSTATE = '__Broken_state__'
+PATH_CORENLP = '~/lltk_data/tools/corenlp'
+
+# ── Data file paths (relative to lltk home) ────────────────────────
+
+PATH_TO_ENGLISH_WORDLIST = 'data/default/wordlist.aspell.net.with_caps.txt.gz'
+PATH_TO_ENGLISH_STOPWORDS = 'data/default/stopwords.onix.txt.gz'
+PATH_TO_ENGLISH_SPELLING_MODERNIZER = 'data/default/spelling_variants_from_morphadorner.txt.gz'
+PATH_TO_ENGLISH_OCR_CORRECTION_RULES = 'data/default/CorrectionRules.txt.gz'
+PATH_TO_ENGLISH_WORD2POS = 'data/default/word2pos.json.gz'
+
+PATH_TO_BOOKNLP_BINARY = 'bin/book-nlp/runjava'
+
+# ── Manifest defaults ──────────────────────────────────────────────
+
+MANIFEST_DEFAULTS = dict(
+    path_txt='txt',
+    path_xml='xml',
+    path_nlp='nlp',
+    path_pos='pos',
+    path_index='',
+    ext_xml='.xml',
+    ext_txt='.txt',
+    ext_nlp='.jsonl',
+    ext_freqs='.json',
+    path_cadence_scan='cadence_scan',
+    path_cadence_parse='cadence_parse',
+    path_model='',
+    path_header=None,
+    path_metadata='metadata.csv',
+    path_metadata_init='metadata_init.csv',
+    path_metadata_letters='metadata_letters.pkl',
+    path_notebook='notebook.ipynb',
+    paths_text_data=[],
+    paths_rel_data=[],
+    class_name='',
+    path_freq_table={},
+    col_id='id',
+    col_addr='_id',
+    col_id_corpus='id_corpus',
+    col_id_text='id_text',
+    idsep='|', col_t='_text',
+    col_fn='fn',
+    path_root='',
+    path_raw='raw',
+    path_spacy='spacy',
+    path_freqs='freqs',
+    manifest={},
+    path_python='',
+    manifest_override=True,
+    path_data='data',
+    path_chars='chars',
+    path_letters='letters',
+    is_meta='',
+    public='',
+    private='',
+    mfw_yearbin=False,
+    mfw_n=25000,
+    license='',
+    license_type='',
+    year_start=None,
+    year_end=None,
+    lang='en',
+)
+
+BAD_TAGS = {'figdesc', 'head', 'edit', 'note', 'header', 'footer', 'dochead', 'front'}
+
+# ── BookNLP constants ──────────────────────────────────────────────
+
+BOOKNLP_NARRATOR_ID = 'NARRATOR'
+BOOKNLP_DEFAULT_LANGUAGE = "en"
+BOOKNLP_DEFAULT_MODEL = 'small'
+BOOKNLP_DEFAULT_PIPELINE = "entity,quote,supersense,event,coref"
+BOOKNLP_RENAME_COLS = {
+    'paragraph_ID': 'para_i',
+    'sentence_ID': 'sent_i',
+    'token_ID_within_sentence': 'sent_token_i',
+    'token_ID_within_document': 'token_i',
+    'word': 'token',
+    'lemma': 'lemma',
+    'byte_onset': 'onset',
+    'byte_offset': 'offset',
+    'POS_tag': 'pos',
+    'fine_POS_tag': 'pos2',
+    'dependency_relation': 'deprel',
+    'syntactic_head_ID': 'head',
+    'event': 'event',
+}
+BAD_CHAR_IDS = {'?', '?!', 'x', 'nan', 'None'}
+chardata_metakeys_initial = dict(
+    char_race='',
+    char_gender='',
+    char_class='',
+    char_geo_birth='',
+    char_geo_marriage='',
+    char_geo_death='',
+    char_geo_begin='',
+    char_geo_middle='',
+    char_geo_end='',
+)
+
+# ── Year keys ──────────────────────────────────────────────────────
+
+YEARKEYS = ['year', 'date']
+
+# ── Init DB corpora ────────────────────────────────────────────────
+
+INIT_DB_WITH_CORPORA = {
+    'chadwyck',
+    'chicago',
+    'markmark',
+    'txtlab',
+    'tedjdh',
+    'gildedage',
+    'clmet',
+    'dta',
+    'dialnarr',
+    'estc',
+    'eebo_tcp',
+    'ecco_tcp',
+    'ecco',
+    'evans_tcp',
+    'litlab',
+    'semantic_cohort',
+    'spectator',
+}
+
+
+# ── Vocab imports ──────────────────────────────────────────────────
 
 from lltk.tools.vocabs import (
     GENRE_VOCAB,
@@ -13,6 +220,8 @@ from lltk.tools.vocabs import (
     LANG_NORMALIZE,
     normalize_lang,
 )
+
+# ── DB constants (from metadb.py extraction) ───────────────────────
 
 DB_BLACKLIST = {'hathi', 'bighist', 'spanish_pd_books'}
 
@@ -71,14 +280,16 @@ _TITLE_END_PHRASES = sorted([
 
 _spelling_modernizer = None
 
+
 def _get_spelling_modernizer():
     global _spelling_modernizer
     if _spelling_modernizer is not None:
         return _spelling_modernizer
     try:
-        from lltk.imports import PATH_LLTK_HOME, PATH_TO_ENGLISH_SPELLING_MODERNIZER
         path = PATH_TO_ENGLISH_SPELLING_MODERNIZER
         if not os.path.isabs(path):
+            # PATH_LLTK_HOME depends on config; lazy import avoids circularity
+            from lltk.imports import PATH_LLTK_HOME
             path = os.path.join(PATH_LLTK_HOME, path)
         if os.path.exists(path):
             import gzip
@@ -198,6 +409,63 @@ def _jaro_winkler(s1, s2):
     return jaro + prefix * 0.1 * (1 - jaro)
 
 
+def _parse_year(val):
+    """Parse a year value to integer. Handles ranges, circa dates, etc."""
+    import re as _re
+    import numpy as np
+    if val is None or (isinstance(val, float) and np.isnan(val)):
+        return None
+    s = str(val).strip()
+    if not s or s in ('nan', 'None', ''):
+        return None
+    for pfx in ('c.', 'c ', 'ca.', 'ca ', '[', ']', '?', '~'):
+        s = s.replace(pfx, '')
+    s = s.strip()
+    try:
+        return int(float(s))
+    except (ValueError, OverflowError):
+        pass
+    if '-' in s:
+        parts = s.split('-')
+        try:
+            years = [int(float(p.strip())) for p in parts if p.strip()]
+            years = [y for y in years if 100 < y < 2100]
+            if years:
+                return years[0]
+        except (ValueError, OverflowError):
+            pass
+    m = _re.search(r'\b(\d{4})\b', s)
+    if m:
+        try:
+            return int(m.group(1))
+        except (ValueError, OverflowError):
+            pass
+    return None
+
+
+def chunk_sentences(sents, n=500):
+    """Split a list of sentences into ~n-word chunks.
+
+    Yields (chunk_text, word_start, word_end, num_words) tuples.
+    Word counting uses str.split() for consistency between
+    in-memory sectioning and ClickHouse passage ingest.
+    """
+    chunk_sents = []
+    chunk_word_count = 0
+    word_offset = 0
+    for sent in sents:
+        sent_n = len(sent.split())
+        chunk_sents.append(sent)
+        chunk_word_count += sent_n
+        if chunk_word_count >= n:
+            yield (' '.join(chunk_sents), word_offset, word_offset + chunk_word_count, chunk_word_count)
+            word_offset += chunk_word_count
+            chunk_sents = []
+            chunk_word_count = 0
+    if chunk_sents:
+        yield (' '.join(chunk_sents), word_offset, word_offset + chunk_word_count, chunk_word_count)
+
+
 def _chunk_text_to_passages(args):
     """Chunk a single text file into ~n-word passages using sentence splitting."""
     _id, corpus_id, txt_path, lang, n = args
@@ -211,20 +479,8 @@ def _chunk_text_to_passages(args):
         punkt_lang = _lang_to_punkt(lang)
         sents = nltk.sent_tokenize(txt, language=punkt_lang)
         passages = []
-        chunk_sents = []
-        chunk_word_count = 0
-        seq = 0
-        for sent in sents:
-            sent_n = len(sent.split())
-            chunk_sents.append(sent)
-            chunk_word_count += sent_n
-            if chunk_word_count >= n:
-                passages.append((_id, seq, ' '.join(chunk_sents), chunk_word_count, lang))
-                seq += 1
-                chunk_sents = []
-                chunk_word_count = 0
-        if chunk_sents:
-            passages.append((_id, seq, ' '.join(chunk_sents), chunk_word_count, lang))
+        for seq, (chunk_txt, word_start, word_end, num_words) in enumerate(chunk_sentences(sents, n)):
+            passages.append((_id, seq, chunk_txt, num_words, lang))
         return (_id, corpus_id, passages)
     except Exception:
         return (_id, corpus_id, [])

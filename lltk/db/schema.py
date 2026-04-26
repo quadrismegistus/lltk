@@ -1,7 +1,7 @@
 """
 ClickHouse schema definitions for LLTK's core tables.
 
-Mirrors the DuckDB schema (lltk/tools/metadb.py) but picks MergeTree engines
+Mirrors the DuckDB schema (lltk/db/metadb.py) but picks MergeTree engines
 and ORDER BY keys optimized for ClickHouse's query patterns.
 
 Notes on engine choices:

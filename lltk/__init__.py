@@ -1,5 +1,5 @@
 from .imports import *
-from .tools.metadb import metadb as db
+from .db import db
 
 
 def task_path(_id: str, task_name: str) -> str:

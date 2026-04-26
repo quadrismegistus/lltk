@@ -1,7 +1,7 @@
 import math
 import os
 import shutil
-
+from logmap import logmap
 import pandas as pd
 
 from collections import defaultdict
@@ -107,7 +107,7 @@ def corpora(load=True,load_meta=False,incl_meta_corpora=True):
         try:
             corpus_obj=load_corpus(corpus_name,load_meta=load_meta) if load else manifest[corpus_name]
             if is_corpus_obj(corpus_obj): yield (corpus_name, corpus_obj)
-        except Exception as e:
+        except Exception as e:  # broad: load_corpus exec's arbitrary user .py modules
             log.error(e)
 
 def check_corpora(paths=['path_raw','path_xml','path_txt','path_freqs','path_metadata'],incl_meta_corpora=False):
@@ -288,13 +288,14 @@ def fix_meta(metadf, badcols={'_llp_','_lltk_','corpus','index','id.1','url_word
     return metadf
 
 def clean_meta(meta):
-    # clean year?
     meta=fix_meta(meta)
     if 'year' in set(meta.columns):
-        newyears=pd.to_numeric(meta.year,errors='coerce',downcast='integer')
-        if False in {(x==y) for x,y in zip(meta.year, newyears)}:
-            meta['year_orig']=meta.year
-        meta['year']=newyears
+        from lltk.tools.constants import _parse_year
+        raw = meta['year']
+        parsed = raw.apply(_parse_year)
+        if not raw.equals(parsed):
+            meta['year_orig'] = raw
+        meta['year'] = parsed
     return meta
 
 
@@ -629,7 +630,7 @@ def write_manifest(ofn, path_manifests=PATH_MANIFESTS, new_config={}):
     with open(ofn, 'w') as configfile:
         config.write(configfile)
 
-def load_manifest(force=True,corpus_name=None,path_manifests=PATH_MANIFESTS):
+def load_manifest(force=False,corpus_name=None,path_manifests=PATH_MANIFESTS):
     if MANIFEST and not force: return MANIFEST
 
     # read config
@@ -698,33 +699,25 @@ def to_yearbin(year,yearbin):
         return
     
 
-def get_all_sources_recursive(text,sofar=set(),**kwargs):
-    sources = text._sources #get_sources(**kwargs)
-    for src in sources:
-        if src in sofar: continue
-        if log>0: log(f'{text} --?--> {src}')
-        sofar|=get_all_sources_recursive(src,sofar=sofar|{text,src})
-    sofar|={text} | set(sources)
-    return sofar
 
 
+@logmap.fn
 def load_corpus(id,manifestd={},load_meta=False,force=False,install_if_nec=True,**input_kwargs):
     from lltk.imports import log
     if not manifestd: manifestd=load_corpus_manifest(id,make_path_abs=True)
     # plog('>> loading:',name_or_id,manifestd)
-    if log>0: log(f'<- id = {id}')
+    # log.info(f'<- id = {id}')
     id,path_python,class_name=(
         manifestd.get('id'),
         manifestd.get('path_python'),
         manifestd.get('class_name')
     )
     if not path_python or not os.path.exists(path_python): 
-        if log>0: log(f'-> ?')
+        log.info(f'-> ?')
         return
 
     from lltk.text.utils import merge_dict
     inpd = merge_dict(manifestd, input_kwargs)
-    if log>0: log(f'Importing corpus class "{class_name}" from {path_python}')
     
     try:
         import importlib.util
@@ -733,7 +726,6 @@ def load_corpus(id,manifestd={},load_meta=False,force=False,install_if_nec=True,
         spec.loader.exec_module(module)
         class_class = getattr(module,class_name)
         C = class_class(**inpd)
-        if log>0: log(f'-> {C}')
         return C
     # except AssertionError as e:
     except AssertionError:
@@ -904,14 +896,14 @@ def do_gen_mfw_grp(group,*x,**y):
     return df
 
 
-CORPUSOBJD={}
-def load(name_or_id,load_meta=False,force=False,install_if_nec=False,**y):
-    global CORPUSOBJD
-    # log([force, name_or_id, name_or_id in CORPUSOBJD, CORPUSOBJD.get(name_or_id)])
-    if force or not name_or_id in CORPUSOBJD or CORPUSOBJD[name_or_id] is None:
-        # log('Loading...')
-        CORPUSOBJD[name_or_id] = load_corpus(name_or_id,load_meta=load_meta,install_if_nec=install_if_nec,**y)
-    return CORPUSOBJD[name_or_id]
+def load(name_or_id, load_meta=False, force=False, install_if_nec=False, **y):
+    from lltk.corpus.corpus import CORPUS_CACHE
+    if not force and name_or_id in CORPUS_CACHE and CORPUS_CACHE[name_or_id] is not None:
+        return CORPUS_CACHE[name_or_id]
+    C = load_corpus(name_or_id, load_meta=load_meta, install_if_nec=install_if_nec, **y)
+    if C is not None:
+        CORPUS_CACHE[C.id] = CORPUS_CACHE[C.name] = C
+    return C
 #################################################################
 
 # Attach meta

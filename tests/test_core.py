@@ -548,47 +548,6 @@ class TestNormalizeEstcId:
         assert _normalize_estc_id(float('nan')) == ''
 
 
-class TestFindDuplicates:
-    """Tests for within-corpus duplicate detection."""
-
-    @pytest.fixture
-    def base_texts(self, corpus):
-        return [t for t in corpus.texts() if t.id in {'blake_songs', 'austen_pride', 'shelley_frank'}]
-
-    def test_find_duplicates_returns_dataframe(self, corpus, base_texts):
-        result = corpus.find_duplicates(n=100, threshold=0.5, texts=base_texts)
-        assert isinstance(result, pd.DataFrame)
-        assert set(result.columns) == {'id_1', 'id_2', 'similarity'}
-
-    def test_find_duplicates_similarity_range(self, corpus, base_texts):
-        result = corpus.find_duplicates(n=100, threshold=0.0, texts=base_texts)
-        if len(result):
-            assert (result['similarity'] >= 0).all()
-            assert (result['similarity'] <= 1).all()
-
-    def test_find_duplicates_no_self_matches(self, corpus, base_texts):
-        result = corpus.find_duplicates(n=100, threshold=0.0, texts=base_texts)
-        if len(result):
-            assert (result['id_1'] != result['id_2']).all()
-
-    def test_find_duplicates_sorted_descending(self, corpus, base_texts):
-        result = corpus.find_duplicates(n=100, threshold=0.0, texts=base_texts)
-        if len(result) > 1:
-            sims = result['similarity'].tolist()
-            assert sims == sorted(sims, reverse=True)
-
-    def test_find_duplicates_high_threshold_fewer_results(self, corpus, base_texts):
-        low = corpus.find_duplicates(n=100, threshold=0.3, texts=base_texts)
-        high = corpus.find_duplicates(n=100, threshold=0.9, texts=base_texts)
-        assert len(high) <= len(low)
-
-    def test_find_duplicates_no_duplicate_pairs(self, corpus, base_texts):
-        result = corpus.find_duplicates(n=100, threshold=0.0, texts=base_texts)
-        if len(result):
-            pairs = set(zip(result['id_1'], result['id_2']))
-            assert len(pairs) == len(result)
-
-
 class TestBLBooks:
     """Tests for BLBooks corpus (no download required)."""
 
@@ -691,9 +650,9 @@ class TestTextPathResolution:
         assert text.path.endswith(text.id)
         assert 'texts' in text.path
 
-    def test_get_path_old_used(self, text):
-        """get_path_old should find flat-directory paths when corpus.path_* exists."""
-        path = text.get_path_old('txt')
+    def test_get_path_finds_flat_layout(self, text):
+        """get_path should find flat-directory paths when corpus.path_* exists."""
+        path = text.get_path('txt')
         assert path is not None
         assert text.id in path
 
@@ -728,8 +687,12 @@ class TestTextMetadataHydration:
         assert text.get('author') == text.author
 
     def test_get_fuzzy_key(self, text):
-        """get('au') should fuzzy-match to 'author'."""
-        assert text.get('au') == text.author
+        """get('au', ish=True) should fuzzy-match to 'author'."""
+        assert text.get('au', ish=True) == text.author
+
+    def test_get_exact_by_default(self, text):
+        """get('au') with default ish=False should not fuzzy-match."""
+        assert text.get('au') is None
 
     def test_get_nonexistent_returns_none(self, text):
         assert text.get('xyzzy_nonexistent_key') is None
@@ -828,44 +791,44 @@ class TestNormalizeTitle:
     """Tests for metadb.normalize_title()."""
 
     def test_basic_lowercase(self):
-        from lltk.tools.metadb import normalize_title
+        from lltk.db.metadb import normalize_title
         assert normalize_title('The Life of Samuel Johnson') == 'the life of samuel johnson'
 
     def test_strip_subtitle_colon(self):
-        from lltk.tools.metadb import normalize_title
+        from lltk.db.metadb import normalize_title
         result = normalize_title('Gulliver\'s Travels: A Satire')
         assert result == "gulliver's travels"
 
     def test_strip_subtitle_semicolon(self):
-        from lltk.tools.metadb import normalize_title
+        from lltk.db.metadb import normalize_title
         result = normalize_title('Robinson Crusoe; or, The Life and Adventures')
         assert result == 'robinson crusoe'
 
     def test_html_entity_unescape(self):
-        from lltk.tools.metadb import normalize_title
+        from lltk.db.metadb import normalize_title
         result = normalize_title('Love&hyphen;Letters Between a Noble&hyphen;Man')
         assert 'love' in result
         assert '&' not in result
 
     def test_strip_brackets(self):
-        from lltk.tools.metadb import normalize_title
+        from lltk.db.metadb import normalize_title
         result = normalize_title('[The] History of Tom Jones')
         assert result.startswith('the history')
 
     def test_abbreviation_periods(self):
-        from lltk.tools.metadb import normalize_title
+        from lltk.db.metadb import normalize_title
         result = normalize_title('The Life and Death of Mr. Badman')
         assert 'mr badman' in result
         assert 'mr.' not in result
 
     def test_empty_returns_none(self):
-        from lltk.tools.metadb import normalize_title
+        from lltk.db.metadb import normalize_title
         assert normalize_title('') is None
         assert normalize_title(None) is None
         assert normalize_title('nan') is None
 
     def test_short_title_returns_none(self):
-        from lltk.tools.metadb import normalize_title
+        from lltk.db.metadb import normalize_title
         assert normalize_title('A') is None
 
 
@@ -873,21 +836,21 @@ class TestNormalizeAuthor:
     """Tests for metadb.normalize_author()."""
 
     def test_basic(self):
-        from lltk.tools.metadb import normalize_author
+        from lltk.db.metadb import normalize_author
         assert normalize_author('Congreve, William, 1670-1729.') == 'congreve'
 
     def test_no_comma(self):
-        from lltk.tools.metadb import normalize_author
+        from lltk.db.metadb import normalize_author
         assert normalize_author('Shakespeare') == 'shakespeare'
 
     def test_empty_returns_none(self):
-        from lltk.tools.metadb import normalize_author
+        from lltk.db.metadb import normalize_author
         assert normalize_author('') is None
         assert normalize_author(None) is None
         assert normalize_author('nan') is None
 
     def test_strip_trailing_period(self):
-        from lltk.tools.metadb import normalize_author
+        from lltk.db.metadb import normalize_author
         assert normalize_author('Defoe.') == 'defoe'
 
 
@@ -895,21 +858,21 @@ class TestJaroWinkler:
     """Tests for metadb._jaro_winkler()."""
 
     def test_identical(self):
-        from lltk.tools.metadb import _jaro_winkler
+        from lltk.db.metadb import _jaro_winkler
         assert _jaro_winkler('hello', 'hello') == 1.0
 
     def test_empty(self):
-        from lltk.tools.metadb import _jaro_winkler
+        from lltk.db.metadb import _jaro_winkler
         assert _jaro_winkler('', 'hello') == 0.0
         assert _jaro_winkler('hello', '') == 0.0
 
     def test_similar(self):
-        from lltk.tools.metadb import _jaro_winkler
+        from lltk.db.metadb import _jaro_winkler
         score = _jaro_winkler('martha', 'marhta')
         assert score > 0.9
 
     def test_dissimilar(self):
-        from lltk.tools.metadb import _jaro_winkler
+        from lltk.db.metadb import _jaro_winkler
         score = _jaro_winkler('abcdef', 'zyxwvu')
         assert score < 0.5
 
@@ -918,29 +881,29 @@ class TestParseYear:
     """Tests for metadb._parse_year()."""
 
     def test_integer(self):
-        from lltk.tools.metadb import _parse_year
+        from lltk.db.metadb import _parse_year
         assert _parse_year(1750) == 1750
 
     def test_string(self):
-        from lltk.tools.metadb import _parse_year
+        from lltk.db.metadb import _parse_year
         assert _parse_year('1750') == 1750
 
     def test_range(self):
-        from lltk.tools.metadb import _parse_year
+        from lltk.db.metadb import _parse_year
         assert _parse_year('1750-1755') == 1750
 
     def test_circa(self):
-        from lltk.tools.metadb import _parse_year
+        from lltk.db.metadb import _parse_year
         assert _parse_year('[1750?]') == 1750
 
     def test_none(self):
-        from lltk.tools.metadb import _parse_year
+        from lltk.db.metadb import _parse_year
         assert _parse_year(None) is None
         assert _parse_year('') is None
         assert _parse_year('unknown') is None
 
     def test_float(self):
-        from lltk.tools.metadb import _parse_year
+        from lltk.db.metadb import _parse_year
         assert _parse_year(1750.0) == 1750
 
 
@@ -952,7 +915,7 @@ class TestMetaDB:
     def tmpdb(self, tmp_path_factory):
         """Create a MetaDB backed by temp DuckDB files."""
         tmpdir = tmp_path_factory.mktemp('metadb')
-        from lltk.tools.metadb import MetaDB
+        from lltk.db.metadb import MetaDB
         db = MetaDB(
             path=str(tmpdir / 'test.duckdb'),
             match_path=str(tmpdir / 'test_matches.duckdb'),

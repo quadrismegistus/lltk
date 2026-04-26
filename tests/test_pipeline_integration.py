@@ -28,8 +28,8 @@ def corpus():
 @pytest.fixture(scope='module')
 def pipeline(corpus):
     """Build the full pipeline: schema → insert texts → insert freqs → passages."""
-    from lltk.tools.db_adapter import ChDBAdapter
-    from lltk.tools.clickhouse_schema import create_all_tables
+    from lltk.db.adapter import ChDBAdapter
+    from lltk.db.schema import create_all_tables
 
     if not _HAS_CHDB:
         pytest.skip('chdb not installed')
@@ -87,7 +87,7 @@ def pipeline(corpus):
             ], column_names=['_id', 'corpus', 'n_words', 'n_unique_words'])
 
     # Build passages
-    from lltk.tools.clickhouse_passages import build_passages_ch
+    from lltk.db.passages import build_passages_ch
     tasks = []
     for t in corpus.texts():
         txt_path = getattr(t, 'path_txt', None)
@@ -207,7 +207,7 @@ class TestPassages:
 @needs_chdb
 class TestPassageRetrieval:
     def test_get_passages(self, pipeline):
-        from lltk.tools.clickhouse_passages import get_passages_ch
+        from lltk.db.passages import get_passages_ch
         ids = ['_test_fixture/austen_pride']
         df = get_passages_ch(pipeline, ids, scheme='p500')
         assert len(df) > 0
@@ -215,17 +215,17 @@ class TestPassageRetrieval:
         assert '_id' in df.columns
 
     def test_get_passages_empty_ids(self, pipeline):
-        from lltk.tools.clickhouse_passages import get_passages_ch
+        from lltk.db.passages import get_passages_ch
         df = get_passages_ch(pipeline, [], scheme='p500')
         assert len(df) == 0
 
     def test_search_passages(self, pipeline):
-        from lltk.tools.clickhouse_passages import search_passages_ch
+        from lltk.db.passages import search_passages_ch
         results = search_passages_ch(pipeline, 'the', limit=5)
         assert isinstance(results, list)
 
     def test_search_passages_count(self, pipeline):
-        from lltk.tools.clickhouse_passages import search_passages_count_ch
+        from lltk.db.passages import search_passages_count_ch
         n = search_passages_count_ch(pipeline, 'the')
         assert isinstance(n, int)
         assert n >= 0
@@ -236,7 +236,7 @@ class TestPassageRetrieval:
 @needs_chdb
 class TestPassageExport:
     def test_export_to_dir(self, pipeline, tmp_path):
-        from lltk.tools.clickhouse_passages import export_passages_ch
+        from lltk.db.passages import export_passages_ch
         n_texts, n_passages = export_passages_ch(
             pipeline, corpus='test_fixture', out_dir=str(tmp_path),
         )
@@ -248,7 +248,7 @@ class TestPassageExport:
         assert len(jsonl_files) == 3
 
     def test_export_format(self, pipeline, tmp_path):
-        from lltk.tools.clickhouse_passages import export_passages_ch
+        from lltk.db.passages import export_passages_ch
         export_passages_ch(
             pipeline, ids=['_test_fixture/austen_pride'],
             out_dir=str(tmp_path),
@@ -267,7 +267,7 @@ class TestPassageExport:
         assert passages[0]['seq'] == 0
 
     def test_export_year_filter(self, pipeline, tmp_path):
-        from lltk.tools.clickhouse_passages import export_passages_ch
+        from lltk.db.passages import export_passages_ch
         n_texts, _ = export_passages_ch(
             pipeline, corpus='test_fixture', year_max=1800,
             out_dir=str(tmp_path),

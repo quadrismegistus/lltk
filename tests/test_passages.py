@@ -1,5 +1,5 @@
 """
-Unit tests for lltk.tools.clickhouse_passages — query parsing and snippet
+Unit tests for lltk.db.passages — query parsing and snippet
 extraction. Pure Python: no ClickHouse server required.
 """
 
@@ -8,7 +8,7 @@ import pytest
 
 class TestQueryToChCondition:
     def _cond(self, q):
-        from lltk.tools.clickhouse_passages import _query_to_ch_condition
+        from lltk.db.passages import _query_to_ch_condition
         return _query_to_ch_condition(q)
 
     def test_single_token(self):
@@ -44,7 +44,7 @@ class TestQueryToChCondition:
 
 class TestExtractSnippet:
     def _snip(self, text, query, context_words=10):
-        from lltk.tools.clickhouse_passages import _extract_snippet
+        from lltk.db.passages import _extract_snippet
         return _extract_snippet(text, query, context_words=context_words)
 
     def test_term_found(self):
@@ -119,3 +119,76 @@ class TestImpactESXml2Txt:
         # xml2txt_func property should return the raw callable without AttributeError
         fn = t.xml2txt_func
         assert callable(fn)
+
+
+class TestChunkSentences:
+    """Tests for chunk_sentences — shared by PassageSectionCorpus and CH ingest."""
+
+    def _chunk(self, sents, n=500):
+        from lltk.tools.constants import chunk_sentences
+        return list(chunk_sentences(sents, n))
+
+    def test_single_chunk(self):
+        sents = ["Hello world.", "This is a test."]
+        chunks = self._chunk(sents, n=100)
+        assert len(chunks) == 1
+        text, start, end, nw = chunks[0]
+        assert text == "Hello world. This is a test."
+        assert start == 0
+        assert nw == 6
+
+    def test_splits_at_threshold(self):
+        sents = [f"word{i} " * 10 for i in range(10)]  # 10 sents, 10 words each
+        chunks = self._chunk(sents, n=25)
+        assert len(chunks) >= 3
+        for text, start, end, nw in chunks:
+            assert nw >= 10  # at least one sentence worth
+            assert end == start + nw
+
+    def test_word_offsets_contiguous(self):
+        sents = ["One two three.", "Four five six.", "Seven eight nine ten.",
+                 "Eleven twelve.", "Thirteen fourteen fifteen."]
+        chunks = self._chunk(sents, n=5)
+        assert len(chunks) >= 2
+        prev_end = 0
+        for text, start, end, nw in chunks:
+            assert start == prev_end
+            prev_end = end
+
+    def test_empty_input(self):
+        assert self._chunk([], n=500) == []
+
+    def test_single_long_sentence(self):
+        sents = ["word " * 1000]
+        chunks = self._chunk(sents, n=500)
+        assert len(chunks) == 1
+        assert chunks[0][3] == 1000
+
+    def test_word_count_uses_split(self):
+        """Verify word counting matches str.split() — same method as CH ingest."""
+        sents = ["Hello, world!", "It's a test-case."]
+        chunks = self._chunk(sents, n=100)
+        text, _, _, nw = chunks[0]
+        assert nw == len("Hello, world!".split()) + len("It's a test-case.".split())
+
+    def test_matches_ch_ingest_chunking(self):
+        """Verify chunk_sentences produces same chunks as _chunk_text_to_passages."""
+        import tempfile, os
+        from lltk.tools.constants import chunk_sentences, _chunk_text_to_passages
+        sents_text = "This is sentence one. This is sentence two. " * 50
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+            f.write(sents_text)
+            tmp = f.name
+        try:
+            _id, corpus_id, ch_passages = _chunk_text_to_passages(
+                ('test_id', 'test_corpus', tmp, 'en', 20)
+            )
+            import nltk
+            sents = nltk.sent_tokenize(sents_text, language='english')
+            mem_chunks = list(chunk_sentences(sents, n=20))
+            assert len(ch_passages) == len(mem_chunks)
+            for (_, _, ch_text, ch_nw, _), (mem_text, _, _, mem_nw) in zip(ch_passages, mem_chunks):
+                assert ch_text == mem_text
+                assert ch_nw == mem_nw
+        finally:
+            os.unlink(tmp)

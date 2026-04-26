@@ -101,7 +101,7 @@ class ImpactES(BaseCorpus):
         os.makedirs(raw_dir, exist_ok=True)
 
         # 1. Scrape download links from the corpus page
-        if log: log(f'Fetching {IMPACT_ES_URL}')
+        log(f'Fetching {IMPACT_ES_URL}')
         resp = requests.get(IMPACT_ES_URL, timeout=30)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, 'html.parser')
@@ -122,7 +122,7 @@ class ImpactES(BaseCorpus):
                 'The page structure may have changed — check manually.'
             )
 
-        if log: log(f'Found {len(links)} download links.')
+        log(f'Found {len(links)} download links.')
 
         # 2. Download all files to raw/
         for url in get_tqdm(links, desc='[ImpactES] Downloading'):
@@ -152,7 +152,7 @@ class ImpactES(BaseCorpus):
             if os.path.isdir(xml_dest) and os.listdir(xml_dest) and not force:
                 continue
             os.makedirs(self.path_xml, exist_ok=True)
-            if log: log(f'Unzipping {fname} → xml/')
+            log(f'Unzipping {fname} → xml/')
             with zipfile.ZipFile(os.path.join(raw_dir, fname)) as zf:
                 zf.extractall(self.path_xml)
 
@@ -160,11 +160,11 @@ class ImpactES(BaseCorpus):
         meta = self._parse_tei_metadata()
         if len(meta):
             meta.to_csv(self.path_metadata)
-            if log: log(f'[ImpactES] Saved {len(meta)} records to {self.path_metadata}')
+            log(f'[ImpactES] Saved {len(meta)} records to {self.path_metadata}')
         else:
-            if log: log('[ImpactES] Warning: no TEI metadata parsed — check xml/ dirs.')
+            log('[ImpactES] Warning: no TEI metadata parsed — check xml/ dirs.')
 
-        if log: log('[ImpactES] Compile done.')
+        log('[ImpactES] Compile done.')
 
     def _parse_tei_metadata(self):
         try:

@@ -72,7 +72,7 @@ class TextList(BaseObject, UserList):
             list(self.iter_texts_uniq(self.data_all,**kwargs)),
             key=lambda t: t.year
         )
-        if log: log(f'data_all = {len(self.data_all)}, _data_uniq = {len(self._data_uniq)}')
+        log(f'data_all = {len(self.data_all)}, _data_uniq = {len(self._data_uniq)}')
         return self._data_uniq
     filtered=filter
 
@@ -122,11 +122,9 @@ class TextList(BaseObject, UserList):
                 _progress = False
         if _progress: text_iter=get_tqdm(text_iter,desc=_desc)
         for t1 in text_iter:
-            tlx = [t1] + t1.sources
-            for t in tlx:
-                if t.addr not in done:
-                    yield t
-                    done|={t.addr}
+            if t1.addr not in done:
+                yield t1
+                done|={t1.addr}
 
     texts = iter_texts
     iter_all_texts = iter_texts

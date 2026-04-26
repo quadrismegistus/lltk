@@ -7,7 +7,7 @@ Usage:
 """
 import os, sys, time, argparse
 from datasketch import MinHash, MinHashLSH
-from lltk.tools.db_adapter import get_adapter
+from lltk.db.adapter import get_adapter
 
 def main():
     parser = argparse.ArgumentParser()

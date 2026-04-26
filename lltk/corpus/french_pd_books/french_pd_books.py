@@ -16,7 +16,7 @@ class FrenchPDBooks(BaseCorpus):
     def compile(self, force=False):
         """Download French-PD-Books from HuggingFace and build metadata + txt files."""
         if not force and os.path.exists(self.path_metadata) and os.path.isdir(self.path_txt):
-            if log: log('Already compiled. Use force=True to recompile.')
+            log('Already compiled. Use force=True to recompile.')
             return
 
         try:
@@ -27,7 +27,7 @@ class FrenchPDBooks(BaseCorpus):
                 'Install it with: pip install "datasets<4"'
             )
 
-        if log: log(f'Streaming {self.HF_DATASET} from HuggingFace...')
+        log(f'Streaming {self.HF_DATASET} from HuggingFace...')
         ds = load_dataset(self.HF_DATASET, split='train', streaming=True)
 
         os.makedirs(self.path_txt, exist_ok=True)
@@ -63,7 +63,7 @@ class FrenchPDBooks(BaseCorpus):
 
         df = pd.DataFrame(meta_rows)
         df.to_csv(self.path_metadata, index=False)
-        if log: log(f'Saved {len(df)} records to {self.path_metadata}')
+        log(f'Saved {len(df)} records to {self.path_metadata}')
 
     # Conservative genre keywords — precision over recall.
     # Excludes: histoire (often fiction), mémoires (ambiguous), conte (compte rendu),

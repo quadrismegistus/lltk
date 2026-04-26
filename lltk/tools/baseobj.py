@@ -1,14 +1,8 @@
-import os
 from lltk.tools.tools import ensure_dir_exists, get_tqdm, just_metadata
 
 COL_ID='id'
 MATCHRELNAME='rdf:type'
 DEFAULT_COMPAREBY=dict(author=0.9, title=0.9)
-
-
-def log_on(): os.environ['LLTK_LOGGED_ON']='True'
-def log_off(): os.environ['LLTK_LOGGED_ON']='False'
-def is_logged_on(): return os.environ.get('LLTK_LOGGED_ON')=='True'
 
 
 class BaseObject(object):

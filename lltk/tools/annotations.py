@@ -233,7 +233,7 @@ def _default_run_id(source):
 
 
 def _validate_id(_id):
-    """Minimal id-shape check. Matches lltk.tools.metadb_ch._validate_id
+    """Minimal id-shape check. Matches lltk.db.metadb_ch._validate_id
     semantics (starts with _{corpus}/). Avoids cross-importing to keep
     this module light."""
     if not isinstance(_id, str):
@@ -325,7 +325,7 @@ def seed_default_sources(overwrite: bool = False) -> list[str]:
 def ensure_schema() -> None:
     """Create lltk.annotations + lltk.annotation_sources + the resolver view,
     and seed default source priorities. Idempotent."""
-    from lltk.tools.clickhouse_schema import (
+    from lltk.db.schema import (
         CLICKHOUSE_SCHEMA, ANNOTATIONS_LATEST_VIEW, ANNOTATIONS_BY_SOURCE_VIEW,
     )
     adapter, db = _db()
