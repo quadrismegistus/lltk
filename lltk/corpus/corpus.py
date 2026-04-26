@@ -1690,7 +1690,7 @@ def Corpus(corpus=None,force=False,init=False,clear=False,**kwargs):
         elif init:
             C.init(**kwargs)
 
-    if logg and log.verbose>1: log(f'-> {C}')
+    if logg: log.debug(f'-> {C}')
     return C
 
 
