@@ -103,7 +103,7 @@ class BaseText(BaseObject):
             **kwargs):
         
         meta = just_meta_no_id(kwargs)
-        log.debug(f'<- {get_imsg(id,_corpus,_source,**meta)}')
+        # log.debug(f'<- {get_imsg(id,_corpus,_source,**meta)}')
         # if log>0:  log(f'<- remote = {_remote}')
         from lltk import Corpus
         self.corpus=Corpus(_corpus)
@@ -277,7 +277,7 @@ class BaseText(BaseObject):
                 self._meta,
             ))
 
-    def get(self,key,default=None,ish=True,ish_all=None,**kwargs):
+    def get(self,key,default=None,ish=False,ish_all=None,**kwargs):
         if self._gcache is None: self._gcache={}
         if key in self._gcache: return self._gcache[key]
         self._hydrate_meta()
@@ -285,9 +285,9 @@ class BaseText(BaseObject):
         log.debug(f'? {key}')
         key=str(key)
         if key.startswith('_'): ish=False
-        if key.endswith('_l'): return self.meta_l(key[:-2],ish=ish,**kwargs)
-        if key.endswith('_1'): return self.meta_1(key[:-2],ish=ish,**kwargs)
-        if key.endswith('_'): return self.meta_(key[:-1],ish=ish,**kwargs)
+        if key.endswith('_l'): return self.meta_l(key[:-2],ish=True,**kwargs)
+        if key.endswith('_1'): return self.meta_1(key[:-2],ish=True,**kwargs)
+        if key.endswith('_'): return self.meta_(key[:-1],ish=True,**kwargs)
 
         meta=merge_dict(self._meta,self.__meta)
         if not ish:

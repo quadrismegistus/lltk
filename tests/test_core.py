@@ -728,8 +728,13 @@ class TestTextMetadataHydration:
         assert text.get('author') == text.author
 
     def test_get_fuzzy_key(self, text):
-        """get('au') should fuzzy-match to 'author'."""
-        assert text.get('au') == text.author
+        """get('au', ish=True) should fuzzy-match to 'author'."""
+        assert text.get('au', ish=True) == text.author
+
+    def test_get_exact_by_default(self, text):
+        """get('au') with default ish=False should not fuzzy-match."""
+        text._gcache = None
+        assert text.get('au') is None
 
     def test_get_nonexistent_returns_none(self, text):
         assert text.get('xyzzy_nonexistent_key') is None
