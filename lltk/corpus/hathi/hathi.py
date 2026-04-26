@@ -13,11 +13,9 @@ from lltk.imports import (
     Capturing,
     OrderedSetDict,
     PATH_CORPUS,
-    REMOTE_REMOTE_DEFAULT,
     Text,
     get_imsg,
     is_addr_str,
-    is_logged_on,
     just_meta_no_id,
     load_corpus,
     log,
@@ -143,31 +141,8 @@ class TextHathiRecord(TextHathi):
     def meta_is_valid(self,meta={}):
         return bool((meta if meta else self._meta).get('url'))
     
-    # def get_remote_sources(self, *args, remote=REMOTE_REMOTE_DEFAULT, lim=1, **kwargs):
-    #     #log(f'<- remote = {remote} ?')
-    #     o=[]
-    #     for htid in self.htid_l:
-    #         t=self.corpus.text(f'htid/{htid}',_source=self).init_(remote=remote,**kwargs)
-    #         log(f'-> {t}')
-    #         o.append(t)
-    #         if lim and len(o)>=lim: break
-    #     return o
-    
-    # def have_remote_sources(self,*x,**y):
-    #     print([self.sources])
-    #     print([self.id])
-    #     return any('htid' in src.id for src in self.sources if src and src.id)
-
-    def init(self,*x,remote=None,**y):
-        remote=is_logged_on()
-        #log(f'<- remote = {remote} ?')
-        super().init(*x,remote=remote,**y)
-        htid_srcs=set(t.htid for t in self.dsources if t.corpus.id.startswith('htid/'))
-        for htid in set(self.htid_l) - htid_srcs:
-            log(htid)
-            t=self.corpus.text(f'htid/{htid}').init(remote=remote,**y)
-            t.add_source(self)
-            log(t)
+    def init(self,*x,**y):
+        super().init(*x,**y)
         return self
 
 
@@ -254,7 +229,6 @@ class Hathi(BaseCorpus):
     name='Hathi'
     LANGS=['eng']
     name=[]
-    REMOTE_SOURCES=[]
     METADATA_HEADER='htid	access	rights	ht_bib_key	description	source	source_bib_num	oclc_num	isbn	issn	lccn	title	imprint	rights_reason_code	rights_timestamp	us_gov_doc_flag	rights_date_used	pub_place	lang	bib_fmt	collection_code	content_provider_code	responsible_entity_code	digitization_agent_code	access_profile_code	author'.split('\t')
 
     @property
@@ -395,21 +369,11 @@ class Hathi(BaseCorpus):
         for newtext in self.texts_from(text,**kwargs):
             return newtext
 
-    def texts_from(self,text,remote=REMOTE_REMOTE_DEFAULT,**kwargs):
+    def texts_from(self,text,**kwargs):
         for htrn in self.query_for_ids(text):
             htrnid = f'htrn/{htrn}'
-            t=self.text(htrnid).init_(remote=remote,**kwargs)
-            t.add_source(text)
+            t=self.text(htrnid, _source=text)
             yield t
-        #log(f'<- remote = {remote} ?')
-        # tobjs = [src for src in text.sources if src.corpus==self and src.id.startswith('htrn/')]
-        # if tobjs:
-        #     yield from tobjs
-        # else:
-        #     for htrn in self.query_for_ids(text):
-        #         htrnid = f'htrn/{htrn}'
-        #         t=self.text(htrnid,_source=text).init_(remote=remote,**kwargs)
-        #         yield t
 
 
 

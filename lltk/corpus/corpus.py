@@ -33,14 +33,11 @@ from lltk.imports import (
     PATH_LLTK_REPO,
     PATH_MANIFEST_GLOBAL,
     PREPROC_CMDS,
-    REMOTE_REMOTE_DEFAULT,
-    REMOTE_SOURCES,
     TMP_CORPUS_ID,
     ZIP_PART_DEFAULTS,
     ensure_dir_exists,
     ensure_snake,
     get_tqdm,
-    is_logged_on,
     just_meta_no_id,
     just_metadata,
     log,
@@ -100,7 +97,6 @@ class BaseCorpus(TextList):
     MODERNIZE=MODERNIZE_SPELLING
     LANG='en'
     xml2txt = xml2txt_default
-    REMOTE_SOURCES = REMOTE_SOURCES
     LINKS = {}
     LINK_TRANSFORMS = {}
     # Per-text prosodic output dir lives under {corpus.path}/prosodic/{text.id}/
@@ -408,7 +404,6 @@ class BaseCorpus(TextList):
             _force: bool = False,
             _new: bool = False,
             _init: bool = False,
-            _remote: Union[bool,None] = None,
             **kwargs) -> BaseText:
         """
         The one function users need to interact with a corpus's texts. Use this function both to get an existing text or to create a new one. Returns a text of type `corpus.TEXT_CLASS`. If an `id` is not specified, one will be auto-generated.
@@ -416,17 +411,17 @@ class BaseCorpus(TextList):
         Parameters
         ----------
         id : Union[str,BaseText,None], optional
-            If an `id` is specified, this will be used as the text's ID. If `id` is a text object, the incoming text's address (`text.addr`) will be used as the new text's ID as well as its source (added to the set, `text._sources`. Default: None.
+            If an `id` is specified, this will be used as the text's ID. Default: None.
 
         _source : Union[str,BaseText,None], optional
             An explicitly declared source text. Default: None.
 
         _add : bool, optional
             Add the text to the corpus? Default: True.
-        
+
         _cache : bool, optional
             Cache the text in the database? Default: True.
-        
+
         _force : bool, optional
             Whether to overwrite existing cache of the text. Default: False.
 
@@ -447,7 +442,7 @@ class BaseCorpus(TextList):
         ------
         CorpusTextException
             If text creation fails.
-        """        
+        """
 
         # log incoming
         # log(f'<- {kwargs}')
@@ -465,19 +460,13 @@ class BaseCorpus(TextList):
 
         # get?
         if not _force and id is not None: t = self.get_text(id)
-        
+
         # Create?
-        if _force or t is None: t = self.init_text(id,_source=_source,_cache=_cache,_remote=_remote,**meta)
+        if _force or t is None: t = self.init_text(id,_source=_source,_cache=_cache,**meta)
         elif meta and is_text_obj(t): t.update(meta,_cache=_cache)
-        
+
         # Fail?
         if t is None: raise CorpusTextException('Could not get or create text')
-        
-        # Add to my own dictionary?
-        # if _add: self.add_text(t)
-        
-        # add source?
-        if _source: t.add_source(_source)
 
         # Return text
         log.debug(f'-> {t}' if is_text_obj(t) else "-> ?")
@@ -560,13 +549,13 @@ class BaseCorpus(TextList):
         return id
 
 
-    def init_text(self,id=None,_source=None,_cache=True,_remote=None,**kwargs):
+    def init_text(self,id=None,_source=None,_cache=True,**kwargs):
         # log('...')
         meta=just_meta_no_id(kwargs)
         log.debug(f'<- {get_imsg(id,self,_source,**meta)}')
         if id is None: id = self.get_text_id(id, _source=_source, **meta)
-        # gen text in my image        
-        t = self.TEXT_CLASS(id=id, _corpus=self, _source=_source, _remote=_remote, **meta)
+        # gen text in my image
+        t = self.TEXT_CLASS(id=id, _corpus=self, _source=_source, **meta)
         log.debug(f'-> {t}' if is_text_obj(t) else "-> ?")
         return t
 
@@ -726,7 +715,7 @@ class BaseCorpus(TextList):
 
         
     
-    def iter_init(self,progress=True,_init=True,_cache=False,remote=False,lim=None,shuffle=False,**kwargs):
+    def iter_init(self,progress=True,_init=True,_cache=False,lim=None,shuffle=False,**kwargs):
         # Ensure corpus metadata is loaded (load_metadata caches itself)
         df = self.load_metadata()
         if df is None or not len(df):
@@ -745,7 +734,7 @@ class BaseCorpus(TextList):
                 else:
                     row = df.loc[id] if id in df.index else pd.Series(dtype=object)
                     row_meta = {k: v for k, v in row.items() if pd.notna(v) and str(v) not in ('', 'nan')}
-                    t = self.TEXT_CLASS(id=id, _corpus=self, _remote=remote, **row_meta)
+                    t = self.TEXT_CLASS(id=id, _corpus=self, **row_meta)
                     t._meta_hydrated = True
                     self._textd[id] = t
                 yield t
@@ -784,18 +773,6 @@ class BaseCorpus(TextList):
 
 
 
-
-    ####################################################################
-    # SOURCES
-    ####################################################################
-
-    def iter_sources(self,texts=[],include_t=True,**kwargs):
-        for t in self.texts(texts=texts,**kwargs):
-            tsrcs=t.get_sources(**kwargs)
-            yield (t,tsrcs) if include_t else tsrcs
-        
-    def get_sources(self,**kwargs):
-        return list(self.iter_sources(**kwargs))
 
 
 

@@ -141,7 +141,7 @@ def get_idx(
 
     if is_text_obj(id): return id.id
     id1=id
-    log.debug(f'<- id = {id}, i = {i}')
+    # log.debug(f'<- id = {id}, i = {i}')
     # already given?
     if safebool(id):
         if type(id)==str:
@@ -149,11 +149,11 @@ def get_idx(
                 str(id).strip(),
                 allow=allow,
             )
-            log.debug(f'id set via `id` str: {id1} -> {id}')
+            # log.debug(f'id set via `id` str: {id1} -> {id}')
         
         elif type(id) in {int,float}:
             id = get_idx_from_int(int(id))
-            log.debug(f'id set via `id` int: {id1} -> {id}')
+            # log.debug(f'id set via `id` int: {id1} -> {id}')
         
         else:
             raise Exception(f'What kind of ID is this? {type(id1)}')
@@ -161,19 +161,19 @@ def get_idx(
     else:
         if meta and (force_meta or (use_meta and not i)):
             id = get_idx_from_meta(meta)
-            log.debug(f'id set via `meta`: {id1} -> {id}')
+            # log.debug(f'id set via `meta`: {id1} -> {id}')
         elif i:
             id = get_idx_from_int(i,numzero=numzero,prefstr=prefstr)
-            log.debug(f'id set via `i` int: {id1} -> {id}')
+            # log.debug(f'id set via `i` int: {id1} -> {id}')
 
     
     if not id:
         id = get_idx_from_int(numzero=numzero,prefstr=prefstr) # last resort
-        log.debug(f'id set via random int: {id1} -> {id}')
+        # log.debug(f'id set via random int: {id1} -> {id}')
     
     if not id: raise Exception('what happened?')
         
-    log.debug(f'-> {id}')
+    # log.debug(f'-> {id}')
     return id
 
     

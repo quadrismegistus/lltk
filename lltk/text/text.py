@@ -12,7 +12,6 @@ from lltk.imports import (
     DIR_SECTION_NAME,
     IDSEP,
     IDSEP_START,
-    MATCHRELNAME,
     META_KEY_SEP,
     PATH_CORPUS,
     SetList,
@@ -95,16 +94,12 @@ class BaseText(BaseObject):
             _corpus=None,
             _section_corpus=None,
             _source=None,
-            _sources=None,
             _txt=None,
             _xml=None,
-            _remote=None,
             _cache=True,
             **kwargs):
         
         meta = just_meta_no_id(kwargs)
-        # log.debug(f'<- {get_imsg(id,_corpus,_source,**meta)}')
-        # if log>0:  log(f'<- remote = {_remote}')
         from lltk import Corpus
         self.corpus=Corpus(_corpus)
         self._section_corpus=_section_corpus
@@ -124,7 +119,6 @@ class BaseText(BaseObject):
         self._booknlp=None
         self._txt_offsets=None
         self._source=_source
-        self._sources={x for x in _sources} if _sources else set()
         if id is None:
             id = self.corpus.get_text_id(id, _source=_source, **meta)
             log(f'blank id set to {id}')
@@ -145,9 +139,7 @@ class BaseText(BaseObject):
 
     @property
     def addr(self): return f'{IDSEP_START}{self.corpus.id}{IDSEP}{self.id}'
-    @property
-    def nsrc(self): return len(self._sources)
-    
+
     @property
     def node(self, force=True):
         if force or not self._node:
@@ -159,8 +151,6 @@ class BaseText(BaseObject):
                 yr = self.year
                 if safebool(yr): ol.append(f' ({int(yr)})')
                 ol.append(f' [{addr}]')
-                nsrc = self.nsrc + 1
-                if nsrc > 1: ol.append(f' ({nsrc})')
                 self._node = ''.join(ol)
             elif addr:
                 self._node = f'({addr})'
@@ -349,7 +339,6 @@ class BaseText(BaseObject):
         if part == 'xml': return os.path.join(self.path,'text.xml')
         if part in {'json','meta','meta_json'}:
             return os.path.join(self.path,'meta.json')
-        if part == 'sources': return os.path.join(self.path,'_sources')
         if part == 'freqs': return os.path.join(self.path,'freqs.json')
         return None
 
@@ -706,27 +695,6 @@ class BaseText(BaseObject):
 
     
     
-    def get_sources(self,force=False,**kwargs):
-        if not self.id_is_valid(): return []
-        if force or not self._sources:
-            srcs=set(self.get_matches())
-            self._sources=[
-                t
-                for t in sorted(srcs,key=lambda tx: tx.addr)
-                if t.id_is_valid() and t!=self
-            ]
-        return self._sources
-
-
-    @property
-    def sources(self): return [Text(x) for x in self.matches]
-
-    @property
-    def dsources(self,rel=MATCHRELNAME):
-        #dneighbs={Text(addr) for addr in self.gdb.get_neighbs(self.addr,rel=rel,direct=True)} - {self.addr}
-        #return [src for src in self.get_sources() if src in dneighbs]
-        return {Text(addr) for addr in self.rels}
-    
     _linked_cache = {}
 
     def linked(self, target_corpus_id=None, **kwargs):
@@ -791,10 +759,6 @@ class BaseText(BaseObject):
     @property
     def source(self):
         if self._source is not None: return Text(self._source)
-        srcs=[x for x in self._sources]
-        if srcs: return Text(srcs[0])
-        srcs=self.sources
-        if srcs: return list(srcs)[0]
 
 
 

@@ -699,21 +699,13 @@ def to_yearbin(year,yearbin):
         return
     
 
-def get_all_sources_recursive(text,sofar=set(),**kwargs):
-    sources = text._sources #get_sources(**kwargs)
-    for src in sources:
-        if src in sofar: continue
-        log.info(f'{text} --?--> {src}')
-        sofar|=get_all_sources_recursive(src,sofar=sofar|{text,src})
-    sofar|={text} | set(sources)
-    return sofar
 
 
 def load_corpus(id,manifestd={},load_meta=False,force=False,install_if_nec=True,**input_kwargs):
     from lltk.imports import log
     if not manifestd: manifestd=load_corpus_manifest(id,make_path_abs=True)
     # plog('>> loading:',name_or_id,manifestd)
-    log.info(f'<- id = {id}')
+    # log.info(f'<- id = {id}')
     id,path_python,class_name=(
         manifestd.get('id'),
         manifestd.get('path_python'),

@@ -22,9 +22,6 @@ PATH_LLTK_CONFIG_DIR = os.path.abspath(os.path.join(PATH_DEFAULT_LLTK_HOME,'conf
 PATH_LLTK_CONFIG_USR = os.path.join(PATH_DEFAULT_LLTK_HOME,'.user.json')
 META_KEY_SEP='__'
 MATCHRELNAME='rdf:type'
-REMOTE_SOURCES=['hathi','wikidata','goodreads','isbn']
-REMOTE_DEFAULT=False
-REMOTE_REMOTE_DEFAULT = True
 
 MINIMETAD={
 	'author':['author'],
@@ -288,6 +285,5 @@ from lltk.text import *
 from lltk.corpus import *
 from lltk.model import *
 
-log_off()
 T=Text
 C=Corpus
