@@ -27,7 +27,7 @@ needs_ch = pytest.mark.skipif(
 
 class TestIdValidation:
     def test_valid_ids(self):
-        from lltk.tools.metadb_ch import _validate_id
+        from lltk.db.metadb_ch import _validate_id
         # Common shapes from real corpora — including the messy ones
         for ok in [
             '_estc/T012345',
@@ -44,7 +44,7 @@ class TestIdValidation:
             assert _validate_id(ok) == ok
 
     def test_invalid_ids(self):
-        from lltk.tools.metadb_ch import _validate_id
+        from lltk.db.metadb_ch import _validate_id
         for bad in [
             "estc/T012345",                     # missing leading _
             "_/T012345",                        # empty corpus
@@ -60,7 +60,7 @@ class TestIdValidation:
         # The validator allows apostrophes (real corpora have them); the
         # SQL escape (_sql_str) doubles them so they can't break out of
         # a single-quoted SQL literal.
-        from lltk.tools.metadb_ch import _validate_id, _sql_str
+        from lltk.db.metadb_ch import _validate_id, _sql_str
         injection = "_estc/T123' OR '1'='1"   # crafted as if injecting
         # Validator passes (apostrophes are legitimate)
         _validate_id(injection)
@@ -73,14 +73,14 @@ class TestIdValidation:
         assert escaped.count("'") % 2 == 0  # every ' is paired
 
     def test_non_string(self):
-        from lltk.tools.metadb_ch import _validate_id
+        from lltk.db.metadb_ch import _validate_id
         with pytest.raises(TypeError):
             _validate_id(123)
         with pytest.raises(TypeError):
             _validate_id(None)
 
     def test_corpus_validation(self):
-        from lltk.tools.metadb_ch import _validate_corpus
+        from lltk.db.metadb_ch import _validate_corpus
         for ok in ['estc', 'chadwyck_poetry', 'fiction_biblio', 'de_corp', 'a1']:
             assert _validate_corpus(ok) == ok
         for bad in ["estc'; DROP", 'ESTC', 'chadwyck-poetry', '', '0_starts_with_digit']:
@@ -96,14 +96,14 @@ class TestIdValidation:
 
 class TestGetAdapter:
     def test_duckdb_url(self, tmp_path):
-        from lltk.tools.db_adapter import get_adapter, DuckDBAdapter
+        from lltk.db.adapter import get_adapter, DuckDBAdapter
         url = f'duckdb:///{tmp_path}/test.duckdb'
         a = get_adapter(url)
         assert isinstance(a, DuckDBAdapter)
         a.close()
 
     def test_duckdb_readonly_flag(self, tmp_path):
-        from lltk.tools.db_adapter import get_adapter, DuckDBAdapter
+        from lltk.db.adapter import get_adapter, DuckDBAdapter
         # Create the file first (read_only requires existing DB)
         p = tmp_path / 'ro.duckdb'
         get_adapter(f'duckdb:///{p}').execute('CREATE TABLE t (x INT)')
@@ -115,7 +115,7 @@ class TestGetAdapter:
     def test_clickhouse_url_parses(self):
         # Don't actually connect; just verify URL parsing returns the right class.
         # We monkey-patch get_client to avoid network.
-        from lltk.tools import db_adapter
+        from lltk.db import adapter as db_adapter
         captured = {}
 
         class FakeClient:
@@ -142,7 +142,7 @@ class TestGetAdapter:
             clickhouse_connect.get_client = orig
 
     def test_unknown_scheme(self):
-        from lltk.tools.db_adapter import get_adapter
+        from lltk.db.adapter import get_adapter
         with pytest.raises(ValueError, match='Unknown DB URL scheme'):
             get_adapter('postgres://localhost/db')
 
@@ -151,20 +151,20 @@ class TestGetAdapter:
 
 class TestLegacyRewrite:
     def test_match_db_prefix(self):
-        from lltk.tools.metadb_ch import _rewrite_legacy_sql
+        from lltk.db.metadb_ch import _rewrite_legacy_sql
         sql = "SELECT * FROM match_db.matches WHERE _id_a = ?"
         out = _rewrite_legacy_sql(sql)
         assert 'lltk.matches' in out
         assert 'match_db.' not in out
 
     def test_bare_texts(self):
-        from lltk.tools.metadb_ch import _rewrite_legacy_sql
+        from lltk.db.metadb_ch import _rewrite_legacy_sql
         sql = "SELECT title FROM texts WHERE corpus = 'estc'"
         out = _rewrite_legacy_sql(sql)
         assert 'lltk.texts' in out
 
     def test_no_double_prefix(self):
-        from lltk.tools.metadb_ch import _rewrite_legacy_sql
+        from lltk.db.metadb_ch import _rewrite_legacy_sql
         # Already-prefixed should NOT become lltk.lltk.texts
         sql = "SELECT * FROM lltk.texts WHERE corpus = 'estc'"
         out = _rewrite_legacy_sql(sql)
@@ -173,7 +173,7 @@ class TestLegacyRewrite:
 
     def test_text_word_table_not_matched_as_bare_texts(self):
         # Check the word boundary regex doesn't catch text_freqs / text_words
-        from lltk.tools.metadb_ch import _rewrite_legacy_sql
+        from lltk.db.metadb_ch import _rewrite_legacy_sql
         sql = "SELECT _id FROM lltk.text_freqs"
         out = _rewrite_legacy_sql(sql)
         assert 'lltk.text_freqs' in out
@@ -181,7 +181,7 @@ class TestLegacyRewrite:
         assert 'lltk.lltk' not in out
 
     def test_json_extract_string(self):
-        from lltk.tools.metadb_ch import _rewrite_legacy_sql
+        from lltk.db.metadb_ch import _rewrite_legacy_sql
         sql = "SELECT json_extract_string(meta, '$.author') FROM texts"
         out = _rewrite_legacy_sql(sql)
         assert 'JSONExtractString(meta, ' in out
@@ -189,20 +189,20 @@ class TestLegacyRewrite:
         assert '$.' not in out
 
     def test_to_timestamp(self):
-        from lltk.tools.metadb_ch import _rewrite_legacy_sql
+        from lltk.db.metadb_ch import _rewrite_legacy_sql
         out = _rewrite_legacy_sql("SELECT to_timestamp(ingested_at) FROM corpus_info")
         assert 'toDateTime(' in out
         assert 'to_timestamp(' not in out
 
     def test_random_function(self):
-        from lltk.tools.metadb_ch import _rewrite_legacy_sql
+        from lltk.db.metadb_ch import _rewrite_legacy_sql
         out = _rewrite_legacy_sql("SELECT id FROM texts ORDER BY random() LIMIT 1")
         assert 'rand()' in out
         assert 'random(' not in out
 
     def test_positional_param_inlining(self):
         # _LegacyResult inlines ? params before sending to CH
-        from lltk.tools.metadb_ch import _LegacyResult
+        from lltk.db.metadb_ch import _LegacyResult
         # Manually invoke the inlining logic
         sql = "SELECT * FROM lltk.texts WHERE corpus = ? AND year > ?"
         params = ['estc', 1700]
@@ -219,7 +219,7 @@ class TestLegacyRewrite:
 
     def test_param_with_quote_escaped(self):
         # Single quote in a param value gets doubled, not breaking out of the literal
-        from lltk.tools.metadb_ch import _LegacyResult
+        from lltk.db.metadb_ch import _LegacyResult
         sql = "SELECT * FROM lltk.texts WHERE author = ?"
         params = ["O'Brien"]
         out = sql
@@ -245,7 +245,7 @@ class TestPrepareCorpusDf:
         return pd.DataFrame(base)
 
     def test_basic_prepare(self):
-        from lltk.tools.metadb import prepare_corpus_df
+        from lltk.db.metadb import prepare_corpus_df
         df = self._make_df()
         out = prepare_corpus_df(df, 'test_corpus')
         assert list(out.columns)[:3] == ['_id', 'corpus', 'id']
@@ -255,26 +255,26 @@ class TestPrepareCorpusDf:
         assert out['author_norm'].iloc[0] == 'austen'
 
     def test_drops_empty_ids(self):
-        from lltk.tools.metadb import prepare_corpus_df
+        from lltk.db.metadb import prepare_corpus_df
         df = self._make_df()
         df.loc[1, 'id'] = ''
         out = prepare_corpus_df(df, 'test_corpus')
         assert len(out) == 1
 
     def test_dedupes_id(self):
-        from lltk.tools.metadb import prepare_corpus_df
+        from lltk.db.metadb import prepare_corpus_df
         df = self._make_df(id=['t001', 't001'])
         out = prepare_corpus_df(df, 'test_corpus')
         assert len(out) == 1
 
     def test_year_to_int(self):
-        from lltk.tools.metadb import prepare_corpus_df
+        from lltk.db.metadb import prepare_corpus_df
         df = self._make_df(year=['1813', 'circa 1818'])
         out = prepare_corpus_df(df, 'test_corpus')
         assert int(out['year'].iloc[0]) == 1813
 
     def test_extra_cols_pack_into_meta(self):
-        from lltk.tools.metadb import prepare_corpus_df
+        from lltk.db.metadb import prepare_corpus_df
         import json
         df = self._make_df(custom_field=['hello', 'world'])
         out = prepare_corpus_df(df, 'test_corpus')
@@ -283,7 +283,7 @@ class TestPrepareCorpusDf:
         assert meta.get('custom_field') == 'hello'
 
     def test_default_lang(self):
-        from lltk.tools.metadb import prepare_corpus_df
+        from lltk.db.metadb import prepare_corpus_df
         df = self._make_df()
         out = prepare_corpus_df(df, 'test_corpus', default_lang='en')
         assert out['lang'].iloc[0] == 'en'
@@ -293,7 +293,7 @@ class TestPrepareCorpusDf:
 
 class TestRejectLegacyKwargs:
     def test_detect_langs_apply_raises(self):
-        from lltk.tools.metadb_ch import MetaDBCH
+        from lltk.db.metadb_ch import MetaDBCH
         m = MetaDBCH.__new__(MetaDBCH)
         m.url = 'clickhouse://test'  # never connects
         m._adapter = None
@@ -301,7 +301,7 @@ class TestRejectLegacyKwargs:
             m.detect_langs(apply=True)
 
     def test_detect_langs_only_apply_raises(self):
-        from lltk.tools.metadb_ch import MetaDBCH
+        from lltk.db.metadb_ch import MetaDBCH
         m = MetaDBCH.__new__(MetaDBCH)
         m.url = 'clickhouse://test'
         m._adapter = None
@@ -309,7 +309,7 @@ class TestRejectLegacyKwargs:
             m.detect_langs(only_apply=True)
 
     def test_build_word_index_jobs_raises(self):
-        from lltk.tools.metadb_ch import MetaDBCH
+        from lltk.db.metadb_ch import MetaDBCH
         m = MetaDBCH.__new__(MetaDBCH)
         m.url = 'clickhouse://test'
         m._adapter = None
@@ -321,7 +321,7 @@ class TestRejectLegacyKwargs:
 
 class TestDedupFrameValidation:
     def _make_bare(self):
-        from lltk.tools.metadb_ch import MetaDBCH
+        from lltk.db.metadb_ch import MetaDBCH
         m = MetaDBCH.__new__(MetaDBCH)
         m.url = 'clickhouse://test'
         m._adapter = None
@@ -357,7 +357,7 @@ class TestDedupFrameValidation:
 
 class TestBuildWhereCh:
     def _make_bare(self):
-        from lltk.tools.metadb_ch import MetaDBCH
+        from lltk.db.metadb_ch import MetaDBCH
         m = MetaDBCH.__new__(MetaDBCH)
         m.url = 'clickhouse://test'
         m._adapter = None

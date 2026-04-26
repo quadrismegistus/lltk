@@ -19,7 +19,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 import lltk
-from lltk.tools.metadb import GENRE_VOCAB
+from lltk.db.metadb import GENRE_VOCAB
 
 WEB_DIR = Path(__file__).parent
 TEMPLATES_DIR = WEB_DIR / 'templates'

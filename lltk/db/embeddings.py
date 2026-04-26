@@ -401,7 +401,7 @@ def match_by_embeddings_ch(adapter, model: str = 'multilingual-e5-large',
     adapter.client.insert_arrow('matches', tbl)
 
     print('[match-embed] Recomputing match groups...')
-    from lltk.tools.clickhouse_match import _compute_match_groups_ch
+    from lltk.db.match import _compute_match_groups_ch
     _compute_match_groups_ch(adapter)
 
     print(f'[match-embed] Done — {len(pdf):,} new pairs inserted.')

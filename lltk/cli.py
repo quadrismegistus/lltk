@@ -264,8 +264,8 @@ def main():
 			corpus.install(part=part)
 
 	elif args.cmd == 'db-rebuild':
-		from lltk.tools.db_adapter import get_adapter
-		from lltk.tools.clickhouse_rebuild import rebuild_clickhouse
+		from lltk.db.adapter import get_adapter
+		from lltk.db.rebuild import rebuild_clickhouse
 		import os as _os
 		ch_url = _os.environ.get(
 			'LLTK_CLICKHOUSE_URL',
@@ -287,7 +287,7 @@ def main():
 		print()
 
 		try:
-			from lltk.tools.metadb import GENRE_VOCAB
+			from lltk.db.metadb import GENRE_VOCAB
 
 			# Genre × corpus crosstab (harmonized genres only + None + Other)
 			df = lltk.db.query("""
@@ -361,7 +361,7 @@ def main():
 
 	elif args.cmd == 'db-tag-genres':
 		from lltk.tools.genre_tags import build_genre_tags
-		from lltk.tools.db_adapter import get_adapter
+		from lltk.db.adapter import get_adapter
 		ch = get_adapter('clickhouse://lltk:lltk@localhost:8123/lltk')
 		build_genre_tags(ch, recognized_only=not args.no_recognition,
 		                 min_sources=args.min_sources)

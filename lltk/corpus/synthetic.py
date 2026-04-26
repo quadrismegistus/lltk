@@ -58,7 +58,7 @@ class SyntheticCorpus(BaseCorpus):
         return kw
 
     def load_metadata(self, **kwargs):
-        from lltk.tools.metadb import metadb
+        from lltk.db.metadb import metadb
         qkw = self._get_query_kwargs()
         df = metadb.texts_df(**qkw)
         if df is not None and len(df):
@@ -88,7 +88,7 @@ class SyntheticCorpus(BaseCorpus):
         return self
 
     def iter_init(self, progress=True, **kwargs):
-        from lltk.tools.metadb import metadb
+        from lltk.db.metadb import metadb
         qkw = self._get_query_kwargs()
         yield from metadb.texts(**qkw, progress=progress)
 
@@ -106,7 +106,7 @@ class SyntheticCorpus(BaseCorpus):
 
     @property
     def num_texts(self):
-        from lltk.tools.metadb import metadb
+        from lltk.db.metadb import metadb
         qkw = self._get_query_kwargs()
         df = metadb.texts_df(**qkw)
         return len(df) if df is not None else 0

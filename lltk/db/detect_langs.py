@@ -187,7 +187,7 @@ def detect_langs_clickhouse(ch_adapter, min_tokens=50,
     stop_flag = {'done': False}
 
     def _watch():
-        from lltk.tools.db_adapter import get_adapter
+        from lltk.db.adapter import get_adapter
         import os as _os
         url = _os.environ.get(
             'LLTK_CLICKHOUSE_URL',

@@ -65,7 +65,7 @@ def build_text_words(ch_adapter, corpora=None, force=False, progress=True):
         stop_flag = {'done': False}
 
         def _watch():
-            from lltk.tools.db_adapter import get_adapter
+            from lltk.db.adapter import get_adapter
             import os as _os
             url = _os.environ.get(
                 'LLTK_CLICKHOUSE_URL',

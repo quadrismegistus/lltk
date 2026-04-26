@@ -828,44 +828,44 @@ class TestNormalizeTitle:
     """Tests for metadb.normalize_title()."""
 
     def test_basic_lowercase(self):
-        from lltk.tools.metadb import normalize_title
+        from lltk.db.metadb import normalize_title
         assert normalize_title('The Life of Samuel Johnson') == 'the life of samuel johnson'
 
     def test_strip_subtitle_colon(self):
-        from lltk.tools.metadb import normalize_title
+        from lltk.db.metadb import normalize_title
         result = normalize_title('Gulliver\'s Travels: A Satire')
         assert result == "gulliver's travels"
 
     def test_strip_subtitle_semicolon(self):
-        from lltk.tools.metadb import normalize_title
+        from lltk.db.metadb import normalize_title
         result = normalize_title('Robinson Crusoe; or, The Life and Adventures')
         assert result == 'robinson crusoe'
 
     def test_html_entity_unescape(self):
-        from lltk.tools.metadb import normalize_title
+        from lltk.db.metadb import normalize_title
         result = normalize_title('Love&hyphen;Letters Between a Noble&hyphen;Man')
         assert 'love' in result
         assert '&' not in result
 
     def test_strip_brackets(self):
-        from lltk.tools.metadb import normalize_title
+        from lltk.db.metadb import normalize_title
         result = normalize_title('[The] History of Tom Jones')
         assert result.startswith('the history')
 
     def test_abbreviation_periods(self):
-        from lltk.tools.metadb import normalize_title
+        from lltk.db.metadb import normalize_title
         result = normalize_title('The Life and Death of Mr. Badman')
         assert 'mr badman' in result
         assert 'mr.' not in result
 
     def test_empty_returns_none(self):
-        from lltk.tools.metadb import normalize_title
+        from lltk.db.metadb import normalize_title
         assert normalize_title('') is None
         assert normalize_title(None) is None
         assert normalize_title('nan') is None
 
     def test_short_title_returns_none(self):
-        from lltk.tools.metadb import normalize_title
+        from lltk.db.metadb import normalize_title
         assert normalize_title('A') is None
 
 
@@ -873,21 +873,21 @@ class TestNormalizeAuthor:
     """Tests for metadb.normalize_author()."""
 
     def test_basic(self):
-        from lltk.tools.metadb import normalize_author
+        from lltk.db.metadb import normalize_author
         assert normalize_author('Congreve, William, 1670-1729.') == 'congreve'
 
     def test_no_comma(self):
-        from lltk.tools.metadb import normalize_author
+        from lltk.db.metadb import normalize_author
         assert normalize_author('Shakespeare') == 'shakespeare'
 
     def test_empty_returns_none(self):
-        from lltk.tools.metadb import normalize_author
+        from lltk.db.metadb import normalize_author
         assert normalize_author('') is None
         assert normalize_author(None) is None
         assert normalize_author('nan') is None
 
     def test_strip_trailing_period(self):
-        from lltk.tools.metadb import normalize_author
+        from lltk.db.metadb import normalize_author
         assert normalize_author('Defoe.') == 'defoe'
 
 
@@ -895,21 +895,21 @@ class TestJaroWinkler:
     """Tests for metadb._jaro_winkler()."""
 
     def test_identical(self):
-        from lltk.tools.metadb import _jaro_winkler
+        from lltk.db.metadb import _jaro_winkler
         assert _jaro_winkler('hello', 'hello') == 1.0
 
     def test_empty(self):
-        from lltk.tools.metadb import _jaro_winkler
+        from lltk.db.metadb import _jaro_winkler
         assert _jaro_winkler('', 'hello') == 0.0
         assert _jaro_winkler('hello', '') == 0.0
 
     def test_similar(self):
-        from lltk.tools.metadb import _jaro_winkler
+        from lltk.db.metadb import _jaro_winkler
         score = _jaro_winkler('martha', 'marhta')
         assert score > 0.9
 
     def test_dissimilar(self):
-        from lltk.tools.metadb import _jaro_winkler
+        from lltk.db.metadb import _jaro_winkler
         score = _jaro_winkler('abcdef', 'zyxwvu')
         assert score < 0.5
 
@@ -918,29 +918,29 @@ class TestParseYear:
     """Tests for metadb._parse_year()."""
 
     def test_integer(self):
-        from lltk.tools.metadb import _parse_year
+        from lltk.db.metadb import _parse_year
         assert _parse_year(1750) == 1750
 
     def test_string(self):
-        from lltk.tools.metadb import _parse_year
+        from lltk.db.metadb import _parse_year
         assert _parse_year('1750') == 1750
 
     def test_range(self):
-        from lltk.tools.metadb import _parse_year
+        from lltk.db.metadb import _parse_year
         assert _parse_year('1750-1755') == 1750
 
     def test_circa(self):
-        from lltk.tools.metadb import _parse_year
+        from lltk.db.metadb import _parse_year
         assert _parse_year('[1750?]') == 1750
 
     def test_none(self):
-        from lltk.tools.metadb import _parse_year
+        from lltk.db.metadb import _parse_year
         assert _parse_year(None) is None
         assert _parse_year('') is None
         assert _parse_year('unknown') is None
 
     def test_float(self):
-        from lltk.tools.metadb import _parse_year
+        from lltk.db.metadb import _parse_year
         assert _parse_year(1750.0) == 1750
 
 
@@ -952,7 +952,7 @@ class TestMetaDB:
     def tmpdb(self, tmp_path_factory):
         """Create a MetaDB backed by temp DuckDB files."""
         tmpdir = tmp_path_factory.mktemp('metadb')
-        from lltk.tools.metadb import MetaDB
+        from lltk.db.metadb import MetaDB
         db = MetaDB(
             path=str(tmpdir / 'test.duckdb'),
             match_path=str(tmpdir / 'test_matches.duckdb'),

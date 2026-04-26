@@ -1,5 +1,5 @@
 """
-Unit tests for lltk.tools.clickhouse_passages — query parsing and snippet
+Unit tests for lltk.db.passages — query parsing and snippet
 extraction. Pure Python: no ClickHouse server required.
 """
 
@@ -8,7 +8,7 @@ import pytest
 
 class TestQueryToChCondition:
     def _cond(self, q):
-        from lltk.tools.clickhouse_passages import _query_to_ch_condition
+        from lltk.db.passages import _query_to_ch_condition
         return _query_to_ch_condition(q)
 
     def test_single_token(self):
@@ -44,7 +44,7 @@ class TestQueryToChCondition:
 
 class TestExtractSnippet:
     def _snip(self, text, query, context_words=10):
-        from lltk.tools.clickhouse_passages import _extract_snippet
+        from lltk.db.passages import _extract_snippet
         return _extract_snippet(text, query, context_words=context_words)
 
     def test_term_found(self):

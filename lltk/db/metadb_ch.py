@@ -22,8 +22,8 @@ import re
 import time
 import pandas as pd
 
-from lltk.tools.db_adapter import get_adapter
-from lltk.tools.clickhouse_schema import create_all_tables
+from lltk.db.adapter import get_adapter
+from lltk.db.schema import create_all_tables
 
 
 # Default ClickHouse URL for local-development. Production deployments
@@ -299,12 +299,12 @@ class MetaDBCH:
 
     def ingest(self, corpus_id, force=True):
         """Ingest one corpus's metadata into lltk.texts. Returns row count."""
-        from lltk.tools.clickhouse_rebuild import ingest_corpus_to_clickhouse
+        from lltk.db.rebuild import ingest_corpus_to_clickhouse
         return ingest_corpus_to_clickhouse(corpus_id, self.adapter, force=force)
 
     def rebuild(self, corpus_ids=None, progress=True):
         """Full rebuild from corpus metadata CSVs into ClickHouse."""
-        from lltk.tools.clickhouse_rebuild import rebuild_clickhouse
+        from lltk.db.rebuild import rebuild_clickhouse
         return rebuild_clickhouse(
             self.adapter, corpora=corpus_ids, force=(corpus_ids is None),
         )
@@ -354,7 +354,7 @@ class MetaDBCH:
 
     def build_freqs_db(self, corpora=None, num_proc=None, batch_size=2000,
                        truncate_first=False):
-        from lltk.tools.clickhouse_ingest import ingest_freqs_from_jsons
+        from lltk.db.ingest import ingest_freqs_from_jsons
         return ingest_freqs_from_jsons(
             self.adapter, corpora=corpora, batch_size=batch_size,
             num_proc=num_proc, truncate_first=truncate_first,
@@ -562,29 +562,29 @@ class MetaDBCH:
         )
 
     def match(self, corpora=None, fuzzy=False, containment=True, progress=True):
-        from lltk.tools.clickhouse_match import match_clickhouse
+        from lltk.db.match import match_clickhouse
         return match_clickhouse(self.adapter, corpora=corpora, fuzzy=fuzzy,
                                 containment=containment, progress=progress)
 
     def find_matches(self, query):
-        from lltk.tools.clickhouse_match import find_matches_ch
+        from lltk.db.match import find_matches_ch
         return find_matches_ch(self.adapter, query)
 
     def get_group(self, _id):
-        from lltk.tools.clickhouse_match import get_group_ch
+        from lltk.db.match import get_group_ch
         return get_group_ch(self.adapter, _id)
 
     def match_stats(self):
-        from lltk.tools.clickhouse_match import match_stats_ch
+        from lltk.db.match import match_stats_ch
         return match_stats_ch(self.adapter)
     def wordcounts(self, *a, **kw):       return self._phase_b('wordcounts')
 
     def enrich_genres(self, progress=True):
-        from lltk.tools.clickhouse_enrich import enrich_genres_ch
+        from lltk.db.enrich import enrich_genres_ch
         return enrich_genres_ch(self.adapter, progress=progress)
 
     def detect_translations(self):
-        from lltk.tools.clickhouse_enrich import detect_translations_ch
+        from lltk.db.enrich import detect_translations_ch
         return detect_translations_ch(self.adapter)
     def build_word_index_sql(self, vocab_size=50_000, min_count=1,
                              corpora=None,
@@ -597,7 +597,7 @@ class MetaDBCH:
                 f'build_word_index_sql(): legacy kwargs no longer supported: '
                 f'{sorted(rejected)} (CH manages parallelism + memory)'
             )
-        from lltk.tools.clickhouse_wordindex import build_word_index_ch
+        from lltk.db.wordindex import build_word_index_ch
         return build_word_index_ch(
             self.adapter, vocab_size=vocab_size, min_count=min_count,
             corpora=corpora,
@@ -610,7 +610,7 @@ class MetaDBCH:
         on a single word become sub-second index-range scans instead of
         full-column Map scans. text_stats stores per-text total_tokens.
         """
-        from lltk.tools.clickhouse_text_words import (
+        from lltk.db.text_words import (
             build_text_words, build_text_stats,
         )
         n_words = build_text_words(
@@ -629,7 +629,7 @@ class MetaDBCH:
             lltk.db.ngram(['virtue', 'honor'], genre='Fiction', dedup=True)
             lltk.db.ngram('virtue', by_corpus=True)
         """
-        from lltk.tools.clickhouse_wordindex import ngram_ch
+        from lltk.db.wordindex import ngram_ch
         return ngram_ch(self.adapter, words,
                         genre=genre, corpus=corpus,
                         year_min=year_min, year_max=year_max, lang=lang,
@@ -640,7 +640,7 @@ class MetaDBCH:
                        year_min=None, year_max=None, lang=None, limit=20,
                        dedup=False, dedup_by='rank'):
         """Texts scoring highest (per_million) on a word."""
-        from lltk.tools.clickhouse_wordindex import ngram_examples_ch
+        from lltk.db.wordindex import ngram_examples_ch
         return ngram_examples_ch(self.adapter, word,
                                  genre=genre, corpus=corpus,
                                  year_min=year_min, year_max=year_max,
@@ -648,7 +648,7 @@ class MetaDBCH:
                                  dedup=dedup, dedup_by=dedup_by)
 
     def has_word_index(self):
-        from lltk.tools.clickhouse_wordindex import has_word_index_ch
+        from lltk.db.wordindex import has_word_index_ch
         return has_word_index_ch(self.adapter)
 
     def detect_langs(self, min_tokens=50, coverage_threshold=0.05,
@@ -680,7 +680,7 @@ class MetaDBCH:
                 f'{sorted(rejected)}. The new pipeline writes results to '
                 f'lltk.text_langs; promote to texts.lang with a follow-up step.'
             )
-        from lltk.tools.clickhouse_detect_langs import detect_langs_clickhouse
+        from lltk.db.detect_langs import detect_langs_clickhouse
         return detect_langs_clickhouse(
             self.adapter,
             min_tokens=min_tokens,
@@ -711,7 +711,7 @@ class MetaDBCH:
             lltk.db.build_passages_db(corpora=['arc_fiction'],
                                       year_max=1800, dedup=True)
         """
-        from lltk.tools.clickhouse_passages import build_passages_ch
+        from lltk.db.passages import build_passages_ch
 
         needs_resolution = year_min is not None or year_max is not None or dedup
         if not needs_resolution and corpora is not None:
@@ -814,7 +814,7 @@ class MetaDBCH:
         Columns: _id, scheme, seq, text, n_words, lang.
         Used by largeliterarymodels via lltk.db.get_passages(ids).
         """
-        from lltk.tools.clickhouse_passages import get_passages_ch
+        from lltk.db.passages import get_passages_ch
         return get_passages_ch(self.adapter, ids, scheme=scheme)
 
     def export_passages(self, ids=None, corpus=None, year_min=None,
@@ -824,7 +824,7 @@ class MetaDBCH:
         Each JSONL has a header line (metadata, no 'text' key) then one
         passage per line (has 'text' key).
         """
-        from lltk.tools.clickhouse_passages import export_passages_ch
+        from lltk.db.passages import export_passages_ch
         return export_passages_ch(
             self.adapter, ids=ids, corpus=corpus,
             year_min=year_min, year_max=year_max,
@@ -840,7 +840,7 @@ class MetaDBCH:
         year, corpus, genre, lang.  No BM25 ranking — results ordered by
         (_id, seq).  Snippet extracted in Python.
         """
-        from lltk.tools.clickhouse_passages import search_passages_ch
+        from lltk.db.passages import search_passages_ch
         return search_passages_ch(
             self.adapter, query, genre=genre, corpus=corpus, lang=lang,
             year_min=year_min, year_max=year_max, limit=limit,
@@ -849,7 +849,7 @@ class MetaDBCH:
 
     def search_count(self, query: str) -> int:
         """Count passages matching query (scheme='p500', no metadata filter)."""
-        from lltk.tools.clickhouse_passages import search_passages_count_ch
+        from lltk.db.passages import search_passages_count_ch
         return search_passages_count_ch(self.adapter, query)
 
     # ── Embeddings ──────────────────────────────────────────────────────────
@@ -862,7 +862,7 @@ class MetaDBCH:
 
         Prerequisite: lltk.passages must be populated (run db-passages first).
         """
-        from lltk.tools.clickhouse_embeddings import build_embeddings_ch
+        from lltk.db.embeddings import build_embeddings_ch
         return build_embeddings_ch(
             self.adapter, model_name=model, device=device,
             batch_size=batch_size, encode_batch_size=encode_batch_size,
@@ -871,14 +871,14 @@ class MetaDBCH:
 
     def text_embedding(self, _id, model='multilingual-e5-large', scheme='p500'):
         """Return mean-pooled embedding (numpy array) for a text."""
-        from lltk.tools.clickhouse_embeddings import get_text_embedding_ch
+        from lltk.db.embeddings import get_text_embedding_ch
         return get_text_embedding_ch(self.adapter, _id, model=model,
                                      scheme=scheme)
 
     def similar_texts(self, _id, model='multilingual-e5-large', scheme='p500',
                       limit=20, corpora=None, lang=None):
         """Find texts most similar to _id by mean-pooled cosine similarity."""
-        from lltk.tools.clickhouse_embeddings import similar_texts_ch
+        from lltk.db.embeddings import similar_texts_ch
         return similar_texts_ch(
             self.adapter, _id, model=model, scheme=scheme,
             limit=limit, corpora=corpora, lang=lang,
@@ -888,7 +888,7 @@ class MetaDBCH:
                         scheme='p500', limit=20, device='auto',
                         corpora=None, lang=None):
         """Semantic search over passages using embedding similarity."""
-        from lltk.tools.clickhouse_embeddings import search_embeddings_ch
+        from lltk.db.embeddings import search_embeddings_ch
         return search_embeddings_ch(
             self.adapter, query_text, model_name=model, scheme=scheme,
             limit=limit, device=device, corpora=corpora, lang=lang,
@@ -897,7 +897,7 @@ class MetaDBCH:
     def match_embeddings(self, model='multilingual-e5-large', scheme='p500',
                          threshold=0.998, same_corpus=False):
         """Insert embedding-based duplicate/translation matches."""
-        from lltk.tools.clickhouse_embeddings import match_by_embeddings_ch
+        from lltk.db.embeddings import match_by_embeddings_ch
         return match_by_embeddings_ch(
             self.adapter, model=model, scheme=scheme,
             threshold=threshold, same_corpus=same_corpus,

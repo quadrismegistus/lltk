@@ -277,5 +277,5 @@ def prepare_corpus_df(df, corpus_id, corpus=None, default_lang=None):
 
 # ── Singleton ────────────────────────────────────────────────────────
 
-from lltk.tools.metadb_ch import MetaDBCH
+from lltk.db.metadb_ch import MetaDBCH
 metadb = MetaDBCH()

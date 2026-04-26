@@ -673,7 +673,7 @@ class BaseCorpus(TextList):
         # 1. Main metadata DB (ClickHouse via the metadb shim)
         row = None
         try:
-            from lltk.tools.metadb import metadb
+            from lltk.db.metadb import metadb
             row = metadb.conn.execute(
                 "SELECT id FROM texts WHERE corpus = ? ORDER BY random() LIMIT 1",
                 [self.id],

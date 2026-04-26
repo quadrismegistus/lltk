@@ -19,7 +19,7 @@ detect_translations_ch:
 import pandas as pd
 import pyarrow as pa
 
-from lltk.tools.metadb import GENRE_AUTHORITY_CORPORA
+from lltk.db.metadb import GENRE_AUTHORITY_CORPORA
 
 
 def enrich_genres_ch(ch_adapter, progress=True):

@@ -220,15 +220,15 @@ class TestFuncRef:
 
     def test_func_ref_file_path(self):
         from lltk.model.preprocess import _func_ref
-        from lltk.tools.clickhouse_passages import _escape
+        from lltk.db.passages import _escape
         ref = _func_ref(_escape)
         assert ref is not None
-        assert ref[0].endswith('clickhouse_passages.py')
+        assert ref[0].endswith('passages.py')
         assert ref[1] == '_escape'
 
     def test_resolve_roundtrip(self):
         from lltk.model.preprocess import _func_ref, _resolve_func_ref
-        from lltk.tools.clickhouse_passages import _escape
+        from lltk.db.passages import _escape
         ref = _func_ref(_escape)
         func = _resolve_func_ref(ref)
         assert func("it's") == "it''s"
@@ -236,7 +236,7 @@ class TestFuncRef:
     def test_func_ref_picklable(self):
         import pickle
         from lltk.model.preprocess import _func_ref
-        from lltk.tools.clickhouse_passages import _escape
+        from lltk.db.passages import _escape
         ref = _func_ref(_escape)
         roundtripped = pickle.loads(pickle.dumps(ref))
         assert roundtripped == ref
@@ -248,37 +248,37 @@ class TestFuncRef:
 
 class TestPassageQueryHelpers:
     def test_escape_single_quote(self):
-        from lltk.tools.clickhouse_passages import _escape
+        from lltk.db.passages import _escape
         assert _escape("it's") == "it''s"
 
     def test_escape_double_quote_unchanged(self):
-        from lltk.tools.clickhouse_passages import _escape
+        from lltk.db.passages import _escape
         assert _escape('say "hello"') == 'say "hello"'
 
     def test_escape_empty(self):
-        from lltk.tools.clickhouse_passages import _escape
+        from lltk.db.passages import _escape
         assert _escape('') == ''
 
     def test_condition_whitespace_handling(self):
-        from lltk.tools.clickhouse_passages import _query_to_ch_condition
+        from lltk.db.passages import _query_to_ch_condition
         c = _query_to_ch_condition('  virtue  ')
         assert 'virtue' in c
 
     def test_near_case_insensitive(self):
-        from lltk.tools.clickhouse_passages import _query_to_ch_condition
+        from lltk.db.passages import _query_to_ch_condition
         c = _query_to_ch_condition('near(foo bar, 3)')
         assert 'AND' in c
         assert 'foo' in c
         assert 'bar' in c
 
     def test_snippet_short_text_no_ellipsis(self):
-        from lltk.tools.clickhouse_passages import _extract_snippet
+        from lltk.db.passages import _extract_snippet
         s = _extract_snippet('one two three', 'two', context_words=30)
         assert not s.startswith('...')
         assert not s.endswith('...')
 
     def test_snippet_context_size(self):
-        from lltk.tools.clickhouse_passages import _extract_snippet
+        from lltk.db.passages import _extract_snippet
         words = ['w'] * 50 + ['TARGET'] + ['w'] * 50
         text = ' '.join(words)
         s = _extract_snippet(text, 'TARGET', context_words=10)
@@ -431,7 +431,7 @@ class TestTextPassages:
 
 class TestOptionalDeps:
     def test_metadb_has_no_duckdb(self):
-        from lltk.tools import metadb
+        from lltk.db import metadb
         assert not hasattr(metadb, 'duckdb')
 
     def test_db_module_removed(self):

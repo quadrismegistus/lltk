@@ -238,7 +238,7 @@ class BaseText(BaseObject):
         """Look up this text's row. Tries MetaDB first, falls back to corpus DataFrame."""
         # Fast path: DuckDB indexed lookup (returns dict with meta JSON unpacked)
         try:
-            from lltk.tools.metadb import metadb
+            from lltk.db.metadb import metadb
             row = metadb.get(self.corpus.id, self.id)
             if row:
                 return row
@@ -678,7 +678,7 @@ class BaseText(BaseObject):
     def match_group(self):
         """Return DataFrame of all texts in this text's match group from CH."""
         try:
-            from lltk.tools.metadb import metadb
+            from lltk.db.metadb import metadb
             return metadb.get_group(self.addr)
         except Exception:
             return None
@@ -907,7 +907,7 @@ class BaseText(BaseObject):
     @property
     def lang(self):
         """Best-effort language as ISO 639-1 two-letter code."""
-        from lltk.tools.metadb import normalize_lang
+        from lltk.db.metadb import normalize_lang
         meta = self._meta or {}
         for key in ('lang', 'language', 'language_1', 'estc_lang', 'language1'):
             val = meta.get(key)
