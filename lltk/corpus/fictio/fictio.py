@@ -1,7 +1,6 @@
 from __future__ import absolute_import
 # -*- coding: utf-8 -*-
 
-from lltk.corpus.corpus import BaseCorpusMeta,name2corpus
 from lltk.corpus.litlab import LitLab
 from lltk.corpus.tedjdh import TedJDH
 from lltk.corpus.chadwyck import Chadwyck

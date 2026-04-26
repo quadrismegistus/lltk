@@ -103,7 +103,7 @@ class CharacterSystem(BaseModel):
     @property
     def df_feats(self): return self.get_df_feats()
 
-    def get_character_id(self,char_toks,force=False,bad=BAD_CHAR_IDS,return_tok=False,sep=';'):
+    def get_character_id(self,char_toks,force=False,_bad=BAD_CHAR_IDS,return_tok=False,sep=';'):
         char_toks=str(char_toks)
         if not self._character_tok2id: self._character_tok2id=self.init_names_anno()
         default = '' if not return_tok else char_toks

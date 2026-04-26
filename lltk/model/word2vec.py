@@ -10,7 +10,7 @@ import pandas as pd
 
 from lltk.imports import BaseText
 from lltk.model import BaseModel
-from scipy.spatial.distance import cosine,pdist,squareform,cdist
+from scipy.spatial.distance import cosine,pdist,squareform
 from scipy.stats import pearsonr,spearmanr
 import gensim
 
@@ -91,7 +91,7 @@ class Word2Vec(BaseModel):
 
 
 
-	def model(self, num_workers=8, min_count=10, num_dimensions=100, sg=1, num_epochs=None):
+	def model(self, num_workers=8, min_count=10, num_dimensions=100, sg=1, _num_epochs=None):
 		"""
 		Train the model!
 		"""
@@ -375,38 +375,6 @@ class Word2Vec(BaseModel):
 		"""
 		return self.mfw_in_model(n=mfw_d['n'])
 
-		n=mfw_d['n']
-		if 'special' in mfw_d:
-			special=mfw_d['special']
-			del mfw_d['special']
-		else:
-			special=[]
-
-
-
-		print('>> generating mfw for model [{0}]: [{1}]'.format(self.name,mfw_d))
-		then=time.time()
-
-		# Get results
-		res=[]
-		i=0
-		#vocabset=set(self.vocab)
-		for x in self.corpus.mfw(**mfw_d):
-			#if not x in vocabset: continue
-			i+=1
-			res+=[x]
-			if i>=mfw_d['n']: break
-
-		# Add special words
-		for w in special:
-			if w and not w in res:
-				res+=[w]
-
-
-		now=time.time()
-		#print '>> done loading mfw for model [{0}] [{1}]'.format(self.name,str(round(now-then,1))+' seconds')
-		return res
-
 
 	def compare_jaccard(self,other,words=None,topn=100):
 		if not words: words=self.mfw()
@@ -451,7 +419,7 @@ class Word2Vec(BaseModel):
 		return vd
 
 
-	def abstract_vectors(self,only_major=True,include_social=False):
+	def abstract_vectors(self,_only_major=True,_include_social=False):
 		model = self.gensim
 		vd={} # vector dictionary
 
@@ -1048,16 +1016,6 @@ class Word2Vec(BaseModel):
 
 		return model_kclust
 
-		old=[]
-		for i,word in enumerate(dist_words):
-			dx={'model':self.name, 'word':word}
-			for k,v in list(word2d[word].items()): dx[k]=v
-			for ii in range(n_components):
-				dx['tsne_V'+str(ii+1)]=fit[i][ii]
-			old+=[dx]
-		if save: tools.write2('dists.tsne.{0}.txt'.format(self.name), old)
-		return old
-
 	def has_word(self,word):
 		return word in self.gensim.vocab
 
@@ -1535,7 +1493,7 @@ class MultiSkip(object):
 
 # STONE
 def gen_word2vec_model_from_skipgrams(path_to_skipgram_file_or_files,results_dir='./',skipgram_size=10,num_runs=1,
-									num_skips_wanted=None, num_workers=8, min_count=100, num_dimensions=100, sg=1, num_epochs=None,labels=[]):
+									num_skips_wanted=None, num_workers=8, min_count=100, num_dimensions=100, sg=1, _num_epochs=None,labels=[]):
 
 	"""
 	STONE CERTIFIED

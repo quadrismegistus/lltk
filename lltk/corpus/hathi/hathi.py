@@ -172,6 +172,7 @@ class TextHathiRecord(TextHathi):
 
 
     def query(self,force=False,force_inner=False,sep='  - ',**kwargs):
+        _ = force_inner  # unused; kept for API compat
         odx=self.qdb.get(self.id)
         if force or not odx:
             if log: log(self)
@@ -517,8 +518,8 @@ class HathiRomances(HathiSubcorpus):
 
 
 def compile_text(idx,by_page=False):
+    _ = by_page  # unused; kept for API compat
     from htrc_features import Volume
-    from urllib.error import HTTPError
 
     try:
         path_freqs = os.path.join(load_corpus('Hathi').path_freqs,idx+'.json')

@@ -97,7 +97,7 @@ class TextSectionLetterChadwyck(TextSectionLetter):
         meta['txt_end'] = clean_text(ltr_txt[-1000:].replace('\n',' ').replace('\t',' '))
         
         ### NER
-        from lltk.model.ner import extract_places, extract_times, nlp_ner_get_doc_simple
+        from lltk.model.ner import extract_times, nlp_ner_get_doc_simple
         import dateparser
 
         itxt=meta.get('txt_head','') + '  ...  ' + meta.get('txt_front','')
@@ -532,6 +532,7 @@ def iter_letter_networks_from_dfletters(
         bad_ids=BAD_CHAR_IDS,
         progress=True,
         *x,**y):
+    _ = key_rel  # unused; reserved for future edge-type support
     G=nx.DiGraph()
     iterr=get_tqdm(
         dfletters.to_dict(orient='records'),

@@ -56,6 +56,7 @@ def extract_metadata(mtxt):
 
 
 def xml2txt_tcp(xmlfn,OK=['p','l'], BAD=[], body_tag='text', force_xml=False, text_only_within_medium=False):
+    _ = force_xml, text_only_within_medium  # unused; kept for API compat
     import bs4
     # get dom
     with open(xmlfn,encoding='utf-8',errors='ignore') as f: xml=f.read()

@@ -6,10 +6,8 @@ from lltk.imports import get_tqdm
 def ner_parse_flair(txt):
     from collections import defaultdict
     from flair.models import SequenceTagger
-    from flair.data import Sentence
     tagger = SequenceTagger.load('ner')
     from tqdm import tqdm
-    from flair.models import MultiTagger
     from flair.tokenization import SegtokSentenceSplitter
     # initialize sentence splitter
     splitter = SegtokSentenceSplitter()
@@ -99,7 +97,7 @@ def ner_parse(txt,*x,**y):
     return ner_parse_stanza(txt,*x,**y)
 
 
-def ner_txt2names(txt,incl_labels={}):
+def ner_txt2names(txt,_incl_labels={}):
     import stanza
     from tqdm import tqdm
     
@@ -121,7 +119,7 @@ def ner_txt2names(txt,incl_labels={}):
             countd[entd.text]+=1
     return countd
 
-def ner_txt2names_spacy(txt,incl_labels={}): # 'PERSON'
+def ner_txt2names_spacy(txt,_incl_labels={}): # 'PERSON'
     import spacy
     from tqdm import tqdm
 

@@ -32,6 +32,7 @@ class TextChadwyck(BaseText):
 def split_raw_xml_into_chapters(xml_str,chapter_tags=['div5','div4','div3','div2','div1','div0'],para_tag='p',verse_tag='l',keep_verse=True,modernize_spelling=True):
     import bs4,tools
     from collections import defaultdict
+    _ = chapter_tags  # parameter unused; divs are hardcoded below
     dom=bs4.BeautifulSoup(xml_str,'lxml')
     if keep_verse:
         for tag in dom(verse_tag):

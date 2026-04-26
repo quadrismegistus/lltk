@@ -12,7 +12,7 @@ LATLONG_CACHE_FN = os.path.join(os.path.expanduser('~'), 'lltk_data', 'data', 'l
 
 class CharacterNetwork:
 
-    def __init__(self, url_or_path_or_g = None, is_directed=True):
+    def __init__(self, _url_or_path_or_g = None, is_directed=True):
         # init
         self.df_nodes = None
         self.df_edges = None

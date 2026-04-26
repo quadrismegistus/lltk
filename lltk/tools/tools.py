@@ -1160,7 +1160,7 @@ def write2(fn,data,uni=True,join_cell=u'\t',join_line=u'\n',limcol=None,toprint=
 
     ## write
     import codecs
-    of = codecs.open(fn,'w',encoding='utf-8') if True else open(fn,'w')
+    of = codecs.open(fn,'w',encoding='utf-8')
     for line in o: of.write(line)
     of.close()
     if toprint: print('>> saved:',fn)
@@ -1253,18 +1253,18 @@ def crunch(objects,function_or_methodname,ismethod=None,nprocs=8,args=[],kwargs=
     def do_preparse(text,args=[],kwargs={}):
         threadid=os.getpid()
         time.sleep(random.uniform(0,5))
-        print("[{2}] Starting working on {0} at {1}".format(text if False else 'ObjectX', now(), threadid))
+        print("[{2}] Starting working on {0} at {1}".format('ObjectX', now(), threadid))
         #print ismethod,function_or_methodname,args,kwargs
         if ismethod:
             x=getattr(text,function_or_methodname)(*args,**kwargs)
         else:
             x=function_or_methodname(text, *args, **kwargs)
 
-        print("[{2}] Finished working on {0} at {1}".format(text if False else 'ObjectX', now(), threadid))
+        print("[{2}] Finished working on {0} at {1}".format('ObjectX', now(), threadid))
         return x
 
-    import _thread,multiprocessing,os
-    from multiprocessing import Process, Pipe
+    import multiprocessing,os
+    from multiprocessing import Process
     #from itertools import zip
     izip=zip
 

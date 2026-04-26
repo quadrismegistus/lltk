@@ -849,7 +849,6 @@ def show_stats(corpus_names=[],genre=None,title=None):
         else:
 
 
-            import p_tqdm as pt
             objs=[(idx,corpus.path_freqs) for idx in meta.id]
             res=[int(x) for x in pmap(do_text, objs) if type(x)==int or type(x)==float]
             num_words=sum(res)
