@@ -9,7 +9,7 @@ from sklearn.metrics import classification_report
 from sklearn.model_selection import LeaveOneOut
 from sklearn.model_selection import KFold
 import numpy as np
-from lltk.model import Model,NullModel
+from lltk.model import Model
 import pandas as pd
 import os
 

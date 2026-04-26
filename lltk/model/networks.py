@@ -407,7 +407,6 @@ def draw_bokeh(g,
     from bokeh.models import Range1d, Circle, ColumnDataSource, LabelSet
     from bokeh.plotting import figure
     from bokeh.plotting import from_networkx
-    from networkx.algorithms import community
     from bokeh.io import export_png
     import networkx as nx
 
