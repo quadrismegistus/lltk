@@ -11,7 +11,7 @@ from collections import UserList, defaultdict
 from collections.abc import MutableMapping
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from io import StringIO
-from lltk.imports import (
+from lltk.tools.constants import (
     HOME, ROOT, LLTK_ROOT, PATH_HERE,
     PATH_DEFAULT_LLTK_HOME, PATH_DEFAULT_CONF,
     META_KEY_SEP, DEFAULT_NUM_PROC, mp_cpu_count,
