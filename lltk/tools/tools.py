@@ -263,29 +263,6 @@ def safebool(x,bad_vals={np.nan}):
 
 
 
-def gethtml(url,timeout=10):
-    from lltk import log
-    import requests
-    from requests.adapters import HTTPAdapter
-    from requests.packages.urllib3.util.retry import Retry
-
-    if log: log(f'? {url}')
-    session = requests.Session()
-    retry = Retry(connect=3, backoff_factor=0.5)
-    adapter = HTTPAdapter(max_retries=retry)
-    session.mount('http://', adapter)
-    session.mount('https://', adapter)
-    
-    res = session.get(url)
-    url2 = res.url
-    if url!=url2:
-        if log: log(f'? {url2}')
-        res = session.get(url2)
-    o = res.text
-    if log: log(f'-> {" ".join(o.split())[:100]} ... ({len(o)} chars)')
-    return o
-
-
 def just_metadata(d,prefix_params='_',ok_keys=None):
     from lltk.imports import COL_ADDR,COL_ID,COL_CORPUS
     if not ok_keys: ok_keys={COL_ADDR,COL_ID,COL_CORPUS}
@@ -835,183 +812,12 @@ def read(fnfn):
         return ''
 
 
-def ld2dl(ld):
-    keys = list(ld[0].keys())
-    dl={}
-    for k in keys:
-        dl[k] = [d[k] for d in ld]
-    return dl
-
-
-def tsv2ld(fn,tsep='\t',nsep='\n',u=True,header=[],keymap={},zero='',removeEmpties=False):
-    import time
-    now=time.time()
-    if tsep=='\t':
-        print('>> reading as tsv:',fn)
-    elif tsep==',':
-        print('>> reading as csv:',fn)
-
-    import os
-    if fn.startswith('http'):
-        print('>> reading webpage...')
-        import urllib
-        f=urllib.urlopen(fn)
-        t=f.read()
-        if fn.endswith('/pubhtml'):
-            return goog2tsv(t)
-        f.close()
-    elif not os.path.exists(fn):
-        t=fn
-    elif u:
-        import codecs
-        f=codecs.open(fn,encoding='utf-8')
-        t=f.read()
-        f.close()
-    else:
-        f=open(fn,'r')
-        t=f.read()
-        f.close()
-    t=t.replace('\r\n','\n')
-    t=t.replace('\r','\n')
-
-    #header=[]
-    listdict=[]
-
-
-    for line in t.split(nsep):
-        if not line.strip(): continue
-        line=line.replace('\n','')
-        ln=line.split(tsep)
-        #print ln
-        if not header:
-            header=ln
-            for i,v in enumerate(header):
-                if v.startswith('"') and v.endswith('"'):
-                    header[i]=v[1:-1]
-            continue
-        edict={}
-        for i in range(len(ln)):
-            try:
-                k=header[i]
-            except IndexError:
-                #print "!! unknown column for i={0} and val={1}".format(i,ln[i])
-                continue
-            v=ln[i].strip()
-
-            if '*' in keymap:
-                v=keymap['*'](v)
-            elif k in keymap:
-                #print v, type(v)
-                v=keymap[k](v)
-                #print v, type(v)
-            else:
-                if v.startswith('"') and v.endswith('"'):
-                    v=v[1:-1]
-                try:
-                    v=float(v)
-                except ValueError:
-                    v=v
-
-            if type(v) is str and not v:
-                if zero=='' and removeEmpties:
-                    continue
-                else:
-                    v=zero
-            edict[k]=v
-        if edict:
-            listdict.append(edict)
-
-    nownow=time.time()
-    print('>> done ['+str(round(nownow-now,1))+' seconds]')
-
-    return listdict
-
-
-
-
-def ld2dld(ld,key='rownamecol'):
-    dld={}
-    for d in ld:
-        if not d[key] in dld: dld[d[key]]=[]
-        dld[d[key]]+=[d]
-    return dld
-
-
 def ld2dd(ld,rownamecol='rownamecol'):
     dd={}
     for d in ld:
         dd[d[rownamecol]]=d
         #del dd[d[rownamecol]][rownamecol]
     return dd
-
-
-def datatype(data,depth=0,v=False):
-    def echo(dt):
-        if not v: return
-        for n in range(depth): print("\t", end=' ')
-        print('['+dt[0]+']'+dt[1:], end=' ')
-        try:
-            print("[{0} records]".format(len(data),dt))
-        except:
-            print()
-
-    if type(data) is str:
-        echo('string')
-        return 's'
-    elif type(data) in [float,int]:
-        echo('number')
-        return 'n'
-    elif type(data) in [list]:
-        echo('list')
-        if not len(data):
-            return 'l'
-        else:
-            return 'l'+datatype(data[0],depth=depth+1,v=v)
-    elif type(data) in [dict]:
-        echo('dictionary')
-        if not len(data):
-            return 'd'
-        else:
-            return 'd'+datatype(list(data.values())[0],depth=depth+1,v=v)
-    else:
-        #print "WHAT TYPE OF DATA IS THIS:"
-        #print data
-        #print type(data)
-        #print
-        return '?'
-
-
-
-def write2(fn,data,uni=True,join_cell=u'\t',join_line=u'\n',limcol=None,toprint=True):
-    ## pass off to other write functions if necessary
-    if fn.endswith('.xls'): return write_xls(fn,data)
-    if fn.endswith('.csv'): join_cell=','
-
-    ## get datatyoe
-    dt=datatype(data)
-
-    ## get str output for datatype
-    if dt.startswith('ld'):
-        o=ld2str(data,join_cell=join_cell,limcol=limcol)
-    elif dt.startswith('dl'):
-        o=dl2str(data,uni=uni)
-    elif dt.startswith('ll'):
-        o=ll2str(data,uni=uni)
-    elif dt.startswith('dd'):
-        o=dd2str(data,uni=uni)
-    elif dt.startswith('l'):
-        o=l2str(data,uni=uni)
-    elif dt.startswith('d'):
-        o=d2str(data,uni=uni)
-    else:
-        o=data
-
-    ## write
-    import codecs
-    of = codecs.open(fn,'w',encoding='utf-8')
-    for line in o: of.write(line)
-    of.close()
-    if toprint: print('>> saved:',fn)
 
 
 def slice(l,num_slices=None,slice_length=None,runts=True,random=False):
@@ -1093,10 +899,6 @@ def tokenize_fast(line):
 
 
 
-def bigrams(l):
-    return ngram(l,2)
-
-
 def ngram(l,n=3):
     grams=[]
     gram=[]
@@ -1138,10 +940,6 @@ def passages(text,phrases=[],window=200,indices=None,ignorecase=True,marker='***
                 dx={'index':ia, 'index_end':ib, 'passage':window,'phrase':phrase}
                 yield dx
 
-write = write2
-
-
-
 
 
 
@@ -1157,66 +955,6 @@ def yank(text,tag,none=None):
         return none
 
 
-
-def product(*args):
-    if not args:
-        return iter(((),)) # yield tuple()
-    return (items + (item,)
-        for items in product(*args[:-1]) for item in args[-1])
-
-
-
-
-
-
-
-
-
-
-
-
-def linreg(X, Y):
-    from math import sqrt
-    from numpy import nan, isnan
-    from numpy import array, mean, std, random
-
-    if len(X)<2 or len(Y)<2:
-        return 0,0,0
-    """
-    Summary
-        Linear regression of y = ax + b
-    Usage
-        real, real, real = linreg(list, list)
-    Returns coefficients to the regression line "y=ax+b" from x[] and y[], and R^2 Value
-    """
-
-
-    if len(X) != len(Y):  raise ValueError('unequal length')
-    N = len(X)
-    Sx = Sy = Sxx = Syy = Sxy = 0.0
-    for x, y in map(None, X, Y):
-        Sx = Sx + x
-        Sy = Sy + y
-        Sxx = Sxx + x*x
-        Syy = Syy + y*y
-        Sxy = Sxy + x*y
-    det = Sxx * N - Sx * Sx
-    a, b = (Sxy * N - Sy * Sx)/det, (Sxx * Sy - Sx * Sxy)/det
-    meanerror = residual = 0.0
-    for x, y in map(None, X, Y):
-        meanerror = meanerror + (y - Sy/N)**2
-        residual = residual + (y - a * x - b)**2
-
-    RR = 1 - residual/meanerror if meanerror else 1
-    ss = residual / (N-2) if (N-2) else 0
-    Var_a, Var_b = ss * N / det, ss * Sxx / det
-    #print "y=ax+b"
-    #print "N= %d" % N
-    #print "a= %g \\pm t_{%d;\\alpha/2} %g" % (a, N-2, sqrt(Var_a))
-    #print "b= %g \\pm t_{%d;\\alpha/2} %g" % (b, N-2, sqrt(Var_b))
-    #print "R^2= %g" % RR
-    #print "s^2= %g" % ss
-    return a, b, RR
 
 
 
@@ -1432,35 +1170,4 @@ def remove_duplicates(seq,remove_empty=False):
     if not remove_empty: return l
     return [x for x in l if x]
 
-
-
-
-
-### UTILS
-
-
-
-
-def get_user_info():
-    path=PATH_LLTK_CONFIG_USR
-    data = read_json(path)
-    return data
-
-
-def get_user_email(message='please enter your email address: ',force=False):
-    data = get_user_info()
-    email = data.get('email') if not force else None
-    if email and email_is_valid(email):
-        # if log: log(f'got right away: {email}')
-        return email
-
-    email = input(message)
-    if email_is_valid(email):
-        data['email'] = email
-        write_json(data, path)
-        # if log: log(f'got from input: {email}')
-        return email
-
-    # if log: log.error(f'invalid email: {email}')
-    return None
 
