@@ -10,15 +10,7 @@ coverage:
 
 ignore:
   - "lltk/corpus/*/*.py"
-  - "lltk/corpus/arc_corpora/*.py"
   - "lltk/web/**"
   - "lltk/model/booknlp.py"
-  - "lltk/model/characters.py"
-  - "lltk/model/charnet.py"
-  - "lltk/model/ner.py"
   - "lltk/model/networks.py"
-  - "lltk/model/semnet.py"
-  - "lltk/model/word2vec.py"
-  - "lltk/model/word2vecs.py"
   - "lltk/model/classifier.py"
-  - "lltk/lib/**"
