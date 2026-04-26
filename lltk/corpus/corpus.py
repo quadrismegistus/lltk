@@ -129,7 +129,6 @@ class BaseCorpus(TextList):
 
         self.id=id
         self._metadf=None
-        self._metadfd={}
         self._addrs=set()
         self._texts=None
         self._textd=defaultdict(lambda: None)
@@ -352,14 +351,13 @@ class BaseCorpus(TextList):
         base = os.path.splitext(self.path_metadata)[0]
         return base + '.parquet'
 
-    def load_metadata(self,clean=True,force=False,**kwargs):
-        cache_key = ('load_metadata', clean)
-        if not force and cache_key in self._metadfd:
-            return self._metadfd[cache_key]
+    @log.fn(log_return=False)
+    def load_metadata(self, force=False, **kwargs):
+        if not force and self._metadf is not None:
+            return self._metadf
         if not os.path.exists(self.path_metadata): self.install_metadata()
         if not os.path.exists(self.path_metadata): return pd.DataFrame()
 
-        # Fast path: read from parquet cache if newer than CSV
         pq_path = self.path_metadata_parquet
         if not force and os.path.exists(pq_path):
             try:
@@ -369,27 +367,24 @@ class BaseCorpus(TextList):
                     df = pd.read_parquet(pq_path)
                     if self.col_id in set(df.columns):
                         df = df.set_index(self.col_id)
-                    self._metadfd[cache_key] = df
+                    self._metadf = df
                     return df
             except Exception:
-                pass  # fall through to CSV
+                pass
 
-        # Slow path: read CSV
-        df=read_df_anno(self.path_metadata,dtype=str)
+        df = read_df_anno(self.path_metadata, dtype=str)
         if df is None or not len(df): return pd.DataFrame()
         if self.col_id in set(df.columns):
-            df=df.set_index(self.col_id)
-        if clean:
-            from lltk.corpus.utils import clean_meta
-            df=clean_meta(df)
+            df = df.set_index(self.col_id)
+        from lltk.corpus.utils import clean_meta
+        df = clean_meta(df)
 
-        # Cache as parquet for next time
         try:
             df.to_parquet(pq_path)
         except Exception:
-            pass  # parquet write failed, no big deal
+            pass
 
-        self._metadfd[cache_key] = df
+        self._metadf = df
         return df
 
 
@@ -540,7 +535,7 @@ class BaseCorpus(TextList):
     def text_from(self, text, **kwargs):
         return self.text(text, **kwargs)
 
-
+    # @log.fn
     def get_text(self,id:str,_use_db:bool=True) -> Union[BaseText,None]:
         """Attempt to get a pre-existing text.
 
@@ -557,10 +552,10 @@ class BaseCorpus(TextList):
             Either a text object if found, or None if not.
         """
 
-        log.debug(f'<- id = {id}')
+        # log.debug(f'<- id = {id}')
         
         t=self._textd.get(id)
-        log.debug(f'-> {t}' if is_text_obj(t) else "-> ?")
+        # log.debug(f'-> {t}' if is_text_obj(t) else "-> ?")
         return t
         
 
@@ -840,59 +835,12 @@ class BaseCorpus(TextList):
         for t in self.iter_init(): pass
         self._init=True
     
-    def metadata(
-            self,
-            force=False,
-            progress=True,
-            lim=None,
-            fillna='',
-            from_cache=True,
-            from_sources=True,
-            cache=False,
-            remote=False,
-            sep=META_KEY_SEP,
-            meta={},
-            **kwargs):
-
-        key=(lim,fillna,from_cache,from_sources)
-        old_metadf=self._metadfd.get(key)
-        if force or old_metadf is None:
-            # Fast path: load from metadata CSV via load_metadata()
-            new_metadf = self.load_metadata()
-            if new_metadf is not None and len(new_metadf):
-                if fillna is not None:
-                    new_metadf=new_metadf.fillna(fillna)
-            else:
-                # Slow path: build from per-text metadata
-                remote=is_logged_on()
-                new_metadf=pd.DataFrame(
-                    t.metadata(
-                        from_cache=from_cache,
-                        from_sources=from_sources,
-                        remote=remote,
-                        cache=cache,
-                        sep=sep,
-                        meta=meta,
-                        **kwargs
-                    )
-                    for ti,t in enumerate(self.texts(progress=progress))
-                    if t is not None
-                    and t.metadata is not None
-                    and not lim or ti<lim
-                )
-                if fillna is not None:
-                    new_metadf=new_metadf.fillna(fillna)
-                if self.col_id in set(new_metadf.columns):
-                    new_metadf=new_metadf.set_index(self.col_id)
-                close_dbs()
-
-            self._metadfd[key]=new_metadf
-            if self._metadf is None: self._metadf=new_metadf
-
-        return self._metadfd.get(key,pd.DataFrame())
+    def metadata(self, force=False, **kwargs):
+        return self.load_metadata(force=force, **kwargs)
 
     @property
-    def meta(self): return self.metadata(force=False)
+    @log.fn(log_return=False)
+    def meta(self): return self.load_metadata()
     @property
     def metadf(self): return self.meta
     @property
@@ -1672,7 +1620,7 @@ def Corpus(corpus=None,force=False,init=False,clear=False,**kwargs):
         C=corpus
         logg=False
     else:
-        log.debug(f'<- id = {corpus}')
+        # log.debug(f'<- id = {corpus}')
         logg=True
         
         if type(corpus)==str and corpus:

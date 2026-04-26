@@ -248,9 +248,7 @@ class BaseText(BaseObject):
         # Fallback: corpus load_metadata() — can be slow for large corpora with enrichment
         # Only use if DB lookup failed (no DB, text not in DB, etc.)
         try:
-            cache_key = ('load_metadata', True)
-            # Check if already cached — avoid triggering expensive enrichment
-            cached = self.corpus._metadfd.get(cache_key)
+            cached = self.corpus._metadf
             if cached is not None and self.id in cached.index:
                 row = cached.loc[self.id]
                 return {k: v for k, v in row.items() if pd.notna(v)}
