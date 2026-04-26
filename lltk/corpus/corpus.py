@@ -138,7 +138,7 @@ class BaseCorpus(TextList):
         self._gdb=None
         self.name=_name
 
-        log.debug(f'{self.__class__.__name__}({get_imsg(id,**attrs)})')
+        # log.debug(f'{self.__class__.__name__}({get_imsg(id,**attrs)})')
 
         # make sure we have a name and ID
         if self.id is None and self.ID: self.id=self.ID
@@ -298,7 +298,6 @@ class BaseCorpus(TextList):
         base = os.path.splitext(self.path_metadata)[0]
         return base + '.parquet'
 
-    @log.fn(log_return=False)
     def load_metadata(self, force=False, **kwargs):
         if not force and self._metadf is not None:
             return self._metadf
@@ -565,7 +564,6 @@ class BaseCorpus(TextList):
         if t is not None and is_text_obj(t):
             if force or self._textd.get(t.id) is None:
                 self._textd[t.id]=t
-                self._metadf=None # redo meta
     
     def add_texts_from(self,corpus_or_texts,**kwargs):
         c_t = corpus_or_texts
@@ -715,8 +713,7 @@ class BaseCorpus(TextList):
 
         
     
-    def iter_init(self,progress=True,_init=True,_cache=False,lim=None,shuffle=False,**kwargs):
-        # Ensure corpus metadata is loaded (load_metadata caches itself)
+    def iter_init(self, progress=True, lim=None, shuffle=False, **kwargs):
         df = self.load_metadata()
         if df is None or not len(df):
             return

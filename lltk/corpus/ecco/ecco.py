@@ -218,7 +218,6 @@ class ECCO(BaseCorpus):
 	def path_metadata_enriched(self):
 		return os.path.join(self.path, 'metadata_enriched.parquet')
 
-	@logmap.fn(log_return=False)
 	def load_metadata(self, force=False, **kwargs):
 		if not force and self._metadf is not None:
 			return self._metadf
