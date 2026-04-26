@@ -382,27 +382,29 @@ class TextECCO(BaseText):
 	def clean_txt(self, task=None, model=None, force=False):
 		"""Clean OCR via LLM using ECCO XML page structure.
 
-		Returns 'cleaned', 'skipped', or 'error'.
+		Returns cleaned text string, or None if nothing to clean.
 		"""
 		import json as _json
 
 		clean_dir = getattr(self.corpus, 'path_txt_clean', None)
 		if not clean_dir:
-			return 'skipped'
+			return None
 		clean_path = os.path.join(clean_dir, self.id + '.txt')
 		meta_path = os.path.join(clean_dir, self.id + '.json')
 		if not force and os.path.exists(clean_path):
-			return 'skipped'
+			with open(clean_path, encoding='utf-8') as f:
+				self._txt = f.read()
+			return self._txt
 
 		if task is None:
 			from largeliterarymodels.tasks import OCRCleanTask
 			task = OCRCleanTask(**({'model': model} if model else {}))
 
 		if not os.path.exists(self.fnfn):
-			return 'skipped'
+			return None
 		pages = ecco_page_texts(self.fnfn)
 		if not pages:
-			return 'skipped'
+			return None
 
 		cleaned_pages = task.map([p['text'] for p in pages])
 
@@ -419,7 +421,8 @@ class TextECCO(BaseText):
 				for p in pages]
 		with open(meta_path, 'w', encoding='utf-8') as f:
 			_json.dump(meta, f, indent=2)
-		return 'cleaned'
+		self._txt = cleaned_text
+		return cleaned_text
 
 
 class ECCO(BaseCorpus):

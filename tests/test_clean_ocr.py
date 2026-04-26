@@ -229,13 +229,13 @@ class TestBaseTextCleanTxt:
         mock_task = MagicMock()
         mock_task.map.return_value = ['Clean para one.\n\nClean para two.']
 
-        status = t.clean_txt(task=mock_task)
-        assert status == 'cleaned'
+        result = t.clean_txt(task=mock_task)
+        assert result is not None
+        assert 'Clean para' in result
+        assert t._txt == result
         assert (txt_clean_dir / 'test.txt').exists()
-        content = (txt_clean_dir / 'test.txt').read_text()
-        assert 'Clean para' in content
 
-    def test_skips_existing(self, tmp_path):
+    def test_skips_existing_returns_text(self, tmp_path):
         from lltk.text.text import BaseText
 
         txt_clean_dir = tmp_path / 'txt_clean'
@@ -247,8 +247,9 @@ class TestBaseTextCleanTxt:
         mock_corpus.ext_txt = '.txt'
 
         t = _make_text(BaseText, mock_corpus, 'test')
-        status = t.clean_txt(task=MagicMock())
-        assert status == 'skipped'
+        result = t.clean_txt(task=MagicMock())
+        assert result == 'already cleaned'
+        assert t._txt == 'already cleaned'
 
 
 # ── TextECCO.clean_txt ───────────────────────────────────────────────
@@ -276,14 +277,14 @@ class TestTextECCOCleanTxt:
         mock_task = MagicMock()
         mock_task.map.return_value = ['cleaned title', 'cleaned page 1', 'cleaned page 2']
 
-        status = t.clean_txt(task=mock_task)
-        assert status == 'cleaned'
+        result = t.clean_txt(task=mock_task)
+        assert result is not None
+        assert 'cleaned title' in result
+        assert t._txt == result
         assert (txt_clean_dir / 'test.txt').exists()
         assert (txt_clean_dir / 'test.json').exists()
 
-        content = (txt_clean_dir / 'test.txt').read_text()
-        assert 'cleaned title' in content
-        assert '\n\n\n' in content
+        assert '\n\n\n' in result
 
         meta = json.loads((txt_clean_dir / 'test.json').read_text())
         assert len(meta) == 3

@@ -781,11 +781,13 @@ class BaseText(BaseObject):
         """
         clean_dir = getattr(self.corpus, 'path_txt_clean', None)
         if not clean_dir:
-            return 'skipped'
+            return None
         ext = getattr(self.corpus, 'ext_txt', None) or ''
         clean_path = os.path.join(clean_dir, self.id + ext)
         if not force and os.path.exists(clean_path):
-            return 'skipped'
+            with open(clean_path, encoding='utf-8') as f:
+                self._txt = f.read()
+            return self._txt
 
         if task is None:
             from largeliterarymodels.tasks import OCRCleanTask
@@ -793,7 +795,7 @@ class BaseText(BaseObject):
 
         txt = self.text_plain()
         if not txt or not txt.strip():
-            return 'skipped'
+            return None
         chunks = _chunk_on_paragraphs(txt)
         cleaned = task.map(chunks)
         cleaned_text = '\n\n'.join(cleaned)
@@ -801,7 +803,8 @@ class BaseText(BaseObject):
         os.makedirs(os.path.dirname(clean_path), exist_ok=True)
         with open(clean_path, 'w', encoding='utf-8') as f:
             f.write(cleaned_text)
-        return 'cleaned'
+        self._txt = cleaned_text
+        return cleaned_text
 
 
     
