@@ -386,19 +386,6 @@ class BaseText(BaseObject):
             return []
         return sorted(f[:-5] for f in os.listdir(d) if f.endswith('.json'))
 
-    def get_path_xml(self):
-        if not os.path.exists(self.path_xml):
-            tsrc = self.source
-            if tsrc is not None and os.path.exists(tsrc.path_xml):
-                return tsrc.path_xml
-        return self.path_xml
-
-    def get_path_text(self,part='txt'):
-        if part=='txt':
-            return os.path.join(self.path, 'text.txt')
-        elif part=='xml':
-            return os.path.join(self.path, 'text.xml')
-        return ''
 
 
 
@@ -708,13 +695,21 @@ class BaseText(BaseObject):
     # load text?
     
     @property
-    def txt(self): return self.get_txt()
+    def txt(self):
+        if not self._txt:
+            self._txt = self.text_plain()
+        return clean_text(self._txt) if self._txt else ''
 
     @property
     def xml(self):
         if self._xml: return self._xml
-        path_xml = self.get_path_xml()
-        if not os.path.exists(path_xml): return ''
+        path_xml = self.path_xml
+        if not path_xml or not os.path.exists(path_xml):
+            src = getattr(self, '_source', None)
+            if src is not None and hasattr(src, 'path_xml') and os.path.exists(src.path_xml):
+                path_xml = src.path_xml
+            else:
+                return ''
         with _open_file(path_xml) as f: return clean_text(f.read())
     
     
@@ -752,30 +747,6 @@ class BaseText(BaseObject):
         if os.path.exists(self.path_xml): return self.XML2TXT.__func__(self.path_xml)
         return ''
 
-    def get_txt(self,force=False,prefer_sections=False,section_type=None,force_xml=False):
-        # Subclass text_plain overrides may not accept `force_xml`; only pass
-        # it when it's set so legacy corpora (chadwyck_poetry, chadwyck_drama,
-        # ecco, dialogues, etc.) keep working.
-        def _call_text_plain():
-            if force_xml:
-                try:
-                    return self.text_plain(force_xml=force_xml)
-                except TypeError:
-                    pass  # subclass override doesn't accept force_xml
-            return self.text_plain()
-        if force or not self._txt:
-            if not prefer_sections:
-                self._txt=_call_text_plain()
-                self._txt_offsets={}
-            else:
-                secs=self.sections(section_type)
-                if secs is not None and secs.txt:
-                    self._txt=secs.txt
-                    self._txt_offsets=secs._txt_offsets
-                else:
-                    self._txt=_call_text_plain()
-                    self._txt_offsets={}
-        return clean_text(self._txt) if self._txt else ''
 
     
     # freqs
@@ -906,10 +877,6 @@ class BaseText(BaseObject):
                     db.set(qkey,buf64)
         return self._minhash
 
-    def hashdist(self,text,cache=True):
-        m1=self.minhash(cache=cache)
-        m2=text.minhash(cache=cache)
-        return 1 - m1.jaccard(m2)
 
     def get_section_class(self,section_class=None):
         if section_class is not None: return section_class
@@ -967,22 +934,7 @@ class BaseText(BaseObject):
         if issubclass(self.__class__,TextSection): return self.source
         return self
 
-    def characters(self,id='default',systems={'booknlp'},**kwargs):
-        if type(self._characters)!=dict: self._characters={}
-        if not id in self._characters:
-            from lltk.model.characters import CharacterSystem
-            CS=self._characters[id]=CharacterSystem(self.text_root)
-            for sysname in systems:
-                system=getattr(self,sysname)
-                CS.add_system(system)
-        return self._characters[id]
 
-    def get_character_id(self,char_tok_or_id,**kwargs):
-        return self.characters().get_character_id(char_tok_or_id,**kwargs)
-
-    @property
-    def charsys(self): return self.characters()
-    def interactions(self,**kwargs): return self.charsys.interactions(**kwargs)
 
     @property
     def booknlp(self):
@@ -1014,9 +966,9 @@ class TextSection(BaseText):
         # override corpus set by BaseText.__init__
         self.corpus = _section_corpus
     @property
-    def path_txt(self): return self.get_path_text('txt')
+    def path_txt(self): return os.path.join(self.path, 'text.txt')
     @property
-    def path_xml(self): return self.get_path_text('xml')
+    def path_xml(self): return os.path.join(self.path, 'text.xml')
 
     @property
     def txt(self):
@@ -1129,8 +1081,3 @@ class NullText(BaseText):
 
 
 
-def proc_minhash(taddr):
-    try:
-        Text(taddr).minhash()
-    except Exception as e:
-        log.error(e)
