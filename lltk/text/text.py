@@ -789,7 +789,7 @@ class BaseText(BaseObject):
 
         if task is None:
             from largeliterarymodels.tasks import OCRCleanTask
-            task = OCRCleanTask(model=model)
+            task = OCRCleanTask(**({'model': model} if model else {}))
 
         txt = self.text_plain()
         if not txt or not txt.strip():
