@@ -248,6 +248,7 @@ def main():
 		help='LLM model override (default: task-specific, e.g. qwen3.6-35b-a3b for OCR cleaning)')
 	p_cocr.add_argument('--ids', nargs='+', default=None, help='Specific text IDs')
 	p_cocr.add_argument('--genre', default=None, help='Genre filter (queries CH)')
+	p_cocr.add_argument('--lang', default=None, help='Language filter (e.g. en, fr)')
 	p_cocr.add_argument('--year-min', type=int, default=None)
 	p_cocr.add_argument('--year-max', type=int, default=None)
 	p_cocr.add_argument('-n', '--limit', type=int, default=None, help='Max texts')
@@ -599,11 +600,15 @@ def main():
 
 		if args.ids:
 			text_ids = args.ids
-		elif args.genre or args.year_min or args.year_max:
+		elif args.genre or args.lang or args.year_min or args.year_max:
+			where_parts = []
+			if args.lang:
+				where_parts.append(f"lang_detected = '{args.lang}'")
+			where = ' AND '.join(where_parts) if where_parts else None
 			df = lltk.db.texts_df(
 				corpora=[args.corpus], genre=args.genre,
 				year_min=args.year_min, year_max=args.year_max,
-				dedup=True,
+				where=where, dedup=True,
 			)
 			text_ids = df['id'].tolist()
 		else:
