@@ -20,7 +20,6 @@ from lltk.imports import (
     YEARKEYS,
     ensure_snake,
     get_wordlist,
-    is_dictish,
     is_hashable,
     just_meta_no_id,
     log,
@@ -33,13 +32,9 @@ from .utils import (
     clean_text,
     filter_freqs,
     get_addr_str,
-    get_idx,
-    get_imsg,
     is_addr_str,
     is_corpus_obj,
     is_text_obj,
-    is_textish,
-    is_valid_text_obj,
     merge_dict,
     remove_bad_tags,
     save_freqs_json,
@@ -105,7 +100,6 @@ class BaseText(BaseObject):
         self._section_corpus=_section_corpus
         self._sections={}
         self._rels={}
-        self.__meta={}
         self._meta={}
         self._meta_hydrated=False
         self._txt=_txt
@@ -265,7 +259,7 @@ class BaseText(BaseObject):
         if key.endswith('_1'): return self.meta_1(key[:-2], ish=True, **kwargs)
         if key.endswith('_'): return self.meta_(key[:-1], ish=True, **kwargs)
 
-        meta = merge_dict(self._meta, self.__meta)
+        meta = self._meta
         if not ish:
             return meta.get(key, default)
 
@@ -426,10 +420,9 @@ class BaseText(BaseObject):
 
     def metadata(self, meta={}, to_numeric=True, sep=META_KEY_SEP, **kwargs):
         self._hydrate_meta()
-        imeta = merge_dict(TEXT_META_DEFAULT, self.META, self.__meta, self._meta, meta)
+        imeta = merge_dict(TEXT_META_DEFAULT, self.META, self._meta, meta)
         ometa = self.ensure_id(imeta, allow_sep=False)
         self._meta = {k: v for k, v in ometa.items() if sep not in k}
-        self.__meta = ometa
         if to_numeric:
             ometa = to_numeric_dict(ometa)
         return ometa
@@ -443,7 +436,7 @@ class BaseText(BaseObject):
 
     def meta_(self, key='', ish=True, **kwargs):
         self._hydrate_meta()
-        meta = merge_dict(self._meta, self.__meta)
+        meta = self._meta
         o = []
         for k, v in meta.items():
             if (ish and k.startswith(key)) or (not ish and k == key):
@@ -494,51 +487,31 @@ class BaseText(BaseObject):
     def halfcentury_str(self): return self.yearbin(50,as_str=True)
     @property
     def century_str(self): return self.yearbin(100,as_str=True)
+    # These properties delegate to get(), which is the single hydration gateway.
     @property
-    def title(self):
-        self._hydrate_meta()
-        return str(self._meta.get('title', ''))
+    def title(self): return str(self.get('title') or '')
     @property
-    def author(self):
-        self._hydrate_meta()
-        return str(self._meta.get('author', ''))
+    def author(self): return str(self.get('author') or '')
     @property
-    def genre(self):
-        self._hydrate_meta()
-        return str(self._meta.get('genre', ''))
+    def genre(self): return str(self.get('genre') or '')
     @property
-    def genre_raw(self):
-        self._hydrate_meta()
-        return str(self._meta.get('genre_raw', ''))
+    def genre_raw(self): return str(self.get('genre_raw') or '')
     @property
-    def genre_enriched_source(self):
-        self._hydrate_meta()
-        return str(self._meta.get('genre_enriched_source', ''))
+    def genre_enriched_source(self): return str(self.get('genre_enriched_source') or '')
     @property
-    def title_norm(self):
-        self._hydrate_meta()
-        return str(self._meta.get('title_norm', ''))
+    def title_norm(self): return str(self.get('title_norm') or '')
     @property
-    def author_norm(self):
-        self._hydrate_meta()
-        return str(self._meta.get('author_norm', ''))
+    def author_norm(self): return str(self.get('author_norm') or '')
     @property
     def n_words(self):
-        self._hydrate_meta()
-        v = self._meta.get('n_words')
+        v = self.get('n_words')
         return int(v) if v and str(v) != 'nan' else 0
     @property
-    def is_translated(self):
-        self._hydrate_meta()
-        return bool(self._meta.get('is_translated'))
+    def is_translated(self): return bool(self.get('is_translated'))
     @property
-    def original_lang(self):
-        self._hydrate_meta()
-        return self._meta.get('original_lang', '')
+    def original_lang(self): return self.get('original_lang') or ''
     @property
-    def lang_detected(self):
-        self._hydrate_meta()
-        return self._meta.get('lang_detected', '')
+    def lang_detected(self): return self.get('lang_detected') or ''
     @property
     def au(self):
         from lltk.corpus.utils import to_authorkey
@@ -563,8 +536,7 @@ class BaseText(BaseObject):
 
     @property
     def year(self):
-        self._hydrate_meta()
-        v = self._meta.get('year')
+        v = self.get('year')
         if v is not None:
             v = pd.to_numeric(v, errors='coerce')
             if pd.notna(v):
@@ -1095,112 +1067,65 @@ class TextSection(BaseText):
         return filter_freqs(self._freqs, modernize=modernize_spelling, lower=lower)
 
 
-def get_addr_from_d(d,keys=['_id','_addr','id']):
-    for k in keys:
-        if k in d and d[k] and is_textish(d[k]):
-            return d[k]
-    return None
+TEXT_CACHE = {}
 
 
+def Text(id=None, _corpus=None, _source=None, **kwargs):
+    """Factory: resolve an address string to a cached text object.
 
+    Common usage: ``Text('_corpus/id')`` -- parse the address, look up the
+    corpus, and return a (possibly cached) text object.
 
+    Parameters
+    ----------
+    id : str or BaseText
+        An address string like ``'_corpus/id'``, or an already-resolved text.
+    _corpus : str, optional
+        Explicit corpus name (used when *id* is a bare ID without prefix).
+    _source : str or BaseText, optional
+        Source text for linking.
+    **kwargs
+        Extra keyword arguments forwarded to ``Corpus.text()``.
+    """
 
-TEXT_CACHE=defaultdict(type(None))
-def Text(
-        id=None,
-        _corpus=None,
-        _source=None,
-        _force=False,
-        _new=False,
-        _add=True,
-        _init=False,
-        _cache=False,
-        _use_db=True,
-        # _col_id=COL_ID,
-        **_params_or_meta):
-    global TEXT_CACHE
-    t=None
-    text=id
-    if is_text_obj(text) and not _corpus: return text
-    if is_corpus_obj(text): return text
+    # Already a text object -- return as-is.
+    if is_text_obj(id):
+        return id
 
-    if _new: _force=True
-    
-    meta = just_meta_no_id(_params_or_meta)
-    if is_addr_str(text): 
-        taddr=text
-    elif is_dictish(text):
-        tdata=text.get('data')
-        if tdata and text.get('id'):
-            id=text.get('id')
-            meta=dict(tdata)
-            taddr = id
-        else:
-            meta = {**meta, **just_meta_no_id(text)}
-            taddr = get_addr_from_d(text)
+    # Resolve the address string.
+    if is_addr_str(id):
+        taddr = id
+    elif isinstance(id, str) and _corpus:
+        taddr = f"{IDSEP_START}{_corpus}{IDSEP}{id}"
     else:
-        log.debug(f'<- {get_imsg(text,_corpus,_source,**meta)}')
-        taddr = get_addr_str(**{
-            **_params_or_meta,
-            **dict(
-                text=text,
-                corpus=_corpus,
-                source=_source,
-            )
-        })
-    if not taddr:
-        taddr = get_addr_str(get_idx(),TMP_CORPUS_ID)
-        log(f"cannot get address for {(text,_corpus)}")
-    if taddr and not is_textish(taddr):
-        taddr=get_addr_str(taddr,TMP_CORPUS_ID)
-    
-    log.debug(f'<- addr = {taddr}')
+        taddr = get_addr_str(text=id, corpus=_corpus, source=_source)
 
-    # set kwargs
-    
+    if not taddr or not is_addr_str(taddr):
+        return NullText()
 
-    if not _force and is_text_obj(TEXT_CACHE.get(taddr)) and TEXT_CACHE[taddr].is_valid():
-        log.debug('found in `TEXT_CACHE`')
-        t = TEXT_CACHE[taddr]
-        if is_text_obj(t) and meta: t.update(meta)
-        t = t if is_valid_text_obj(t) else NullText()
+    # Cache hit?
+    cached = TEXT_CACHE.get(taddr)
+    if cached is not None and is_text_obj(cached):
+        return cached
+
+    # Parse into corpus + id, then delegate to Corpus.text().
+    tcorp, tid = to_corpus_and_id(taddr)
+    if not tcorp or not tid:
+        return NullText()
+
+    from lltk.corpus.corpus import Corpus
+    t = Corpus(tcorp).text(id=tid, _source=_source, **kwargs)
+
+    # Cache and return.
+    if is_text_obj(t) and t.id_is_valid():
+        TEXT_CACHE[t.addr] = t
         return t
-    
-    tcorp,tid = to_corpus_and_id(taddr)
-    if tcorp and tid:
-        log.debug(f'Corpus( {tcorp} ).text( {tid} ) ->')
-        
-        from lltk.corpus.corpus import Corpus
-        t = Corpus(tcorp).text(
-            id=tid,
-            _source=_source,
-            _add=_add,
-            _init=_init,
-            _cache=_cache,
-            _force=_force,
-            _new=_new,
-            **meta
-        )
-        if is_valid_text_obj(t): TEXT_CACHE[t.addr] = t
-    
-    t = t if is_valid_text_obj(t) else NullText()
-    log.debug(f'-> {t}')
-    return t
 
-
+    return NullText()
 
 
 class NullText(BaseText):
     def id_is_valid(self, *x, **y): return False
-
-
-
-
-
-
-
-
-
 
 
 

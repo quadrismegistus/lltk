@@ -1,6 +1,5 @@
 from collections import defaultdict
 DATABOX=defaultdict(dict)
-KEYSERVER_URL = 'http://128.232.229.63:7799/key/'
 
 import sys,os,warnings,shutil
 warnings.filterwarnings('ignore')
@@ -40,7 +39,7 @@ PATH_TO_CORPUS_CODE = config.get('PATH_TO_CORPUS_CODE', os.path.join(PATH_HERE,'
 PATH_TO_DATA_CODE = os.path.abspath(os.path.join(PATH_TO_CORPUS_CODE,'..','..','data'))
 PATH_LLTK_CODE_HOME = os.path.abspath(os.path.join(PATH_TO_CORPUS_CODE,'..','..'))
 PATH_LLTK_HOME_DATA = PATH_LLTK_DATA = os.path.join(PATH_LLTK_HOME,'data')
-PATH_LLTK_KEYS = os.path.join(PATH_LLTK_DATA,'keys')
+
 
 PATH_LLTK_DB = os.path.join(PATH_LLTK_DATA,'db')
 PATH_LLTK_DB_FN = os.path.join(PATH_LLTK_DB,'lltk')

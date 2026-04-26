@@ -23,13 +23,11 @@ from lltk.imports import (
     DOWNLOAD_PART_DEFAULTS,
     IDSEP,
     IDSEP_START,
-    KEYSERVER_URL,
     MANIFEST_DEFAULTS,
     META_KEY_SEP,
     MODERNIZE_SPELLING,
     PATH_CORPUS,
     PATH_CORPUS_ZIP,
-    PATH_LLTK_KEYS,
     PATH_LLTK_REPO,
     PATH_MANIFEST_GLOBAL,
     PREPROC_CMDS,
@@ -232,45 +230,6 @@ class BaseCorpus(TextList):
     @property
     def xml2txt_func(self): self.XML2TXT.__func__
     def xml2txt(self,*x,**y): return self.XML2TXT.__func__(*x,**y)
-
-    @property
-    def path_key(self):
-        ofn=os.path.join(PATH_LLTK_KEYS,f'{self.id}.key')
-        ensure_dir_exists(ofn,fn=True)
-        return ofn
-
-    
-
-    @property
-    def key(self):
-        if not os.path.exists(self.path_key):
-            if self.id in get_inducted_corpus_ids():
-                self.acquire_key()
-            else:
-                self.generate_key()
-        if not os.path.exists(self.path_key): return
-        from cryptography.fernet import Fernet
-        return Fernet(self.fetch_key())
-
-
-    def fetch_key(self): 
-        with open(self.path_key,'rb') as f: keyb_encr=f.read()
-        keyb = self.userkey.decrypt(keyb_encr)
-        return keyb
-
-    def acquire_key(self,url=KEYSERVER_URL):
-        raise NotImplementedError("Corpus key acquisition has been removed.")
-
-    def generate_key(self,force=False):
-        if force or not os.path.exists(self.path_key):
-            from cryptography.fernet import Fernet
-            key = Fernet.generate_key()
-            key_encr = self.userkey.encrypt(key)
-            with open(self.path_key,'wb') as of: of.write(key_encr)
-
-    def encrypt(self,obj): return self.key.encrypt(obj)
-    def decrypt(self,obj): return self.key.decrypt(obj)
-
 
     ####################################################################
     # ADDRS
