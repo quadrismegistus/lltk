@@ -314,6 +314,19 @@ CLICKHOUSE_SCHEMA = {
         ENGINE = ReplacingMergeTree(embedded_at)
         ORDER BY (_id, scheme, model)
     """,
+
+    'text_ocr': """
+        CREATE TABLE IF NOT EXISTS {db}.text_ocr (
+            _id              String,
+            corpus           LowCardinality(String),
+            n_tokens         UInt64,
+            n_known_tokens   UInt64,
+            ocr_accuracy     Float32,
+            scored_at        DateTime DEFAULT now()
+        )
+        ENGINE = ReplacingMergeTree(scored_at)
+        ORDER BY _id
+    """,
 }
 
 # The `annotations_latest` VIEW runs `argMax(value, (priority, annotated_at))`

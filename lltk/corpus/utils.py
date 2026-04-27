@@ -701,7 +701,7 @@ def to_yearbin(year,yearbin):
 
 
 
-@logmap.fn
+# @logmap.fn
 def load_corpus(id,manifestd={},load_meta=False,force=False,install_if_nec=True,**input_kwargs):
     from lltk.imports import log
     if not manifestd: manifestd=load_corpus_manifest(id,make_path_abs=True)

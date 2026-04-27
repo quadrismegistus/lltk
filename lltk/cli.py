@@ -58,6 +58,16 @@ def main():
 	p_db_match.add_argument('corpora', nargs='*', help='Corpus IDs to include (default: all)')
 	p_db_match.add_argument('--fuzzy', action='store_true', help='Also run fuzzy title matching (slow)')
 
+	# db-minhash
+	p_db_minhash = subparsers.add_parser('db-minhash',
+		help='MinHash/LSH near-duplicate detection via word-set overlap on text_freqs')
+	p_db_minhash.add_argument('--threshold', type=float, default=0.5,
+		help='Jaccard similarity threshold (default: 0.5)')
+	p_db_minhash.add_argument('--num-perm', type=int, default=128,
+		help='Number of MinHash permutations (default: 128)')
+	p_db_minhash.add_argument('--corpus', type=str, default=None,
+		help='Limit to one corpus')
+
 	# db matches
 	p_db_matches = subparsers.add_parser('db-matches', help='Search for matches by title')
 	p_db_matches.add_argument('query', help='Title search string')
@@ -87,6 +97,16 @@ def main():
 		help='Min ratio of top-lang hits to runner-up (default: 2.0)')
 	p_db_lang.add_argument('--rebuild', action='store_true',
 		help='Reprocess every text (default: skip _ids already in lltk.text_langs)')
+
+	# db-ocr-accuracy
+	p_db_ocr = subparsers.add_parser('db-ocr-accuracy',
+		help='Score OCR accuracy per text via wordlist coverage on text_freqs')
+	p_db_ocr.add_argument('--corpora', nargs='+',
+		help='Limit to specific corpora (default: all)')
+	p_db_ocr.add_argument('--wordlist', default=None,
+		help='Path to wordlist file (default: data/wordlist_en.txt)')
+	p_db_ocr.add_argument('--rebuild', action='store_true',
+		help='Rescore all texts (default: skip _ids already in lltk.text_ocr)')
 
 	# search
 	p_search = subparsers.add_parser('search', help='Full-text search across passages')
@@ -322,7 +342,7 @@ def main():
 		# `--force` (already present on the parser) is the full-rebuild flag.
 		force = args.force or corpus_ids is None
 		total = rebuild_clickhouse(ch, corpora=corpus_ids, force=force)
-		print(f'\nTotal: {total:,} texts ingested into ClickHouse')
+		# print(f'\nTotal: {total:,} texts ingested into ClickHouse')
 
 	elif args.cmd == 'db-info':
 		import pandas as pd
@@ -402,6 +422,13 @@ def main():
 		else:
 			print(f'No matches found for "{args.query}"')
 
+	elif args.cmd == 'db-minhash':
+		lltk.db.minhash_match(
+			threshold=args.threshold,
+			num_perm=args.num_perm,
+			corpus=args.corpus,
+		)
+
 	elif args.cmd == 'db-wordcounts':
 		lltk.db.wordcounts(num_proc=args.jobs)
 
@@ -427,6 +454,13 @@ def main():
 			coverage_threshold=args.coverage,
 			confidence_threshold=args.confidence,
 			skip_existing=not args.rebuild,
+		)
+
+	elif args.cmd == 'db-ocr-accuracy':
+		lltk.db.score_ocr_accuracy(
+			corpora=args.corpora,
+			skip_existing=not args.rebuild,
+			wordlist_path=args.wordlist,
 		)
 
 	elif args.cmd == 'search':

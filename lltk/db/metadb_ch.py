@@ -21,6 +21,7 @@ import json
 import re
 import time
 import pandas as pd
+from logmap import logmap
 
 from lltk.db.adapter import get_adapter
 from lltk.db.schema import create_all_tables
@@ -302,6 +303,7 @@ class MetaDBCH:
         from lltk.db.rebuild import ingest_corpus_to_clickhouse
         return ingest_corpus_to_clickhouse(corpus_id, self.adapter, force=force)
 
+    @logmap.fn
     def rebuild(self, corpus_ids=None, progress=True):
         """Full rebuild from corpus metadata CSVs into ClickHouse."""
         from lltk.db.rebuild import rebuild_clickhouse
@@ -561,6 +563,7 @@ class MetaDBCH:
             f'{name}() not yet ported to ClickHouse. Tracking in Phase B.'
         )
 
+    @logmap.fn
     def match(self, corpora=None, fuzzy=False, containment=True, progress=True):
         from lltk.db.match import match_clickhouse
         return match_clickhouse(self.adapter, corpora=corpora, fuzzy=fuzzy,
@@ -767,6 +770,21 @@ class MetaDBCH:
             confidence_threshold=confidence_threshold,
             progress=progress,
             skip_existing=skip_existing,
+        )
+
+    def minhash_match(self, threshold=0.5, num_perm=128, corpus=None):
+        from lltk.db.minhash import minhash_match_ch
+        return minhash_match_ch(
+            self.adapter, threshold=threshold, num_perm=num_perm,
+            corpus=corpus,
+        )
+
+    def score_ocr_accuracy(self, corpora=None, skip_existing=True,
+                           wordlist_path=None, progress=True):
+        from lltk.db.ocr_accuracy import score_ocr_accuracy
+        return score_ocr_accuracy(
+            self.adapter, corpora=corpora, skip_existing=skip_existing,
+            wordlist_path=wordlist_path, progress=progress,
         )
 
     # ── Legacy compatibility shim ────────────────────────────────────
