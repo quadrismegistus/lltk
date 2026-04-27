@@ -8,6 +8,8 @@ import pandas as pd
 from collections import defaultdict
 from collections.abc import MutableMapping
 
+from logmap import logmap
+
 from lltk.imports import (
     ANNO_EXTS,
     BAD_TAGS,
@@ -470,26 +472,28 @@ def do_preprocess_txt(obj):
 
 def do_metadata_text(i,text,num_words=False,ocr_accuracy=False):
     global ENGLISH
-    md=text.meta
-    print('>> starting:',i, text.id, len(md),'...')
-    if num_words or ocr_accuracy:
-        print('>> getting freqs:',i,text.id,'...')
-        freqs=text.freqs()
-        print('>> computing values:',i,text.id,'...')
-        if num_words:
-            md['num_words']=sum(freqs.values())
-        if ocr_accuracy:
-            num_words_recognized = sum([v for k,v in list(freqs.items()) if k[0] in ENGLISH])
-            print(md['num_words'], num_words_recognized)
-            md['ocr_accuracy'] = num_words_recognized / float(md['num_words']) if float(md['num_words']) else 0.0
-    print('>> done:',i, text.id, len(md))
+    with logmap(f'Processing metadata for {text.id}...') as mlog:
+        md=text.meta
+        mlog.debug(f'Starting: {i} {text.id} ({len(md)} keys)')
+        if num_words or ocr_accuracy:
+            mlog.debug(f'Getting freqs: {i} {text.id}')
+            freqs=text.freqs()
+            mlog.debug(f'Computing values: {i} {text.id}')
+            if num_words:
+                md['num_words']=sum(freqs.values())
+            if ocr_accuracy:
+                num_words_recognized = sum([v for k,v in list(freqs.items()) if k[0] in ENGLISH])
+                mlog.debug(f'{md["num_words"]} {num_words_recognized}')
+                md['ocr_accuracy'] = num_words_recognized / float(md['num_words']) if float(md['num_words']) else 0.0
+        mlog.debug(f'Done: {i} {text.id} ({len(md)} keys)')
     return [md]
 
 
 
 def skipgram_do_text(text,i=0,n=10):
     from lltk import tools
-    print(i, text.id, '...')
+    with logmap('Skipgram processing') as slog:
+        slog.debug(f'{i} {text.id}...')
     from nltk import word_tokenize
     words=word_tokenize(text.text_plain)
     words=[w for w in words if True in [x.isalpha() for x in w]]
@@ -499,7 +503,8 @@ def skipgram_do_text(text,i=0,n=10):
 def skipgram_do_text2(text_i,n=10,lowercase=True):
     text,i=text_i
     import random
-    print(i, text.id, '...')
+    with logmap('Skipgram processing') as slog:
+        slog.debug(f'{i} {text.id}...')
     from lltk import tools
     words=text.text_plain.strip().split()
     words=[tools.noPunc(w.lower()) if lowercase else tools.noPunc(w) for w in words if True in [x.isalpha() for x in w]]
@@ -538,10 +543,12 @@ def save_tokenize_text(text,ofolder=None,force=False):
     opath = os.path.split(ofnfn)[0]
     if not os.path.exists(opath): os.makedirs(opath)
     if not force and os.path.exists(ofnfn) and os.stat(ofnfn).st_size:
-        print('>> already tokenized:',text.id)
+        with logmap('Tokenizing') as tlog:
+            tlog.debug(f'Already tokenized: {text.id}')
         return
     else:
-        print('>> tokenizing:',text.id,ofnfn)
+        with logmap('Tokenizing') as tlog:
+            tlog.debug(f'Tokenizing: {text.id} {ofnfn}')
 
     from collections import Counter
     import json,codecs

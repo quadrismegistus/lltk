@@ -50,7 +50,7 @@ def _load_config():
 config = _load_config()
 
 
-from logmap import pmap as _logmap_pmap, pmap_iter as _logmap_pmap_iter
+from logmap import logmap, pmap as _logmap_pmap, pmap_iter as _logmap_pmap_iter
 
 
 class _PmapCaller:
@@ -193,7 +193,6 @@ class OrderedSetDict(MutableMapping):
                 if self.flatten:
                     for vk,vv in v.items():
                         key2 = f'{key}_{vk}'
-                        print([key2,vv])
                         if is_hashable(vv):
                             if vv not in self.store_set[key2]:
                                 self.store[key2]+=[vv]
@@ -482,7 +481,7 @@ def get_ocr_corrections(lang='en'):
     return OCRCORREX[lang]
 
 
-def save_df(df,ofn,move_prev=False,index=None,key='',log=print,verbose=False,**kwargs):
+def save_df(df,ofn,move_prev=False,index=None,key='',log=None,verbose=False,**kwargs):
     import pandas as pd
     if os.path.exists(ofn) and move_prev: iter_move(ofn)
     ext = os.path.splitext(ofn.replace('.gz',''))[-1][1:]
@@ -511,7 +510,9 @@ def save_df(df,ofn,move_prev=False,index=None,key='',log=print,verbose=False,**k
         # try again as csv?
         ofn=os.path.splitext(ofn)[0]+'.csv'
         df.to_csv(ofn)
-    if verbose and log: log(f'Saved: {ofn}')
+    if verbose:
+        with logmap('Saving dataframe') as slog:
+            slog.debug(f'Saved: {ofn}')
 
 
 
@@ -645,30 +646,31 @@ def writegen(fnfn,generator,header=None,args=[],kwargs={},find_all_keys=False,to
     from tqdm import tqdm
     import csv,gzip
 
-    if not header:
+    with logmap(f'Writing {os.path.basename(fnfn)}...') as wlog:
+        if not header:
+            iterator=generator(*args,**kwargs)
+            if not find_all_keys:
+                first=next(iterator)
+                header=sorted(first.keys())
+            else:
+                wlog.debug('Finding keys...')
+                keys=set()
+                for dx in iterator:
+                    keys|=set(dx.keys())
+                header=sorted(list(keys))
+                wlog.debug(f'Found {len(header)} keys')
+
         iterator=generator(*args,**kwargs)
-        if not find_all_keys:
-            first=next(iterator)
-            header=sorted(first.keys())
-        else:
-            print('>> finding keys:')
-            keys=set()
-            for dx in iterator:
-                keys|=set(dx.keys())
-            header=sorted(list(keys))
-            print('>> found:',len(header),'keys')
+        if progress or total: iterator=get_tqdm(iterator,total=total)
 
-    iterator=generator(*args,**kwargs)
-    if progress or total: iterator=get_tqdm(iterator,total=total)
-
-    with (open(fnfn, 'w') if not fnfn.endswith('.gz') else gzip.open(fnfn,'wt')) as csvfile:
-        writer = csv.DictWriter(csvfile,fieldnames=header,extrasaction='ignore',delimiter=delimiter)
-        writer.writeheader()
-        for i,dx in enumerate(iterator):
-            #for k,v in dx.items():
-            #	dx[k] = str(v).replace('\r\n',' ').replace('\r',' ').replace('\n',' ').replace('\t',' ')
-            writer.writerow(dx)
-    print('>> saved:',fnfn)
+        with (open(fnfn, 'w') if not fnfn.endswith('.gz') else gzip.open(fnfn,'wt')) as csvfile:
+            writer = csv.DictWriter(csvfile,fieldnames=header,extrasaction='ignore',delimiter=delimiter)
+            writer.writeheader()
+            for i,dx in enumerate(iterator):
+                #for k,v in dx.items():
+                #	dx[k] = str(v).replace('\r\n',' ').replace('\r',' ').replace('\n',' ').replace('\t',' ')
+                writer.writerow(dx)
+        wlog.debug(f'Saved: {fnfn}')
     
 
 def readgen_csv(fnfn,sep=None,encoding='utf-8',errors='ignore',header=[],progress=True,num_lines=0,desc='Reading CSV file'):
@@ -740,9 +742,8 @@ def read(fnfn):
             with open(fnfn) as f:
                 return f.read() #.decode('utf-8',errors='ignore')
     except IOError as e:
-        print("!! error:",e, end=' ')
-        print("!! opening:",fnfn)
-        print()
+        with logmap('Reading file') as rlog:
+            rlog.debug(f'Error opening {fnfn}: {e}')
         return ''
 
 
@@ -962,7 +963,7 @@ def unzip(zipfn, dest='.', flatten=False, overwrite=False, replace_in_filenames=
                 with zip_file.open(member) as source, open(target_fnfn,'wb') as target:
                     shutil.copyfileobj(source, target)
             except FileNotFoundError:
-                print('!! File not found:',target_fnfn)
+                pass
 
 def get_num_lines(filename):
     from smart_open import open
@@ -993,7 +994,8 @@ def check_make_dir(path,ask=True,default='y'):
         ans=input('>> create this path?: '+path+'\n>> [Y/n] ').strip().lower() if ask else default
         if not ans: ans=default
         if ans=='y':
-            print('   creating:',path)
+            with logmap('Creating directory') as clog:
+                clog.debug(f'Creating: {path}')
             os.makedirs(path)
             return True
     return False
@@ -1020,7 +1022,8 @@ def symlink(path,link_to,default='y',ask=True):
             ans=default if not ask else input('>> create link? [Y/n]\n' + (' '*3) + f'from: {link_to}\n' + (' '*3) + f'to: {path}\n>> ').strip().lower()
             if not ans: ans=default
             if ans=='y':
-                print('>> linking to:',link_to)
+                with logmap('Creating symlink') as slog:
+                    slog.debug(f'Linking to: {link_to}')
                 if os.path.exists(link_to): os.remove(link_to)
                 os.symlink(path, link_to)
 
@@ -1060,7 +1063,8 @@ def get_path_abs(path,sources=SOURCES,rel_to=None):
 
 def get_config_file_location(pointer_fn=os.path.expanduser('~/.lltk_config')):
     if not os.path.exists(pointer_fn):
-        print('!! No configuration file created. Run: lltk configure')
+        with logmap('Configuration') as clog:
+            clog.debug('No configuration file created. Run: lltk configure')
         return
 
     with open(pointer_fn) as f:

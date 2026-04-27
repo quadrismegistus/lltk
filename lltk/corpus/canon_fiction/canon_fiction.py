@@ -1,5 +1,6 @@
 import os
 
+from logmap import logmap
 from lltk.imports import BaseCorpus, BaseText
 
 class TextCanonFiction(BaseText):
@@ -55,7 +56,8 @@ class CanonFiction(BaseCorpus):
 				if os.path.exists(ofn): continue
 				with open(ofn,'w') as of:
 					of.write(text.txt)
-					print('>> saved:',ofn)
+				with logmap('Compiling canon fiction') as _log:
+					_log.debug(f'saved: {ofn}')
 		# extend by
 		metadata += [d for d in self.meta if not d['corpus_source']]
 		import pandas as pd

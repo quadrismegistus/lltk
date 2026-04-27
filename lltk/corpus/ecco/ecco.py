@@ -330,7 +330,8 @@ class TextECCO(BaseText):
 			with gzip.open(self.fnfn, 'rb') as f:
 				file_content = f.read()
 		except IOError:
-			print("!! Error on gzip for file id",self.id)
+			with logmap('Reading ECCO text') as _log:
+				_log.debug(f'Error on gzip for file id {self.id}')
 			return ''
 		return file_content
 
@@ -356,7 +357,8 @@ class TextECCO(BaseText):
 			with gzip.open(self.fnfn_txt,'rb') as f:
 				txt=f.read().decode('utf-8')
 		except:
-			print("!! ERROR: could not decompress:",self.id)
+			with logmap('Reading ECCO text') as _log:
+				_log.debug(f'ERROR: could not decompress: {self.id}')
 			return ''
 		return txt
 

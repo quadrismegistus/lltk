@@ -188,7 +188,7 @@ def _match_by_links_ch(ch_adapter, corpora=None):
                       AND a._id != b._id
                 """)
             except Exception as e:
-                print(f'  id_link {corpus_id}.{my_col} -> {target_corpus_id}.{their_col}: {e}')
+                logmap.debug(f'  id_link {corpus_id}.{my_col} -> {target_corpus_id}.{their_col}: {e}')
 
 
 def _containment_pass(ch_adapter, corpora=None, corpus_where='', progress=True):
@@ -316,60 +316,60 @@ def _fuzzy_pass(ch_adapter, corpora=None, corpus_where='', progress=True):
     from lltk.db.metadb import _jaro_winkler
     import pyarrow as pa
 
-    print('Fuzzy title matching within author blocks...')
-    rows_all = ch_adapter.query(f"""
-        SELECT author_norm, _id, title_norm, corpus, year
-        FROM lltk.texts
-        WHERE author_norm != '' AND title_norm != ''
-          AND length(title_norm) > 3
-          AND author_norm IN (
-              SELECT author_norm FROM lltk.texts
-              WHERE author_norm != '' AND title_norm != ''
-                AND length(title_norm) > 3
-              GROUP BY author_norm
-              HAVING count() > 1 AND count() <= 200
-          )
-          {corpus_where}
-    """)
-    from collections import defaultdict
-    fuzzy_groups = defaultdict(list)
-    for author, _id, title, corp, year in rows_all:
-        fuzzy_groups[author].append((_id, title, corp, year))
+    with logmap('Fuzzy title matching within author blocks...') as log:
+        rows_all = ch_adapter.query(f"""
+            SELECT author_norm, _id, title_norm, corpus, year
+            FROM lltk.texts
+            WHERE author_norm != '' AND title_norm != ''
+              AND length(title_norm) > 3
+              AND author_norm IN (
+                  SELECT author_norm FROM lltk.texts
+                  WHERE author_norm != '' AND title_norm != ''
+                    AND length(title_norm) > 3
+                  GROUP BY author_norm
+                  HAVING count() > 1 AND count() <= 200
+              )
+              {corpus_where}
+        """)
+        from collections import defaultdict
+        fuzzy_groups = defaultdict(list)
+        for author, _id, title, corp, year in rows_all:
+            fuzzy_groups[author].append((_id, title, corp, year))
 
-    batch = []
+        batch = []
 
-    def _flush(rows):
-        if not rows:
-            return
-        df = pd.DataFrame(rows, columns=['_id_a', '_id_b', 'similarity', 'match_type'])
-        df = df.drop_duplicates(subset=['_id_a', '_id_b'])
-        tbl = pa.Table.from_pandas(df, preserve_index=False)
-        ch_adapter.client.insert_arrow('matches', tbl)
+        def _flush(rows):
+            if not rows:
+                return
+            df = pd.DataFrame(rows, columns=['_id_a', '_id_b', 'similarity', 'match_type'])
+            df = df.drop_duplicates(subset=['_id_a', '_id_b'])
+            tbl = pa.Table.from_pandas(df, preserve_index=False)
+            ch_adapter.client.insert_arrow('matches', tbl)
 
-    it = (get_tqdm(fuzzy_groups.items(), desc='fuzzy by author',
-                   total=len(fuzzy_groups)) if progress else fuzzy_groups.items())
-    for author, rows in it:
-        for i in range(len(rows)):
-            for j in range(i + 1, len(rows)):
-                a_id, a_title, a_corp, a_year = rows[i]
-                b_id, b_title, b_corp, b_year = rows[j]
-                if a_corp == b_corp:
-                    continue
-                if a_year and b_year and abs(a_year - b_year) > 20:
-                    continue
-                sim = _jaro_winkler(a_title, b_title)
-                if sim > 0.85:
-                    pair = _ordered_pair(a_id, b_id)
-                    batch.append((*pair, sim, 'fuzzy_title'))
-        if len(batch) >= 10000:
-            _flush(batch); batch = []
-    if batch:
-        _flush(batch)
+        it = (get_tqdm(fuzzy_groups.items(), desc='fuzzy by author',
+                       total=len(fuzzy_groups)) if progress else fuzzy_groups.items())
+        for author, rows in it:
+            for i in range(len(rows)):
+                for j in range(i + 1, len(rows)):
+                    a_id, a_title, a_corp, a_year = rows[i]
+                    b_id, b_title, b_corp, b_year = rows[j]
+                    if a_corp == b_corp:
+                        continue
+                    if a_year and b_year and abs(a_year - b_year) > 20:
+                        continue
+                    sim = _jaro_winkler(a_title, b_title)
+                    if sim > 0.85:
+                        pair = _ordered_pair(a_id, b_id)
+                        batch.append((*pair, sim, 'fuzzy_title'))
+            if len(batch) >= 10000:
+                _flush(batch); batch = []
+        if batch:
+            _flush(batch)
 
-    n = ch_adapter.query(
-        "SELECT count() FROM lltk.matches FINAL WHERE match_type = 'fuzzy_title'"
-    )[0][0]
-    print(f'  Fuzzy: {n:,} pairs')
+        n = ch_adapter.query(
+            "SELECT count() FROM lltk.matches FINAL WHERE match_type = 'fuzzy_title'"
+        )[0][0]
+        log.debug(f'Fuzzy: {n:,} pairs')
 
 
 def _compute_match_groups_ch(ch_adapter):

@@ -6,6 +6,7 @@ from urllib.parse import quote_plus
 
 import numpy as np
 import pandas as pd
+from logmap import logmap
 
 from lltk.imports import (
     BaseCorpus,
@@ -287,7 +288,8 @@ class Hathi(BaseCorpus):
 
         if not os.path.exists(self.path_metadata):
             self.download_full_metadata()
-            print('>> finding metadata matching search terms:',self.name)
+            with logmap('Compiling Hathi corpus') as _log:
+                _log.debug(f'finding metadata matching search terms: {self.name}')
             old=[]
             for dx in self.stream_full_meta():
                 title=dx.get('title')
@@ -305,7 +307,8 @@ class Hathi(BaseCorpus):
             df.to_csv(self.path_metadata)
 
         # get ids
-        print('>> loading metadata')
+        with logmap('Compiling Hathi corpus') as _log:
+            _log.debug('loading metadata')
         df=pd.read_csv(self.path_metadata,error_bad_lines=False)
         # df['period']=df['year']//1*1
         # ids=list(set(df.groupby('period').sample(n=10,replace=True).id))

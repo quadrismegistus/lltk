@@ -27,6 +27,7 @@ Usage — CuratedCorpus (DB → XLSX → editable):
 import json
 import os
 import pandas as pd
+from logmap import logmap
 from lltk.corpus.corpus import BaseCorpus
 from lltk.text.text import BaseText
 from lltk.imports import PATH_CORPUS
@@ -256,7 +257,8 @@ class CuratedCorpus(SyntheticCorpus):
                 FROM texts WHERE corpus = '{source_corpus_id}'
             """)
             if not len(source_df):
-                print(f'No texts found for corpus {source_corpus_id}')
+                with logmap('Propagating annotations') as _log:
+                    _log.debug(f'No texts found for corpus {source_corpus_id}')
                 return []
         else:
             if source_label is None:
@@ -285,11 +287,12 @@ class CuratedCorpus(SyntheticCorpus):
                 new_entries.append(entry)
 
         if dry_run:
-            print(f'Would write {len(new_entries)} annotation entries:')
-            from collections import Counter
-            corpora = Counter(e['_id'].lstrip('_').split('/')[0] for e in new_entries)
-            for c, n in corpora.most_common():
-                print(f'  {c}: {n}')
+            with logmap('Propagating annotations (dry run)') as _log:
+                _log.debug(f'Would write {len(new_entries)} annotation entries:')
+                from collections import Counter
+                corpora = Counter(e['_id'].lstrip('_').split('/')[0] for e in new_entries)
+                for c, n in corpora.most_common():
+                    _log.debug(f'  {c}: {n}')
             return new_entries
 
         # Remove old entries from the same source for _ids we're updating
@@ -303,13 +306,15 @@ class CuratedCorpus(SyntheticCorpus):
 
         if new_entries:
             self._save_annotations(entries)
-            print(f'Wrote {len(new_entries)} annotation entries from {source_label}')
-            from collections import Counter
-            corpora = Counter(e['_id'].lstrip('_').split('/')[0] for e in new_entries)
-            for c, n in corpora.most_common():
-                print(f'  {c}: {n}')
+            with logmap('Propagating annotations') as _log:
+                _log.debug(f'Wrote {len(new_entries)} annotation entries from {source_label}')
+                from collections import Counter
+                corpora = Counter(e['_id'].lstrip('_').split('/')[0] for e in new_entries)
+                for c, n in corpora.most_common():
+                    _log.debug(f'  {c}: {n}')
         else:
-            print('No new annotations to write')
+            with logmap('Propagating annotations') as _log:
+                _log.debug('No new annotations to write')
 
         return new_entries
 

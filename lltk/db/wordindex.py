@@ -18,6 +18,8 @@ Functions:
 
 import time
 
+from logmap import logmap
+
 
 # ── Build year_corpus_totals ─────────────────────────────────────────────
 
@@ -32,33 +34,33 @@ def build_year_corpus_totals(ch_adapter, corpora=None):
         cl = ', '.join(f"'{c}'" for c in corpora)
         corpus_filter = f"AND t.corpus IN ({cl})"
 
-    print('Building year_corpus_totals...')
-    t0 = time.time()
-    ch_adapter.execute("TRUNCATE TABLE IF EXISTS lltk.year_corpus_totals")
-    ch_adapter.execute(f"""
-        INSERT INTO lltk.year_corpus_totals
-            (year, corpus, genre, n_texts, total_words,
-             n_texts_dedup, total_words_dedup)
-        SELECT
-            t.year                                                AS year,
-            t.corpus                                              AS corpus,
-            t.genre                                               AS genre,
-            count()                                               AS n_texts,
-            sum(ifNull(ts.n_words, 0))                            AS total_words,
-            countIf(mg.rank IS NULL OR mg.rank = 0)               AS n_texts_dedup,
-            sumIf(ifNull(ts.n_words, 0),
-                  mg.rank IS NULL OR mg.rank = 0)                 AS total_words_dedup
-        FROM (SELECT _id, year, corpus, genre FROM lltk.texts FINAL
-              WHERE year IS NOT NULL {corpus_filter}) AS t
-        INNER JOIN (SELECT _id, n_words FROM lltk.text_stats FINAL) AS ts
-            ON t._id = ts._id
-        LEFT JOIN (SELECT _id, rank FROM lltk.match_groups FINAL) AS mg
-            ON t._id = mg._id
-        GROUP BY t.year, t.corpus, t.genre
-    """)
-    n = ch_adapter.query("SELECT count() FROM lltk.year_corpus_totals")[0][0]
-    print(f'  year_corpus_totals: {n:,} rows ({time.time()-t0:.1f}s)')
-    return n
+    with logmap('Building year_corpus_totals...') as log:
+        t0 = time.time()
+        ch_adapter.execute("TRUNCATE TABLE IF EXISTS lltk.year_corpus_totals")
+        ch_adapter.execute(f"""
+            INSERT INTO lltk.year_corpus_totals
+                (year, corpus, genre, n_texts, total_words,
+                 n_texts_dedup, total_words_dedup)
+            SELECT
+                t.year                                                AS year,
+                t.corpus                                              AS corpus,
+                t.genre                                               AS genre,
+                count()                                               AS n_texts,
+                sum(ifNull(ts.n_words, 0))                            AS total_words,
+                countIf(mg.rank IS NULL OR mg.rank = 0)               AS n_texts_dedup,
+                sumIf(ifNull(ts.n_words, 0),
+                      mg.rank IS NULL OR mg.rank = 0)                 AS total_words_dedup
+            FROM (SELECT _id, year, corpus, genre FROM lltk.texts FINAL
+                  WHERE year IS NOT NULL {corpus_filter}) AS t
+            INNER JOIN (SELECT _id, n_words FROM lltk.text_stats FINAL) AS ts
+                ON t._id = ts._id
+            LEFT JOIN (SELECT _id, rank FROM lltk.match_groups FINAL) AS mg
+                ON t._id = mg._id
+            GROUP BY t.year, t.corpus, t.genre
+        """)
+        n = ch_adapter.query("SELECT count() FROM lltk.year_corpus_totals")[0][0]
+        log.debug(f'year_corpus_totals: {n:,} rows ({time.time()-t0:.1f}s)')
+        return n
 
 
 # Back-compat alias — CLI `db-wordindex` still calls this name.

@@ -1,4 +1,5 @@
 import os
+from logmap import logmap
 from lltk.text.text import BaseText
 from lltk.corpus.corpus import BaseCorpus
 from lltk import tools
@@ -64,7 +65,8 @@ class COCA(BaseCorpus):
 		path_to_sources = os.path.join(self.path_raw,'coca-sources_2017_12.txt')
 
 		if not os.path.exists(path_to_txt) or not os.path.exists(path_to_sources):
-			print(f'Place in {self.path_raw} the following files:\n  * COCA Text\n  * coca-sources_2017_12.txt')
+			with logmap('Compiling COCA') as _log:
+				_log.debug(f'Place in {self.path_raw} the following files:\n  * COCA Text\n  * coca-sources_2017_12.txt')
 			return
 
 		#txt
@@ -111,7 +113,8 @@ class COCA(BaseCorpus):
 							genre=folder2genre.get(fldr)
 							year=''.join([y for y in fn if y.isdigit()])
 							if not genre:
-								print('!?',genre)
+								with logmap('Compiling COCA txt') as _log:
+									_log.debug(f'Unknown genre for folder: {fldr}')
 								stop
 
 							new_fnfn=os.path.join(self.path_txt, genre, year,idx+'.txt')

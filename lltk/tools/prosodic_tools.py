@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import os
 
+from logmap import logmap
+
 
 def _load_prosodic(min_version=(3, 2, 1)):
     """Import prosodic. Requires >=3.2.1 for parse_corpus(save_kwargs=...)."""
@@ -112,30 +114,31 @@ def parse_corpus(corpus_id, n_workers=1, device='auto', resume=True,
     except Exception:
         total = None
 
-    print(f"prosodic-parse: save_parses={save_parses!r} compression={compression!r}")
-    if meter_kwargs:
-        print(f"  meter_kwargs={meter_kwargs}")
-    if text_kwargs:
-        print(f"  text_kwargs={text_kwargs}")
+    with logmap(f'Parsing {corpus_id} with prosodic...') as log:
+        log.debug(f"save_parses={save_parses!r} compression={compression!r}")
+        if meter_kwargs:
+            log.debug(f"meter_kwargs={meter_kwargs}")
+        if text_kwargs:
+            log.debug(f"text_kwargs={text_kwargs}")
 
-    save_kwargs = {'save_parses': save_parses, 'compression': compression}
-    stats = prosodic.parse_corpus(
-        _items(), out_dir,
-        n_workers=n_workers,
-        device=device,
-        resume=resume,
-        text_kwargs=text_kwargs,
-        meter_kwargs=meter_kwargs,
-        save_kwargs=save_kwargs,
-        total=total,
-        progress=True,
-        on_error='log',
-    )
-    print(
-        f"done: {stats.get('n_done', 0)}  "
-        f"skipped: {stats.get('n_skipped', 0)}  "
-        f"failed: {stats.get('n_failed', 0)}"
-    )
+        save_kwargs = {'save_parses': save_parses, 'compression': compression}
+        stats = prosodic.parse_corpus(
+            _items(), out_dir,
+            n_workers=n_workers,
+            device=device,
+            resume=resume,
+            text_kwargs=text_kwargs,
+            meter_kwargs=meter_kwargs,
+            save_kwargs=save_kwargs,
+            total=total,
+            progress=True,
+            on_error='log',
+        )
+        log.debug(
+            f"done: {stats.get('n_done', 0)}  "
+            f"skipped: {stats.get('n_skipped', 0)}  "
+            f"failed: {stats.get('n_failed', 0)}"
+        )
     return stats
 
 
@@ -152,53 +155,54 @@ def aggregate_corpus(corpus_id, out_path=None):
 
     C = lltk.load(corpus_id)
     prosodic_dir = C.path_prosodic
-    if not os.path.isdir(prosodic_dir):
-        print(f"No prosodic directory at {prosodic_dir} — run `lltk prosodic-parse {corpus_id}` first")
-        return
+    with logmap(f'Aggregating prosodic data for {corpus_id}...') as log:
+        if not os.path.isdir(prosodic_dir):
+            log.debug(f"No prosodic directory at {prosodic_dir} — run `lltk prosodic-parse {corpus_id}` first")
+            return
 
-    if out_path is None:
-        out_path = os.path.join(C.path, 'prosodic.parquet')
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        if out_path is None:
+            out_path = os.path.join(C.path, 'prosodic.parquet')
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
-    writer = None
-    n_texts = 0
-    n_rows = 0
-    text_ids = sorted(
-        tid for tid in os.listdir(prosodic_dir)
-        if os.path.isdir(os.path.join(prosodic_dir, tid))
-    )
-    try:
-        from lltk.tools.tools import get_tqdm
-        iterator = get_tqdm(text_ids, desc=f'Aggregating {corpus_id}')
-    except Exception:
-        iterator = text_ids
-
-    for tid in iterator:
-        pq_path = os.path.join(prosodic_dir, tid, 'parsed.parquet')
-        if not os.path.exists(pq_path):
-            continue
+        writer = None
+        n_texts = 0
+        n_rows = 0
+        text_ids = sorted(
+            tid for tid in os.listdir(prosodic_dir)
+            if os.path.isdir(os.path.join(prosodic_dir, tid))
+        )
         try:
-            tbl = pq.read_table(pq_path)
+            from lltk.tools.tools import get_tqdm
+            iterator = get_tqdm(text_ids, desc=f'Aggregating {corpus_id}')
         except Exception:
-            continue
-        # Prepend text_id column
-        tbl = tbl.append_column('text_id', pa.array([tid] * tbl.num_rows, type=pa.string()))
-        if writer is None:
-            writer = pq.ParquetWriter(out_path, tbl.schema)
+            iterator = text_ids
+
+        for tid in iterator:
+            pq_path = os.path.join(prosodic_dir, tid, 'parsed.parquet')
+            if not os.path.exists(pq_path):
+                continue
+            try:
+                tbl = pq.read_table(pq_path)
+            except Exception:
+                continue
+            # Prepend text_id column
+            tbl = tbl.append_column('text_id', pa.array([tid] * tbl.num_rows, type=pa.string()))
+            if writer is None:
+                writer = pq.ParquetWriter(out_path, tbl.schema)
+            else:
+                # Ensure schema compatibility: re-align columns if necessary
+                if tbl.schema != writer.schema:
+                    try:
+                        tbl = tbl.select(writer.schema.names)
+                    except Exception:
+                        # Skip texts whose schema has diverged (rare but possible
+                        # across prosodic version bumps)
+                        continue
+            writer.write_table(tbl)
+            n_texts += 1
+            n_rows += tbl.num_rows
+        if writer is not None:
+            writer.close()
+            log.debug(f"Aggregated {n_texts} texts, {n_rows:,} rows -> {out_path}")
         else:
-            # Ensure schema compatibility: re-align columns if necessary
-            if tbl.schema != writer.schema:
-                try:
-                    tbl = tbl.select(writer.schema.names)
-                except Exception:
-                    # Skip texts whose schema has diverged (rare but possible
-                    # across prosodic version bumps)
-                    continue
-        writer.write_table(tbl)
-        n_texts += 1
-        n_rows += tbl.num_rows
-    if writer is not None:
-        writer.close()
-        print(f"aggregated {n_texts} texts, {n_rows:,} rows → {out_path}")
-    else:
-        print(f"no parsed.parquet files found under {prosodic_dir}")
+            log.debug(f"No parsed.parquet files found under {prosodic_dir}")

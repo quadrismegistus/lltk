@@ -14,6 +14,8 @@ import os
 import time
 from typing import Optional
 
+from logmap import logmap
+
 _ENCODER_CACHE: dict = {}
 
 DEFAULT_MODEL = 'intfloat/multilingual-e5-large'
@@ -79,130 +81,122 @@ def build_embeddings_ch(adapter, model_name: str = DEFAULT_MODEL,
     """
     from lltk.tools.tools import get_tqdm
 
-    try:
-        from lltk.imports import log
-    except Exception:
-        log = None
-
     model_short = _model_short(model_name)
 
-    if force:
-        adapter.execute('TRUNCATE TABLE lltk.passage_embeddings')
-        adapter.execute('TRUNCATE TABLE lltk.passage_embeddings_meta')
+    with logmap('Building passage embeddings...') as log:
 
-    # Idempotency: skip already-embedded texts
-    done_df = adapter.query_df(
-        f"SELECT DISTINCT _id FROM lltk.passage_embeddings_meta FINAL "
-        f"WHERE model = '{_escape(model_short)}' AND scheme = '{_escape(scheme)}'"
-    )
-    done_ids = set(done_df['_id'].tolist()) if len(done_df) else set()
+        if force:
+            adapter.execute('TRUNCATE TABLE lltk.passage_embeddings')
+            adapter.execute('TRUNCATE TABLE lltk.passage_embeddings_meta')
 
-    if done_ids:
-        # Expand via match groups (same pattern as passages)
-        group_df = adapter.query_df("""
-            SELECT DISTINCT _id
-            FROM (SELECT * FROM lltk.match_groups FINAL) mg
-            WHERE mg.group_id IN (
-                SELECT group_id FROM lltk.match_groups FINAL
-                WHERE _id IN (SELECT _id FROM lltk.passage_embeddings_meta FINAL)
+        # Idempotency: skip already-embedded texts
+        done_df = adapter.query_df(
+            f"SELECT DISTINCT _id FROM lltk.passage_embeddings_meta FINAL "
+            f"WHERE model = '{_escape(model_short)}' AND scheme = '{_escape(scheme)}'"
+        )
+        done_ids = set(done_df['_id'].tolist()) if len(done_df) else set()
+
+        if done_ids:
+            # Expand via match groups (same pattern as passages)
+            group_df = adapter.query_df("""
+                SELECT DISTINCT _id
+                FROM (SELECT * FROM lltk.match_groups FINAL) mg
+                WHERE mg.group_id IN (
+                    SELECT group_id FROM lltk.match_groups FINAL
+                    WHERE _id IN (SELECT _id FROM lltk.passage_embeddings_meta FINAL)
+                )
+            """)
+            if len(group_df):
+                group_ids = set(group_df['_id'].tolist())
+                n_skipped = len(group_ids - done_ids)
+                done_ids |= group_ids
+            else:
+                n_skipped = 0
+            log.debug(f'{len(done_df)} texts already embedded'
+                      f' (+{n_skipped} match-group siblings skipped)')
+
+        # Find passages to embed
+        where_parts = [f"scheme = '{_escape(scheme)}'"]
+        if corpora:
+            corpus_sql = ', '.join(f"'{_escape(c)}'" for c in corpora)
+            where_parts.append(
+                f"_id IN (SELECT _id FROM lltk.passages WHERE corpus IN ({corpus_sql}))"
             )
-        """)
-        if len(group_df):
-            group_ids = set(group_df['_id'].tolist())
-            n_skipped = len(group_ids - done_ids)
-            done_ids |= group_ids
-        else:
-            n_skipped = 0
-        if log:
-            log(f'[embed] {len(done_df)} texts already embedded'
-                f' (+{n_skipped} match-group siblings skipped)')
 
-    # Find passages to embed
-    where_parts = [f"scheme = '{_escape(scheme)}'"]
-    if corpora:
-        corpus_sql = ', '.join(f"'{_escape(c)}'" for c in corpora)
-        where_parts.append(
-            f"_id IN (SELECT _id FROM lltk.passages WHERE corpus IN ({corpus_sql}))"
+        where_sql = ' AND '.join(where_parts)
+        text_ids_df = adapter.query_df(
+            f"SELECT DISTINCT _id FROM lltk.passages WHERE {where_sql} ORDER BY _id"
         )
+        if not len(text_ids_df):
+            log.debug('No passages found. Run db-passages first.')
+            return 0
 
-    where_sql = ' AND '.join(where_parts)
-    text_ids_df = adapter.query_df(
-        f"SELECT DISTINCT _id FROM lltk.passages WHERE {where_sql} ORDER BY _id"
-    )
-    if not len(text_ids_df):
-        if log:
-            log('[embed] No passages found. Run db-passages first.')
-        return 0
+        all_text_ids = [i for i in text_ids_df['_id'].tolist() if i not in done_ids]
+        if not all_text_ids:
+            log.debug('All texts already embedded.')
+            return 0
 
-    all_text_ids = [i for i in text_ids_df['_id'].tolist() if i not in done_ids]
-    if not all_text_ids:
-        if log:
-            log('[embed] All texts already embedded.')
-        return 0
+        log.debug(f'{len(all_text_ids)} texts to embed '
+                  f'(model={model_short}, device={device})')
 
-    if log:
-        log(f'[embed] {len(all_text_ids)} texts to embed '
-            f'(model={model_short}, device={device})')
+        # Load encoder
+        encoder = _load_encoder(model_name, device)
 
-    # Load encoder
-    encoder = _load_encoder(model_name, device)
+        total_embedded = 0
+        t0 = time.time()
 
-    total_embedded = 0
-    t0 = time.time()
+        for i in get_tqdm(range(0, len(all_text_ids), batch_size),
+                          desc='embedding batches'):
+            batch_ids = all_text_ids[i:i + batch_size]
+            ids_sql = ', '.join(f"'{_escape(tid)}'" for tid in batch_ids)
 
-    for i in get_tqdm(range(0, len(all_text_ids), batch_size),
-                      desc='[embed] batches'):
-        batch_ids = all_text_ids[i:i + batch_size]
-        ids_sql = ', '.join(f"'{_escape(tid)}'" for tid in batch_ids)
+            # Fetch passages for this batch
+            psg_df = adapter.query_df(
+                f"SELECT _id, seq, text FROM lltk.passages "
+                f"WHERE _id IN ({ids_sql}) AND scheme = '{_escape(scheme)}' "
+                f"ORDER BY _id, seq"
+            )
+            if not len(psg_df):
+                continue
 
-        # Fetch passages for this batch
-        psg_df = adapter.query_df(
-            f"SELECT _id, seq, text FROM lltk.passages "
-            f"WHERE _id IN ({ids_sql}) AND scheme = '{_escape(scheme)}' "
-            f"ORDER BY _id, seq"
-        )
-        if not len(psg_df):
-            continue
+            # Encode all passages in this batch
+            texts = psg_df['text'].tolist()
+            embeddings = _encode_batch(texts, encoder, prefix='passage: ',
+                                       batch_size=encode_batch_size)
 
-        # Encode all passages in this batch
-        texts = psg_df['text'].tolist()
-        embeddings = _encode_batch(texts, encoder, prefix='passage: ',
-                                   batch_size=encode_batch_size)
+            # Build insert rows
+            emb_rows = []
+            meta_counts: dict[str, int] = {}
+            for idx, (_, row) in enumerate(psg_df.iterrows()):
+                _id = row['_id']
+                emb_rows.append([_id, scheme, int(row['seq']), model_short,
+                                 embeddings[idx]])
+                meta_counts[_id] = meta_counts.get(_id, 0) + 1
 
-        # Build insert rows
-        emb_rows = []
-        meta_counts: dict[str, int] = {}
-        for idx, (_, row) in enumerate(psg_df.iterrows()):
-            _id = row['_id']
-            emb_rows.append([_id, scheme, int(row['seq']), model_short,
-                             embeddings[idx]])
-            meta_counts[_id] = meta_counts.get(_id, 0) + 1
+            # Insert embeddings
+            adapter.client.insert(
+                'lltk.passage_embeddings',
+                emb_rows,
+                column_names=['_id', 'scheme', 'seq', 'model', 'embedding'],
+                settings={'async_insert': 1},
+            )
 
-        # Insert embeddings
-        adapter.client.insert(
-            'lltk.passage_embeddings',
-            emb_rows,
-            column_names=['_id', 'scheme', 'seq', 'model', 'embedding'],
-            settings={'async_insert': 1},
-        )
+            # Insert meta
+            meta_rows = [[_id, scheme, model_short, n]
+                         for _id, n in meta_counts.items()]
+            adapter.client.insert(
+                'lltk.passage_embeddings_meta',
+                meta_rows,
+                column_names=['_id', 'scheme', 'model', 'n_passages'],
+                settings={'async_insert': 1},
+            )
 
-        # Insert meta
-        meta_rows = [[_id, scheme, model_short, n]
-                     for _id, n in meta_counts.items()]
-        adapter.client.insert(
-            'lltk.passage_embeddings_meta',
-            meta_rows,
-            column_names=['_id', 'scheme', 'model', 'n_passages'],
-            settings={'async_insert': 1},
-        )
+            total_embedded += len(emb_rows)
 
-        total_embedded += len(emb_rows)
-
-    elapsed = time.time() - t0
-    if log:
-        log(f'[embed] {total_embedded:,} passages from '
-            f'{len(all_text_ids)} texts in {elapsed:.0f}s')
-    return total_embedded
+        elapsed = time.time() - t0
+        log.debug(f'{total_embedded:,} passages from '
+                  f'{len(all_text_ids)} texts in {elapsed:.0f}s')
+        return total_embedded
 
 
 # -- Retrieval -------------------------------------------------------------
@@ -325,87 +319,88 @@ def match_by_embeddings_ch(adapter, model: str = 'multilingual-e5-large',
     import pyarrow as pa
     from lltk.tools.tools import get_tqdm
 
-    print(f'[match-embed] Loading embeddings (model={model}, scheme={scheme})...')
-    df = adapter.query_df(f"""
-        SELECT _id, groupArray(embedding) as embeddings
-        FROM lltk.passage_embeddings
-        WHERE model = '{_escape(model)}' AND scheme = '{_escape(scheme)}'
-        GROUP BY _id
-    """)
-    if not len(df):
-        print('[match-embed] No embeddings found.')
-        return 0
+    with logmap('Matching by embeddings...') as log:
+        with logmap(f'Loading embeddings (model={model}, scheme={scheme})...') as load_log:
+            df = adapter.query_df(f"""
+                SELECT _id, groupArray(embedding) as embeddings
+                FROM lltk.passage_embeddings
+                WHERE model = '{_escape(model)}' AND scheme = '{_escape(scheme)}'
+                GROUP BY _id
+            """)
+        if not len(df):
+            log.debug('No embeddings found.')
+            return 0
 
-    ids = df['_id'].tolist()
-    n_texts = len(ids)
-    print(f'[match-embed] {n_texts:,} texts loaded. Mean-pooling...')
+        ids = df['_id'].tolist()
+        n_texts = len(ids)
+        log.debug(f'{n_texts:,} texts loaded. Mean-pooling...')
 
-    vecs = []
-    for embs in df['embeddings']:
-        arr = np.array(embs, dtype=np.float32)
-        m = arr.mean(axis=0)
-        n = np.linalg.norm(m)
-        vecs.append(m / n if n > 0 else m)
-    matrix = np.stack(vecs)
+        vecs = []
+        for embs in df['embeddings']:
+            arr = np.array(embs, dtype=np.float32)
+            m = arr.mean(axis=0)
+            n = np.linalg.norm(m)
+            vecs.append(m / n if n > 0 else m)
+        matrix = np.stack(vecs)
 
-    if not same_corpus:
-        meta_df = adapter.query_df(
-            "SELECT _id, corpus FROM lltk.texts FINAL "
-            "WHERE _id IN (SELECT DISTINCT _id FROM lltk.passage_embeddings)"
+        if not same_corpus:
+            meta_df = adapter.query_df(
+                "SELECT _id, corpus FROM lltk.texts FINAL "
+                "WHERE _id IN (SELECT DISTINCT _id FROM lltk.passage_embeddings)"
+            )
+            id_to_corpus = dict(zip(meta_df['_id'], meta_df['corpus']))
+        else:
+            id_to_corpus = {}
+
+        existing = set()
+        exist_df = adapter.query_df(
+            "SELECT _id_a, _id_b FROM lltk.matches FINAL "
+            "WHERE match_type = 'embedding_similarity'"
         )
-        id_to_corpus = dict(zip(meta_df['_id'], meta_df['corpus']))
-    else:
-        id_to_corpus = {}
+        if len(exist_df):
+            for _, r in exist_df.iterrows():
+                existing.add((r['_id_a'], r['_id_b']))
 
-    existing = set()
-    exist_df = adapter.query_df(
-        "SELECT _id_a, _id_b FROM lltk.matches FINAL "
-        "WHERE match_type = 'embedding_similarity'"
-    )
-    if len(exist_df):
-        for _, r in exist_df.iterrows():
-            existing.add((r['_id_a'], r['_id_b']))
+        with logmap(f'Computing pairwise similarities (threshold={threshold})...') as sim_log:
+            pairs = []
+            iterator = range(0, n_texts, batch_size)
+            if progress:
+                iterator = get_tqdm(iterator, desc='embedding batches')
 
-    print(f'[match-embed] Computing pairwise similarities (threshold={threshold})...')
-    pairs = []
-    iterator = range(0, n_texts, batch_size)
-    if progress:
-        iterator = get_tqdm(iterator, desc='[match-embed] batches')
+            for i in iterator:
+                end_i = min(i + batch_size, n_texts)
+                sims = matrix[i:end_i] @ matrix.T
 
-    for i in iterator:
-        end_i = min(i + batch_size, n_texts)
-        sims = matrix[i:end_i] @ matrix.T
+                for bi in range(end_i - i):
+                    gi = i + bi
+                    candidates = np.where(sims[bi, gi + 1:] >= threshold)[0] + gi + 1
+                    for gj in candidates:
+                        id_a, id_b = ids[gi], ids[gj]
+                        if id_a > id_b:
+                            id_a, id_b = id_b, id_a
+                        if (id_a, id_b) in existing:
+                            continue
+                        if not same_corpus and id_to_corpus.get(id_a) == id_to_corpus.get(id_b):
+                            continue
+                        pairs.append((id_a, id_b, float(sims[bi, gj]),
+                                      'embedding_similarity'))
 
-        for bi in range(end_i - i):
-            gi = i + bi
-            candidates = np.where(sims[bi, gi + 1:] >= threshold)[0] + gi + 1
-            for gj in candidates:
-                id_a, id_b = ids[gi], ids[gj]
-                if id_a > id_b:
-                    id_a, id_b = id_b, id_a
-                if (id_a, id_b) in existing:
-                    continue
-                if not same_corpus and id_to_corpus.get(id_a) == id_to_corpus.get(id_b):
-                    continue
-                pairs.append((id_a, id_b, float(sims[bi, gj]),
-                              'embedding_similarity'))
+        if not pairs:
+            log.debug('No new pairs above threshold.')
+            return 0
 
-    if not pairs:
-        print('[match-embed] No new pairs above threshold.')
-        return 0
+        with logmap(f'Inserting {len(pairs):,} pairs...') as ins_log:
+            pdf = pd.DataFrame(pairs, columns=['_id_a', '_id_b', 'similarity', 'match_type'])
+            pdf = pdf.drop_duplicates(subset=['_id_a', '_id_b'])
+            tbl = pa.Table.from_pandas(pdf, preserve_index=False)
+            adapter.client.insert_arrow('matches', tbl)
 
-    print(f'[match-embed] Inserting {len(pairs):,} pairs...')
-    pdf = pd.DataFrame(pairs, columns=['_id_a', '_id_b', 'similarity', 'match_type'])
-    pdf = pdf.drop_duplicates(subset=['_id_a', '_id_b'])
-    tbl = pa.Table.from_pandas(pdf, preserve_index=False)
-    adapter.client.insert_arrow('matches', tbl)
+        with logmap('Recomputing match groups...') as grp_log:
+            from lltk.db.match import _compute_match_groups_ch
+            _compute_match_groups_ch(adapter)
 
-    print('[match-embed] Recomputing match groups...')
-    from lltk.db.match import _compute_match_groups_ch
-    _compute_match_groups_ch(adapter)
-
-    print(f'[match-embed] Done — {len(pdf):,} new pairs inserted.')
-    return len(pdf)
+        log.debug(f'Done — {len(pdf):,} new pairs inserted.')
+        return len(pdf)
 
 
 def search_embeddings_ch(adapter, query_text: str,

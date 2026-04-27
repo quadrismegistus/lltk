@@ -20,6 +20,7 @@ Usage:
 import os
 
 import pandas as pd
+from logmap import logmap
 
 from lltk.imports import DEFAULT_NUM_PROC, fix_meta, pmap
 from lltk.corpus.tcp import TextTCP, TCP, extract_metadata, xml2txt_tcp
@@ -145,12 +146,13 @@ class EarlyPrint(TCP):
             repos = list(EARLYPRINT_REPOS.keys())
 
         # Step 1-2: Clone repos
-        for repo_name in repos:
-            url = EARLYPRINT_REPOS.get(repo_name)
-            if not url:
-                print(f'Unknown repo: {repo_name}')
-                continue
-            self._clone_repo(repo_name, url)
+        with logmap('Compiling EarlyPrint') as log:
+            for repo_name in repos:
+                url = EARLYPRINT_REPOS.get(repo_name)
+                if not url:
+                    log.debug(f'Unknown repo: {repo_name}')
+                    continue
+                self._clone_repo(repo_name, url)
 
         # Step 3: Gzip-copy XMLs (10x compression)
         self._gzip_copy_xmls(repos)
@@ -163,14 +165,16 @@ class EarlyPrint(TCP):
         if repos is None:
             repos = [r for r in EARLYPRINT_REPOS if os.path.exists(os.path.join(self.path_repos, r, '.git'))]
         if not repos:
-            print('No repos found. Run compile first.')
+            with logmap('Updating EarlyPrint') as log:
+                log.debug('No repos found. Run compile first.')
             return
 
-        for repo_name in repos:
-            repo_dir = os.path.join(self.path_repos, repo_name)
-            print(f'  {repo_name}: pulling updates...')
-            os.system(f'cd {repo_dir} && git pull')
-            os.system(f'cd {repo_dir} && git submodule update --depth 1')
+        with logmap('Updating EarlyPrint repos') as log:
+            for repo_name in repos:
+                repo_dir = os.path.join(self.path_repos, repo_name)
+                log.debug(f'{repo_name}: pulling updates...')
+                os.system(f'cd {repo_dir} && git pull')
+                os.system(f'cd {repo_dir} && git submodule update --depth 1')
 
         # Re-gzip any new/changed files
         self._gzip_copy_xmls(repos)
@@ -182,25 +186,26 @@ class EarlyPrint(TCP):
         repo_dir = os.path.join(self.path_repos, name)
         os.makedirs(self.path_repos, exist_ok=True)
 
-        if not os.path.exists(os.path.join(repo_dir, '.git')):
-            print(f'  {name}: cloning {url} (shallow)...')
-            ret = os.system(f'git clone --depth 1 {url} {repo_dir}')
-            if ret != 0:
-                print(f'  {name}: clone failed')
-                return
-            print(f'  {name}: initializing submodules...')
-            os.system(f'cd {repo_dir} && git submodule init')
-            # Convert SSH URLs to HTTPS for public access
-            os.system(
-                f"cd {repo_dir} && perl -pi -e "
-                f"'s|git\\@bitbucket.org:|https://bitbucket.org/|' .git/config"
-            )
-        else:
-            print(f'  {name}: repo exists, resuming submodule update...')
+        with logmap(f'Cloning {name}') as log:
+            if not os.path.exists(os.path.join(repo_dir, '.git')):
+                log.debug(f'cloning {url} (shallow)...')
+                ret = os.system(f'git clone --depth 1 {url} {repo_dir}')
+                if ret != 0:
+                    log.debug(f'clone failed')
+                    return
+                log.debug(f'initializing submodules...')
+                os.system(f'cd {repo_dir} && git submodule init')
+                # Convert SSH URLs to HTTPS for public access
+                os.system(
+                    f"cd {repo_dir} && perl -pi -e "
+                    f"'s|git\\@bitbucket.org:|https://bitbucket.org/|' .git/config"
+                )
+            else:
+                log.debug(f'repo exists, resuming submodule update...')
 
-        print(f'  {name}: updating submodules (shallow, resumable)...')
-        os.system(f'cd {repo_dir} && git submodule update --depth 1')
-        print(f'  {name}: done')
+            log.debug(f'updating submodules (shallow, resumable)...')
+            os.system(f'cd {repo_dir} && git submodule update --depth 1')
+            log.debug(f'done')
 
     def _gzip_copy_xmls(self, repos=None):
         """Gzip-copy XMLs from repos to xml/{ID}.xml.gz (flat directory)."""
@@ -211,61 +216,63 @@ class EarlyPrint(TCP):
         os.makedirs(xml_dir, exist_ok=True)
         total = 0
 
-        for repo_name in repos:
-            repo_texts = os.path.join(self.path_repos, repo_name, 'texts')
-            if not os.path.exists(repo_texts):
-                print(f'  {repo_name}: no texts/ directory found')
-                continue
+        with logmap('Gzip-copying EarlyPrint XMLs') as log:
+            for repo_name in repos:
+                repo_texts = os.path.join(self.path_repos, repo_name, 'texts')
+                if not os.path.exists(repo_texts):
+                    log.debug(f'{repo_name}: no texts/ directory found')
+                    continue
 
-            # Collect files to compress — flat destination: xml/{ID}.xml.gz
-            to_compress = []
-            for root, dirs, files in os.walk(repo_texts):
-                for fn in files:
-                    if not fn.endswith('.xml'):
-                        continue
-                    src = os.path.join(root, fn)
-                    dst = os.path.join(xml_dir, fn + '.gz')
-                    if not os.path.exists(dst):
-                        to_compress.append((src, dst))
+                # Collect files to compress — flat destination: xml/{ID}.xml.gz
+                to_compress = []
+                for root, dirs, files in os.walk(repo_texts):
+                    for fn in files:
+                        if not fn.endswith('.xml'):
+                            continue
+                        src = os.path.join(root, fn)
+                        dst = os.path.join(xml_dir, fn + '.gz')
+                        if not os.path.exists(dst):
+                            to_compress.append((src, dst))
 
-            if not to_compress:
-                # Count existing files for this repo by checking IDs
-                print(f'  {repo_name}: all XML files already compressed')
-                continue
+                if not to_compress:
+                    # Count existing files for this repo by checking IDs
+                    log.debug(f'{repo_name}: all XML files already compressed')
+                    continue
 
-            print(f'  {repo_name}: compressing {len(to_compress)} XML files...')
-            pmap(_gzip_copy_one, to_compress, use_threads=True,
-                 num_proc=DEFAULT_NUM_PROC, desc=f'  [{repo_name}] Gzipping')
-            total += len(to_compress)
+                log.debug(f'{repo_name}: compressing {len(to_compress)} XML files...')
+                pmap(_gzip_copy_one, to_compress, use_threads=True,
+                     num_proc=DEFAULT_NUM_PROC, desc=f'  [{repo_name}] Gzipping')
+                total += len(to_compress)
 
-        existing = sum(1 for fn in os.listdir(xml_dir) if fn.endswith('.xml.gz'))
-        print(f'  Total: {existing} XML.gz files in {xml_dir}')
+            existing = sum(1 for fn in os.listdir(xml_dir) if fn.endswith('.xml.gz'))
+            log.debug(f'Total: {existing} XML.gz files in {xml_dir}')
 
     def _build_metadata(self):
         """Build metadata.csv by parsing XML headers."""
-        print('  Building metadata from XML headers...')
-        xml_dir = self.path_xml
-        objs = []
+        with logmap('Building EarlyPrint metadata') as log:
+            log.debug('Building metadata from XML headers...')
+            xml_dir = self.path_xml
+            objs = []
 
-        for root, dirs, files in os.walk(xml_dir):
-            for fn in files:
-                if fn.endswith('.xml') or fn.endswith('.xml.gz'):
-                    objs.append(os.path.join(root, fn))
+            for root, dirs, files in os.walk(xml_dir):
+                for fn in files:
+                    if fn.endswith('.xml') or fn.endswith('.xml.gz'):
+                        objs.append(os.path.join(root, fn))
 
-        print(f'  Parsing {len(objs)} XML files...')
-        ld = pmap(_parse_earlyprint_meta, objs, num_proc=DEFAULT_NUM_PROC,
-                  use_threads=True, desc='[EarlyPrint] Parsing metadata')
+            log.debug(f'Parsing {len(objs)} XML files...')
+            ld = pmap(_parse_earlyprint_meta, objs, num_proc=DEFAULT_NUM_PROC,
+                      use_threads=True, desc='Parsing metadata')
 
-        df = pd.DataFrame([d for d in ld if d])
-        if not len(df):
-            print('  No metadata extracted')
-            return
+            df = pd.DataFrame([d for d in ld if d])
+            if not len(df):
+                log.debug('No metadata extracted')
+                return
 
-        df = fix_meta(df)
-        if 'id' in df.columns:
-            df = df.set_index('id')
-        df.to_csv(self.path_metadata)
-        print(f'  Saved {len(df)} records to {self.path_metadata}')
+            df = fix_meta(df)
+            if 'id' in df.columns:
+                df = df.set_index('id')
+            df.to_csv(self.path_metadata)
+            log.debug(f'Saved {len(df)} records to {self.path_metadata}')
 
     def load_metadata(self, *x, **y):
         from lltk.corpus.eebo_tcp.eebo_tcp import _normalize_estc_id

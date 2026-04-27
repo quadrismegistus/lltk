@@ -104,7 +104,7 @@ def ingest_corpus_to_clickhouse(corpus_id: str, ch_adapter,
     or None if the corpus was skipped.
     """
     if corpus_id in DB_BLACKLIST:
-        print(f'Skipping {corpus_id} (DB_BLACKLIST)')
+        logmap.debug(f'Skipping {corpus_id} (DB_BLACKLIST)')
         return None
 
     from lltk.corpus.utils import load
@@ -112,19 +112,19 @@ def ingest_corpus_to_clickhouse(corpus_id: str, ch_adapter,
     try:
         corpus = load(corpus_id)
     except Exception as e:
-        print(f'Could not load {corpus_id}: {e}')
+        logmap.debug(f'Could not load {corpus_id}: {e}')
         return None
     if isinstance(corpus, SyntheticCorpus):
-        print(f'Skipping {corpus_id} (SyntheticCorpus)')
+        logmap.debug(f'Skipping {corpus_id} (SyntheticCorpus)')
         return None
 
     try:
         df = corpus.load_metadata()
     except Exception as e:
-        print(f'Could not load metadata for {corpus_id}: {e}')
+        logmap.debug(f'Could not load metadata for {corpus_id}: {e}')
         return None
     if df is None or not len(df):
-        print(f'No metadata for {corpus_id}')
+        logmap.debug(f'No metadata for {corpus_id}')
         return None
 
     manifest_lang = getattr(corpus, 'lang', None)
