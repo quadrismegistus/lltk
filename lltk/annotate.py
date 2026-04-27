@@ -576,3 +576,52 @@ def extract_social_network(
         'social_network', ids=ids, model=model,
         save_tasks=True, **kwargs,
     )
+
+
+def iter_task_results(task_name, *, model=None):
+    """Yield (canonical_id, result_dict) for all stored task results.
+
+    Walks ~/lltk_data/corpora/*/tasks/{task_name}/**/*.json.
+    Returns the latest result per text (by mtime) unless `model` is specified.
+
+    The canonical _id is always in `_{corpus}/{text_id}` form regardless of
+    what was stored in metadata.source.
+    """
+    import json
+    import glob
+    from lltk.imports import PATH_CORPUS
+
+    pattern = os.path.join(PATH_CORPUS, '*', 'tasks', task_name)
+    task_dirs = sorted(glob.glob(pattern))
+    if not task_dirs:
+        return
+
+    seen = {}
+    for task_dir in task_dirs:
+        corpus_id = task_dir.split(os.sep)[-3]
+        prefix = task_dir + os.sep
+
+        for path in glob.glob(os.path.join(task_dir, '**', '*.json'), recursive=True):
+            rel = path[len(prefix):]
+            model_slug = os.path.splitext(os.path.basename(rel))[0]
+
+            if model and model_slug != model:
+                continue
+
+            text_id = os.path.dirname(rel)
+            _id = f'_{corpus_id}/{text_id}'
+
+            if _id in seen and not model:
+                if os.path.getmtime(path) <= seen[_id][0]:
+                    continue
+
+            try:
+                with open(path) as f:
+                    result = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                continue
+
+            seen[_id] = (os.path.getmtime(path), result)
+
+    for _id, (_, result) in sorted(seen.items()):
+        yield _id, result
