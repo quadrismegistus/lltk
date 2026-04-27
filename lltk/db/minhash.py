@@ -5,12 +5,24 @@ metadata-based matching misses — different editions, abridgements,
 anthologies containing the same text, etc.
 
 Writes results to lltk.matches as match_type='minhash'.
+
+Signature computation is checkpointed per-corpus to
+~/lltk_data/corpora/{corpus}/data/minhash_{num_perm}.pkl so interrupted
+runs resume from the last completed corpus.
 """
 
+import os
+import pickle
 import time
 import pyarrow as pa
 
 from logmap import logmap
+
+
+def _cache_path(corpus_id, num_perm):
+    return os.path.expanduser(
+        f'~/lltk_data/corpora/{corpus_id}/data/minhash_{num_perm}.pkl'
+    )
 
 
 def minhash_match_ch(ch_adapter, *, threshold=0.5, num_perm=128, corpus=None):
@@ -18,7 +30,7 @@ def minhash_match_ch(ch_adapter, *, threshold=0.5, num_perm=128, corpus=None):
 
     with logmap('MinHash matching...') as log:
 
-        with logmap('Loading word sets and computing signatures...') as load_log:
+        with logmap('Loading signatures (cached or computed)...') as load_log:
             t0 = time.time()
             if corpus:
                 corpora = [corpus]
@@ -29,27 +41,50 @@ def minhash_match_ch(ch_adapter, *, threshold=0.5, num_perm=128, corpus=None):
             load_log.debug(f'{len(corpora)} corpora to process')
 
             signatures = {}
+            n_cached = 0
             for ci, c in enumerate(corpora):
+                cache = _cache_path(c, num_perm)
+                if os.path.exists(cache):
+                    with open(cache, 'rb') as f:
+                        cached_sigs = pickle.load(f)
+                    signatures.update(cached_sigs)
+                    n_cached += 1
+                    load_log.debug(
+                        f'[{ci+1}/{len(corpora)}] {c}: {len(cached_sigs):,} cached '
+                        f'({len(signatures):,} total)'
+                    )
+                    continue
+
                 rows = ch_adapter.query(
                     f"SELECT _id, mapKeys(freqs) AS words "
                     f"FROM lltk.text_freqs WHERE corpus = '{c}'"
                 )
+                corpus_sigs = {}
                 for _id, words in rows:
                     if not words:
                         continue
                     m = MinHash(num_perm=num_perm)
                     for w in words:
                         m.update(w.encode('utf8'))
-                    signatures[_id] = m
+                    corpus_sigs[_id] = m
+
+                os.makedirs(os.path.dirname(cache), exist_ok=True)
+                with open(cache, 'wb') as f:
+                    pickle.dump(corpus_sigs, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+                signatures.update(corpus_sigs)
                 load_log.debug(
-                    f'[{ci+1}/{len(corpora)}] {c}: {len(rows):,} texts '
-                    f'({len(signatures):,} total sigs)'
+                    f'[{ci+1}/{len(corpora)}] {c}: {len(rows):,} texts -> '
+                    f'{len(corpus_sigs):,} sigs (saved) '
+                    f'({len(signatures):,} total)'
                 )
+
             if not signatures:
                 load_log.debug('No freqs found. Run `lltk db-freqs` first.')
                 return
             load_log.debug(
-                f'{len(signatures):,} signatures in {(time.time()-t0)/60:.1f}m'
+                f'{len(signatures):,} signatures in {(time.time()-t0)/60:.1f}m '
+                f'({n_cached} from cache)'
             )
 
         with logmap(f'Running LSH (threshold={threshold})...') as lsh_log:
