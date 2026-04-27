@@ -56,14 +56,15 @@ def minhash_match_ch(ch_adapter, *, threshold=0.5, num_perm=128, corpus=None):
                     continue
 
                 corpus_sigs = {}
-                batch_size = 50_000
+                batch_size = 10_000
                 offset = 0
                 while True:
-                    rows = ch_adapter.query(
+                    rows = ch_adapter.client.query(
                         f"SELECT _id, mapKeys(freqs) AS words "
                         f"FROM lltk.text_freqs WHERE corpus = '{c}' "
-                        f"ORDER BY _id LIMIT {batch_size} OFFSET {offset}"
-                    )
+                        f"ORDER BY _id LIMIT {batch_size} OFFSET {offset}",
+                        settings={'max_memory_usage': 0},
+                    ).result_rows
                     if not rows:
                         break
                     for _id, words in rows:
