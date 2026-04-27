@@ -55,18 +55,27 @@ def minhash_match_ch(ch_adapter, *, threshold=0.5, num_perm=128, corpus=None):
                     )
                     continue
 
-                rows = ch_adapter.query(
-                    f"SELECT _id, mapKeys(freqs) AS words "
-                    f"FROM lltk.text_freqs WHERE corpus = '{c}'"
-                )
                 corpus_sigs = {}
-                for _id, words in rows:
-                    if not words:
-                        continue
-                    m = MinHash(num_perm=num_perm)
-                    for w in words:
-                        m.update(w.encode('utf8'))
-                    corpus_sigs[_id] = m
+                batch_size = 50_000
+                offset = 0
+                while True:
+                    rows = ch_adapter.query(
+                        f"SELECT _id, mapKeys(freqs) AS words "
+                        f"FROM lltk.text_freqs WHERE corpus = '{c}' "
+                        f"ORDER BY _id LIMIT {batch_size} OFFSET {offset}"
+                    )
+                    if not rows:
+                        break
+                    for _id, words in rows:
+                        if not words:
+                            continue
+                        m = MinHash(num_perm=num_perm)
+                        for w in words:
+                            m.update(w.encode('utf8'))
+                        corpus_sigs[_id] = m
+                    offset += len(rows)
+                    if len(rows) < batch_size:
+                        break
 
                 os.makedirs(os.path.dirname(cache), exist_ok=True)
                 with open(cache, 'wb') as f:
@@ -74,8 +83,7 @@ def minhash_match_ch(ch_adapter, *, threshold=0.5, num_perm=128, corpus=None):
 
                 signatures.update(corpus_sigs)
                 load_log.debug(
-                    f'[{ci+1}/{len(corpora)}] {c}: {len(rows):,} texts -> '
-                    f'{len(corpus_sigs):,} sigs (saved) '
+                    f'[{ci+1}/{len(corpora)}] {c}: {len(corpus_sigs):,} sigs (saved) '
                     f'({len(signatures):,} total)'
                 )
 
