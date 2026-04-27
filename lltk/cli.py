@@ -260,6 +260,15 @@ def main():
 		help='Extract derived scalar metrics to lltk.annotations')
 	p_ingest.add_argument('--dry-run', action='store_true', help='Show what would happen')
 
+	# export-task-results
+	p_export_task = subparsers.add_parser('export-task-results',
+		help='Export stored task results to a flat directory for remote batch processing')
+	p_export_task.add_argument('task', help='Task name (e.g. social_network)')
+	p_export_task.add_argument('--out', required=True, help='Output directory')
+	p_export_task.add_argument('--model', default=None, help='Filter to specific model variant')
+	p_export_task.add_argument('--symlink', action='store_true',
+		help='Symlink instead of copy (local use only)')
+
 	# clean-ocr
 	p_cocr = subparsers.add_parser('clean-ocr',
 		help='LLM-based OCR cleaning (requires largeliterarymodels)')
@@ -623,6 +632,16 @@ def main():
 		print(f"\nIngested: {stats['n_ingested']}, "
 			  f"Skipped: {stats['n_skipped']}, "
 			  f"Errors: {stats['n_errors']}")
+
+	elif args.cmd == 'export-task-results':
+		from lltk.annotate import export_task_results
+		n = export_task_results(
+			args.task,
+			args.out,
+			model=args.model,
+			symlink=args.symlink,
+		)
+		print(f'Exported {n} results to {args.out}')
 
 	elif args.cmd == 'clean-ocr':
 		import time as _time

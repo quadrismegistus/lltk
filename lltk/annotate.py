@@ -625,3 +625,73 @@ def iter_task_results(task_name, *, model=None):
 
     for _id, (_, result) in sorted(seen.items()):
         yield _id, result
+
+
+def export_task_results(task_name, out_dir, *, model=None, symlink=False):
+    """Export task results to a flat directory for remote batch processing.
+
+    Each file is named {canonical_id_slugified}.json. The canonical _id is
+    injected into the result dict as metadata._canonical_id so the remote
+    batch script can recover it without path parsing.
+
+    Returns number of files exported.
+    """
+    import json
+    import glob
+    import shutil
+    from lltk.imports import PATH_CORPUS
+
+    os.makedirs(out_dir, exist_ok=True)
+
+    pattern = os.path.join(PATH_CORPUS, '*', 'tasks', task_name)
+    task_dirs = sorted(glob.glob(pattern))
+    if not task_dirs:
+        return 0
+
+    # Collect best path per _id (latest mtime, or model-filtered)
+    best = {}
+    for task_dir in task_dirs:
+        corpus_id = task_dir.split(os.sep)[-3]
+        prefix = task_dir + os.sep
+
+        for path in glob.glob(os.path.join(task_dir, '**', '*.json'), recursive=True):
+            rel = path[len(prefix):]
+            model_slug = os.path.splitext(os.path.basename(rel))[0]
+
+            if model and model_slug != model:
+                continue
+
+            text_id = os.path.dirname(rel)
+            _id = f'_{corpus_id}/{text_id}'
+
+            if _id in best and not model:
+                if os.path.getmtime(path) <= best[_id][1]:
+                    continue
+
+            best[_id] = (path, os.path.getmtime(path))
+
+    n = 0
+    for _id, (src_path, _) in sorted(best.items()):
+        slug = _id.replace('/', '__').replace(' ', '_')
+        dest = os.path.join(out_dir, f'{slug}.json')
+
+        if symlink:
+            if os.path.exists(dest):
+                os.remove(dest)
+            os.symlink(os.path.abspath(src_path), dest)
+        else:
+            shutil.copy2(src_path, dest)
+
+            # Inject canonical _id into the copy
+            try:
+                with open(dest) as f:
+                    data = json.load(f)
+                data.setdefault('metadata', {})['_canonical_id'] = _id
+                with open(dest, 'w') as f:
+                    json.dump(data, f)
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        n += 1
+
+    return n
