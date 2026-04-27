@@ -17,34 +17,40 @@ def minhash_match_ch(ch_adapter, *, threshold=0.5, num_perm=128, corpus=None):
     from datasketch import MinHash, MinHashLSH
 
     with logmap('MinHash matching...') as log:
-        where = f"WHERE corpus = '{corpus}'" if corpus else ''
 
-        with logmap('Loading word sets from text_freqs...') as load_log:
+        with logmap('Loading word sets and computing signatures...') as load_log:
             t0 = time.time()
-            rows = ch_adapter.query(
-                f"SELECT _id, mapKeys(freqs) AS words FROM lltk.text_freqs {where}"
-            )
-            if not rows:
+            if corpus:
+                corpora = [corpus]
+            else:
+                corpora = [r[0] for r in ch_adapter.query(
+                    "SELECT DISTINCT corpus FROM lltk.text_freqs ORDER BY corpus"
+                )]
+            load_log.debug(f'{len(corpora)} corpora to process')
+
+            signatures = {}
+            for ci, c in enumerate(corpora):
+                rows = ch_adapter.query(
+                    f"SELECT _id, mapKeys(freqs) AS words "
+                    f"FROM lltk.text_freqs WHERE corpus = '{c}'"
+                )
+                for _id, words in rows:
+                    if not words:
+                        continue
+                    m = MinHash(num_perm=num_perm)
+                    for w in words:
+                        m.update(w.encode('utf8'))
+                    signatures[_id] = m
+                load_log.debug(
+                    f'[{ci+1}/{len(corpora)}] {c}: {len(rows):,} texts '
+                    f'({len(signatures):,} total sigs)'
+                )
+            if not signatures:
                 load_log.debug('No freqs found. Run `lltk db-freqs` first.')
                 return
-            load_log.debug(f'{len(rows):,} texts in {time.time()-t0:.1f}s')
-
-        with logmap(f'Computing MinHash signatures ({num_perm} perms)...') as sig_log:
-            t0 = time.time()
-            signatures = {}
-            for i, (_id, words) in enumerate(rows):
-                if not words:
-                    continue
-                m = MinHash(num_perm=num_perm)
-                for w in words:
-                    m.update(w.encode('utf8'))
-                signatures[_id] = m
-                if (i + 1) % 50000 == 0:
-                    elapsed = time.time() - t0
-                    rate = (i + 1) / elapsed
-                    remaining = (len(rows) - i - 1) / rate / 60
-                    sig_log.debug(f'{i+1:,} sigs ({rate:.0f}/s, ~{remaining:.0f}m left)')
-            sig_log.debug(f'{len(signatures):,} signatures in {(time.time()-t0)/60:.1f}m')
+            load_log.debug(
+                f'{len(signatures):,} signatures in {(time.time()-t0)/60:.1f}m'
+            )
 
         with logmap(f'Running LSH (threshold={threshold})...') as lsh_log:
             t0 = time.time()
