@@ -467,8 +467,15 @@ class TestFetchMetadata:
         db = _make_db_with_adapter(adapter)
         db.fetch_metadata(['_estc/T1'], columns=['title', 'year', 'author'])
         sql = adapter.calls[-1][1]
-        assert 'title, year, author' in sql
+        assert '_id, title, year, author' in sql
         assert '*' not in sql
+
+    def test_id_included_even_if_omitted(self):
+        adapter = _MockAdapter()
+        db = _make_db_with_adapter(adapter)
+        db.fetch_metadata(['_estc/T1'], columns=['title'])
+        sql = adapter.calls[-1][1]
+        assert '_id' in sql
 
     def test_large_batch_uses_tmp_table(self):
         ids = [f'_estc/T{i:06d}' for i in range(10_001)]
@@ -509,8 +516,9 @@ class TestGenreTags:
         db = _make_db_with_adapter(adapter)
         db.genre_tags(['_estc/T1'], propagate=True)
         query_sql = next(c[1] for c in adapter.calls if c[0] == 'query_df')
-        assert 'match_groups' in query_sql
+        assert 'match_groups FINAL' in query_sql
         assert 'text_genre_tags' in query_sql
+        assert 'SELECT _id, group_id FROM lltk.match_groups FINAL' in query_sql
 
     def test_validates_ids(self):
         db = _make_db_with_adapter(_MockAdapter())

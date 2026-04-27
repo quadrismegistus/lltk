@@ -586,6 +586,8 @@ class MetaDBCH:
         for i in ids:
             _validate_id(i)
 
+        if columns and '_id' not in columns:
+            columns = ['_id'] + list(columns)
         cols_sql = ', '.join(columns) if columns else '*'
 
         if len(ids) > 10_000:
@@ -643,8 +645,9 @@ class MetaDBCH:
         return self.adapter.query_df("""
             SELECT DISTINCT f._id AS _id, tgt.facet, tgt.tag
             FROM tmp.tag_lookup_ids f
-            LEFT JOIN lltk.match_groups FINAL mg_self ON f._id = mg_self._id
-            LEFT JOIN lltk.match_groups FINAL mg_sib
+            LEFT JOIN (SELECT _id, group_id FROM lltk.match_groups FINAL) mg_self
+                ON f._id = mg_self._id
+            LEFT JOIN (SELECT _id, group_id FROM lltk.match_groups FINAL) mg_sib
                 ON mg_sib.group_id = mg_self.group_id
             JOIN lltk.text_genre_tags tgt
                 ON tgt._id = if(mg_self.group_id != 0, mg_sib._id, f._id)
