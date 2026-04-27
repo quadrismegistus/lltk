@@ -268,6 +268,8 @@ def main():
 	p_export_task.add_argument('--model', default=None, help='Filter to specific model variant')
 	p_export_task.add_argument('--symlink', action='store_true',
 		help='Symlink instead of copy (local use only)')
+	p_export_task.add_argument('--year-min', type=int, default=None)
+	p_export_task.add_argument('--year-max', type=int, default=None)
 
 	# clean-ocr
 	p_cocr = subparsers.add_parser('clean-ocr',
@@ -640,6 +642,8 @@ def main():
 			args.out,
 			model=args.model,
 			symlink=args.symlink,
+			year_min=args.year_min,
+			year_max=args.year_max,
 		)
 		print(f'Exported {n} results to {args.out}')
 
