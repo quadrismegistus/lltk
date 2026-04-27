@@ -39,6 +39,18 @@ import pandas as pd
 from lltk.tools.logs import log
 
 
+# ── Register annotation field specs for task-derived scalars ──────────
+def _register_task_fields():
+    from lltk.tools.annotations import register_field_spec
+    _str_nullable = {'type': 'str', 'vocab': None, 'nullable': True, 'range': None, 'normalize': None}
+    for field in ('mythos', 'frye_mode', 'pavel_tradition', 'moral_source',
+                  'plot_structure', 'ending_type', 'non_fiction_type', 'subgenres',
+                  'is_fiction'):
+        register_field_spec(field, _str_nullable)
+
+_register_task_fields()
+
+
 # ── Task registry ──────────────────────────────────────────────────────
 # Maps short names to (import_path, class_name, task_type).
 # task_type: 'base' or 'sequential' — determines how lltk calls .run().
@@ -435,8 +447,36 @@ def _extract_social_network_scalars(result: dict) -> list[tuple[str, Any]]:
     return scalars
 
 
+def _extract_plot_genre_scalars(result: dict) -> list[tuple[str, Any]]:
+    """Extract scalar fields from a plot_genre result."""
+    scalars = []
+    for field in ('mythos', 'frye_mode', 'pavel_tradition',
+                  'moral_source', 'plot_structure', 'ending_type'):
+        v = result.get(field)
+        if v:
+            scalars.append((field, str(v)))
+    return scalars
+
+
+def _extract_subgenre_scalars(result: dict) -> list[tuple[str, Any]]:
+    """Extract scalar fields from a subgenre result."""
+    scalars = []
+    is_fic = result.get('is_fiction')
+    if is_fic is not None:
+        scalars.append(('is_fiction', str(is_fic).lower()))
+    nft = result.get('non_fiction_type')
+    if nft:
+        scalars.append(('non_fiction_type', str(nft)))
+    subgenres = result.get('subgenres', [])
+    if subgenres:
+        scalars.append(('subgenres', ';'.join(str(s) for s in subgenres)))
+    return scalars
+
+
 _SCALAR_EXTRACTORS: dict[str, callable] = {
     'social_network': _extract_social_network_scalars,
+    'plot_genre': _extract_plot_genre_scalars,
+    'subgenre': _extract_subgenre_scalars,
 }
 
 
