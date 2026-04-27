@@ -574,6 +574,82 @@ class MetaDBCH:
         from lltk.db.match import get_group_ch
         return get_group_ch(self.adapter, _id)
 
+    def fetch_metadata(self, ids, columns=None):
+        """Batch metadata fetch by _id. Returns DataFrame.
+
+        Uses a tmp Memory table for >10K IDs to avoid max_query_size limits.
+        """
+        import pandas as pd
+        ids = list(ids)
+        if not ids:
+            return pd.DataFrame()
+        for i in ids:
+            _validate_id(i)
+
+        cols_sql = ', '.join(columns) if columns else '*'
+
+        if len(ids) > 10_000:
+            self.adapter.execute(
+                "CREATE TABLE IF NOT EXISTS tmp.fetch_meta_ids "
+                "(_id String) ENGINE=Memory"
+            )
+            self.adapter.execute("TRUNCATE TABLE tmp.fetch_meta_ids")
+            self.adapter.client.insert(
+                'tmp.fetch_meta_ids', [[i] for i in ids],
+                column_names=['_id'],
+            )
+            return self.adapter.query_df(
+                f"SELECT {cols_sql} FROM lltk.texts FINAL AS t "
+                f"JOIN tmp.fetch_meta_ids f ON t._id = f._id"
+            )
+
+        ids_sql = ', '.join(f"'{_sql_str(i)}'" for i in ids)
+        return self.adapter.query_df(
+            f"SELECT {cols_sql} FROM lltk.texts FINAL "
+            f"WHERE _id IN ({ids_sql})"
+        )
+
+    def genre_tags(self, ids, *, propagate=True):
+        """Per-text genre tags by facet. Returns DataFrame (_id, facet, tag).
+
+        If propagate=True, includes tags from match-group siblings: for each
+        input _id, finds all sibling _ids in the same match group, then
+        collects their tags.
+        """
+        import pandas as pd
+        ids = list(ids)
+        if not ids:
+            return pd.DataFrame(columns=['_id', 'facet', 'tag'])
+        for i in ids:
+            _validate_id(i)
+
+        self.adapter.execute(
+            "CREATE TABLE IF NOT EXISTS tmp.tag_lookup_ids "
+            "(_id String) ENGINE=Memory"
+        )
+        self.adapter.execute("TRUNCATE TABLE tmp.tag_lookup_ids")
+        self.adapter.client.insert(
+            'tmp.tag_lookup_ids', [[i] for i in ids],
+            column_names=['_id'],
+        )
+
+        if not propagate:
+            return self.adapter.query_df(
+                "SELECT t._id, t.facet, t.tag "
+                "FROM lltk.text_genre_tags t "
+                "JOIN tmp.tag_lookup_ids f ON t._id = f._id"
+            )
+
+        return self.adapter.query_df("""
+            SELECT DISTINCT f._id AS _id, tgt.facet, tgt.tag
+            FROM tmp.tag_lookup_ids f
+            LEFT JOIN lltk.match_groups FINAL mg_self ON f._id = mg_self._id
+            LEFT JOIN lltk.match_groups FINAL mg_sib
+                ON mg_sib.group_id = mg_self.group_id
+            JOIN lltk.text_genre_tags tgt
+                ON tgt._id = if(mg_self.group_id != 0, mg_sib._id, f._id)
+        """)
+
     def match_stats(self):
         from lltk.db.match import match_stats_ch
         return match_stats_ch(self.adapter)

@@ -417,3 +417,109 @@ class TestBuildWhereCh:
         sql = m._build_where_ch(where="length(title) > 5", genre='Fiction')
         assert '(length(title) > 5)' in sql
         assert "genre = 'Fiction'" in sql
+
+
+# ── fetch_metadata / genre_tags ──────────────────────────────────────
+
+class _MockAdapter:
+    """Minimal adapter stub that records SQL and returns canned DataFrames."""
+
+    def __init__(self, df=None):
+        self.calls = []
+        self._df = df if df is not None else pd.DataFrame()
+        self.client = self
+
+    def query_df(self, sql):
+        self.calls.append(('query_df', sql))
+        return self._df
+
+    def execute(self, sql):
+        self.calls.append(('execute', sql))
+
+    def insert(self, table, rows, column_names=None):
+        self.calls.append(('insert', table, rows, column_names))
+
+
+def _make_db_with_adapter(adapter):
+    from lltk.db.metadb_ch import MetaDBCH
+    m = MetaDBCH.__new__(MetaDBCH)
+    m.url = 'clickhouse://test'
+    m._adapter = adapter
+    return m
+
+
+class TestFetchMetadata:
+    def test_empty_ids(self):
+        db = _make_db_with_adapter(_MockAdapter())
+        result = db.fetch_metadata([])
+        assert len(result) == 0
+
+    def test_small_batch_uses_in_clause(self):
+        adapter = _MockAdapter(pd.DataFrame({'_id': ['_estc/T1'], 'title': ['Foo']}))
+        db = _make_db_with_adapter(adapter)
+        db.fetch_metadata(['_estc/T1', '_estc/T2'])
+        sql = adapter.calls[-1][1]
+        assert 'WHERE _id IN' in sql
+        assert 'tmp.' not in sql
+
+    def test_columns_forwarded(self):
+        adapter = _MockAdapter()
+        db = _make_db_with_adapter(adapter)
+        db.fetch_metadata(['_estc/T1'], columns=['title', 'year', 'author'])
+        sql = adapter.calls[-1][1]
+        assert 'title, year, author' in sql
+        assert '*' not in sql
+
+    def test_large_batch_uses_tmp_table(self):
+        ids = [f'_estc/T{i:06d}' for i in range(10_001)]
+        adapter = _MockAdapter()
+        db = _make_db_with_adapter(adapter)
+        db.fetch_metadata(ids)
+        ops = [c[0] for c in adapter.calls]
+        assert 'execute' in ops
+        assert 'insert' in ops
+        create_sql = next(c[1] for c in adapter.calls if c[0] == 'execute' and 'CREATE' in c[1])
+        assert 'tmp.fetch_meta_ids' in create_sql
+        query_sql = next(c[1] for c in adapter.calls if c[0] == 'query_df')
+        assert 'JOIN tmp.fetch_meta_ids' in query_sql
+
+    def test_validates_ids(self):
+        db = _make_db_with_adapter(_MockAdapter())
+        with pytest.raises(ValueError):
+            db.fetch_metadata(['bad_no_slash'])
+
+
+class TestGenreTags:
+    def test_empty_ids(self):
+        db = _make_db_with_adapter(_MockAdapter())
+        result = db.genre_tags([])
+        assert list(result.columns) == ['_id', 'facet', 'tag']
+        assert len(result) == 0
+
+    def test_no_propagation(self):
+        adapter = _MockAdapter()
+        db = _make_db_with_adapter(adapter)
+        db.genre_tags(['_estc/T1'], propagate=False)
+        query_sql = next(c[1] for c in adapter.calls if c[0] == 'query_df')
+        assert 'match_groups' not in query_sql
+        assert 'text_genre_tags' in query_sql
+
+    def test_with_propagation(self):
+        adapter = _MockAdapter()
+        db = _make_db_with_adapter(adapter)
+        db.genre_tags(['_estc/T1'], propagate=True)
+        query_sql = next(c[1] for c in adapter.calls if c[0] == 'query_df')
+        assert 'match_groups' in query_sql
+        assert 'text_genre_tags' in query_sql
+
+    def test_validates_ids(self):
+        db = _make_db_with_adapter(_MockAdapter())
+        with pytest.raises(ValueError):
+            db.genre_tags(['not-valid'])
+
+    def test_uses_tmp_table(self):
+        adapter = _MockAdapter()
+        db = _make_db_with_adapter(adapter)
+        db.genre_tags(['_estc/T1'])
+        create_sql = next(c[1] for c in adapter.calls if c[0] == 'execute' and 'CREATE' in c[1])
+        assert 'tmp.tag_lookup_ids' in create_sql

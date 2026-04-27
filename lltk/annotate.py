@@ -457,7 +457,7 @@ def ingest_tasks(
 
     Args:
         task_name: Task name (e.g. 'social_network').
-        results_dir: Directory of JSON result files (flat layout).
+        results_dir: Directory of JSON result files (searched recursively).
         source: Annotation source label for scalars.
         extract_scalars: Write derived scalars to annotations.
         dry_run: Print what would happen without writing.
@@ -471,7 +471,7 @@ def ingest_tasks(
     import shutil
     import lltk
 
-    json_files = sorted(glob.glob(os.path.join(results_dir, '*.json')))
+    json_files = sorted(glob.glob(os.path.join(results_dir, '**', '*.json'), recursive=True))
     if not json_files:
         if verbose:
             log.info(f'[ingest] no JSON files in {results_dir}')
