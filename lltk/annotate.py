@@ -45,7 +45,8 @@ def _register_task_fields():
     _str_nullable = {'type': 'str', 'vocab': None, 'nullable': True, 'range': None, 'normalize': None}
     for field in ('mythos', 'frye_mode', 'pavel_tradition', 'moral_source',
                   'plot_structure', 'ending_type', 'non_fiction_type', 'subgenres',
-                  'is_fiction', 'major_genre'):
+                  'is_fiction', 'major_genre', 'n_unique_archetypes',
+                  'n_unique_social_classes'):
         register_field_spec(field, _str_nullable)
 
 _register_task_fields()
@@ -514,11 +515,33 @@ def _extract_major_genre_scalars(result: dict) -> list[tuple[str, Any]]:
     return scalars
 
 
+def _extract_character_type_scalars(result: dict) -> list[tuple[str, Any]]:
+    """Extract text-level aggregates from a character_type result."""
+    scalars = []
+    chars = result.get('characters', [])
+    if chars:
+        scalars.append(('n_characters', len(chars)))
+        all_archetypes = set()
+        all_classes = set()
+        for c in chars:
+            for a in c.get('archetypes', []):
+                all_archetypes.add(a)
+            sc = c.get('social_class')
+            if sc:
+                all_classes.add(sc)
+        if all_archetypes:
+            scalars.append(('n_unique_archetypes', len(all_archetypes)))
+        if all_classes:
+            scalars.append(('n_unique_social_classes', len(all_classes)))
+    return scalars
+
+
 _SCALAR_EXTRACTORS: dict[str, callable] = {
     'social_network': _extract_social_network_scalars,
     'plot_genre': _extract_plot_genre_scalars,
     'subgenre': _extract_subgenre_scalars,
     'major_genre': _extract_major_genre_scalars,
+    'character_type': _extract_character_type_scalars,
 }
 
 
