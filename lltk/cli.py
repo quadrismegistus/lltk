@@ -136,6 +136,10 @@ def main():
 	p_export_psg.add_argument('--year-max', type=int, default=None)
 	p_export_psg.add_argument('--scheme', default='p500', help='Passage scheme (default: p500)')
 	p_export_psg.add_argument('--out-dir', default=None, help='Output directory (default: corpus-local)')
+	p_export_psg.add_argument('--decile', action='store_true',
+		help='Sample passages at decile positions (10%%, 20%%, ..., 100%%) per text')
+	p_export_psg.add_argument('--from-task', default=None,
+		help='Export only texts that have results for this task (e.g. social_network)')
 
 	# db-embed-passages
 	p_db_embed = subparsers.add_parser('db-embed-passages',
@@ -503,13 +507,32 @@ def main():
 		)
 
 	elif args.cmd == 'export-passages':
-		lltk.db.export_passages(
-			corpus=args.corpus,
-			year_min=args.year_min,
-			year_max=args.year_max,
-			scheme=args.scheme,
-			out_dir=args.out_dir,
-		)
+		ids = None
+		if args.from_task:
+			from lltk.annotate import iter_task_results
+			ids = [_id for _id, _ in iter_task_results(args.from_task)]
+			print(f'Filtering to {len(ids)} texts with {args.from_task} results')
+
+		if args.decile:
+			if not args.out_dir:
+				print('--decile requires --out-dir'); sys.exit(1)
+			if ids is None:
+				print('--decile requires --from-task or explicit IDs'); sys.exit(1)
+			from lltk.db.passages import export_passages_decile
+			n_texts, n_psg = export_passages_decile(
+				lltk.db.adapter, ids,
+				scheme=args.scheme, out_dir=args.out_dir,
+			)
+			print(f'Exported {n_psg:,} passages from {n_texts} texts')
+		else:
+			lltk.db.export_passages(
+				ids=ids,
+				corpus=args.corpus,
+				year_min=args.year_min,
+				year_max=args.year_max,
+				scheme=args.scheme,
+				out_dir=args.out_dir,
+			)
 
 	elif args.cmd == 'db-embed-passages':
 		lltk.db.build_embeddings_db(
