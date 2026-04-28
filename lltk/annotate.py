@@ -754,23 +754,22 @@ def export_task_results(task_name, out_dir, *, model=None, symlink=False,
             best[_id] = (path, os.path.getmtime(path))
 
     if year_min is not None or year_max is not None:
-        try:
-            import lltk
-            ids = list(best.keys())
-            meta = lltk.db.fetch_metadata(ids, columns=['year'])
-            valid = set()
-            for _, row in meta.iterrows():
-                y = row.get('year')
-                if y is None or (hasattr(y, '__class__') and str(y) == '<NA>'):
-                    continue
-                if year_min is not None and int(y) < year_min:
-                    continue
-                if year_max is not None and int(y) > year_max:
-                    continue
-                valid.add(row['_id'])
-            best = {k: v for k, v in best.items() if k in valid}
-        except Exception:
-            pass
+        import lltk
+        import pandas as pd
+        ids = list(best.keys())
+        meta = lltk.db.fetch_metadata(ids, columns=['year'])
+        valid = set()
+        for _, row in meta.iterrows():
+            y = row.get('year')
+            if y is None or pd.isna(y):
+                continue
+            y = int(y)
+            if year_min is not None and y < year_min:
+                continue
+            if year_max is not None and y > year_max:
+                continue
+            valid.add(row['_id'])
+        best = {k: v for k, v in best.items() if k in valid}
 
     n = 0
     for _id, (src_path, _) in sorted(best.items()):
