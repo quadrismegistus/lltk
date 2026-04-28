@@ -536,12 +536,35 @@ def _extract_character_type_scalars(result: dict) -> list[tuple[str, Any]]:
     return scalars
 
 
+def _extract_passage_setting_scalars(result: dict) -> list[tuple[str, Any]]:
+    """Extract per-passage fields from a passage_setting result.
+
+    Each (field, value) pair becomes one row in passage_annotations.
+    Array fields (settings) are exploded to one row per tag.
+    """
+    scalars = []
+    for tag in result.get('settings', []):
+        scalars.append(('setting', str(tag)))
+    for tag in result.get('settings_other', []):
+        scalars.append(('setting_other', str(tag)))
+    for field in ('setting_specificity', 'time_specificity',
+                  'narrative_frequency', 'space_traversed', 'time_elapsed'):
+        v = result.get(field)
+        if v:
+            scalars.append((field, str(v)))
+    return scalars
+
+
 _SCALAR_EXTRACTORS: dict[str, callable] = {
     'social_network': _extract_social_network_scalars,
     'plot_genre': _extract_plot_genre_scalars,
     'subgenre': _extract_subgenre_scalars,
     'major_genre': _extract_major_genre_scalars,
     'character_type': _extract_character_type_scalars,
+}
+
+_PASSAGE_SCALAR_EXTRACTORS: dict[str, callable] = {
+    'passage_setting': _extract_passage_setting_scalars,
 }
 
 
@@ -586,7 +609,9 @@ def ingest_tasks(
         log.info(f'[ingest] {task_name}: {len(json_files)} files in {results_dir}')
 
     extractor = _SCALAR_EXTRACTORS.get(task_name) if extract_scalars else None
+    passage_extractor = _PASSAGE_SCALAR_EXTRACTORS.get(task_name) if extract_scalars else None
     anno_batch = []
+    passage_anno_batch = []
     n_ingested = 0
     n_skipped = 0
     n_errors = 0
@@ -602,18 +627,25 @@ def ingest_tasks(
             continue
 
         metadata = result.get('metadata', {})
-        _id = metadata.get('source')
+        _id = (metadata.get('_canonical_id') or metadata.get('source')
+               or metadata.get('_id'))
         if not _id or not _id.startswith('_'):
             if verbose:
-                log.warning(f'[ingest] {os.path.basename(path)}: no valid _id in metadata.source')
+                log.warning(f'[ingest] {os.path.basename(path)}: no valid _id')
             n_errors += 1
             continue
 
         model_name = metadata.get('model', 'unknown')
         model_slug = model_name.split('/')[-1].lower().replace('.', '').replace(' ', '_')
 
+        seq = metadata.get('seq')
+        is_passage_level = seq is not None
+
         task_dir = lltk.task_path(_id, task_name)
-        dest = os.path.join(task_dir, f'{model_slug}.json')
+        if is_passage_level:
+            dest = os.path.join(task_dir, f'p{seq}_{model_slug}.json')
+        else:
+            dest = os.path.join(task_dir, f'{model_slug}.json')
 
         if os.path.exists(dest):
             n_skipped += 1
@@ -629,7 +661,15 @@ def ingest_tasks(
         shutil.copy2(path, dest)
         n_ingested += 1
 
-        if extractor:
+        if is_passage_level and passage_extractor:
+            scalars = passage_extractor(result)
+            src = source or f'task:{task_name}:{model_slug}'
+            position = float(metadata.get('position', 0.0))
+            for field, value in scalars:
+                passage_anno_batch.append((
+                    _id, int(seq), position, field, str(value), src,
+                ))
+        elif extractor:
             scalars = extractor(result)
             src = source or f'task:{task_name}:{model_slug}'
             for field, value in scalars:
@@ -649,6 +689,19 @@ def ingest_tasks(
                     'range': (0, 100_000), 'normalize': None,
                 })
         A.write(source=src, rows=anno_batch, validate=True)
+
+    if passage_anno_batch and not dry_run:
+        from lltk.db.schema import CLICKHOUSE_SCHEMA
+        adapter = lltk.db.adapter
+        adapter.execute(CLICKHOUSE_SCHEMA['passage_annotations'].format(db='lltk'))
+        for i in range(0, len(passage_anno_batch), 5000):
+            chunk = passage_anno_batch[i:i + 5000]
+            adapter.client.insert(
+                'lltk.passage_annotations', chunk,
+                column_names=['_id', 'seq', 'position', 'field', 'value', 'source'],
+            )
+        if verbose:
+            log.info(f'[ingest] wrote {len(passage_anno_batch):,} passage annotations')
 
     stats = {'n_ingested': n_ingested, 'n_skipped': n_skipped, 'n_errors': n_errors}
     if verbose:

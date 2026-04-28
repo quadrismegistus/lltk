@@ -327,24 +327,18 @@ CLICKHOUSE_SCHEMA = {
         ENGINE = ReplacingMergeTree(scored_at)
         ORDER BY _id
     """,
-    'passage_settings': """
-        CREATE TABLE IF NOT EXISTS {db}.passage_settings (
-            _id                  String,
-            seq                  UInt32,
-            position             Float32,
-            corpus               LowCardinality(String),
-            model                LowCardinality(String),
-            settings             Array(LowCardinality(String)),
-            settings_other       Array(String),
-            setting_specificity  LowCardinality(String),
-            time_specificity     LowCardinality(String),
-            narrative_frequency  LowCardinality(String),
-            space_traversed      LowCardinality(String),
-            time_elapsed         LowCardinality(String),
-            ingested_at          DateTime DEFAULT now()
+    'passage_annotations': """
+        CREATE TABLE IF NOT EXISTS {db}.passage_annotations (
+            _id           String,
+            seq           UInt32,
+            position      Float32,
+            field         LowCardinality(String),
+            value         String,
+            source        LowCardinality(String),
+            annotated_at  DateTime DEFAULT now()
         )
-        ENGINE = ReplacingMergeTree(ingested_at)
-        ORDER BY (_id, seq, model)
+        ENGINE = MergeTree()
+        ORDER BY (_id, seq, field, source)
     """,
 }
 

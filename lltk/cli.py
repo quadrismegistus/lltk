@@ -98,11 +98,6 @@ def main():
 	p_db_lang.add_argument('--rebuild', action='store_true',
 		help='Reprocess every text (default: skip _ids already in lltk.text_langs)')
 
-	# db-ingest-passage-settings
-	p_db_ips = subparsers.add_parser('db-ingest-passage-settings',
-		help='Ingest PassageSettingTask results into lltk.passage_settings')
-	p_db_ips.add_argument('results_dir', help='Directory of passage setting JSONs')
-
 	# db-ocr-accuracy
 	p_db_ocr = subparsers.add_parser('db-ocr-accuracy',
 		help='Score OCR accuracy per text via wordlist coverage on text_freqs')
@@ -475,11 +470,6 @@ def main():
 			confidence_threshold=args.confidence,
 			skip_existing=not args.rebuild,
 		)
-
-	elif args.cmd == 'db-ingest-passage-settings':
-		from lltk.db.passage_settings import ingest_passage_settings
-		n = ingest_passage_settings(lltk.db.adapter, args.results_dir)
-		print(f'Ingested {n:,} passage settings')
 
 	elif args.cmd == 'db-ocr-accuracy':
 		lltk.db.score_ocr_accuracy(
