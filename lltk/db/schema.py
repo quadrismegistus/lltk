@@ -327,6 +327,25 @@ CLICKHOUSE_SCHEMA = {
         ENGINE = ReplacingMergeTree(scored_at)
         ORDER BY _id
     """,
+    'passage_settings': """
+        CREATE TABLE IF NOT EXISTS {db}.passage_settings (
+            _id                  String,
+            seq                  UInt32,
+            position             Float32,
+            corpus               LowCardinality(String),
+            model                LowCardinality(String),
+            settings             Array(LowCardinality(String)),
+            settings_other       Array(String),
+            setting_specificity  LowCardinality(String),
+            time_specificity     LowCardinality(String),
+            narrative_frequency  LowCardinality(String),
+            space_traversed      LowCardinality(String),
+            time_elapsed         LowCardinality(String),
+            ingested_at          DateTime DEFAULT now()
+        )
+        ENGINE = ReplacingMergeTree(ingested_at)
+        ORDER BY (_id, seq, model)
+    """,
 }
 
 # The `annotations_latest` VIEW runs `argMax(value, (priority, annotated_at))`
