@@ -473,6 +473,26 @@ def _extract_subgenre_scalars(result: dict) -> list[tuple[str, Any]]:
     return scalars
 
 
+_MAJOR_GENRE_TO_GENRE_VOCAB = {
+    'fiction': 'Fiction',
+    'poetry': 'Poetry',
+    'drama': 'Drama',
+    'treatise': 'Treatise',
+    'essay': 'Essay',
+    'history': 'History',
+    'biography': 'Biography',
+    'sermon': 'Sermon',
+    'letters': 'Letters',
+    'periodical': 'Periodical',
+    'criticism': 'Criticism',
+    'legal': 'Legal',
+    'speech': 'Speech',
+    'reference': 'Reference',
+    'almanac': 'Almanac',
+    'nonfiction': 'Nonfiction',
+}
+
+
 def _extract_major_genre_scalars(result: dict) -> list[tuple[str, Any]]:
     """Extract scalar fields from a major_genre result."""
     scalars = []
@@ -482,6 +502,9 @@ def _extract_major_genre_scalars(result: dict) -> list[tuple[str, Any]]:
     mg = result.get('major_genre')
     if mg:
         scalars.append(('major_genre', str(mg)))
+        genre_vocab = _MAJOR_GENRE_TO_GENRE_VOCAB.get(mg.lower())
+        if genre_vocab:
+            scalars.append(('genre', genre_vocab))
     afn = result.get('author_first_name')
     if afn:
         scalars.append(('author_first_name', str(afn)))
