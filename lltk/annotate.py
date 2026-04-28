@@ -45,7 +45,7 @@ def _register_task_fields():
     _str_nullable = {'type': 'str', 'vocab': None, 'nullable': True, 'range': None, 'normalize': None}
     for field in ('mythos', 'frye_mode', 'pavel_tradition', 'moral_source',
                   'plot_structure', 'ending_type', 'non_fiction_type', 'subgenres',
-                  'is_fiction'):
+                  'is_fiction', 'major_genre'):
         register_field_spec(field, _str_nullable)
 
 _register_task_fields()
@@ -473,10 +473,29 @@ def _extract_subgenre_scalars(result: dict) -> list[tuple[str, Any]]:
     return scalars
 
 
+def _extract_major_genre_scalars(result: dict) -> list[tuple[str, Any]]:
+    """Extract scalar fields from a major_genre result."""
+    scalars = []
+    is_fic = result.get('is_fiction')
+    if is_fic is not None:
+        scalars.append(('is_fiction', str(is_fic).lower()))
+    mg = result.get('major_genre')
+    if mg:
+        scalars.append(('major_genre', str(mg)))
+    afn = result.get('author_first_name')
+    if afn:
+        scalars.append(('author_first_name', str(afn)))
+    yr = result.get('year')
+    if yr is not None:
+        scalars.append(('year_estimated', int(yr)))
+    return scalars
+
+
 _SCALAR_EXTRACTORS: dict[str, callable] = {
     'social_network': _extract_social_network_scalars,
     'plot_genre': _extract_plot_genre_scalars,
     'subgenre': _extract_subgenre_scalars,
+    'major_genre': _extract_major_genre_scalars,
 }
 
 
