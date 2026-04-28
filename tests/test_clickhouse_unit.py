@@ -496,6 +496,27 @@ class TestFetchMetadata:
             db.fetch_metadata(['bad_no_slash'])
 
 
+class TestLongestTitles:
+    def test_empty_ids(self):
+        db = _make_db_with_adapter(_MockAdapter())
+        result = db.longest_titles([])
+        assert list(result.columns) == ['_id', 'title', 'title_source_id']
+        assert len(result) == 0
+
+    def test_uses_match_groups(self):
+        adapter = _MockAdapter()
+        db = _make_db_with_adapter(adapter)
+        db.longest_titles(['_estc/T1'])
+        query_sql = next(c[1] for c in adapter.calls if c[0] == 'query_df')
+        assert 'match_groups FINAL' in query_sql
+        assert 'argMax' in query_sql
+
+    def test_validates_ids(self):
+        db = _make_db_with_adapter(_MockAdapter())
+        with pytest.raises(ValueError):
+            db.longest_titles(['not-valid'])
+
+
 class TestGenreTags:
     def test_empty_ids(self):
         db = _make_db_with_adapter(_MockAdapter())

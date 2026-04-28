@@ -614,6 +614,43 @@ class MetaDBCH:
             f"WHERE _id IN ({ids_sql})"
         )
 
+    def longest_titles(self, ids):
+        """For each _id, return the longest title across its match group.
+
+        Returns DataFrame with columns (_id, title, title_source_id).
+        If a text has no match group, returns its own title.
+        """
+        import pandas as pd
+        ids = list(ids)
+        if not ids:
+            return pd.DataFrame(columns=['_id', 'title', 'title_source_id'])
+        for i in ids:
+            _validate_id(i)
+
+        self.adapter.execute(
+            "CREATE TABLE IF NOT EXISTS tmp.lt_ids "
+            "(_id String) ENGINE=Memory"
+        )
+        self.adapter.execute("TRUNCATE TABLE tmp.lt_ids")
+        self.adapter.client.insert(
+            'tmp.lt_ids', [[i] for i in ids], column_names=['_id'],
+        )
+
+        return self.adapter.query_df("""
+            SELECT
+                f._id AS _id,
+                argMax(t.title, length(t.title)) AS title,
+                argMax(t._id, length(t.title)) AS title_source_id
+            FROM tmp.lt_ids f
+            LEFT JOIN (SELECT _id, group_id FROM lltk.match_groups FINAL) mg_self
+                ON f._id = mg_self._id
+            LEFT JOIN (SELECT _id, group_id FROM lltk.match_groups FINAL) mg_sib
+                ON mg_sib.group_id = mg_self.group_id AND mg_self.group_id != 0
+            JOIN (SELECT _id, title FROM lltk.texts FINAL) t
+                ON t._id = if(mg_self.group_id != 0, mg_sib._id, f._id)
+            GROUP BY f._id
+        """)
+
     def genre_tags(self, ids, *, propagate=True):
         """Per-text genre tags by facet. Returns DataFrame (_id, facet, tag).
 
