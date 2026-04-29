@@ -337,8 +337,8 @@ CLICKHOUSE_SCHEMA = {
             source        LowCardinality(String),
             annotated_at  DateTime DEFAULT now()
         )
-        ENGINE = MergeTree()
-        ORDER BY (_id, seq, field, source)
+        ENGINE = ReplacingMergeTree(annotated_at)
+        ORDER BY (_id, seq, field, value, source)
     """,
 }
 
