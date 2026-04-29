@@ -563,8 +563,20 @@ _SCALAR_EXTRACTORS: dict[str, callable] = {
     'character_type': _extract_character_type_scalars,
 }
 
+def _extract_passage_narrativity_scalars(result: dict) -> list[tuple[str, Any]]:
+    """Extract per-passage fields from a passage_narrativity result."""
+    scalars = []
+    for field in ('discourse_mode', 'discourse_mode_secondary', 'focalization',
+                  'narrator_presence', 'dialogue_density'):
+        v = result.get(field)
+        if v:
+            scalars.append((field, str(v)))
+    return scalars
+
+
 _PASSAGE_SCALAR_EXTRACTORS: dict[str, callable] = {
     'passage_setting': _extract_passage_setting_scalars,
+    'passage_narrativity': _extract_passage_narrativity_scalars,
 }
 
 
