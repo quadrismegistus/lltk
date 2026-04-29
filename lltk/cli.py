@@ -263,6 +263,8 @@ def main():
 	p_ingest.add_argument('--extract-scalars', action='store_true',
 		help='Extract derived scalar metrics to lltk.annotations')
 	p_ingest.add_argument('--dry-run', action='store_true', help='Show what would happen')
+	p_ingest.add_argument('--force', action='store_true',
+		help='Re-extract scalars even for already-placed files')
 
 	# export-task-results
 	p_export_task = subparsers.add_parser('export-task-results',
@@ -653,6 +655,7 @@ def main():
 			source=args.source,
 			extract_scalars=args.extract_scalars,
 			dry_run=args.dry_run,
+			force=args.force,
 		)
 		print(f"\nIngested: {stats['n_ingested']}, "
 			  f"Skipped: {stats['n_skipped']}, "

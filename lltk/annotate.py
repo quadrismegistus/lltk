@@ -575,6 +575,7 @@ def ingest_tasks(
     source: str | None = None,
     extract_scalars: bool = False,
     dry_run: bool = False,
+    force: bool = False,
     verbose: bool = True,
 ) -> dict:
     """Ingest task result JSONs from an external run (Colab/HPC).
@@ -647,7 +648,7 @@ def ingest_tasks(
         else:
             dest = os.path.join(task_dir, f'{model_slug}.json')
 
-        if os.path.exists(dest):
+        if os.path.exists(dest) and not force:
             n_skipped += 1
             continue
 
