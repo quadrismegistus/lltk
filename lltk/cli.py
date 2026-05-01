@@ -140,6 +140,8 @@ def main():
 		help='Sample passages at decile positions (10%%, 20%%, ..., 100%%) per text')
 	p_export_psg.add_argument('--from-task', default=None,
 		help='Export only texts that have results for this task (e.g. social_network)')
+	p_export_psg.add_argument('--ids-file', default=None,
+		help='File with one _id per line (pre-computed text list)')
 
 	# db-embed-passages
 	p_db_embed = subparsers.add_parser('db-embed-passages',
@@ -510,16 +512,24 @@ def main():
 
 	elif args.cmd == 'export-passages':
 		ids = None
+		if args.ids_file:
+			with open(args.ids_file) as f:
+				ids = [line.strip() for line in f if line.strip()]
+			print(f'Loaded {len(ids)} IDs from {args.ids_file}')
 		if args.from_task:
 			from lltk.annotate import iter_task_results
-			ids = [_id for _id, _ in iter_task_results(args.from_task)]
+			task_ids = [_id for _id, _ in iter_task_results(args.from_task)]
+			if ids is not None:
+				ids = [i for i in ids if i in set(task_ids)]
+			else:
+				ids = task_ids
 			print(f'Filtering to {len(ids)} texts with {args.from_task} results')
 
 		if args.decile:
 			if not args.out_dir:
 				print('--decile requires --out-dir'); sys.exit(1)
 			if ids is None:
-				print('--decile requires --from-task or explicit IDs'); sys.exit(1)
+				print('--decile requires --from-task, --ids-file, or explicit IDs'); sys.exit(1)
 			from lltk.db.passages import export_passages_decile
 			n_texts, n_psg = export_passages_decile(
 				lltk.db.adapter, ids,
