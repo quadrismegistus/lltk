@@ -515,6 +515,80 @@ def _extract_major_genre_scalars(result: dict) -> list[tuple[str, Any]]:
     return scalars
 
 
+def validate_major_genre(source_filter=None):
+    """Cross-check major_genre Opus predictions against CH ground truth.
+
+    Computes year_match and author_match per text, writes a 'recognition'
+    annotation: 'both' (year+author match), 'year_only', 'author_only', 'neither'.
+
+    Texts with 'both' have high-confidence genre labels. 'neither' are suspect.
+    """
+    import lltk
+    from lltk.tools import annotations as A
+
+    adapter = lltk.db.adapter
+    results = list(iter_task_results('major_genre'))
+    if not results:
+        return {}
+
+    ids = [_id for _id, _ in results]
+    meta = lltk.db.fetch_metadata(ids, columns=['year', 'author'])
+    meta_map = {r['_id']: r for _, r in meta.iterrows()}
+
+    anno_rows = []
+    stats = {'both': 0, 'year_only': 0, 'author_only': 0, 'neither': 0}
+
+    for _id, result in results:
+        m = meta_map.get(_id, {})
+        ch_year = m.get('year')
+        ch_author = str(m.get('author', '') or '').lower()
+
+        opus_year = result.get('year')
+        opus_afn = str(result.get('author_first_name', '') or '').lower()
+
+        year_ok = False
+        if opus_year is not None and ch_year is not None:
+            try:
+                year_ok = abs(int(opus_year) - int(ch_year)) <= 5
+            except (ValueError, TypeError):
+                pass
+
+        author_ok = False
+        if opus_afn and ch_author:
+            author_ok = opus_afn in ch_author
+
+        if year_ok and author_ok:
+            recognition = 'both'
+        elif year_ok:
+            recognition = 'year_only'
+        elif author_ok:
+            recognition = 'author_only'
+        else:
+            recognition = 'neither'
+        stats[recognition] += 1
+
+        model = result.get('metadata', {}).get('model', 'unknown')
+        model_slug = model.split('/')[-1].lower().replace('.', '').replace(' ', '_')
+        src = source_filter or f'task:major_genre:{model_slug}'
+
+        anno_rows.append({
+            '_id': _id,
+            'field': 'major_genre_recognition',
+            'value': recognition,
+        })
+
+    if anno_rows:
+        if A.field_spec('major_genre_recognition') is None:
+            A.register_field_spec('major_genre_recognition', {
+                'type': 'str', 'vocab': None, 'nullable': True,
+                'range': None, 'normalize': None,
+            })
+        src = source_filter or 'task:major_genre'
+        A.write(source=src, rows=anno_rows, validate=True)
+
+    return stats
+
+
 def _extract_character_type_scalars(result: dict) -> list[tuple[str, Any]]:
     """Extract text-level aggregates from a character_type result."""
     scalars = []
