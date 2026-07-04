@@ -180,9 +180,10 @@ class TestChunkSentences:
             f.write(sents_text)
             tmp = f.name
         try:
-            _id, corpus_id, ch_passages = _chunk_text_to_passages(
+            _id, corpus_id, ch_passages, err = _chunk_text_to_passages(
                 ('test_id', 'test_corpus', tmp, 'en', 20)
             )
+            assert err is None
             import nltk
             sents = nltk.sent_tokenize(sents_text, language='english')
             mem_chunks = list(chunk_sentences(sents, n=20))

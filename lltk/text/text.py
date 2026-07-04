@@ -237,8 +237,8 @@ class BaseText(BaseObject):
             row = metadb.get(self.corpus.id, self.id)
             if row:
                 return row
-        except (ImportError, AttributeError, RuntimeError, OSError) as e:
-            pass
+        except Exception as e:
+            log.debug(f'metadb lookup failed, falling back to CSV: {e}')
         # Fallback: corpus load_metadata() — can be slow for large corpora with enrichment
         # Only use if DB lookup failed (no DB, text not in DB, etc.)
         try:

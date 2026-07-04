@@ -468,7 +468,12 @@ def chunk_sentences(sents, n=500):
 
 
 def _chunk_text_to_passages(args):
-    """Chunk a single text file into ~n-word passages using sentence splitting."""
+    """Chunk a single text file into ~n-word passages using sentence splitting.
+
+    Returns (_id, corpus_id, passages, error_or_none). A non-None error means the
+    text could not be chunked (bad encoding, missing language model, etc.); the
+    caller should surface it rather than silently treat the text as empty.
+    """
     _id, corpus_id, txt_path, lang, n = args
     try:
         from lltk.text.text import _open_file, _lang_to_punkt
@@ -476,12 +481,12 @@ def _chunk_text_to_passages(args):
         with _open_file(txt_path) as f:
             txt = f.read()
         if not txt or not txt.strip():
-            return (_id, corpus_id, [])
+            return (_id, corpus_id, [], None)
         punkt_lang = _lang_to_punkt(lang)
         sents = nltk.sent_tokenize(txt, language=punkt_lang)
         passages = []
         for seq, (chunk_txt, word_start, word_end, num_words) in enumerate(chunk_sentences(sents, n)):
             passages.append((_id, seq, chunk_txt, num_words, lang))
-        return (_id, corpus_id, passages)
-    except Exception:
-        return (_id, corpus_id, [])
+        return (_id, corpus_id, passages, None)
+    except Exception as e:
+        return (_id, corpus_id, [], f'{type(e).__name__}: {str(e)[:200]}')

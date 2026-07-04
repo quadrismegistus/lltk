@@ -864,7 +864,8 @@ def yank(text,tag,none=None):
 
 
 
-def download(url,save_to,force=False,desc=''):
+def download(url,save_to,force=False,desc='',overwrite=None):
+    if overwrite is not None: force = overwrite
     here=os.getcwd()
     if not force and os.path.exists(save_to): return
     savedir=os.path.dirname(save_to)
@@ -886,6 +887,16 @@ def copyfileobj(fsrc, fdst, total, length=16*1024):
                 break
             fdst.write(buf)
             pbar.update(len(buf))
+
+
+def download_file_tqdm(url, save_to, desc=''):
+    """Download url to save_to, streaming the response with a tqdm progress bar."""
+    import requests
+    resp = requests.get(url, stream=True)
+    resp.raw.decode_content = True
+    total = int(resp.headers.get('Content-Length', 0) or 0)
+    with open(save_to, 'wb') as f:
+        copyfileobj(resp.raw, f, total)
 
 
 def in_jupyter(): return sys.argv[-1].endswith('json')

@@ -204,7 +204,21 @@ def build_passages_ch(adapter, n: int = 500, num_proc: int | None = None,
     SCHEME = 'p500'
     batch_size = 200
     total_passages = 0
+    n_errors = 0
+    err_samples = []
     t0 = time.time()
+
+    # Fail fast if the punkt sentence tokenizer is missing: otherwise every text
+    # would silently chunk to zero passages and the build would report success
+    # with an empty result.
+    import nltk
+    try:
+        nltk.sent_tokenize('Probe sentence one. Probe sentence two.')
+    except LookupError as e:
+        raise RuntimeError(
+            "NLTK 'punkt' tokenizer model not found — passage chunking cannot run. "
+            "Install: python -c \"import nltk; nltk.download('punkt'); nltk.download('punkt_tab')\""
+        ) from e
 
     for i in get_tqdm(range(0, len(all_tasks), batch_size),
                       desc='[passages] batches'):
@@ -219,7 +233,12 @@ def build_passages_ch(adapter, n: int = 500, num_proc: int | None = None,
 
         psg_rows = []
         meta_rows = []
-        for _id, corpus_id, passages_list in results:
+        for _id, corpus_id, passages_list, err in results:
+            if err:
+                n_errors += 1
+                if len(err_samples) < 5:
+                    err_samples.append(f'{_id}: {err}')
+                continue
             if not passages_list:
                 continue
             for _id_, seq, text, n_words, lang in passages_list:
@@ -248,6 +267,9 @@ def build_passages_ch(adapter, n: int = 500, num_proc: int | None = None,
     if log:
         log(f'[passages] {total_passages:,} passages from '
             f'{len(all_tasks)} texts in {elapsed:.0f}s')
+        if n_errors:
+            log(f'[passages] WARNING: {n_errors} texts failed to chunk '
+                f'(e.g. {"; ".join(err_samples)})')
     return total_passages
 
 

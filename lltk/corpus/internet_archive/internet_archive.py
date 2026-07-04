@@ -74,7 +74,7 @@ class InternetArchive(BaseCorpus):
 						dx['id']=dx['identifier']+'/'+dx['identifier']+'_djvu'
 					except KeyError:
 						with logmap('Compiling IA metadata') as _log:
-						_log.debug(f'no identifier: {dx}')
+							_log.debug(f'no identifier: {dx}')
 					#print(dx)
 					yield dx
 			tools.iter_move(self.path_metadata,prefix='bak/')

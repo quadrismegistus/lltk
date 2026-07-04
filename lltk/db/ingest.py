@@ -69,22 +69,24 @@ def _worker_read_and_insert(args):
     across N workers' HTTP connections — the main thread is only a
     scheduler, not a bottleneck.
 
-    Returns (batch_idx, n_inserted, error_or_none).
+    Returns (batch_idx, n_inserted, n_skipped, error_or_none).
     """
     import pyarrow as pa
     batch_idx, ch_url, corpus_root, entries = args
     ids, corpora, freqs = [], [], []
+    n_skipped = 0
     for _id, corpus, rel_path in entries:
         abs_path = os.path.join(corpus_root, rel_path)
         d = _read_freqs_json(abs_path)
         if d is None:
+            n_skipped += 1
             continue
         ids.append(_id)
         corpora.append(corpus)
         freqs.append(list(d.items()))
 
     if not ids:
-        return (batch_idx, 0, None)
+        return (batch_idx, 0, n_skipped, None)
 
     map_type = pa.map_(pa.string(), pa.uint32())
     table = pa.Table.from_arrays(
@@ -99,7 +101,7 @@ def _worker_read_and_insert(args):
         try:
             client = _worker_get_client(ch_url)
             client.insert_arrow('text_freqs', table)
-            return (batch_idx, len(ids), None)
+            return (batch_idx, len(ids), n_skipped, None)
         except Exception as e:
             last_err = e
             # Reset the worker client on failure — connection may be poisoned
@@ -108,7 +110,7 @@ def _worker_read_and_insert(args):
             # Exponential backoff: 0.5s, 1s, 2s
             import time as _time
             _time.sleep(0.5 * (2 ** attempt))
-    return (batch_idx, 0,
+    return (batch_idx, 0, n_skipped,
             f'{type(last_err).__name__} after 3 retries: {str(last_err)[:150]}')
 
 
@@ -200,6 +202,7 @@ def ingest_freqs_from_jsons(ch_adapter, corpora=None, batch_size=2000,
         t0 = time.time()
         n_inserted = 0
         n_failed = 0
+        n_skipped = 0
 
         pbar = get_tqdm(total=len(todo), desc='freqs -> ClickHouse',
                         unit='text', unit_scale=True, smoothing=0.1)
@@ -207,9 +210,10 @@ def ingest_freqs_from_jsons(ch_adapter, corpora=None, batch_size=2000,
             with ProcessPoolExecutor(max_workers=num_proc) as pool:
                 futures = [pool.submit(_worker_read_and_insert, a) for a in args_list]
                 for fut in as_completed(futures):
-                    batch_idx, n, err = fut.result()
+                    batch_idx, n, n_skip, err = fut.result()
+                    n_skipped += n_skip
                     if err:
-                        n_failed += batch_size
+                        n_failed += len(batches[batch_idx])
                         pbar.write(f'  batch {batch_idx}: insert failed: {err}')
                         continue
                     n_inserted += n
@@ -220,6 +224,9 @@ def ingest_freqs_from_jsons(ch_adapter, corpora=None, batch_size=2000,
         elapsed = time.time() - t0
         log.debug(f'Inserted {n_inserted:,} rows in {elapsed:.0f}s '
                   f'({n_inserted/elapsed:.0f}/s); {n_failed} failed')
+        if n_skipped:
+            log.debug(f'WARNING: {n_skipped:,} freqs JSONs skipped '
+                      f'(unreadable/corrupt/empty) — missing from lltk.text_freqs')
 
         # Final count
         n = ch_adapter.query("SELECT COUNT(*) FROM lltk.text_freqs")[0][0]
