@@ -1,6 +1,15 @@
 import os, sys, argparse
 
 
+def _load_or_die(corpus_id):
+	import lltk
+	c = lltk.load(corpus_id)
+	if c is None:
+		print(f"Error: unknown corpus '{corpus_id}'. Run `lltk show` to list available corpora.", file=sys.stderr)
+		sys.exit(1)
+	return c
+
+
 def main():
 	import lltk
 	from lltk.imports import DEFAULT_NUM_PROC
@@ -295,6 +304,13 @@ def main():
 		help='Parallel LLM workers (default: 4)')
 	p_cocr.add_argument('--force', action='store_true', help='Re-clean existing txt_clean/')
 
+	# publish
+	p_pub = subparsers.add_parser('publish', help='Zip corpus, upload to Dropbox, update manifests')
+	p_pub.add_argument('corpus', help='Corpus ID')
+	p_pub.add_argument('--public', default=None, help='Comma-separated parts for public manifest (e.g. metadata)')
+	p_pub.add_argument('--private', default=None, help='Comma-separated parts for user manifest (e.g. freqs,txt)')
+	p_pub.add_argument('--parts', default=None, help='Comma-separated parts (all treated as public)')
+
 	# app (explorer)
 	p_app = subparsers.add_parser('app', help='Launch LLTK explorer web app')
 	p_app.add_argument('--port', type=int, default=8899, help='Port (default: 8899)')
@@ -314,7 +330,7 @@ def main():
 		check_corpora()
 
 	elif args.cmd == 'info':
-		corpus = lltk.load(args.corpus)
+		corpus = _load_or_die(args.corpus)
 		corpus.info()
 
 	elif args.cmd == 'load':
@@ -327,7 +343,7 @@ def main():
 		os.system(cmd)
 
 	elif args.cmd == 'compile':
-		corpus = lltk.load(args.corpus)
+		corpus = _load_or_die(args.corpus)
 		kwargs = {}
 		if args.tar_path:
 			kwargs['tar_path'] = args.tar_path
@@ -338,12 +354,12 @@ def main():
 		corpus.compile(**kwargs)
 
 	elif args.cmd == 'preprocess':
-		corpus = lltk.load(args.corpus)
+		corpus = _load_or_die(args.corpus)
 		parts = [p.strip() for p in args.parts.split(',')]
 		corpus.preprocess(parts=parts, num_proc=args.num_proc, force=args.force, lim=args.lim)
 
 	elif args.cmd == 'install':
-		corpus = lltk.load(args.corpus)
+		corpus = _load_or_die(args.corpus)
 		parts = [p.strip() for p in args.parts.split(',')]
 		for part in parts:
 			corpus.install(part=part)
@@ -688,7 +704,7 @@ def main():
 		from lltk.tools.tools import get_tqdm
 		from largeliterarymodels.tasks import OCRCleanTask
 
-		corpus = lltk.load(args.corpus)
+		corpus = _load_or_die(args.corpus)
 		task = OCRCleanTask(**({'model': args.model} if args.model else {}))
 
 		if args.ids:
@@ -733,6 +749,17 @@ def main():
 		elapsed = _time.time() - t0
 		print(f"\nCleaned: {n_cleaned}, Skipped: {n_skipped}, "
 			  f"Errors: {n_errors}, Time: {elapsed:.0f}s")
+
+	elif args.cmd == 'publish':
+		corpus = _load_or_die(args.corpus)
+		public = [p.strip() for p in args.public.split(',')] if args.public else None
+		private = [p.strip() for p in args.private.split(',')] if args.private else None
+		parts = [p.strip() for p in args.parts.split(',')] if args.parts else None
+		urls = corpus.publish(public=public, private=private, parts=parts)
+		if urls:
+			print()
+			for part, url in urls.items():
+				print(f'url_{part} = {url}')
 
 	elif args.cmd == 'app':
 		from lltk.web.app import run_app
