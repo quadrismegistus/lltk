@@ -3,6 +3,7 @@ Parse ESTC MARC bibliographic and holdings JSON files.
 
 Covers all MARC tags observed across ~481K bib records and ~481K holdings records.
 """
+from __future__ import annotations
 
 import json
 from typing import Any

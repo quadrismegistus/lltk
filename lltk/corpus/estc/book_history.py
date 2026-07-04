@@ -17,6 +17,7 @@ Usage:
   df['ext'] = df['book_extent'].apply(parse_extent)
   df['num_pages'] = df['ext'].apply(lambda x: x['num_pages'])
 """
+from __future__ import annotations
 
 import re
 
