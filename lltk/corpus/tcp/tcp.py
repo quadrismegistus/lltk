@@ -2,6 +2,7 @@
 import os
 
 import pandas as pd
+from logmap import logmap
 
 from lltk.imports import (
     DEFAULT_NUM_PROC,
@@ -123,7 +124,8 @@ class TCP(BaseCorpus):
         df = pd.DataFrame(ld)
         df = fix_meta(df)
         tools.save_df(df, self.path_metadata)
-        print(f'Saved metadata: {tools.ppath(self.path_metadata)}')
+        with logmap('Compiling TCP metadata') as log:
+            log.debug(f'Saved metadata: {tools.ppath(self.path_metadata)}')
         return df
 
 def _do_compile_meta(fnfn):

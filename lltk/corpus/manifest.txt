@@ -5,7 +5,7 @@ desc = American and French Research on the Treasury of the French Language
 link = https://artfl-project.uchicago.edu
 path_python = artfl/artfl.py
 class_name = ARTFL
-public =
+public = 
 private = metadata,freqs
 license_type = Academic
 lang = fr
@@ -251,25 +251,27 @@ id = ecco
 name = ECCO
 desc = Eighteenth Century Collections Online
 link = https://www.gale.com/intl/primary-sources/eighteenth-century-collections-online
-public = 
-private = raw,txt,xml,metadata,freqs
+public = metadata
+private = freqs,txt
 license_type = Commercial
 ext_xml = .xml.gz
 lang = en
+url_metadata = https://www.dropbox.com/scl/fi/8i9b5h2ao7qjn979tsh1m/ecco_metadata.zip?rlkey=fla4s3jkf3h03xcf3kl4xldt6&dl=1
 
 [ECCO_TCP]
 id = ecco_tcp
 name = ECCO_TCP
 desc = ECCO (Text Creation Partnership)
 link = https://textcreationpartnership.org/tcp-texts/ecco-tcp-eighteenth-century-collections-online/
-url_freqs = https://www.dropbox.com/s/sdf5pdyifnrulyk/ecco_tcp_freqs.zip?dl=1
-url_metadata = https://www.dropbox.com/s/xh991n4sohulczb/ecco_tcp_metadata.zip?dl=1
-url_txt = https://www.dropbox.com/s/8sa4f6yqpz6ku3d/ecco_tcp_txt.zip?dl=1
-url_xml = https://www.dropbox.com/s/vtv2iw7ujtivqss/ecco_tcp_xml.zip?dl=1
+url_freqs = https://www.dropbox.com/scl/fi/7dzayhynxgh4nze33i6xj/ecco_tcp_freqs.zip?rlkey=euag21o7lsz7bc4tqumhtsk55&dl=1
+url_metadata = https://www.dropbox.com/scl/fi/0jdee540i5ygxcfyzfn5y/ecco_tcp_metadata.zip?rlkey=i7xbgpsi3fkpzdcz2gan83uap&dl=1
+url_txt = https://www.dropbox.com/scl/fi/pjsg1s3hr8b61wvecqsg2/ecco_tcp_txt.zip?rlkey=4cv1lqeffalr6h5t8107cx015&dl=1
+url_xml = https://www.dropbox.com/scl/fi/8u0gvbbfmqt0aql1d0jg3/ecco_tcp_xml.zip?rlkey=muei1cm7cwlhs9pfjnqoh5hhq&dl=1
 url_raw = https://www.dropbox.com/s/aubdaixvc59d8o9/ecco_tcp_raw.zip?dl=1
-public = raw,metadata,freqs,txt,xml
+public = metadata,freqs,txt,xml
 license_type = Free
 lang = en
+private = 
 
 [EarlyPrint]
 id = earlyprint
@@ -288,13 +290,14 @@ id = eebo_tcp
 name = EEBO_TCP
 desc = Early English Books Online (curated by the Text Creation Partnership)
 link = https://textcreationpartnership.org/tcp-texts/eebo-tcp-early-english-books-online/
-url_freqs = https://www.dropbox.com/s/n2oocs233wh5edo/eebo_tcp_freqs.zip?dl=1
-url_metadata = https://www.dropbox.com/s/th2i7jvuxksb0ma/eebo_tcp_metadata.zip?dl=1
-url_txt = https://www.dropbox.com/s/otgqbs0vdli3gvb/eebo_tcp_txt.zip?dl=1
-url_xml = https://www.dropbox.com/s/1wui9qjhkzy8fnm/eebo_tcp_xml.zip?dl=1
-public = raw,metadata,freqs,txt,xml
+url_freqs = https://www.dropbox.com/scl/fi/jsu61vvumufmvbtm8eyla/eebo_tcp_freqs.zip?rlkey=0m8gri7j9676ojgjc3vkswyte&dl=1
+url_metadata = https://www.dropbox.com/scl/fi/y9rfesomurvzwotljz8mg/eebo_tcp_metadata.zip?rlkey=7ed4e5mzcbl8tumaii8nxqcrn&dl=1
+url_txt = https://www.dropbox.com/scl/fi/q2w0a76qsssx4zi2k0ql8/eebo_tcp_txt.zip?rlkey=x7rjzr0gfrkezw42z88ws7yjn&dl=1
+url_xml = https://www.dropbox.com/scl/fi/cl7pl73ugbo4wv5aaz7jp/eebo_tcp_xml.zip?rlkey=hutc8r3cod9y94x26vsfljz5s&dl=1
+public = metadata,freqs,txt,xml
 license_type = Free
 lang = en
+private = 
 
 [ESTC]
 id = estc
@@ -785,3 +788,4 @@ desc = Test fixture for cross-corpus linking
 path_python = test_fixture_linked/test_fixture_linked.py
 class_name = TestFixtureLinked
 lang = en
+

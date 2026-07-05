@@ -314,6 +314,32 @@ CLICKHOUSE_SCHEMA = {
         ENGINE = ReplacingMergeTree(embedded_at)
         ORDER BY (_id, scheme, model)
     """,
+
+    'text_ocr': """
+        CREATE TABLE IF NOT EXISTS {db}.text_ocr (
+            _id              String,
+            corpus           LowCardinality(String),
+            n_tokens         UInt64,
+            n_known_tokens   UInt64,
+            ocr_accuracy     Float32,
+            scored_at        DateTime DEFAULT now()
+        )
+        ENGINE = ReplacingMergeTree(scored_at)
+        ORDER BY _id
+    """,
+    'passage_annotations': """
+        CREATE TABLE IF NOT EXISTS {db}.passage_annotations (
+            _id           String,
+            seq           UInt32,
+            position      Float32,
+            field         LowCardinality(String),
+            value         String,
+            source        LowCardinality(String),
+            annotated_at  DateTime DEFAULT now()
+        )
+        ENGINE = ReplacingMergeTree(annotated_at)
+        ORDER BY (_id, seq, field, value, source)
+    """,
 }
 
 # The `annotations_latest` VIEW runs `argMax(value, (priority, annotated_at))`

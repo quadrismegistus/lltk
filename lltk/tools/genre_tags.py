@@ -16,6 +16,8 @@ import re
 from functools import lru_cache
 from typing import Dict, List, Optional
 
+from logmap import logmap
+
 _FACETS_PATH = os.path.join(os.path.dirname(__file__), 'facets.yml')
 
 # Separators that mark independent tag chunks within one raw string
@@ -221,138 +223,130 @@ def build_genre_tags(ch_adapter, batch_size: int = 50_000,
             GROUP BY _id, source
         """)
 
-    if not len(rows_df):
-        if progress:
-            print('[db-tag-genres] No genre_raw annotations found.')
-        return 0
+    with logmap('Building genre tags...') as log:
+        if not len(rows_df):
+            log.debug('No genre_raw annotations found.')
+            return 0
 
-    if progress:
-        print(f'[db-tag-genres] {len(rows_df):,} genre_raw rows from '
-              f'{rows_df["source"].nunique()} sources.')
+        log.debug(f'{len(rows_df):,} genre_raw rows from '
+                  f'{rows_df["source"].nunique()} sources.')
 
-    # Recognition gating with tiered fallback:
-    # Tier 1: recognized LLM sources + all non-LLM sources
-    # Tier 2 (fallback): unrecognized LLM sources, only for _ids with
-    #         zero usable tags from tier 1
-    if recognized_only:
-        recognized_mask = []
-        for _, row in rows_df.iterrows():
-            source = str(row['source'])
-            if not source.startswith('llm:'):
-                recognized_mask.append(True)
-                continue
-            recognized_mask.append(is_recognized(
-                row.get('author_first_name'),
-                row.get('year_estimated'),
-                row.get('gt_author'),
-                row.get('gt_year'),
-                row.get('gt_title'),
-                row.get('gt_meta', '{}'),
-            ))
-        rows_df['_recognized'] = recognized_mask
-        n_recog = sum(recognized_mask)
-        n_unrecog = len(rows_df) - n_recog
-        if progress:
-            print(f'[db-tag-genres] Recognition: {n_recog:,} recognized, '
-                  f'{n_unrecog:,} unrecognized LLM rows.')
-    else:
-        rows_df['_recognized'] = True
+        # Recognition gating with tiered fallback:
+        # Tier 1: recognized LLM sources + all non-LLM sources
+        # Tier 2 (fallback): unrecognized LLM sources, only for _ids with
+        #         zero usable tags from tier 1
+        if recognized_only:
+            recognized_mask = []
+            for _, row in rows_df.iterrows():
+                source = str(row['source'])
+                if not source.startswith('llm:'):
+                    recognized_mask.append(True)
+                    continue
+                recognized_mask.append(is_recognized(
+                    row.get('author_first_name'),
+                    row.get('year_estimated'),
+                    row.get('gt_author'),
+                    row.get('gt_year'),
+                    row.get('gt_title'),
+                    row.get('gt_meta', '{}'),
+                ))
+            rows_df['_recognized'] = recognized_mask
+            n_recog = sum(recognized_mask)
+            n_unrecog = len(rows_df) - n_recog
+            log.debug(f'Recognition: {n_recog:,} recognized, '
+                      f'{n_unrecog:,} unrecognized LLM rows.')
+        else:
+            rows_df['_recognized'] = True
 
-    if progress:
-        print(f'[db-tag-genres] Normalizing...')
+        log.debug('Normalizing...')
 
-    # Expand to (_id, tag, source) triples, tracking recognition status
-    now = datetime.now()
-    # recognized tier: (id, tag) -> set of sources
-    tag_sources_recog: dict = {}
-    # fallback tier: (id, tag) -> set of sources (unrecognized LLM only)
-    tag_sources_fallback: dict = {}
+        # Expand to (_id, tag, source) triples, tracking recognition status
+        now = datetime.now()
+        # recognized tier: (id, tag) -> set of sources
+        tag_sources_recog: dict = {}
+        # fallback tier: (id, tag) -> set of sources (unrecognized LLM only)
+        tag_sources_fallback: dict = {}
 
-    for _id, source, raw, recog in zip(
-            rows_df['_id'], rows_df['source'],
-            rows_df['genre_raw'], rows_df['_recognized']):
-        for tag in normalize_genre_raw(raw):
-            key = (_id, tag)
-            if recog:
-                if key not in tag_sources_recog:
-                    tag_sources_recog[key] = set()
-                tag_sources_recog[key].add(source)
-            else:
-                if key not in tag_sources_fallback:
-                    tag_sources_fallback[key] = set()
-                tag_sources_fallback[key].add(source)
+        for _id, source, raw, recog in zip(
+                rows_df['_id'], rows_df['source'],
+                rows_df['genre_raw'], rows_df['_recognized']):
+            for tag in normalize_genre_raw(raw):
+                key = (_id, tag)
+                if recog:
+                    if key not in tag_sources_recog:
+                        tag_sources_recog[key] = set()
+                    tag_sources_recog[key].add(source)
+                else:
+                    if key not in tag_sources_fallback:
+                        tag_sources_fallback[key] = set()
+                    tag_sources_fallback[key].add(source)
 
-    # Apply min_sources filter to recognized tier
-    if min_sources > 1:
-        n_before = len(tag_sources_recog)
-        tag_sources_recog = {k: v for k, v in tag_sources_recog.items()
-                             if len(v) >= min_sources}
-        if progress:
-            print(f'[db-tag-genres] min_sources={min_sources} (recognized): '
-                  f'{n_before - len(tag_sources_recog):,} tags dropped.')
-
-    # Determine which _ids got usable tags from recognized sources
-    ids_with_recog_tags = {k[0] for k in tag_sources_recog}
-
-    # Fallback: for _ids with zero recognized tags, use unrecognized LLM tags
-    if recognized_only:
-        fallback_tags = {k: v for k, v in tag_sources_fallback.items()
-                         if k[0] not in ids_with_recog_tags}
+        # Apply min_sources filter to recognized tier
         if min_sources > 1:
-            fallback_tags = {k: v for k, v in fallback_tags.items()
-                             if len(v) >= min_sources}
-        n_fallback_ids = len({k[0] for k in fallback_tags})
-        if progress and fallback_tags:
-            print(f'[db-tag-genres] Fallback: {n_fallback_ids:,} texts '
-                  f'({len(fallback_tags):,} tags) from unrecognized sources.')
-    else:
-        fallback_tags = {}
+            n_before = len(tag_sources_recog)
+            tag_sources_recog = {k: v for k, v in tag_sources_recog.items()
+                                 if len(v) >= min_sources}
+            log.debug(f'min_sources={min_sources} (recognized): '
+                      f'{n_before - len(tag_sources_recog):,} tags dropped.')
 
-    # Expand to (_id, tag, facet, recognized) triples
-    triples_seen: dict = {}
-    for (_id, tag) in tag_sources_recog:
-        facets = tag_facets(tag) or ['unknown']
-        for facet in facets:
-            triples_seen[(_id, tag, facet)] = (_id, tag, facet, 1, now)
-    for (_id, tag) in fallback_tags:
-        facets = tag_facets(tag) or ['unknown']
-        for facet in facets:
-            if (_id, tag, facet) not in triples_seen:
-                triples_seen[(_id, tag, facet)] = (_id, tag, facet, 0, now)
-    triples = list(triples_seen.values())
+        # Determine which _ids got usable tags from recognized sources
+        ids_with_recog_tags = {k[0] for k in tag_sources_recog}
 
-    if not triples:
-        if progress:
-            print('[db-tag-genres] Normalization produced no tags.')
-        return 0
+        # Fallback: for _ids with zero recognized tags, use unrecognized LLM tags
+        if recognized_only:
+            fallback_tags = {k: v for k, v in tag_sources_fallback.items()
+                             if k[0] not in ids_with_recog_tags}
+            if min_sources > 1:
+                fallback_tags = {k: v for k, v in fallback_tags.items()
+                                 if len(v) >= min_sources}
+            n_fallback_ids = len({k[0] for k in fallback_tags})
+            if fallback_tags:
+                log.debug(f'Fallback: {n_fallback_ids:,} texts '
+                          f'({len(fallback_tags):,} tags) from unrecognized sources.')
+        else:
+            fallback_tags = {}
 
-    n_recog_triples = sum(1 for t in triples if t[3] == 1)
-    n_fallback_triples = len(triples) - n_recog_triples
-    if progress:
-        print(f'[db-tag-genres] {len(triples):,} unique triples '
-              f'({n_recog_triples:,} recognized, {n_fallback_triples:,} fallback).')
-        print('[db-tag-genres] Truncating text_genre_tags...')
+        # Expand to (_id, tag, facet, recognized) triples
+        triples_seen: dict = {}
+        for (_id, tag) in tag_sources_recog:
+            facets = tag_facets(tag) or ['unknown']
+            for facet in facets:
+                triples_seen[(_id, tag, facet)] = (_id, tag, facet, 1, now)
+        for (_id, tag) in fallback_tags:
+            facets = tag_facets(tag) or ['unknown']
+            for facet in facets:
+                if (_id, tag, facet) not in triples_seen:
+                    triples_seen[(_id, tag, facet)] = (_id, tag, facet, 0, now)
+        triples = list(triples_seen.values())
 
-    # Ensure recognized column exists (for existing tables without it)
-    try:
-        ch_adapter.execute(
-            "ALTER TABLE lltk.text_genre_tags ADD COLUMN IF NOT EXISTS "
-            "recognized UInt8 DEFAULT 1"
-        )
-    except Exception:
-        pass
+        if not triples:
+            log.debug('Normalization produced no tags.')
+            return 0
 
-    ch_adapter.execute('TRUNCATE TABLE lltk.text_genre_tags')
+        n_recog_triples = sum(1 for t in triples if t[3] == 1)
+        n_fallback_triples = len(triples) - n_recog_triples
+        log.debug(f'{len(triples):,} unique triples '
+                  f'({n_recog_triples:,} recognized, {n_fallback_triples:,} fallback).')
+        log.debug('Truncating text_genre_tags...')
 
-    cols = ['_id', 'tag', 'facet', 'recognized', 'tagged_at']
-    total = 0
-    for i in range(0, len(triples), batch_size):
-        chunk = [list(t) for t in triples[i:i + batch_size]]
-        ch_adapter.client.insert('lltk.text_genre_tags', chunk, column_names=cols)
-        total += len(chunk)
-        if progress:
-            print(f'[db-tag-genres]   {total:,} / {len(triples):,}', end='\r')
+        # Ensure recognized column exists (for existing tables without it)
+        try:
+            ch_adapter.execute(
+                "ALTER TABLE lltk.text_genre_tags ADD COLUMN IF NOT EXISTS "
+                "recognized UInt8 DEFAULT 1"
+            )
+        except Exception:
+            pass
 
-    if progress:
-        print(f'\n[db-tag-genres] Done — {total:,} rows written.')
-    return total
+        ch_adapter.execute('TRUNCATE TABLE lltk.text_genre_tags')
+
+        cols = ['_id', 'tag', 'facet', 'recognized', 'tagged_at']
+        total = 0
+        for i in range(0, len(triples), batch_size):
+            chunk = [list(t) for t in triples[i:i + batch_size]]
+            ch_adapter.client.insert('lltk.text_genre_tags', chunk, column_names=cols)
+            total += len(chunk)
+            log.debug(f'{total:,} / {len(triples):,}')
+
+        log.debug(f'Done — {total:,} rows written.')
+        return total

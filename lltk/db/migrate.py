@@ -24,6 +24,7 @@ import os
 import tempfile
 import time
 
+from logmap import logmap
 from lltk.db.adapter import get_adapter, DuckDBAdapter, ClickHouseAdapter
 from lltk.db.schema import create_all_tables
 
@@ -70,56 +71,56 @@ def migrate_tables(src: DuckDBAdapter, dst: ClickHouseAdapter,
 
     staging = tmp_dir or tempfile.mkdtemp(prefix='lltk_migrate_')
     os.makedirs(staging, exist_ok=True)
-    print(f'Staging parquet files in {staging}')
 
-    results = {}
-    for tname in tables:
-        t0 = time.time()
-        src_query = TABLE_SOURCES[tname]
+    with logmap(f'Migrating {len(tables)} tables (staging in {staging})...') as log:
+        results = {}
+        for tname in tables:
+            t0 = time.time()
+            src_query = TABLE_SOURCES[tname]
 
-        # Match columns by name between DuckDB → ClickHouse.
-        # Use ClickHouse's column order as canonical; project DuckDB's
-        # SELECT accordingly so the INSERT positions match.
-        dst_cols = [r[0] for r in dst.query(
-            f"SELECT name FROM system.columns "
-            f"WHERE database = '{dst.database}' AND table = '{tname}' "
-            f"ORDER BY position"
-        )]
-        src_cols = {r[0] for r in src.query(f"DESCRIBE ({src_query})")}
-        col_projs = [c if c in src_cols else f'NULL AS {c}' for c in dst_cols]
-        projected_sql = f"SELECT {', '.join(col_projs)} FROM ({src_query})"
+            # Match columns by name between DuckDB -> ClickHouse.
+            # Use ClickHouse's column order as canonical; project DuckDB's
+            # SELECT accordingly so the INSERT positions match.
+            dst_cols = [r[0] for r in dst.query(
+                f"SELECT name FROM system.columns "
+                f"WHERE database = '{dst.database}' AND table = '{tname}' "
+                f"ORDER BY position"
+            )]
+            src_cols = {r[0] for r in src.query(f"DESCRIBE ({src_query})")}
+            col_projs = [c if c in src_cols else f'NULL AS {c}' for c in dst_cols]
+            projected_sql = f"SELECT {', '.join(col_projs)} FROM ({src_query})"
 
-        pq_path = os.path.join(staging, f'{tname}.parquet')
-        pq_esc = pq_path.replace("'", "''")
+            pq_path = os.path.join(staging, f'{tname}.parquet')
+            pq_esc = pq_path.replace("'", "''")
 
-        # Export from DuckDB with columns in ClickHouse order
-        src.execute(f"""
-            COPY ({projected_sql}) TO '{pq_esc}'
-            (FORMAT PARQUET, COMPRESSION ZSTD)
-        """)
-        size_mb = os.path.getsize(pq_path) / 1e6
+            # Export from DuckDB with columns in ClickHouse order
+            src.execute(f"""
+                COPY ({projected_sql}) TO '{pq_esc}'
+                (FORMAT PARQUET, COMPRESSION ZSTD)
+            """)
+            size_mb = os.path.getsize(pq_path) / 1e6
 
-        # Truncate destination first (idempotent re-runs)
-        dst.execute(f"TRUNCATE TABLE IF EXISTS {dst.database}.{tname}")
+            # Truncate destination first (idempotent re-runs)
+            dst.execute(f"TRUNCATE TABLE IF EXISTS {dst.database}.{tname}")
 
-        # Ingest into ClickHouse
-        dst.insert_parquet(f'{dst.database}.{tname}', pq_path)
+            # Ingest into ClickHouse
+            dst.insert_parquet(f'{dst.database}.{tname}', pq_path)
 
-        n = dst.query(f"SELECT COUNT(*) FROM {dst.database}.{tname}")[0][0]
-        dt = time.time() - t0
-        print(f'  {tname}: {n:,} rows, {size_mb:.1f} MB staged, {dt:.1f}s', flush=True)
-        results[tname] = (n, dt)
+            n = dst.query(f"SELECT COUNT(*) FROM {dst.database}.{tname}")[0][0]
+            dt = time.time() - t0
+            log.debug(f'{tname}: {n:,} rows, {size_mb:.1f} MB staged, {dt:.1f}s')
+            results[tname] = (n, dt)
+
+            if not keep_parquet:
+                os.remove(pq_path)
 
         if not keep_parquet:
-            os.remove(pq_path)
+            try:
+                os.rmdir(staging)
+            except OSError:
+                pass
 
-    if not keep_parquet:
-        try:
-            os.rmdir(staging)
-        except OSError:
-            pass
-
-    return results
+        return results
 
 
 def main():
@@ -141,7 +142,7 @@ def main():
     )
     total_rows = sum(n for n, _ in results.values())
     total_time = sum(t for _, t in results.values())
-    print(f'\nDone. {len(results)} tables, {total_rows:,} rows, {total_time:.1f}s total.')
+    logmap.debug(f'Done. {len(results)} tables, {total_rows:,} rows, {total_time:.1f}s total.')
 
 
 if __name__ == '__main__':

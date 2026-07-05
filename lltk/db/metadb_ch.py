@@ -21,6 +21,7 @@ import json
 import re
 import time
 import pandas as pd
+from logmap import logmap
 
 from lltk.db.adapter import get_adapter
 from lltk.db.schema import create_all_tables
@@ -302,6 +303,7 @@ class MetaDBCH:
         from lltk.db.rebuild import ingest_corpus_to_clickhouse
         return ingest_corpus_to_clickhouse(corpus_id, self.adapter, force=force)
 
+    @logmap.fn
     def rebuild(self, corpus_ids=None, progress=True):
         """Full rebuild from corpus metadata CSVs into ClickHouse."""
         from lltk.db.rebuild import rebuild_clickhouse
@@ -561,6 +563,7 @@ class MetaDBCH:
             f'{name}() not yet ported to ClickHouse. Tracking in Phase B.'
         )
 
+    @logmap.fn
     def match(self, corpora=None, fuzzy=False, containment=True, progress=True):
         from lltk.db.match import match_clickhouse
         return match_clickhouse(self.adapter, corpora=corpora, fuzzy=fuzzy,
@@ -573,6 +576,122 @@ class MetaDBCH:
     def get_group(self, _id):
         from lltk.db.match import get_group_ch
         return get_group_ch(self.adapter, _id)
+
+    def fetch_metadata(self, ids, columns=None):
+        """Batch metadata fetch by _id. Returns DataFrame.
+
+        Uses a tmp Memory table for >10K IDs to avoid max_query_size limits.
+        """
+        import pandas as pd
+        ids = list(ids)
+        if not ids:
+            return pd.DataFrame()
+        for i in ids:
+            _validate_id(i)
+
+        if columns and '_id' not in columns:
+            columns = ['_id'] + list(columns)
+        cols_sql = ', '.join(columns) if columns else '*'
+
+        if len(ids) > 10_000:
+            self.adapter.execute(
+                "CREATE TABLE IF NOT EXISTS tmp.fetch_meta_ids "
+                "(_id String) ENGINE=Memory"
+            )
+            self.adapter.execute("TRUNCATE TABLE tmp.fetch_meta_ids")
+            self.adapter.client.insert(
+                'tmp.fetch_meta_ids', [[i] for i in ids],
+                column_names=['_id'],
+            )
+            return self.adapter.query_df(
+                f"SELECT {cols_sql} FROM lltk.texts FINAL AS t "
+                f"JOIN tmp.fetch_meta_ids f ON t._id = f._id"
+            )
+
+        ids_sql = ', '.join(f"'{_sql_str(i)}'" for i in ids)
+        return self.adapter.query_df(
+            f"SELECT {cols_sql} FROM lltk.texts FINAL "
+            f"WHERE _id IN ({ids_sql})"
+        )
+
+    def longest_titles(self, ids):
+        """For each _id, return the longest title across its match group.
+
+        Returns DataFrame with columns (_id, title, title_source_id).
+        If a text has no match group, returns its own title.
+        """
+        import pandas as pd
+        ids = list(ids)
+        if not ids:
+            return pd.DataFrame(columns=['_id', 'title', 'title_source_id'])
+        for i in ids:
+            _validate_id(i)
+
+        self.adapter.execute(
+            "CREATE TABLE IF NOT EXISTS tmp.lt_ids "
+            "(_id String) ENGINE=Memory"
+        )
+        self.adapter.execute("TRUNCATE TABLE tmp.lt_ids")
+        self.adapter.client.insert(
+            'tmp.lt_ids', [[i] for i in ids], column_names=['_id'],
+        )
+
+        return self.adapter.query_df("""
+            SELECT
+                f._id AS _id,
+                argMax(t.title, length(t.title)) AS title,
+                argMax(t._id, length(t.title)) AS title_source_id
+            FROM tmp.lt_ids f
+            LEFT JOIN (SELECT _id, group_id FROM lltk.match_groups FINAL) mg_self
+                ON f._id = mg_self._id
+            LEFT JOIN (SELECT _id, group_id FROM lltk.match_groups FINAL) mg_sib
+                ON mg_sib.group_id = mg_self.group_id AND mg_self.group_id != 0
+            JOIN (SELECT _id, title FROM lltk.texts FINAL) t
+                ON t._id = if(mg_self.group_id != 0, mg_sib._id, f._id)
+            GROUP BY f._id
+        """)
+
+    def genre_tags(self, ids, *, propagate=True):
+        """Per-text genre tags by facet. Returns DataFrame (_id, facet, tag).
+
+        If propagate=True, includes tags from match-group siblings: for each
+        input _id, finds all sibling _ids in the same match group, then
+        collects their tags.
+        """
+        import pandas as pd
+        ids = list(ids)
+        if not ids:
+            return pd.DataFrame(columns=['_id', 'facet', 'tag'])
+        for i in ids:
+            _validate_id(i)
+
+        self.adapter.execute(
+            "CREATE TABLE IF NOT EXISTS tmp.tag_lookup_ids "
+            "(_id String) ENGINE=Memory"
+        )
+        self.adapter.execute("TRUNCATE TABLE tmp.tag_lookup_ids")
+        self.adapter.client.insert(
+            'tmp.tag_lookup_ids', [[i] for i in ids],
+            column_names=['_id'],
+        )
+
+        if not propagate:
+            return self.adapter.query_df(
+                "SELECT t._id, t.facet, t.tag "
+                "FROM lltk.text_genre_tags t "
+                "JOIN tmp.tag_lookup_ids f ON t._id = f._id"
+            )
+
+        return self.adapter.query_df("""
+            SELECT DISTINCT f._id AS _id, tgt.facet, tgt.tag
+            FROM tmp.tag_lookup_ids f
+            LEFT JOIN (SELECT _id, group_id FROM lltk.match_groups FINAL) mg_self
+                ON f._id = mg_self._id
+            LEFT JOIN (SELECT _id, group_id FROM lltk.match_groups FINAL) mg_sib
+                ON mg_sib.group_id = mg_self.group_id
+            JOIN lltk.text_genre_tags tgt
+                ON tgt._id = if(mg_self.group_id != 0, mg_sib._id, f._id)
+        """)
 
     def match_stats(self):
         from lltk.db.match import match_stats_ch
@@ -688,6 +807,21 @@ class MetaDBCH:
             confidence_threshold=confidence_threshold,
             progress=progress,
             skip_existing=skip_existing,
+        )
+
+    def minhash_match(self, threshold=0.5, num_perm=128, corpus=None):
+        from lltk.db.minhash import minhash_match_ch
+        return minhash_match_ch(
+            self.adapter, threshold=threshold, num_perm=num_perm,
+            corpus=corpus,
+        )
+
+    def score_ocr_accuracy(self, corpora=None, skip_existing=True,
+                           wordlist_path=None, progress=True):
+        from lltk.db.ocr_accuracy import score_ocr_accuracy
+        return score_ocr_accuracy(
+            self.adapter, corpora=corpora, skip_existing=skip_existing,
+            wordlist_path=wordlist_path, progress=progress,
         )
 
     # ── Legacy compatibility shim ────────────────────────────────────

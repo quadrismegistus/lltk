@@ -1,4 +1,5 @@
 import os
+from logmap import logmap
 from lltk.text.text import BaseText
 from lltk.corpus.corpus import BaseCorpus
 from lltk.corpus.hathi.hathi import hathi_id_normalize, _build_freqs_index
@@ -150,7 +151,8 @@ class HathiBio(BaseCorpus):
 				cmd=f'python -c \\"import sys; sys.path.insert(0,\'{PATH_HERE_DIRNAME}\'); import {self.id} as mod; object={object}; mod.untar_to_freqs_folder(object)\\"'
 				sbatch_min=sbatch_hours*60
 				sbatch_cmd=f'sbatch -p hns -t {sbatch_min} --wrap="{cmd}"'
-				print('>>',sbatch_cmd)
+				with logmap('Submitting sbatch jobs') as _log:
+					_log.debug(sbatch_cmd)
 				os.system(sbatch_cmd)
 				time.sleep(1)
 

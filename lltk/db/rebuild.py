@@ -23,11 +23,13 @@ import os
 import time
 import json
 import pandas as pd
+from logmap import logmap
 import pyarrow as pa
 
 from lltk.db.metadb import (
     prepare_corpus_df, _resolve_freqs_paths,
     CORE_COLS, DB_BLACKLIST,
+    log
 )
 
 
@@ -102,7 +104,7 @@ def ingest_corpus_to_clickhouse(corpus_id: str, ch_adapter,
     or None if the corpus was skipped.
     """
     if corpus_id in DB_BLACKLIST:
-        print(f'Skipping {corpus_id} (DB_BLACKLIST)')
+        logmap.debug(f'Skipping {corpus_id} (DB_BLACKLIST)')
         return None
 
     from lltk.corpus.utils import load
@@ -110,19 +112,19 @@ def ingest_corpus_to_clickhouse(corpus_id: str, ch_adapter,
     try:
         corpus = load(corpus_id)
     except Exception as e:
-        print(f'Could not load {corpus_id}: {e}')
+        logmap.debug(f'Could not load {corpus_id}: {e}')
         return None
     if isinstance(corpus, SyntheticCorpus):
-        print(f'Skipping {corpus_id} (SyntheticCorpus)')
+        logmap.debug(f'Skipping {corpus_id} (SyntheticCorpus)')
         return None
 
     try:
         df = corpus.load_metadata()
     except Exception as e:
-        print(f'Could not load metadata for {corpus_id}: {e}')
+        logmap.debug(f'Could not load metadata for {corpus_id}: {e}')
         return None
     if df is None or not len(df):
-        print(f'No metadata for {corpus_id}')
+        logmap.debug(f'No metadata for {corpus_id}')
         return None
 
     manifest_lang = getattr(corpus, 'lang', None)
@@ -144,7 +146,7 @@ def ingest_corpus_to_clickhouse(corpus_id: str, ch_adapter,
     """)
     return len(prepared)
 
-
+@logmap.fn
 def rebuild_clickhouse(ch_adapter, corpora=None, force=True):
     """Full db-rebuild equivalent: ingest every manifest corpus into
     ClickHouse lltk.texts. Loops in manifest order, logs per-corpus count.
@@ -157,20 +159,18 @@ def rebuild_clickhouse(ch_adapter, corpora=None, force=True):
         ch_adapter.execute("TRUNCATE TABLE IF EXISTS lltk.texts")
         ch_adapter.execute("TRUNCATE TABLE IF EXISTS lltk.corpus_info")
 
-    print(f'Rebuilding ClickHouse from {len(corpora)} corpora...')
-    t0 = time.time()
-    total = 0
-    for i, cid in enumerate(corpora, 1):
-        tc = time.time()
-        try:
-            n = ingest_corpus_to_clickhouse(cid, ch_adapter, force=False)
-            if n:
-                total += n
-                print(f'  [{i}/{len(corpora)}] {cid}: {n:,} rows ({time.time()-tc:.1f}s)',
-                      flush=True)
-        except Exception as e:
-            print(f'  [{i}/{len(corpora)}] {cid}: ERROR {type(e).__name__}: {str(e)[:150]}',
-                  flush=True)
+    with logmap(f'Rebuilding ClickHouse from {len(corpora)} corpora...') as log:
+        t0 = time.time()
+        total = 0
+        for i, cid in enumerate(log.progress(corpora), 1):
+            tc = time.time()
+            try:
+                n = ingest_corpus_to_clickhouse(cid, ch_adapter, force=False)
+                if n:
+                    total += n
+                    log.debug(f'  [{i}/{len(corpora)}] {cid}: {n:,} rows ({time.time()-tc:.1f}s)')
+            except Exception as e:
+                log.error(f'  [{i}/{len(corpora)}] {cid}: ERROR {type(e).__name__}: {str(e)[:150]}')
 
-    print(f'\nTotal: {total:,} rows across {len(corpora)} corpora in {time.time()-t0:.0f}s')
-    return total
+        log.debug(f'\nTotal: {total:,} rows across {len(corpora)} corpora in {time.time()-t0:.0f}s')
+        return total

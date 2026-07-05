@@ -2,6 +2,7 @@ import os
 import shutil
 
 import numpy as np
+from logmap import logmap
 from tqdm import tqdm
 
 import internetarchive as ia
@@ -30,7 +31,8 @@ class InternetArchive(BaseCorpus):
 		search = search_items('collection:'+collection)
 		total=search.num_found
 		if iter_as_items: search=search.iter_as_items()
-		print(f'>> [{self.name}] scanning',total,f'items in collection {collection}')
+		with logmap(f'Scanning {self.name} collection') as _log:
+			_log.debug(f'scanning {total} items in collection {collection}')
 		# loop
 		for i,result in enumerate(tqdm(search,total=total)):
 			yield result['identifier'] if not iter_as_items else result
@@ -45,7 +47,8 @@ class InternetArchive(BaseCorpus):
 		os.chdir(self.path_txt)
 
 		# getting ids
-		print(f'>> [{self.name}] downloading txt files, using custom function...')
+		with logmap(f'Downloading {self.name} txt files') as _log:
+			_log.debug('downloading txt files, using custom function...')
 		id_list=self.get_collection_ids(collection=collection)
 
 		# download txt
@@ -70,7 +73,8 @@ class InternetArchive(BaseCorpus):
 					try:
 						dx['id']=dx['identifier']+'/'+dx['identifier']+'_djvu'
 					except KeyError:
-						print('??? no identifier ???',dx,'\n')
+						with logmap('Compiling IA metadata') as _log:
+							_log.debug(f'no identifier: {dx}')
 					#print(dx)
 					yield dx
 			tools.iter_move(self.path_metadata,prefix='bak/')

@@ -2,6 +2,8 @@
 from __future__ import absolute_import
 from __future__ import print_function
 
+from logmap import logmap
+
 STONES = ['save_txt_from_xml'] # for slingshot
 
 META_KEYS = ['_path', 'a1', 'alias', 'aliasinv', 'anote', 'argument', 'attauth', 'attautid', 'attbytes', 'attdbase', 'attgend', 'attgenre', 'attidref', 'attnatn', 'attperi', 'attpoet', 'attpubl', 'attpubn1', 'attpubn2', 'attrhyme', 'attsize', 'attview', 'audclip', 'audio', 'authdtls', 'author', 'author_dob', 'author_dod', 'author_gender', 'bnote', 'bo', 'break', 'bytes', 'caesura', 'caption', 'cell', 'chid', 'collection', 'conclude', 'dedicat', 'engcorp2', 'epigraph', 'epilogue', 'figure', 'firstl', 'gap', 'greek', 'hi', 'hideinft', 'id', 'idref', 'img', 'it', 'item', 'l', 'label', 'lacuna', 'lb', 'litpack', 'mainhead', 'note', 'num_lines', 'p', 'pb', 'pbl', 'pndfig', 'poemcopy', 'posthumous', 'preface', 'prologue', 'publish', 'reflink', 'removed', 'signed', 'sl', 'somauth', 'sombiog', 'sompoet', 'speaker', 'stage', 'sub', 'subhead', 'sup', 't1', 't2', 't3', 'target', 'title', 'title_volume', 'trailer', 'ty', 'u', 'usonly', 'video', 'volhead', 'xref', 'y1', 'yeayear_new', 'year_old', 'idz']
@@ -294,7 +296,8 @@ def save_poems_from_raw_author_folder(xxx_todo_changeme, use_bs4=False):
 	opath = os.path.join(opath, author_id)
 	if not os.path.exists(opath): os.makedirs(opath)
 
-	print('>>',opath,'...')
+	with logmap('Extracting poems from raw') as _log:
+		_log.debug(f'{opath}')
 	with codecs.open(author_fnfn,encoding='latin1') as f:
 		txt=f.read()
 		txt=str(txt.replace('\r\n','\n').replace('\r','\n'))
@@ -349,7 +352,8 @@ def save_txt_from_xml(xml_path,results_dir='./', modernize_spelling=True):
 	#with codecs.open(ofnfn,'w',encoding='utf-8') as of:
 	with open(ofnfn,'w') as of:
 		of.write(txt)
-		print('>> saved:',ofnfn)
+	with logmap('Saving txt from xml') as _log:
+		_log.debug(f'saved: {ofnfn}')
 
 # from /home/users/heuser/workspace/jupyter/prosodic_chadwyck/prosodic_parser.py
 def xml2txt(xml_path, xml_string=None, OK=['l','lb'], BAD=['note'], body_tag='poem', line_lim=None, modernize_spelling=False):

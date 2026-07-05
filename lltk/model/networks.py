@@ -6,6 +6,7 @@ import tempfile
 import networkx as nx
 import numpy as np
 import pandas as pd
+from logmap import logmap
 
 
 def filter_graph(g,min_weight=None,remove_isolates=True,min_degree=2,**kwargs):
@@ -154,7 +155,8 @@ def draw_nx_dynamic(
                     **kwargs)
             ofn_l.append(ofn_png)
 
-        print(f'Making movie ({ofn}) [{len(ofn_l)})]...')
+        with logmap('Making dynamic graph video...') as vlog:
+            vlog.debug(f'Making movie ({ofn}) [{len(ofn_l)}]')
         
         clip = moviepy.video.io.ImageSequenceClip.ImageSequenceClip(ofn_l, fps=fps)
         clip.write_videofile(ofn,verbose=False) #progress_bar=False)

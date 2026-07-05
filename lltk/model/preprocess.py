@@ -1,6 +1,7 @@
 import os
 from typing import Union
 
+from logmap import logmap
 from lltk.imports import BaseCorpus, DEFAULT_NUM_PROC, log, pmap, save_freqs_json
 
 
@@ -92,7 +93,8 @@ def do_preprocess_txt(obj):
     try:
         otxt = func(ifnfn)
     except Exception as e:
-        print(f'!! Error processing {ifnfn}: {e}')
+        with logmap('Preprocessing text') as plog:
+            plog.debug(f'Error processing {ifnfn}: {e}')
         return
     if not otxt:
         return

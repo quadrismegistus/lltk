@@ -1,3 +1,4 @@
+from logmap import logmap
 from lltk.imports import BaseCorpus, BaseText
 
 class TextOldBailey(BaseText):
@@ -6,7 +7,8 @@ class TextOldBailey(BaseText):
 
 	@property
 	def meta_by_file(self,bad_tags={'div1'}):
-		print('>>',self.id,'...')
+		with logmap(f'Parsing metadata for {self.id}') as _log:
+			_log.debug(f'{self.id}')
 		md={}
 		md['id']=self.id
 		md['medium']='Dialogue'

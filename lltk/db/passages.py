@@ -204,7 +204,21 @@ def build_passages_ch(adapter, n: int = 500, num_proc: int | None = None,
     SCHEME = 'p500'
     batch_size = 200
     total_passages = 0
+    n_errors = 0
+    err_samples = []
     t0 = time.time()
+
+    # Fail fast if the punkt sentence tokenizer is missing: otherwise every text
+    # would silently chunk to zero passages and the build would report success
+    # with an empty result.
+    import nltk
+    try:
+        nltk.sent_tokenize('Probe sentence one. Probe sentence two.')
+    except LookupError as e:
+        raise RuntimeError(
+            "NLTK 'punkt' tokenizer model not found — passage chunking cannot run. "
+            "Install: python -c \"import nltk; nltk.download('punkt'); nltk.download('punkt_tab')\""
+        ) from e
 
     for i in get_tqdm(range(0, len(all_tasks), batch_size),
                       desc='[passages] batches'):
@@ -219,7 +233,12 @@ def build_passages_ch(adapter, n: int = 500, num_proc: int | None = None,
 
         psg_rows = []
         meta_rows = []
-        for _id, corpus_id, passages_list in results:
+        for _id, corpus_id, passages_list, err in results:
+            if err:
+                n_errors += 1
+                if len(err_samples) < 5:
+                    err_samples.append(f'{_id}: {err}')
+                continue
             if not passages_list:
                 continue
             for _id_, seq, text, n_words, lang in passages_list:
@@ -248,6 +267,9 @@ def build_passages_ch(adapter, n: int = 500, num_proc: int | None = None,
     if log:
         log(f'[passages] {total_passages:,} passages from '
             f'{len(all_tasks)} texts in {elapsed:.0f}s')
+        if n_errors:
+            log(f'[passages] WARNING: {n_errors} texts failed to chunk '
+                f'(e.g. {"; ".join(err_samples)})')
     return total_passages
 
 
@@ -558,5 +580,96 @@ def export_passages_ch(adapter, ids=None, corpus=None, year_min=None,
 
     if log:
         log(f'[export-passages] Wrote {n_passages:,} passages '
+            f'from {n_texts} texts')
+    return n_texts, n_passages
+
+
+def export_passages_decile(adapter, ids, *, scheme='p500', out_dir,
+                           deciles=None):
+    """Export passages at decile positions (10%, 20%, ..., 100%) per text.
+
+    Each output file is a JSONL: header line + one passage per line.
+    Passage lines include a 'position' field (0.1, 0.2, ..., 1.0).
+
+    Returns (n_texts, n_passages).
+    """
+    import json
+    import math
+
+    try:
+        from lltk.imports import log
+    except Exception:
+        log = None
+
+    if deciles is None:
+        deciles = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+
+    ids = list(ids)
+    if not ids:
+        return 0, 0
+
+    if log:
+        log(f'[export-decile] Exporting {len(ids)} texts, '
+            f'{len(deciles)} positions each')
+
+    ids_sql = ', '.join(f"'{_escape(i)}'" for i in ids[:10_000])
+    meta_df = adapter.query_df(f"""
+        SELECT _id, title, author, year, corpus, genre, lang
+        FROM lltk.texts FINAL WHERE _id IN ({ids_sql})
+    """)
+    meta_map = {r['_id']: r.to_dict() for _, r in meta_df.iterrows()}
+
+    passages_df = get_passages_ch(adapter, ids, scheme=scheme)
+
+    os.makedirs(out_dir, exist_ok=True)
+    n_texts = 0
+    n_passages = 0
+
+    for _id in ids:
+        text_psg = passages_df[passages_df['_id'] == _id].sort_values('seq')
+        if not len(text_psg):
+            continue
+
+        total = len(text_psg)
+        selected = []
+        for d in deciles:
+            idx = min(int(math.ceil(d * total)) - 1, total - 1)
+            row = text_psg.iloc[idx]
+            selected.append((d, row))
+
+        bare_id = _id[1:] if _id.startswith('_') else _id
+        out_path = os.path.join(out_dir, f'{bare_id.replace("/", "__")}.jsonl')
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+
+        m = meta_map.get(_id, {})
+        header = {
+            '_id': _id,
+            'corpus': m.get('corpus', ''),
+            'scheme': scheme,
+            'n_passages_total': total,
+            'n_sampled': len(selected),
+            'title': m.get('title', ''),
+            'author': m.get('author', ''),
+            'lang': m.get('lang', ''),
+        }
+        year = m.get('year')
+        if year is not None and str(year) != 'nan':
+            header['year'] = int(year)
+
+        with open(out_path, 'w', encoding='utf-8') as f:
+            f.write(json.dumps(header, ensure_ascii=False) + '\n')
+            for position, row in selected:
+                f.write(json.dumps({
+                    'seq': int(row['seq']),
+                    'position': position,
+                    'text': row['text'],
+                    'n_words': int(row['n_words']),
+                }, ensure_ascii=False) + '\n')
+
+        n_texts += 1
+        n_passages += len(selected)
+
+    if log:
+        log(f'[export-decile] Wrote {n_passages:,} passages '
             f'from {n_texts} texts')
     return n_texts, n_passages

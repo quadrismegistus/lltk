@@ -1,5 +1,6 @@
 import os
 
+from logmap import logmap
 from lltk.imports import BaseCorpus, BaseText, tools
 
 ### TEXT
@@ -146,7 +147,8 @@ def save_plays_from_raw_author_folder(xxx_todo_changeme, use_bs4=False):
 	opath = os.path.join(opath, author_id)
 	if not os.path.exists(opath): os.makedirs(opath)
 
-	print('>>',opath,'...')
+	with logmap('Extracting plays from raw') as _log:
+		_log.debug(f'{opath}')
 	with codecs.open(author_fnfn,encoding='latin1') as f:
 		txt=f.read()
 		txt=str(txt.replace('\r\n','\n').replace('\r','\n'))
@@ -185,4 +187,5 @@ def save_plays_from_raw_author_folder(xxx_todo_changeme, use_bs4=False):
 				ofnfn = os.path.join(opath, idx+'.xml')
 				with codecs.open(ofnfn,'w',encoding='utf-8') as of:
 					of.write(poem_xml_str)
-					print('>> saved:',ofnfn)
+				with logmap('Saving play XML') as _log:
+					_log.debug(f'saved: {ofnfn}')

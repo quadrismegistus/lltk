@@ -12,3 +12,4 @@ unidecode
 logmap>=0.3
 tqdm
 pyyaml
+pyarrow

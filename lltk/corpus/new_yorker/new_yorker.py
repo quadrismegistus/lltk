@@ -1,4 +1,5 @@
 import os
+from logmap import logmap
 from lltk.text.text import BaseText
 from lltk.corpus.corpus import BaseCorpus
 import tarfile
@@ -64,11 +65,12 @@ class NewYorker(BaseCorpus):
 		"""
 		# should be tar files in raw
 		objs=[(os.path.join(self.path_raw,fn),self.path_txt) for fn in sorted(os.listdir(self.path_raw)) if fn[:4].isdigit()]
-		print('>> saving plain texts:',self.path_metadata)
-		meta_ld=lltk.pmap(compile_tar, objs)
-		df=pd.DataFrame(meta_ld)
-		df.to_csv(self.path_metadata,index=False)
-		print('>> saved:',self.path_metadata)
+		with logmap('Compiling New Yorker corpus') as _log:
+			_log.debug(f'saving plain texts: {self.path_metadata}')
+			meta_ld=lltk.pmap(compile_tar, objs)
+			df=pd.DataFrame(meta_ld)
+			df.to_csv(self.path_metadata,index=False)
+			_log.debug(f'saved: {self.path_metadata}')
 
 	def load_metadata(self,*x,**y):
 		"""

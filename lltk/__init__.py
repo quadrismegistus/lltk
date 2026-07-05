@@ -1,5 +1,6 @@
 from .imports import *
 from .db import db
+from . import annotate
 
 
 def task_path(_id: str, task_name: str) -> str:

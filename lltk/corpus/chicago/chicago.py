@@ -1,5 +1,6 @@
 import os
 
+from logmap import logmap
 from lltk.imports import BaseCorpus, BaseText, get_tqdm
 
 
@@ -39,7 +40,8 @@ First, place into the folder {self.path_raw} the following files:
 
 
 		if any([not os.path.exists(_path) for _path in [path_author_metadata,path_novels_metadata,path_texts]]):
-			print(instructs)
+			with logmap('Compiling Chicago corpus') as _log:
+				_log.debug(instructs)
 		else:
 			self.compile_txt()
 			self.compile_metadata()

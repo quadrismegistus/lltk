@@ -1,6 +1,15 @@
 import os, sys, argparse
 
 
+def _load_or_die(corpus_id):
+	import lltk
+	c = lltk.load(corpus_id)
+	if c is None:
+		print(f"Error: unknown corpus '{corpus_id}'. Run `lltk show` to list available corpora.", file=sys.stderr)
+		sys.exit(1)
+	return c
+
+
 def main():
 	import lltk
 	from lltk.imports import DEFAULT_NUM_PROC
@@ -58,6 +67,16 @@ def main():
 	p_db_match.add_argument('corpora', nargs='*', help='Corpus IDs to include (default: all)')
 	p_db_match.add_argument('--fuzzy', action='store_true', help='Also run fuzzy title matching (slow)')
 
+	# db-minhash
+	p_db_minhash = subparsers.add_parser('db-minhash',
+		help='MinHash/LSH near-duplicate detection via word-set overlap on text_freqs')
+	p_db_minhash.add_argument('--threshold', type=float, default=0.5,
+		help='Jaccard similarity threshold (default: 0.5)')
+	p_db_minhash.add_argument('--num-perm', type=int, default=128,
+		help='Number of MinHash permutations (default: 128)')
+	p_db_minhash.add_argument('--corpus', type=str, default=None,
+		help='Limit to one corpus')
+
 	# db matches
 	p_db_matches = subparsers.add_parser('db-matches', help='Search for matches by title')
 	p_db_matches.add_argument('query', help='Title search string')
@@ -88,6 +107,16 @@ def main():
 	p_db_lang.add_argument('--rebuild', action='store_true',
 		help='Reprocess every text (default: skip _ids already in lltk.text_langs)')
 
+	# db-ocr-accuracy
+	p_db_ocr = subparsers.add_parser('db-ocr-accuracy',
+		help='Score OCR accuracy per text via wordlist coverage on text_freqs')
+	p_db_ocr.add_argument('--corpora', nargs='+',
+		help='Limit to specific corpora (default: all)')
+	p_db_ocr.add_argument('--wordlist', default=None,
+		help='Path to wordlist file (default: data/wordlist_en.txt)')
+	p_db_ocr.add_argument('--rebuild', action='store_true',
+		help='Rescore all texts (default: skip _ids already in lltk.text_ocr)')
+
 	# search
 	p_search = subparsers.add_parser('search', help='Full-text search across passages')
 	p_search.add_argument('query', help='FTS5 query (word, "phrase", NEAR(a b, 5))')
@@ -116,6 +145,12 @@ def main():
 	p_export_psg.add_argument('--year-max', type=int, default=None)
 	p_export_psg.add_argument('--scheme', default='p500', help='Passage scheme (default: p500)')
 	p_export_psg.add_argument('--out-dir', default=None, help='Output directory (default: corpus-local)')
+	p_export_psg.add_argument('--decile', action='store_true',
+		help='Sample passages at decile positions (10%%, 20%%, ..., 100%%) per text')
+	p_export_psg.add_argument('--from-task', default=None,
+		help='Export only texts that have results for this task (e.g. social_network)')
+	p_export_psg.add_argument('--ids-file', default=None,
+		help='File with one _id per line (pre-computed text list)')
 
 	# db-embed-passages
 	p_db_embed = subparsers.add_parser('db-embed-passages',
@@ -205,10 +240,76 @@ def main():
 	p_pros_agg = subparsers.add_parser('prosodic-aggregate', help='Build {corpus.path}/prosodic.parquet from per-text parsed.parquet files')
 	p_pros_agg.add_argument('corpus', help='Corpus ID')
 
-	# annotate
+	# annotate (web app)
 	p_annotate = subparsers.add_parser('annotate', help='Launch annotation web app for a corpus')
 	p_annotate.add_argument('corpus', help='Corpus ID (e.g. arc_fiction)')
 	p_annotate.add_argument('--port', type=int, default=8989, help='Port (default: 8989)')
+
+	# annotate-llm
+	p_allm = subparsers.add_parser('annotate-llm',
+		help='Run LLM annotation task over texts (requires largeliterarymodels)')
+	p_allm.add_argument('task', help='Task name (genre, frye, social_network, etc.)')
+	p_allm.add_argument('--ids', nargs='+', default=None, help='Specific text _ids')
+	p_allm.add_argument('--corpus', default=None, help='Corpus ID filter')
+	p_allm.add_argument('--genre', default=None, help='Genre filter')
+	p_allm.add_argument('--lang', default=None, help='Language filter')
+	p_allm.add_argument('--year-min', type=int, default=None)
+	p_allm.add_argument('--year-max', type=int, default=None)
+	p_allm.add_argument('--where', default=None, help='Raw SQL WHERE clause')
+	p_allm.add_argument('--model', default=None, help='LLM model (default: task-specific)')
+	p_allm.add_argument('--source', default=None, help='Annotation source label')
+	p_allm.add_argument('-n', '--limit', type=int, default=None, help='Max texts')
+	p_allm.add_argument('--batch-size', type=int, default=100, help='Annotation write batch size')
+	p_allm.add_argument('--no-skip', action='store_true', help='Re-annotate already-done texts')
+	p_allm.add_argument('--no-save', action='store_true', help='Skip writing to annotations')
+	p_allm.add_argument('--save-tasks', action='store_true', help='Save full JSON to task_path')
+	p_allm.add_argument('--force', action='store_true', help='Bypass LLM cache')
+
+	# ingest-tasks
+	p_ingest = subparsers.add_parser('ingest-tasks',
+		help='Ingest task result JSONs from Colab/HPC into task_path + annotations')
+	p_ingest.add_argument('task', help='Task name (e.g. social_network)')
+	p_ingest.add_argument('results_dir', help='Directory of JSON result files')
+	p_ingest.add_argument('--source', default=None, help='Annotation source label for scalars')
+	p_ingest.add_argument('--extract-scalars', action='store_true',
+		help='Extract derived scalar metrics to lltk.annotations')
+	p_ingest.add_argument('--dry-run', action='store_true', help='Show what would happen')
+	p_ingest.add_argument('--force', action='store_true',
+		help='Re-extract scalars even for already-placed files')
+
+	# export-task-results
+	p_export_task = subparsers.add_parser('export-task-results',
+		help='Export stored task results to a flat directory for remote batch processing')
+	p_export_task.add_argument('task', help='Task name (e.g. social_network)')
+	p_export_task.add_argument('--out', required=True, help='Output directory')
+	p_export_task.add_argument('--model', default=None, help='Filter to specific model variant')
+	p_export_task.add_argument('--symlink', action='store_true',
+		help='Symlink instead of copy (local use only)')
+	p_export_task.add_argument('--year-min', type=int, default=None)
+	p_export_task.add_argument('--year-max', type=int, default=None)
+
+	# clean-ocr
+	p_cocr = subparsers.add_parser('clean-ocr',
+		help='LLM-based OCR cleaning (requires largeliterarymodels)')
+	p_cocr.add_argument('corpus', help='Corpus ID (e.g. ecco)')
+	p_cocr.add_argument('--model', default=None,
+		help='LLM model override (default: task-specific, e.g. qwen3.6-35b-a3b for OCR cleaning)')
+	p_cocr.add_argument('--ids', nargs='+', default=None, help='Specific text IDs')
+	p_cocr.add_argument('--genre', default=None, help='Genre filter (queries CH)')
+	p_cocr.add_argument('--lang', default=None, help='Language filter (e.g. en, fr)')
+	p_cocr.add_argument('--year-min', type=int, default=None)
+	p_cocr.add_argument('--year-max', type=int, default=None)
+	p_cocr.add_argument('-n', '--limit', type=int, default=None, help='Max texts')
+	p_cocr.add_argument('-j', '--num-workers', type=int, default=4,
+		help='Parallel LLM workers (default: 4)')
+	p_cocr.add_argument('--force', action='store_true', help='Re-clean existing txt_clean/')
+
+	# publish
+	p_pub = subparsers.add_parser('publish', help='Zip corpus, upload to Dropbox, update manifests')
+	p_pub.add_argument('corpus', help='Corpus ID')
+	p_pub.add_argument('--public', default=None, help='Comma-separated parts for public manifest (e.g. metadata)')
+	p_pub.add_argument('--private', default=None, help='Comma-separated parts for user manifest (e.g. freqs,txt)')
+	p_pub.add_argument('--parts', default=None, help='Comma-separated parts (all treated as public)')
 
 	# app (explorer)
 	p_app = subparsers.add_parser('app', help='Launch LLTK explorer web app')
@@ -229,7 +330,7 @@ def main():
 		check_corpora()
 
 	elif args.cmd == 'info':
-		corpus = lltk.load(args.corpus)
+		corpus = _load_or_die(args.corpus)
 		corpus.info()
 
 	elif args.cmd == 'load':
@@ -242,7 +343,7 @@ def main():
 		os.system(cmd)
 
 	elif args.cmd == 'compile':
-		corpus = lltk.load(args.corpus)
+		corpus = _load_or_die(args.corpus)
 		kwargs = {}
 		if args.tar_path:
 			kwargs['tar_path'] = args.tar_path
@@ -253,12 +354,12 @@ def main():
 		corpus.compile(**kwargs)
 
 	elif args.cmd == 'preprocess':
-		corpus = lltk.load(args.corpus)
+		corpus = _load_or_die(args.corpus)
 		parts = [p.strip() for p in args.parts.split(',')]
 		corpus.preprocess(parts=parts, num_proc=args.num_proc, force=args.force, lim=args.lim)
 
 	elif args.cmd == 'install':
-		corpus = lltk.load(args.corpus)
+		corpus = _load_or_die(args.corpus)
 		parts = [p.strip() for p in args.parts.split(',')]
 		for part in parts:
 			corpus.install(part=part)
@@ -276,7 +377,7 @@ def main():
 		# `--force` (already present on the parser) is the full-rebuild flag.
 		force = args.force or corpus_ids is None
 		total = rebuild_clickhouse(ch, corpora=corpus_ids, force=force)
-		print(f'\nTotal: {total:,} texts ingested into ClickHouse')
+		# print(f'\nTotal: {total:,} texts ingested into ClickHouse')
 
 	elif args.cmd == 'db-info':
 		import pandas as pd
@@ -356,6 +457,13 @@ def main():
 		else:
 			print(f'No matches found for "{args.query}"')
 
+	elif args.cmd == 'db-minhash':
+		lltk.db.minhash_match(
+			threshold=args.threshold,
+			num_perm=args.num_perm,
+			corpus=args.corpus,
+		)
+
 	elif args.cmd == 'db-wordcounts':
 		lltk.db.wordcounts(num_proc=args.jobs)
 
@@ -381,6 +489,13 @@ def main():
 			coverage_threshold=args.coverage,
 			confidence_threshold=args.confidence,
 			skip_existing=not args.rebuild,
+		)
+
+	elif args.cmd == 'db-ocr-accuracy':
+		lltk.db.score_ocr_accuracy(
+			corpora=args.corpora,
+			skip_existing=not args.rebuild,
+			wordlist_path=args.wordlist,
 		)
 
 	elif args.cmd == 'search':
@@ -412,13 +527,40 @@ def main():
 		)
 
 	elif args.cmd == 'export-passages':
-		lltk.db.export_passages(
-			corpus=args.corpus,
-			year_min=args.year_min,
-			year_max=args.year_max,
-			scheme=args.scheme,
-			out_dir=args.out_dir,
-		)
+		ids = None
+		if args.ids_file:
+			with open(args.ids_file) as f:
+				ids = [line.strip() for line in f if line.strip()]
+			print(f'Loaded {len(ids)} IDs from {args.ids_file}')
+		if args.from_task:
+			from lltk.annotate import iter_task_results
+			task_ids = [_id for _id, _ in iter_task_results(args.from_task)]
+			if ids is not None:
+				ids = [i for i in ids if i in set(task_ids)]
+			else:
+				ids = task_ids
+			print(f'Filtering to {len(ids)} texts with {args.from_task} results')
+
+		if args.decile:
+			if not args.out_dir:
+				print('--decile requires --out-dir'); sys.exit(1)
+			if ids is None:
+				print('--decile requires --from-task, --ids-file, or explicit IDs'); sys.exit(1)
+			from lltk.db.passages import export_passages_decile
+			n_texts, n_psg = export_passages_decile(
+				lltk.db.adapter, ids,
+				scheme=args.scheme, out_dir=args.out_dir,
+			)
+			print(f'Exported {n_psg:,} passages from {n_texts} texts')
+		else:
+			lltk.db.export_passages(
+				ids=ids,
+				corpus=args.corpus,
+				year_min=args.year_min,
+				year_max=args.year_max,
+				scheme=args.scheme,
+				out_dir=args.out_dir,
+			)
 
 	elif args.cmd == 'db-embed-passages':
 		lltk.db.build_embeddings_db(
@@ -505,6 +647,119 @@ def main():
 	elif args.cmd == 'annotate':
 		from lltk.web.annotate import run_annotate
 		run_annotate(args.corpus, port=args.port)
+
+	elif args.cmd == 'annotate-llm':
+		from lltk.annotate import run_task
+		stats = run_task(
+			args.task,
+			ids=args.ids,
+			corpus=args.corpus,
+			genre=args.genre,
+			lang=args.lang,
+			year_min=args.year_min,
+			year_max=args.year_max,
+			where=args.where,
+			limit=args.limit,
+			model=args.model,
+			source=args.source,
+			batch_size=args.batch_size,
+			skip_existing=not args.no_skip,
+			save_annotations=not args.no_save,
+			save_tasks=args.save_tasks,
+			force=args.force,
+		)
+		print(f"\nProcessed: {stats['n_processed']}, "
+			  f"Skipped: {stats['n_skipped']}, "
+			  f"Errors: {stats['n_errors']}, "
+			  f"Time: {stats['elapsed_seconds']}s")
+
+	elif args.cmd == 'ingest-tasks':
+		from lltk.annotate import ingest_tasks
+		stats = ingest_tasks(
+			args.task,
+			args.results_dir,
+			source=args.source,
+			extract_scalars=args.extract_scalars,
+			dry_run=args.dry_run,
+			force=args.force,
+		)
+		print(f"\nIngested: {stats['n_ingested']}, "
+			  f"Skipped: {stats['n_skipped']}, "
+			  f"Errors: {stats['n_errors']}")
+
+	elif args.cmd == 'export-task-results':
+		from lltk.annotate import export_task_results
+		n = export_task_results(
+			args.task,
+			args.out,
+			model=args.model,
+			symlink=args.symlink,
+			year_min=args.year_min,
+			year_max=args.year_max,
+		)
+		print(f'Exported {n} results to {args.out}')
+
+	elif args.cmd == 'clean-ocr':
+		import time as _time
+		from lltk.tools.tools import get_tqdm
+		from largeliterarymodels.tasks import OCRCleanTask
+
+		corpus = _load_or_die(args.corpus)
+		task = OCRCleanTask(**({'model': args.model} if args.model else {}))
+
+		if args.ids:
+			text_ids = args.ids
+		elif args.genre or args.lang or args.year_min or args.year_max:
+			where_parts = []
+			if args.lang:
+				where_parts.append(f"lang = '{args.lang}'")
+			where = ' AND '.join(where_parts) if where_parts else None
+			df = lltk.db.texts_df(
+				corpora=[args.corpus], genre=args.genre,
+				year_min=args.year_min, year_max=args.year_max,
+				where=where, dedup=True,
+			)
+			if len(df) == 0 or 'id' not in df.columns:
+				print(f'No matching texts found.')
+				sys.exit(0)
+			text_ids = df['id'].tolist()
+		else:
+			meta = corpus.load_metadata()
+			text_ids = list(meta.index) if meta is not None else []
+
+		if args.limit:
+			text_ids = text_ids[:args.limit]
+
+		t0 = _time.time()
+		n_cleaned = 0
+		n_skipped = 0
+		n_errors = 0
+		for text_id in get_tqdm(text_ids, desc=f'[clean-ocr] {args.corpus}'):
+			try:
+				t = corpus.text(text_id)
+				result = t.clean_txt(task=task, force=args.force, num_workers=args.num_workers)
+				if result is not None:
+					n_cleaned += 1
+				else:
+					n_skipped += 1
+			except Exception as e:
+				n_errors += 1
+				print(f'  {text_id}: {e!s:.80s}')
+
+		elapsed = _time.time() - t0
+		print(f"\nCleaned: {n_cleaned}, Skipped: {n_skipped}, "
+			  f"Errors: {n_errors}, Time: {elapsed:.0f}s")
+
+	elif args.cmd == 'publish':
+		corpus = _load_or_die(args.corpus)
+		public = [p.strip() for p in args.public.split(',')] if args.public else None
+		private = [p.strip() for p in args.private.split(',')] if args.private else None
+		parts = [p.strip() for p in args.parts.split(',')] if args.parts else None
+		urls = corpus.publish(public=public, private=private, parts=parts)
+		if urls:
+			print()
+			for part, url in urls.items():
+				print(f'url_{part} = {url}')
 
 	elif args.cmd == 'app':
 		from lltk.web.app import run_app

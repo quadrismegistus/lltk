@@ -3,9 +3,12 @@ Parse ESTC MARC bibliographic and holdings JSON files.
 
 Covers all MARC tags observed across ~481K bib records and ~481K holdings records.
 """
+from __future__ import annotations
 
 import json
 from typing import Any
+
+from logmap import logmap
 
 
 # ---------------------------------------------------------------------------
@@ -713,9 +716,10 @@ if __name__ == "__main__":
         "leader": "00180cam  2200061   4500"
     }
 
-    print("=== Bib (non-empty fields only) ===")
-    rec = parse_bib_record(bib_json)
-    pprint({k: v for k, v in rec.items() if v})
+    with logmap('ESTC JSON parser smoke test') as log:
+        log.debug('Bib (non-empty fields only)')
+        rec = parse_bib_record(bib_json)
+        pprint({k: v for k, v in rec.items() if v})
 
-    print("\n=== Holdings ===")
-    pprint(parse_holdings_record(hol_json))
+        log.debug('Holdings')
+        pprint(parse_holdings_record(hol_json))

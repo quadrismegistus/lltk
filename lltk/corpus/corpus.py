@@ -402,7 +402,7 @@ class BaseCorpus(TextList):
         # log incoming
         # log(f'<- {kwargs}')
         meta = just_metadata(kwargs)
-        log.debug(f'<- {get_imsg(id,self,_source,**meta)}')
+        # log.debug(f'<- {get_imsg(id,self,_source,**meta)}')
 
         # Init corpus?
         if _init: self.init()
@@ -424,7 +424,7 @@ class BaseCorpus(TextList):
         if t is None: raise CorpusTextException('Could not get or create text')
 
         # Return text
-        log.debug(f'-> {t}' if is_text_obj(t) else "-> ?")
+        # log.debug(f'-> {t}' if is_text_obj(t) else "-> ?")
         return t
 
     # @log.fn
@@ -467,7 +467,7 @@ class BaseCorpus(TextList):
             **kwargs):
 
         meta=just_metadata(kwargs)
-        log.debug(f'<- {get_imsg(id,self,_source,**meta)}')
+        # log.debug(f'<- {get_imsg(id,self,_source,**meta)}')
         
         if type(id)!=str or not id:
             if is_addr_str(id): id=id
@@ -483,7 +483,7 @@ class BaseCorpus(TextList):
             )
         if not id: id=get_idx()
         if _new: id = self.iter_text_id(id)
-        log.debug(f'-> {id}')
+        # log.debug(f'-> {id}')
         return id
 
 
@@ -504,11 +504,11 @@ class BaseCorpus(TextList):
     def init_text(self,id=None,_source=None,_cache=True,**kwargs):
         # log('...')
         meta=just_meta_no_id(kwargs)
-        log.debug(f'<- {get_imsg(id,self,_source,**meta)}')
+        # log.debug(f'<- {get_imsg(id,self,_source,**meta)}')
         if id is None: id = self.get_text_id(id, _source=_source, **meta)
         # gen text in my image
         t = self.TEXT_CLASS(id=id, _corpus=self, _source=_source, **meta)
-        log.debug(f'-> {t}' if is_text_obj(t) else "-> ?")
+        # log.debug(f'-> {t}' if is_text_obj(t) else "-> ?")
         return t
 
 
@@ -747,8 +747,14 @@ class BaseCorpus(TextList):
             """Collect file paths relative to parent directory."""
             path = os.path.abspath(path)
             if not os.path.isdir(path):
-                # single file (e.g. metadata.csv)
-                return [path]
+                paths = [path]
+                if pathpart == 'metadata':
+                    import glob
+                    parent = os.path.dirname(path)
+                    for p in glob.glob(os.path.join(parent, 'metadata_enriched.*')):
+                        if os.path.isfile(p):
+                            paths.append(p)
+                return paths
             paths = []
             for root, dirs, files in os.walk(path):
                 for file in files:

@@ -3,6 +3,8 @@ A set of classes and functions for doing logistic regression and classification
 """
 from collections import defaultdict
 
+from logmap import logmap
+
 from sklearn.linear_model import LogisticRegression
 from sklearn.neural_network import MLPClassifier
 from sklearn.metrics import classification_report
@@ -108,7 +110,8 @@ class Classifier(Model):
             try:
                 clf.fit(X_train,y_train)
             except AssertionError as e:
-                print('!!',e)
+                with logmap('Classification') as clog:
+                    clog.debug(f'Error fitting classifier: {e}')
                 continue
             probs=clf.predict_proba(X_test)
             predictions=clf.predict(X_test)
@@ -158,8 +161,8 @@ class Classifier(Model):
 
     def report(self):
         from sklearn.metrics import classification_report
-        print('## Report for Model (%s)' % self.name)
-        print(classification_report(self.dfr['true'], self.dfr['pred']))
+        with logmap(f'Report for Model ({self.name})') as rlog:
+            rlog.debug(classification_report(self.dfr['true'], self.dfr['pred']))
 
 
     def save_model(self,odir='saved_clf_model_data'):

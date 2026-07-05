@@ -22,12 +22,13 @@ CORPUS_SOURCE_RANKS.
 import time
 import pandas as pd
 import networkx as nx
+from logmap import logmap
 
 
 def _ordered_pair(a, b):
     return (a, b) if a < b else (b, a)
 
-
+@logmap.fn
 def match_clickhouse(ch_adapter, corpora=None, fuzzy=False, containment=True,
                      progress=True):
     """Run the full matching pipeline against ClickHouse lltk.texts.
@@ -35,105 +36,106 @@ def match_clickhouse(ch_adapter, corpora=None, fuzzy=False, containment=True,
     Writes to lltk.matches + lltk.match_groups.
     """
     from lltk.tools.tools import get_tqdm
+    with logmap('Matching texts...') as log:
 
-    corpus_filter = ''
-    corpus_where = ''
-    if corpora:
-        cl = ', '.join(f"'{c}'" for c in corpora)
-        corpus_filter = f'AND a.corpus IN ({cl}) AND b.corpus IN ({cl})'
-        corpus_where = f'AND corpus IN ({cl})'
-        print(f'Matching {len(corpora)} corpora: {", ".join(corpora)}')
+        corpus_filter = ''
+        corpus_where = ''
+        if corpora:
+            cl = ', '.join(f"'{c}'" for c in corpora)
+            corpus_filter = f'AND a.corpus IN ({cl}) AND b.corpus IN ({cl})'
+            corpus_where = f'AND corpus IN ({cl})'
+            log.debug(f'Matching {len(corpora)} corpora: {", ".join(corpora)}')
 
-    # Tier 0: ID-based linking from corpus LINKS declarations
-    print('ID-based linking from corpus LINKS...')
-    _match_by_links_ch(ch_adapter, corpora)
-    n = ch_adapter.query(
-        "SELECT count() FROM lltk.matches FINAL WHERE match_type = 'id_link'"
-    )[0][0]
-    print(f'  ID links: {n:,} pairs')
+        # Tier 0: ID-based linking from corpus LINKS declarations
+        with logmap('ID-based linking from corpus LINKS...') as log:
+            _match_by_links_ch(ch_adapter, corpora)
+            n = ch_adapter.query(
+                "SELECT count() FROM lltk.matches FINAL WHERE match_type = 'id_link'"
+            )[0][0]
+            log.debug(f'  ID links: {n:,} pairs')
 
-    # Tier 1a: exact title_norm + author_norm (chain via LEAD window)
-    print('Exact title + author matching...')
-    ch_adapter.execute(f"""
-        INSERT INTO lltk.matches (_id_a, _id_b, similarity, match_type)
-        SELECT
-          if(a._id < b._id, a._id, b._id) AS _id_a,
-          if(a._id < b._id, b._id, a._id) AS _id_b,
-          1.0 AS similarity,
-          'exact_norm' AS match_type
-        FROM (
-            SELECT _id, title_norm, author_norm, corpus,
-                   lead(_id) OVER (
-                       PARTITION BY title_norm, author_norm
-                       ORDER BY _id
-                   ) AS next_id
-            FROM lltk.texts FINAL
-            WHERE title_norm != ''
-              AND author_norm != ''
-              AND length(title_norm) > 5
-        ) a
-        INNER JOIN (SELECT _id, corpus FROM lltk.texts FINAL) b ON a.next_id = b._id
-        WHERE a.next_id != ''
-          AND a._id != b._id
-          {corpus_filter}
-    """)
-    n = ch_adapter.query(
-        "SELECT count() FROM lltk.matches FINAL WHERE match_type = 'exact_norm'"
-    )[0][0]
-    print(f'  Exact (by author): {n:,} pairs')
+        # Tier 1a: exact title_norm + author_norm (chain via LEAD window)
+        with logmap('Exact title + author matching...') as log:
+            ch_adapter.execute(f"""
+                INSERT INTO lltk.matches (_id_a, _id_b, similarity, match_type)
+                SELECT
+                if(a._id < b._id, a._id, b._id) AS _id_a,
+                if(a._id < b._id, b._id, a._id) AS _id_b,
+                1.0 AS similarity,
+                'exact_norm' AS match_type
+                FROM (
+                    SELECT _id, title_norm, author_norm, corpus,
+                        lead(_id) OVER (
+                            PARTITION BY title_norm, author_norm
+                            ORDER BY _id
+                        ) AS next_id
+                    FROM lltk.texts FINAL
+                    WHERE title_norm != ''
+                    AND author_norm != ''
+                    AND length(title_norm) > 5
+                ) a
+                INNER JOIN (SELECT _id, corpus FROM lltk.texts FINAL) b ON a.next_id = b._id
+                WHERE a.next_id != ''
+                AND a._id != b._id
+                {corpus_filter}
+            """)
+            n = ch_adapter.query(
+                "SELECT count() FROM lltk.matches FINAL WHERE match_type = 'exact_norm'"
+            )[0][0]
+            log.debug(f'  Exact (by author): {n:,} pairs')
 
-    # Tier 1b: exact title_norm + year (authorless only)
-    print('Exact title + year matching (authorless)...')
-    ch_adapter.execute(f"""
-        INSERT INTO lltk.matches (_id_a, _id_b, similarity, match_type)
-        SELECT
-          if(a._id < b._id, a._id, b._id) AS _id_a,
-          if(a._id < b._id, b._id, a._id) AS _id_b,
-          1.0 AS similarity,
-          'exact_norm_year' AS match_type
-        FROM (
-            SELECT _id, title_norm, year, corpus,
-                   lead(_id) OVER (
-                       PARTITION BY title_norm, year
-                       ORDER BY _id
-                   ) AS next_id
-            FROM lltk.texts FINAL
-            WHERE title_norm != ''
-              AND (author_norm IS NULL OR author_norm = '')
-              AND year IS NOT NULL
-              AND length(title_norm) > 10
-        ) a
-        INNER JOIN (SELECT _id, corpus FROM lltk.texts FINAL) b ON a.next_id = b._id
-        WHERE a.next_id != ''
-          AND a._id != b._id
-          {corpus_filter}
-    """)
-    n = ch_adapter.query(
-        "SELECT count() FROM lltk.matches FINAL WHERE match_type = 'exact_norm_year'"
-    )[0][0]
-    print(f'  Exact (by year, authorless): {n:,} pairs')
+        # Tier 1b: exact title_norm + year (authorless only)
+        with logmap('Exact title + year matching (authorless)...') as log:
+            ch_adapter.execute(f"""
+                INSERT INTO lltk.matches (_id_a, _id_b, similarity, match_type)
+                SELECT
+                if(a._id < b._id, a._id, b._id) AS _id_a,
+                if(a._id < b._id, b._id, a._id) AS _id_b,
+                1.0 AS similarity,
+                'exact_norm_year' AS match_type
+                FROM (
+                    SELECT _id, title_norm, year, corpus,
+                        lead(_id) OVER (
+                            PARTITION BY title_norm, year
+                            ORDER BY _id
+                        ) AS next_id
+                    FROM lltk.texts FINAL
+                    WHERE title_norm != ''
+                    AND (author_norm IS NULL OR author_norm = '')
+                    AND year IS NOT NULL
+                    AND length(title_norm) > 10
+                ) a
+                INNER JOIN (SELECT _id, corpus FROM lltk.texts FINAL) b ON a.next_id = b._id
+                WHERE a.next_id != ''
+                AND a._id != b._id
+                {corpus_filter}
+            """)
+            n = ch_adapter.query(
+                "SELECT count() FROM lltk.matches FINAL WHERE match_type = 'exact_norm_year'"
+            )[0][0]
+            log.debug(f'  Exact (by year, authorless): {n:,} pairs')
 
-    # Tier 2: containment (Python)
-    if containment:
-        _containment_pass(ch_adapter, corpora=corpora, corpus_where=corpus_where,
-                          progress=progress)
+        # Tier 2: containment (Python)
+        if containment:
+            _containment_pass(ch_adapter, corpora=corpora, corpus_where=corpus_where,
+                            progress=progress)
 
-    # Tier 3: fuzzy (Python, opt-in)
-    if fuzzy:
-        _fuzzy_pass(ch_adapter, corpora=corpora, corpus_where=corpus_where,
-                    progress=progress)
+        # Tier 3: fuzzy (Python, opt-in)
+        if fuzzy:
+            _fuzzy_pass(ch_adapter, corpora=corpora, corpus_where=corpus_where,
+                        progress=progress)
 
-    # Build match groups
-    print('Computing match groups...')
-    _compute_match_groups_ch(ch_adapter)
-    total = ch_adapter.query("SELECT count() FROM lltk.matches FINAL")[0][0]
-    n_groups = ch_adapter.query(
-        "SELECT countDistinct(group_id) FROM lltk.match_groups FINAL"
-    )[0][0]
-    n_in_groups = ch_adapter.query(
-        "SELECT count() FROM lltk.match_groups FINAL"
-    )[0][0]
-    print(f'Done: {total:,} match pairs, {n_in_groups:,} texts in {n_groups:,} groups')
+        # Build match groups
+        with logmap('Computing match groups...') as log:
+            _compute_match_groups_ch(ch_adapter)
+            total = ch_adapter.query("SELECT count() FROM lltk.matches FINAL")[0][0]
+            n_groups = ch_adapter.query(
+                "SELECT countDistinct(group_id) FROM lltk.match_groups FINAL"
+            )[0][0]
+            n_in_groups = ch_adapter.query(
+                "SELECT count() FROM lltk.match_groups FINAL"
+            )[0][0]
+            log.debug(f'Done: {total:,} match pairs, {n_in_groups:,} texts in {n_groups:,} groups')
 
 
 def _match_by_links_ch(ch_adapter, corpora=None):
@@ -186,7 +188,7 @@ def _match_by_links_ch(ch_adapter, corpora=None):
                       AND a._id != b._id
                 """)
             except Exception as e:
-                print(f'  id_link {corpus_id}.{my_col} -> {target_corpus_id}.{their_col}: {e}')
+                logmap.debug(f'  id_link {corpus_id}.{my_col} -> {target_corpus_id}.{their_col}: {e}')
 
 
 def _containment_pass(ch_adapter, corpora=None, corpus_where='', progress=True):
@@ -231,81 +233,81 @@ def _containment_pass(ch_adapter, corpora=None, corpus_where='', progress=True):
         ch_adapter.client.insert_arrow('matches', tbl)
 
     # (a) Within author blocks — one big SQL pull, group in Python
-    print('Containment (by author)...')
-    print('  fetching all eligible (author, title, _id, corpus) rows...')
-    rows_all = ch_adapter.query(f"""
-        SELECT author_norm, _id, title_norm, corpus
-        FROM lltk.texts
-        WHERE author_norm != '' AND title_norm != ''
-          AND length(title_norm) > 3
-          AND author_norm IN (
-              SELECT author_norm FROM lltk.texts
-              WHERE author_norm != '' AND title_norm != ''
-                AND length(title_norm) > 3
-              GROUP BY author_norm
-              HAVING count() > 1 AND count() <= 500
-          )
-          {corpus_where}
-    """)
-    print(f'  fetched {len(rows_all):,} rows; grouping...')
+    with logmap('Containment (by author)...') as log:
+        log.debug('  fetching all eligible (author, title, _id, corpus) rows...')
+        rows_all = ch_adapter.query(f"""
+            SELECT author_norm, _id, title_norm, corpus
+            FROM lltk.texts
+            WHERE author_norm != '' AND title_norm != ''
+            AND length(title_norm) > 3
+            AND author_norm IN (
+                SELECT author_norm FROM lltk.texts
+                WHERE author_norm != '' AND title_norm != ''
+                    AND length(title_norm) > 3
+                GROUP BY author_norm
+                HAVING count() > 1 AND count() <= 500
+            )
+            {corpus_where}
+        """)
+        log.debug(f'  fetched {len(rows_all):,} rows; grouping...')
 
-    # Group by author in Python
-    from collections import defaultdict
-    groups = defaultdict(list)
-    for author, _id, title, corp in rows_all:
-        groups[author].append((_id, title, corp))
+        # Group by author in Python
+        from collections import defaultdict
+        groups = defaultdict(list)
+        for author, _id, title, corp in rows_all:
+            groups[author].append((_id, title, corp))
 
-    it = (get_tqdm(groups.items(), desc='containment by author', total=len(groups))
-          if progress else groups.items())
-    for author, rows in it:
-        _check(rows)
-        if len(batch) >= 10000:
+        it = (log.progress(groups.items(), desc='containment by author', total=len(groups))
+            if progress else groups.items())
+        for author, rows in it:
+            _check(rows)
+            if len(batch) >= 10000:
+                _flush(batch); batch = []
+        if batch:
             _flush(batch); batch = []
-    if batch:
-        _flush(batch); batch = []
 
-    n = ch_adapter.query(
-        "SELECT count() FROM lltk.matches FINAL WHERE match_type = 'containment'"
-    )[0][0]
-    print(f'  By author: {n:,} pairs')
+        n = ch_adapter.query(
+            "SELECT count() FROM lltk.matches FINAL WHERE match_type = 'containment'"
+        )[0][0]
+        log.debug(f'  By author: {n:,} pairs')
 
     # (b) Authorless: match by year — same one-query-then-group pattern
-    print('Containment (by year, authorless)...')
-    rows_all = ch_adapter.query(f"""
-        SELECT year, _id, title_norm, corpus
-        FROM lltk.texts
-        WHERE (author_norm IS NULL OR author_norm = '')
-          AND title_norm != ''
-          AND year IS NOT NULL AND length(title_norm) > 5
-          AND year IN (
-              SELECT year FROM lltk.texts
-              WHERE (author_norm IS NULL OR author_norm = '')
-                AND title_norm != ''
-                AND year IS NOT NULL AND length(title_norm) > 5
-              GROUP BY year
-              HAVING count() > 1 AND count() <= 500
-          )
-          {corpus_where}
-    """)
-    print(f'  fetched {len(rows_all):,} rows; grouping...')
+    with logmap('Containment (by year, authorless)...') as log:
+        rows_all = ch_adapter.query(f"""
+            SELECT year, _id, title_norm, corpus
+            FROM lltk.texts
+            WHERE (author_norm IS NULL OR author_norm = '')
+            AND title_norm != ''
+            AND year IS NOT NULL AND length(title_norm) > 5
+            AND year IN (
+                SELECT year FROM lltk.texts
+                WHERE (author_norm IS NULL OR author_norm = '')
+                    AND title_norm != ''
+                    AND year IS NOT NULL AND length(title_norm) > 5
+                GROUP BY year
+                HAVING count() > 1 AND count() <= 500
+            )
+            {corpus_where}
+        """)
+        log.debug(f'  fetched {len(rows_all):,} rows; grouping...')
 
-    year_groups = defaultdict(list)
-    for year, _id, title, corp in rows_all:
-        year_groups[year].append((_id, title, corp))
+        year_groups = defaultdict(list)
+        for year, _id, title, corp in rows_all:
+            year_groups[year].append((_id, title, corp))
 
-    it = (get_tqdm(year_groups.items(), desc='containment by year',
-                   total=len(year_groups)) if progress else year_groups.items())
-    for year, rows in it:
-        _check(rows, match_type='containment_year', min_short=15)
-        if len(batch) >= 10000:
-            _flush(batch); batch = []
-    if batch:
-        _flush(batch)
+        it = (log.progress(year_groups.items(), desc='containment by year',
+                    total=len(year_groups)) if progress else year_groups.items())
+        for year, rows in it:
+            _check(rows, match_type='containment_year', min_short=15)
+            if len(batch) >= 10000:
+                _flush(batch); batch = []
+        if batch:
+            _flush(batch)
 
-    n = ch_adapter.query(
-        "SELECT count() FROM lltk.matches FINAL WHERE match_type = 'containment_year'"
-    )[0][0]
-    print(f'  By year (authorless): {n:,} pairs')
+        n = ch_adapter.query(
+            "SELECT count() FROM lltk.matches FINAL WHERE match_type = 'containment_year'"
+        )[0][0]
+        log.debug(f'  By year (authorless): {n:,} pairs')
 
 
 def _fuzzy_pass(ch_adapter, corpora=None, corpus_where='', progress=True):
@@ -314,60 +316,60 @@ def _fuzzy_pass(ch_adapter, corpora=None, corpus_where='', progress=True):
     from lltk.db.metadb import _jaro_winkler
     import pyarrow as pa
 
-    print('Fuzzy title matching within author blocks...')
-    rows_all = ch_adapter.query(f"""
-        SELECT author_norm, _id, title_norm, corpus, year
-        FROM lltk.texts
-        WHERE author_norm != '' AND title_norm != ''
-          AND length(title_norm) > 3
-          AND author_norm IN (
-              SELECT author_norm FROM lltk.texts
-              WHERE author_norm != '' AND title_norm != ''
-                AND length(title_norm) > 3
-              GROUP BY author_norm
-              HAVING count() > 1 AND count() <= 200
-          )
-          {corpus_where}
-    """)
-    from collections import defaultdict
-    fuzzy_groups = defaultdict(list)
-    for author, _id, title, corp, year in rows_all:
-        fuzzy_groups[author].append((_id, title, corp, year))
+    with logmap('Fuzzy title matching within author blocks...') as log:
+        rows_all = ch_adapter.query(f"""
+            SELECT author_norm, _id, title_norm, corpus, year
+            FROM lltk.texts
+            WHERE author_norm != '' AND title_norm != ''
+              AND length(title_norm) > 3
+              AND author_norm IN (
+                  SELECT author_norm FROM lltk.texts
+                  WHERE author_norm != '' AND title_norm != ''
+                    AND length(title_norm) > 3
+                  GROUP BY author_norm
+                  HAVING count() > 1 AND count() <= 200
+              )
+              {corpus_where}
+        """)
+        from collections import defaultdict
+        fuzzy_groups = defaultdict(list)
+        for author, _id, title, corp, year in rows_all:
+            fuzzy_groups[author].append((_id, title, corp, year))
 
-    batch = []
+        batch = []
 
-    def _flush(rows):
-        if not rows:
-            return
-        df = pd.DataFrame(rows, columns=['_id_a', '_id_b', 'similarity', 'match_type'])
-        df = df.drop_duplicates(subset=['_id_a', '_id_b'])
-        tbl = pa.Table.from_pandas(df, preserve_index=False)
-        ch_adapter.client.insert_arrow('matches', tbl)
+        def _flush(rows):
+            if not rows:
+                return
+            df = pd.DataFrame(rows, columns=['_id_a', '_id_b', 'similarity', 'match_type'])
+            df = df.drop_duplicates(subset=['_id_a', '_id_b'])
+            tbl = pa.Table.from_pandas(df, preserve_index=False)
+            ch_adapter.client.insert_arrow('matches', tbl)
 
-    it = (get_tqdm(fuzzy_groups.items(), desc='fuzzy by author',
-                   total=len(fuzzy_groups)) if progress else fuzzy_groups.items())
-    for author, rows in it:
-        for i in range(len(rows)):
-            for j in range(i + 1, len(rows)):
-                a_id, a_title, a_corp, a_year = rows[i]
-                b_id, b_title, b_corp, b_year = rows[j]
-                if a_corp == b_corp:
-                    continue
-                if a_year and b_year and abs(a_year - b_year) > 20:
-                    continue
-                sim = _jaro_winkler(a_title, b_title)
-                if sim > 0.85:
-                    pair = _ordered_pair(a_id, b_id)
-                    batch.append((*pair, sim, 'fuzzy_title'))
-        if len(batch) >= 10000:
-            _flush(batch); batch = []
-    if batch:
-        _flush(batch)
+        it = (get_tqdm(fuzzy_groups.items(), desc='fuzzy by author',
+                       total=len(fuzzy_groups)) if progress else fuzzy_groups.items())
+        for author, rows in it:
+            for i in range(len(rows)):
+                for j in range(i + 1, len(rows)):
+                    a_id, a_title, a_corp, a_year = rows[i]
+                    b_id, b_title, b_corp, b_year = rows[j]
+                    if a_corp == b_corp:
+                        continue
+                    if a_year and b_year and abs(a_year - b_year) > 20:
+                        continue
+                    sim = _jaro_winkler(a_title, b_title)
+                    if sim > 0.85:
+                        pair = _ordered_pair(a_id, b_id)
+                        batch.append((*pair, sim, 'fuzzy_title'))
+            if len(batch) >= 10000:
+                _flush(batch); batch = []
+        if batch:
+            _flush(batch)
 
-    n = ch_adapter.query(
-        "SELECT count() FROM lltk.matches FINAL WHERE match_type = 'fuzzy_title'"
-    )[0][0]
-    print(f'  Fuzzy: {n:,} pairs')
+        n = ch_adapter.query(
+            "SELECT count() FROM lltk.matches FINAL WHERE match_type = 'fuzzy_title'"
+        )[0][0]
+        log.debug(f'Fuzzy: {n:,} pairs')
 
 
 def _compute_match_groups_ch(ch_adapter):

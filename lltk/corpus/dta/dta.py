@@ -1,6 +1,7 @@
 import os
 
 import pandas as pd
+from logmap import logmap
 from lltk.imports import BaseCorpus, BaseText, fix_meta, tools
 
 
@@ -184,14 +185,16 @@ class DTA(BaseCorpus):
 		from lltk import tools
 		ofnfn=os.path.join(self.path_raw, f'_tmp_{self.id}_raw.zip')
 		if not os.path.exists(ofnfn):
-			print('>> downloading:',self.url_raw,'to',ofnfn)
+			with logmap('Downloading DTA data') as _log:
+				_log.debug(f'downloading: {self.url_raw} to {ofnfn}')
 			tools.download(self.url_raw, ofnfn)
 		return ofnfn
 
 	def download_raw_metadata(self):
 		ofnfn=os.path.join(self.path_raw, f'_tmp_{self.id}_raw_metadata.zip')
 		if not os.path.exists(ofnfn):
-			print('>> downloading:',self.url_raw_metadata,'to',ofnfn)
+			with logmap('Downloading DTA metadata') as _log:
+				_log.debug(f'downloading: {self.url_raw_metadata} to {ofnfn}')
 			tools.download(self.url_raw_metadata, ofnfn)
 		return ofnfn
 
