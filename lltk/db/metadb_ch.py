@@ -172,10 +172,14 @@ class _LegacyResult:
         self._params = params
 
     def _run(self):
+        # A dict of params => clickhouse-connect server-side bound parameters
+        # ({name:Type} placeholders). Safe for untrusted values (the web app).
+        if isinstance(self._params, dict):
+            return self._adapter.client.query(
+                self._sql, parameters=self._params).result_rows
         if self._params:
             # DuckDB-style positional '?' params aren't natively supported by
-            # clickhouse-connect. Inline them (SQL injection risk is limited
-            # to internal callers — LLTK doesn't accept user SQL here).
+            # clickhouse-connect. Inline them (backslash-safe via ch_quote).
             sql = self._sql
             for p in self._params:
                 if isinstance(p, str):
@@ -197,6 +201,9 @@ class _LegacyResult:
         return self._run()
 
     def fetchdf(self):
+        if isinstance(self._params, dict):
+            return self._adapter.client.query_df(
+                self._sql, parameters=self._params)
         sql = self._sql
         if self._params:
             for p in self._params:
