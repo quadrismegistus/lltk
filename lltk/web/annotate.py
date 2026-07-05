@@ -19,6 +19,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 import lltk
+from lltk.db.adapter import ch_quote
 from lltk.db.metadb import GENRE_VOCAB
 
 WEB_DIR = Path(__file__).parent
@@ -170,9 +171,9 @@ def create_app(corpus_id: str):
         """Paginated text list with filters."""
         clauses = []
         if corpus_filter:
-            clauses.append(f"t.corpus = '{corpus_filter}'")
+            clauses.append(f"t.corpus = '{ch_quote(corpus_filter)}'")
         if genre:
-            clauses.append(f"t.genre = '{genre}'")
+            clauses.append(f"t.genre = '{ch_quote(genre)}'")
         # genre_raw filtered post-annotation-merge (annotations can override DB value)
         if year_min is not None:
             clauses.append(f't.year >= {year_min}')
@@ -181,7 +182,7 @@ def create_app(corpus_id: str):
         if is_translated is not None:
             clauses.append(f't.is_translated = {str(is_translated).lower()}')
         if search:
-            safe = search.replace("'", "''")
+            safe = ch_quote(search)
             clauses.append(f"(t.title ILIKE '%{safe}%' OR t.author ILIKE '%{safe}%')")
 
         # Build source filter from corpus SOURCES
@@ -189,9 +190,9 @@ def create_app(corpus_id: str):
         if hasattr(corpus, 'SOURCES') and corpus.SOURCES:
             source_clauses = []
             for cid, filters in corpus.SOURCES.items():
-                parts = [f"t.corpus = '{cid}'"]
+                parts = [f"t.corpus = '{ch_quote(cid)}'"]
                 for k, v in filters.items():
-                    parts.append(f"t.{k} = '{v}'")
+                    parts.append(f"t.{k} = '{ch_quote(v)}'")
                 source_clauses.append('(' + ' AND '.join(parts) + ')')
             source_filter = '(' + ' OR '.join(source_clauses) + ')'
 
@@ -448,7 +449,7 @@ def create_app(corpus_id: str):
         """Quick search for linking — returns top 10 matches by title."""
         if not q or len(q) < 2:
             return {'results': []}
-        safe = q.replace("'", "''")
+        safe = ch_quote(q)
         rows = lltk.db.conn.execute(f"""
             SELECT _id, corpus, title, author, year
             FROM texts

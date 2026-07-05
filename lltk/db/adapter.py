@@ -29,6 +29,19 @@ import os
 from urllib.parse import urlparse, parse_qs
 
 
+def ch_quote(s):
+    """Escape a string for safe inclusion inside a single-quoted ClickHouse/SQL
+    string literal. Returns the INNER escaped text (no surrounding quotes); callers
+    wrap it: ``f"'{ch_quote(x)}'"``.
+
+    Backslash MUST be escaped before the quote: ClickHouse honors C-style backslash
+    escapes in string literals, so quote-doubling alone is insufficient — an input
+    ending in ``\\`` or containing ``\\'`` would otherwise escape the closing quote
+    and inject. Order matters (backslash first, then quote).
+    """
+    return str(s).replace("\\", "\\\\").replace("'", "''")
+
+
 class DBAdapter(ABC):
     """Common interface implemented by DuckDB and ClickHouse backends."""
 
@@ -85,7 +98,9 @@ class DuckDBAdapter(DBAdapter):
         return self.conn.execute(sql, params or []).fetchdf()
 
     def insert_parquet(self, table, path_or_glob):
-        # DuckDB supports globs natively in read_parquet.
+        # DuckDB supports globs natively in read_parquet. NB: DuckDB does not
+        # honor backslash escapes in string literals (unlike ClickHouse), so
+        # quote-doubling is the correct escaping here — not ch_quote.
         path_esc = os.path.expanduser(path_or_glob).replace("'", "''")
         self.conn.execute(f"""
             INSERT INTO {table}

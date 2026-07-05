@@ -16,6 +16,8 @@ from typing import Optional
 
 from logmap import logmap
 
+from lltk.db.adapter import ch_quote
+
 _ENCODER_CACHE: dict = {}
 
 DEFAULT_MODEL = 'intfloat/multilingual-e5-large'
@@ -65,7 +67,7 @@ def _encode_batch(texts: list[str], encoder, prefix: str = 'passage: ',
 
 
 def _escape(s: str) -> str:
-    return s.replace("'", "''")
+    return ch_quote(s)
 
 
 # -- Build -----------------------------------------------------------------

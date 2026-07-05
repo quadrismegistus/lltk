@@ -19,6 +19,7 @@ from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from lltk.db.adapter import ch_quote
 from lltk.db.metadb import GENRE_VOCAB
 
 WEB_DIR = Path(__file__).parent
@@ -147,7 +148,7 @@ def create_app():
     @app.get('/api/genre-timeline')
     async def get_genre_timeline(corpus: str = Query('', description='Filter by corpus')):
         try:
-            corpus_filter = f"AND corpus = '{corpus}'" if corpus else ""
+            corpus_filter = f"AND corpus = '{ch_quote(corpus)}'" if corpus else ""
             df = db.conn.execute(f"""
                 SELECT CAST(FLOOR(year / 10.0) * 10 AS INTEGER) as decade,
                        genre,
@@ -196,12 +197,12 @@ def create_app():
             # Build WHERE
             clauses = []
             if search:
-                escaped = search.replace("'", "''")
+                escaped = ch_quote(search)
                 clauses.append(f"(t.title ILIKE '%{escaped}%' OR t.author ILIKE '%{escaped}%')")
             if corpus:
-                clauses.append(f"t.corpus = '{corpus}'")
+                clauses.append(f"t.corpus = '{ch_quote(corpus)}'")
             if genre:
-                clauses.append(f"t.genre = '{genre}'")
+                clauses.append(f"t.genre = '{ch_quote(genre)}'")
             if year_min is not None:
                 clauses.append(f"t.year >= {int(year_min)}")
             if year_max is not None:
@@ -270,12 +271,12 @@ def create_app():
         try:
             clauses = []
             if search:
-                escaped = search.replace("'", "''")
+                escaped = ch_quote(search)
                 clauses.append(f"(t.title ILIKE '%{escaped}%' OR t.author ILIKE '%{escaped}%')")
             if corpus:
-                clauses.append(f"t.corpus = '{corpus}'")
+                clauses.append(f"t.corpus = '{ch_quote(corpus)}'")
             if genre:
-                clauses.append(f"t.genre = '{genre}'")
+                clauses.append(f"t.genre = '{ch_quote(genre)}'")
             if year_min is not None:
                 clauses.append(f"t.year >= {int(year_min)}")
             if year_max is not None:
