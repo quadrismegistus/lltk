@@ -24,6 +24,8 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from logmap import logmap
 
+from lltk.db.adapter import ch_quote
+
 
 def _read_freqs_json(path):
     """Read a single freqs JSON file into a dict[str -> int]."""
@@ -143,7 +145,7 @@ def ingest_freqs_from_jsons(ch_adapter, corpora=None, batch_size=2000,
     # Without it, we skip _ids already present (resumable default).
     where = ''
     if corpora:
-        cl = ', '.join(f"'{c}'" for c in corpora)
+        cl = ', '.join(f"'{ch_quote(c)}'" for c in corpora)
         where = f"AND t.corpus IN ({cl})"
 
     with logmap('Ingesting freqs from JSONs...') as log:
@@ -152,7 +154,7 @@ def ingest_freqs_from_jsons(ch_adapter, corpora=None, batch_size=2000,
             # Without SETTINGS mutations_sync=1, ALTER TABLE DELETE is async and the
             # subsequent LEFT ANTI JOIN could see rows still pending removal.
             if corpora:
-                cl = ', '.join(f"'{c}'" for c in corpora)
+                cl = ', '.join(f"'{ch_quote(c)}'" for c in corpora)
                 ch_adapter.execute(
                     f"ALTER TABLE lltk.text_freqs DELETE WHERE corpus IN ({cl}) "
                     f"SETTINGS mutations_sync=1"

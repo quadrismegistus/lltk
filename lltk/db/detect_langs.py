@@ -16,6 +16,8 @@ import pyarrow as pa
 
 from logmap import logmap
 
+from lltk.db.adapter import ch_quote
+
 
 def detect_langs_clickhouse(ch_adapter, min_tokens=50,
                              coverage_threshold=0.05,
@@ -115,7 +117,7 @@ def detect_langs_clickhouse(ch_adapter, min_tokens=50,
             for lg in langs
         )
         hits_arr = '[' + ', '.join(f'{lg}_hits' for lg in langs) + ']'
-        langs_arr = '[' + ', '.join(f"'{lg}'" for lg in langs) + ']'
+        langs_arr = '[' + ', '.join(f"'{ch_quote(lg)}'" for lg in langs) + ']'
 
         sql = f"""
             INSERT INTO lltk.text_langs

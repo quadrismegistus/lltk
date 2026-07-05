@@ -21,6 +21,7 @@ import pyarrow as pa
 
 from logmap import logmap
 from lltk.db.metadb import GENRE_AUTHORITY_CORPORA
+from lltk.db.adapter import ch_quote
 
 
 def enrich_genres_ch(ch_adapter, progress=True):
@@ -32,7 +33,7 @@ def enrich_genres_ch(ch_adapter, progress=True):
             authority wins).
     """
     with logmap('Enriching genres...') as log:
-        authority_list = ', '.join(f"'{c}'" for c in GENRE_AUTHORITY_CORPORA.keys())
+        authority_list = ', '.join(f"'{ch_quote(c)}'" for c in GENRE_AUTHORITY_CORPORA.keys())
 
         # Step 1: baseline rows (one per text, starting from corpus genre)
         with logmap('Baseline from corpus genre...') as bl_log:

@@ -37,6 +37,7 @@ from typing import Any, Optional
 import pandas as pd
 
 from lltk.tools.logs import log
+from lltk.db.adapter import ch_quote
 
 
 # ── Register annotation field specs for task-derived scalars ──────────
@@ -167,7 +168,7 @@ def _get_text_ids(
     """Query CH for text IDs matching filters. Returns texts DataFrame."""
     import lltk
     if ids is not None:
-        id_list = ', '.join(f"'{i}'" for i in ids)
+        id_list = ', '.join(f"'{ch_quote(i)}'" for i in ids)
         df = lltk.db.adapter.query_df(
             f"SELECT * FROM lltk.texts FINAL WHERE _id IN ({id_list})"
         )
