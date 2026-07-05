@@ -32,6 +32,24 @@ from lltk.db.schema import create_all_tables
 # from this hardcoded value. See README / CLAUDE.md for setup.
 _DEV_FALLBACK_CH_URL = 'clickhouse://lltk:lltk@localhost:8123/lltk'
 
+
+def resolve_ch_url(url=None, readonly=False):
+    """Resolve the ClickHouse connection URL.
+
+    Precedence: explicit `url` > env var > localhost dev fallback. When
+    readonly=True, prefer LLTK_CLICKHOUSE_URL_READONLY — point that at a
+    SELECT-only ClickHouse user so the public explorer cannot mutate data; it
+    falls back to the read-write URL when unset. In production set
+    LLTK_CLICKHOUSE_URL so real credentials are never sourced from code.
+    """
+    if url:
+        return url
+    if readonly:
+        ro = os.environ.get('LLTK_CLICKHOUSE_URL_READONLY')
+        if ro:
+            return ro
+    return os.environ.get('LLTK_CLICKHOUSE_URL') or _DEV_FALLBACK_CH_URL
+
 # _id format: '_{corpus}/{text_id}'. corpus = manifest-controlled lowercase
 # alphanumeric+underscore. text_id can be very broad — markmark/txtlab IDs
 # contain apostrophes, commas, spaces, even combining diacritics. We
@@ -209,15 +227,10 @@ class _LegacyConnShim:
 
 
 class MetaDBCH:
-    def __init__(self, url=None):
-        # Resolution: explicit arg > LLTK_CLICKHOUSE_URL env > localhost dev fallback.
-        # The dev fallback assumes `docker compose up -d` or local brew install.
-        # In production set LLTK_CLICKHOUSE_URL with real credentials.
-        self.url = (
-            url
-            or os.environ.get('LLTK_CLICKHOUSE_URL')
-            or _DEV_FALLBACK_CH_URL
-        )
+    def __init__(self, url=None, readonly=False):
+        # explicit arg > LLTK_CLICKHOUSE_URL env > localhost dev fallback.
+        # readonly=True prefers LLTK_CLICKHOUSE_URL_READONLY (see resolve_ch_url).
+        self.url = resolve_ch_url(url, readonly=readonly)
         self._adapter = None
 
     @property

@@ -35,9 +35,12 @@ def create_app():
     app = FastAPI(title='LLTK Explorer', dependencies=[Depends(require_auth)])
     app.mount('/static', StaticFiles(directory=str(STATIC_DIR)), name='static')
 
-    # Points at MetaDBCH (ClickHouse-backed). Reads are naturally concurrent
-    # in ClickHouse — no read_only flag needed (no file locks).
-    db = lltk.db
+    # Read-only connection: uses LLTK_CLICKHOUSE_URL_READONLY (a SELECT-only
+    # ClickHouse user) when set, else the default read-write URL. The explorer
+    # only issues SELECTs, so a restricted user is the right default for a
+    # public deploy.
+    from lltk.db.metadb_ch import MetaDBCH
+    db = MetaDBCH(readonly=True)
 
     # ── HTML shell ──────────────────────────────────────────────────────
 
