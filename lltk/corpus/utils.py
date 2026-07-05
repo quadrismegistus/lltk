@@ -712,7 +712,15 @@ def load_corpus(id,manifestd={},load_meta=False,force=False,install_if_nec=True,
         manifestd.get('path_python'),
         manifestd.get('class_name')
     )
-    if not path_python or not os.path.exists(path_python): 
+    if not path_python or not os.path.exists(path_python):
+        # No corpus module on disk. If there's a real manifest stanza, load as a
+        # plain BaseCorpus (manifest + data driven — lets a simple corpus drop
+        # its boilerplate class module). No stanza at all means the corpus does
+        # not exist -> return None, as before.
+        if id in get_inducted_corpus_ids():
+            from lltk.corpus.corpus import BaseCorpus
+            from lltk.text.utils import merge_dict
+            return BaseCorpus(**merge_dict(manifestd, input_kwargs))
         log.info(f'-> ?')
         return
 

@@ -254,6 +254,18 @@ class BaseCorpus(TextList):
         base = os.path.splitext(self.path_metadata)[0]
         return base + '.parquet'
 
+    def _apply_manifest_genre(self, df):
+        """Stamp genre / genre_raw from manifest keys, so a data-driven corpus
+        can set a constant genre via the manifest (`genre = Fiction`) instead of
+        a load_metadata override that exists only to do that. No-op unless the
+        manifest defines the key (unset/empty = skip)."""
+        if df is not None and len(df):
+            g = getattr(self, 'genre', None)
+            gr = getattr(self, 'genre_raw', None)
+            if g: df['genre'] = g
+            if gr: df['genre_raw'] = gr
+        return df
+
     def load_metadata(self, force=False, **kwargs):
         if not force and self._metadf is not None:
             return self._metadf
@@ -269,6 +281,7 @@ class BaseCorpus(TextList):
                     df = pd.read_parquet(pq_path)
                     if self.col_id in set(df.columns):
                         df = df.set_index(self.col_id)
+                    df = self._apply_manifest_genre(df)
                     self._metadf = df
                     return df
             except (OSError, IOError, ValueError, KeyError):
@@ -286,6 +299,7 @@ class BaseCorpus(TextList):
         except (OSError, IOError, PermissionError):
             pass
 
+        df = self._apply_manifest_genre(df)
         self._metadf = df
         return df
 
