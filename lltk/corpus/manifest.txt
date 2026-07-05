@@ -294,7 +294,7 @@ url_freqs = https://www.dropbox.com/scl/fi/jsu61vvumufmvbtm8eyla/eebo_tcp_freqs.
 url_metadata = https://www.dropbox.com/scl/fi/y9rfesomurvzwotljz8mg/eebo_tcp_metadata.zip?rlkey=7ed4e5mzcbl8tumaii8nxqcrn&dl=1
 url_txt = https://www.dropbox.com/scl/fi/q2w0a76qsssx4zi2k0ql8/eebo_tcp_txt.zip?rlkey=x7rjzr0gfrkezw42z88ws7yjn&dl=1
 url_xml = https://www.dropbox.com/scl/fi/cl7pl73ugbo4wv5aaz7jp/eebo_tcp_xml.zip?rlkey=hutc8r3cod9y94x26vsfljz5s&dl=1
-public = freqs
+public = metadata,freqs,txt,xml
 license_type = Free
 lang = en
 private = 
