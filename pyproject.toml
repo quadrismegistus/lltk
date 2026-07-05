@@ -57,6 +57,12 @@ lltk = "lltk.cli:main"
 [tool.setuptools]
 include-package-data = true
 
+[tool.setuptools.package-data]
+# Ship the web frontend build + HTML templates in the wheel — create_app()
+# mounts lltk/web/static and reads lltk/web/templates at import time, so a
+# `pip install` without these crashes the web app on startup.
+"lltk.web" = ["static/**/*", "templates/**/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
