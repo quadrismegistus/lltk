@@ -685,6 +685,7 @@ id = spectator
 name = Spectator
 desc = The Spectator (1711-1714)
 link = http://www.gutenberg.org/ebooks/12030
+genre = Periodical
 url_freqs = https://www.dropbox.com/s/sil5q31833rz4n0/spectator_freqs.zip?dl=1
 url_metadata = https://www.dropbox.com/s/3cw2lcza68djzj1/spectator_metadata.zip?dl=1
 url_txt = https://www.dropbox.com/s/goj6xbom3qnv5u5/spectator_txt.zip?dl=1

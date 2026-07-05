@@ -1,1 +1,0 @@
-from .spectator import Spectator

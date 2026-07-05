@@ -10,6 +10,8 @@ import time
 
 from logmap import logmap
 
+from lltk.db.adapter import ch_quote
+
 WORDLIST_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     'data', 'wordlist_en.txt',
@@ -64,7 +66,7 @@ def score_ocr_accuracy(ch_adapter, *, corpora=None, skip_existing=True,
         with logmap('Scoring texts...') as score_log:
             wheres = []
             if corpora:
-                corpora_sql = ', '.join(f"'{c}'" for c in corpora)
+                corpora_sql = ', '.join(f"'{ch_quote(c)}'" for c in corpora)
                 wheres.append(f"corpus IN ({corpora_sql})")
             if skip_existing:
                 wheres.append("_id NOT IN (SELECT _id FROM lltk.text_ocr FINAL)")
