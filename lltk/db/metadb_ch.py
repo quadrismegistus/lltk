@@ -23,7 +23,7 @@ import time
 import pandas as pd
 from logmap import logmap
 
-from lltk.db.adapter import get_adapter
+from lltk.db.adapter import get_adapter, ch_quote
 from lltk.db.schema import create_all_tables
 
 
@@ -88,7 +88,7 @@ def _sql_str(s):
     control characters. Returns the escaped value WITHOUT surrounding quotes
     (caller wraps in '...').
     """
-    return s.replace("'", "''")
+    return ch_quote(s)
 
 
 # Mapping of legacy DuckDB-style table references → ClickHouse equivalents.
@@ -161,7 +161,7 @@ class _LegacyResult:
             sql = self._sql
             for p in self._params:
                 if isinstance(p, str):
-                    p = "'" + p.replace("'", "''") + "'"
+                    p = "'" + ch_quote(p) + "'"
                 elif p is None:
                     p = 'NULL'
                 else:
@@ -183,7 +183,7 @@ class _LegacyResult:
         if self._params:
             for p in self._params:
                 if isinstance(p, str):
-                    p = "'" + p.replace("'", "''") + "'"
+                    p = "'" + ch_quote(p) + "'"
                 elif p is None:
                     p = 'NULL'
                 else:

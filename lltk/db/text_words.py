@@ -14,6 +14,8 @@ import time
 
 from logmap import logmap
 
+from lltk.db.adapter import ch_quote
+
 
 def build_text_words(ch_adapter, corpora=None, force=False, progress=True):
     """Populate lltk.text_words from lltk.text_freqs via ARRAY JOIN mapItems.
@@ -124,7 +126,7 @@ def build_text_words(ch_adapter, corpora=None, force=False, progress=True):
     with logmap(f'Building text_words incrementally ({len(corpora)} corpora)...') as log:
         it = get_tqdm(corpora, desc='text_words') if progress else corpora
         for corpus in it:
-            c_esc = corpus.replace("'", "''")
+            c_esc = ch_quote(corpus)
             where_skip = ''
             existing = ch_adapter.query(
                 f"SELECT count() FROM lltk.text_words WHERE corpus = '{c_esc}'"

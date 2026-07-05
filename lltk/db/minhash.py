@@ -18,6 +18,8 @@ import pyarrow as pa
 
 from logmap import logmap
 
+from lltk.db.adapter import ch_quote
+
 
 def _cache_path(corpus_id, num_perm):
     return os.path.expanduser(
@@ -153,8 +155,8 @@ def minhash_match_ch(ch_adapter, *, threshold=0.5, num_perm=128, corpus=None):
         with logmap('Top 10 matches...') as top_log:
             for a, b, sim in matches[:10]:
                 try:
-                    a_esc = a.replace("'", "''")
-                    b_esc = b.replace("'", "''")
+                    a_esc = ch_quote(a)
+                    b_esc = ch_quote(b)
                     ra = ch_adapter.query(
                         f"SELECT title, author, year FROM lltk.texts FINAL WHERE _id='{a_esc}' LIMIT 1"
                     )

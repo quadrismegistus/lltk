@@ -46,6 +46,7 @@ from typing import Any, Iterable, Optional
 
 import pandas as pd
 
+from lltk.db.adapter import ch_quote
 from lltk.tools.vocabs import GENRE_VOCAB, LANG_ISO639_1, normalize_lang
 
 
@@ -415,7 +416,7 @@ def _ensure_source_registered(source: str) -> None:
 
 
 def _sql_escape(s):
-    return s.replace("'", "''")
+    return ch_quote(s)
 
 
 def resolve(ids: Optional[Iterable[str]] = None,

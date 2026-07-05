@@ -16,6 +16,8 @@ import os
 import re
 import time
 
+from lltk.db.adapter import ch_quote
+
 _NEAR_RE = re.compile(r'^NEAR\s*\(([^,)]+)(?:,\s*\d+)?\)\s*$', re.IGNORECASE)
 _PHRASE_RE = re.compile(r'^"([^"]+)"$')
 
@@ -24,7 +26,7 @@ _PHRASE_RE = re.compile(r'^"([^"]+)"$')
 
 def _escape(s: str) -> str:
     """Escape a string for single-quoted SQL literals (doubles apostrophes)."""
-    return s.replace("'", "''")
+    return ch_quote(s)
 
 
 def _query_to_ch_condition(query: str) -> str:

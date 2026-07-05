@@ -244,6 +244,7 @@ def main():
 	p_annotate = subparsers.add_parser('annotate', help='Launch annotation web app for a corpus')
 	p_annotate.add_argument('corpus', help='Corpus ID (e.g. arc_fiction)')
 	p_annotate.add_argument('--port', type=int, default=8989, help='Port (default: 8989)')
+	p_annotate.add_argument('--host', default='127.0.0.1', help='Bind host (default 127.0.0.1; use 0.0.0.0 to expose — set LLTK_WEB_USER/LLTK_WEB_PASSWORD first)')
 
 	# annotate-llm
 	p_allm = subparsers.add_parser('annotate-llm',
@@ -314,6 +315,7 @@ def main():
 	# app (explorer)
 	p_app = subparsers.add_parser('app', help='Launch LLTK explorer web app')
 	p_app.add_argument('--port', type=int, default=8899, help='Port (default: 8899)')
+	p_app.add_argument('--host', default='127.0.0.1', help='Bind host (default 127.0.0.1; use 0.0.0.0 to expose — set LLTK_WEB_USER/LLTK_WEB_PASSWORD first)')
 
 	if len(sys.argv) == 1:
 		parser.print_help(sys.stderr)
@@ -646,7 +648,7 @@ def main():
 
 	elif args.cmd == 'annotate':
 		from lltk.web.annotate import run_annotate
-		run_annotate(args.corpus, port=args.port)
+		run_annotate(args.corpus, port=args.port, host=args.host)
 
 	elif args.cmd == 'annotate-llm':
 		from lltk.annotate import run_task
@@ -763,7 +765,7 @@ def main():
 
 	elif args.cmd == 'app':
 		from lltk.web.app import run_app
-		run_app(port=args.port)
+		run_app(port=args.port, host=args.host)
 
 
 if __name__ == '__main__':

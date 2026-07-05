@@ -15,10 +15,12 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Depends
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from lltk.web.auth import require_auth, warn_if_exposed
 
+from lltk.db.adapter import ch_quote
 from lltk.db.metadb import GENRE_VOCAB
 
 WEB_DIR = Path(__file__).parent
@@ -30,7 +32,7 @@ def create_app():
     """Create the LLTK explorer FastAPI app."""
     import lltk
 
-    app = FastAPI(title='LLTK Explorer')
+    app = FastAPI(title='LLTK Explorer', dependencies=[Depends(require_auth)])
     app.mount('/static', StaticFiles(directory=str(STATIC_DIR)), name='static')
 
     # Points at MetaDBCH (ClickHouse-backed). Reads are naturally concurrent
@@ -147,7 +149,7 @@ def create_app():
     @app.get('/api/genre-timeline')
     async def get_genre_timeline(corpus: str = Query('', description='Filter by corpus')):
         try:
-            corpus_filter = f"AND corpus = '{corpus}'" if corpus else ""
+            corpus_filter = f"AND corpus = '{ch_quote(corpus)}'" if corpus else ""
             df = db.conn.execute(f"""
                 SELECT CAST(FLOOR(year / 10.0) * 10 AS INTEGER) as decade,
                        genre,
@@ -196,12 +198,12 @@ def create_app():
             # Build WHERE
             clauses = []
             if search:
-                escaped = search.replace("'", "''")
+                escaped = ch_quote(search)
                 clauses.append(f"(t.title ILIKE '%{escaped}%' OR t.author ILIKE '%{escaped}%')")
             if corpus:
-                clauses.append(f"t.corpus = '{corpus}'")
+                clauses.append(f"t.corpus = '{ch_quote(corpus)}'")
             if genre:
-                clauses.append(f"t.genre = '{genre}'")
+                clauses.append(f"t.genre = '{ch_quote(genre)}'")
             if year_min is not None:
                 clauses.append(f"t.year >= {int(year_min)}")
             if year_max is not None:
@@ -270,12 +272,12 @@ def create_app():
         try:
             clauses = []
             if search:
-                escaped = search.replace("'", "''")
+                escaped = ch_quote(search)
                 clauses.append(f"(t.title ILIKE '%{escaped}%' OR t.author ILIKE '%{escaped}%')")
             if corpus:
-                clauses.append(f"t.corpus = '{corpus}'")
+                clauses.append(f"t.corpus = '{ch_quote(corpus)}'")
             if genre:
-                clauses.append(f"t.genre = '{genre}'")
+                clauses.append(f"t.genre = '{ch_quote(genre)}'")
             if year_min is not None:
                 clauses.append(f"t.year >= {int(year_min)}")
             if year_max is not None:
@@ -720,9 +722,11 @@ def create_app():
     return app
 
 
-def run_app(port: int = 8899, host: str = '0.0.0.0', reload: bool = True):
-    """Run the explorer server."""
+def run_app(port: int = 8899, host: str = '127.0.0.1', reload: bool = True):
+    """Run the explorer server. Loopback-only by default; pass host='0.0.0.0'
+    to expose (set LLTK_WEB_USER/LLTK_WEB_PASSWORD first)."""
     import uvicorn
+    warn_if_exposed(host)
     print(f'\n  LLTK Explorer')
     print(f'  http://{host}:{port}\n')
     if reload:

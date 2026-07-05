@@ -20,6 +20,8 @@ import time
 
 from logmap import logmap
 
+from lltk.db.adapter import ch_quote
+
 
 # ── Build year_corpus_totals ─────────────────────────────────────────────
 
@@ -31,7 +33,7 @@ def build_year_corpus_totals(ch_adapter, corpora=None):
     """
     corpus_filter = ''
     if corpora:
-        cl = ', '.join(f"'{c}'" for c in corpora)
+        cl = ', '.join(f"'{ch_quote(c)}'" for c in corpora)
         corpus_filter = f"AND t.corpus IN ({cl})"
 
     with logmap('Building year_corpus_totals...') as log:
@@ -89,20 +91,18 @@ def _text_filters(genre=None, corpus=None,
     wheres = ['year IS NOT NULL']
     if genre:
         g = genre if isinstance(genre, (list, tuple)) else [genre]
-        wheres.append(
-            f"genre IN ({', '.join(repr(str(x)) for x in g)})"
-        )
+        g_sql = ', '.join("'" + ch_quote(x) + "'" for x in g)
+        wheres.append(f"genre IN ({g_sql})")
     if corpus:
         c = corpus if isinstance(corpus, (list, tuple)) else [corpus]
-        wheres.append(
-            f"corpus IN ({', '.join(repr(str(x)) for x in c)})"
-        )
+        c_sql = ', '.join("'" + ch_quote(x) + "'" for x in c)
+        wheres.append(f"corpus IN ({c_sql})")
     if year_min is not None:
         wheres.append(f'year >= {int(year_min)}')
     if year_max is not None:
         wheres.append(f'year <= {int(year_max)}')
     if lang:
-        wheres.append(f"lang = '{str(lang)}'")
+        wheres.append(f"lang = '{ch_quote(lang)}'")
     return wheres
 
 
@@ -142,7 +142,7 @@ def ngram_ch(ch_adapter, words, genre=None, corpus=None,
         import pandas as pd
         return pd.DataFrame(columns=['period', 'word', 'value',
                                      'raw_count', 'n_texts'])
-    words_sql = ', '.join(f"'{w}'" for w in words)
+    words_sql = ', '.join(f"'{ch_quote(w)}'" for w in words)
 
     period_sql = _period_expr(by)
     wheres = _text_filters(genre=genre, corpus=corpus,
@@ -185,14 +185,12 @@ def ngram_ch(ch_adapter, words, genre=None, corpus=None,
         denom_wheres = []
         if genre:
             g = genre if isinstance(genre, (list, tuple)) else [genre]
-            denom_wheres.append(
-                f"genre IN ({', '.join(repr(str(x)) for x in g)})"
-            )
+            g_sql = ', '.join("'" + ch_quote(x) + "'" for x in g)
+            denom_wheres.append(f"genre IN ({g_sql})")
         if corpus:
             c = corpus if isinstance(corpus, (list, tuple)) else [corpus]
-            denom_wheres.append(
-                f"corpus IN ({', '.join(repr(str(x)) for x in c)})"
-            )
+            c_sql = ', '.join("'" + ch_quote(x) + "'" for x in c)
+            denom_wheres.append(f"corpus IN ({c_sql})")
         if year_min is not None:
             denom_wheres.append(f'year >= {int(year_min)}')
         if year_max is not None:
@@ -262,7 +260,7 @@ def ngram_examples_ch(ch_adapter, word, genre=None, corpus=None,
         INNER JOIN (SELECT _id, n_words FROM lltk.text_stats FINAL) AS ts
             ON tw._id = ts._id
         {dedup_join}
-        WHERE tw.word = '{word}'
+        WHERE tw.word = '{ch_quote(word)}'
           AND ts.n_words > 0
           {dedup_where}
         ORDER BY per_million DESC

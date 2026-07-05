@@ -24,6 +24,8 @@ import pandas as pd
 import networkx as nx
 from logmap import logmap
 
+from lltk.db.adapter import ch_quote
+
 
 def _ordered_pair(a, b):
     return (a, b) if a < b else (b, a)
@@ -403,7 +405,7 @@ def _compute_match_groups_ch(ch_adapter):
 
 def find_matches_ch(ch_adapter, query):
     """Search matches by title substring. Returns DataFrame."""
-    q = query.replace("'", "''")
+    q = ch_quote(query)
     return ch_adapter.query_df(f"""
         SELECT m.group_id, t._id, t.title, t.author, t.year, t.corpus
         FROM (SELECT _id, group_id, rank FROM lltk.match_groups FINAL) AS m

@@ -311,6 +311,21 @@ class BaseText(BaseObject):
 
     
 
+    def _safe_path(self, base):
+        """Join base with this text's id, returning it only if it stays within
+        base. Blocks '../' path traversal from crafted ids (e.g. an _id like
+        '../../../etc/passwd' reaching the web app's GET /api/text/{_id:path}).
+        Legit ids containing '/' (per-directory corpora) still resolve; returns
+        '' if the id would escape base."""
+        if not base or not self.id:
+            return ''
+        joined = os.path.join(base, self.id)
+        base_real = os.path.realpath(base)
+        full_real = os.path.realpath(joined)
+        if full_real == base_real or full_real.startswith(base_real + os.sep):
+            return joined
+        return ''
+
     def get_path(self, part, **kwargs):
         if part.startswith('path_'): part = part[5:]
         if not self.corpus: return ''
@@ -318,19 +333,22 @@ class BaseText(BaseObject):
             clean_dir = getattr(self.corpus, 'path_txt_clean', None)
             if clean_dir:
                 ext = getattr(self.corpus, 'ext_txt', None)
-                clean_path = os.path.join(clean_dir, self.id) + (ext or '')
-                if os.path.exists(clean_path):
-                    return clean_path
+                safe = self._safe_path(clean_dir)
+                if safe:
+                    clean_path = safe + (ext or '')
+                    if os.path.exists(clean_path):
+                        return clean_path
         res = getattr(self.corpus, 'path_' + part, None)
         if res:
             ext = getattr(self.corpus, 'ext_' + part, None)
-            return os.path.join(res, self.id) + (ext or '')
+            safe = self._safe_path(res)
+            return (safe + (ext or '')) if safe else ''
         return ''
 
     @property
     def path(self):
         if self.corpus.path_texts and self.id:
-            return os.path.join(self.corpus.path_texts,self.id)
+            return self._safe_path(self.corpus.path_texts)
         else:
             return ''
     @property
