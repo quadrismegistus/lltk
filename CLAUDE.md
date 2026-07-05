@@ -200,7 +200,7 @@ class ArcFiction(CuratedCorpus):
 SQLite FTS5, ~500-word sentence-aware chunks. `lltk.db.search('virtue', genre='Fiction')`. Filters resolved in CH -> _id set -> FTS5. `NEAR()` and phrase queries supported.
 
 ### MinHash matching
-`scripts/minhash_match.py` -- word-set overlap via LSH. Threshold 0.7 + 5K-word floor. Writes to `matches` as `match_type='minhash'`.
+`lltk/db/minhash.py` (`lltk db-minhash`) -- word-set overlap via LSH. Threshold 0.7 + 5K-word floor. Writes to `matches` as `match_type='minhash'`.
 
 ### Prosodic integration
 Optional `prosodic>=3.1`. `lltk prosodic-parse <corpus>`, `t.prosodic(cached=True)`. Per-text `syll.parquet`/`parsed.parquet`.
