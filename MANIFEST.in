@@ -1,0 +1,3 @@
+# Ship the web frontend assets + HTML templates (needed by lltk/web/app.py).
+recursive-include lltk/web/static *
+recursive-include lltk/web/templates *
