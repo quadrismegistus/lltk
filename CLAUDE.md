@@ -13,6 +13,7 @@ LLTK (Literary Language Toolkit) — Python package for computational literary a
 - **Lazy hydration:** `C.texts()` yields bare shells; attribute access triggers `_hydrate_meta()` (CH first, CSV fallback). One-time via `_meta_hydrated` flag.
 - **Path resolution:** `corpus.path_*` via `__getattr__` -> `get_path()`
 - **Manifest:** `manifest.txt` (configparser); merged from package dir + `~/lltk_data/` + user config
+- **Data-driven corpora:** a corpus with a manifest stanza but no python module loads as a plain `BaseCorpus` (`load_corpus` fallback). A `genre`/`genre_raw` manifest key stamps metadata via `_apply_manifest_genre` — no boilerplate class or `load_metadata` override needed for a constant-genre corpus.
 - **Metadata:** `C.meta` uses `load_metadata()` (CSV -> parquet cache). Standard contract: `id` (index), `title`, `author`, `year`, `genre`, `genre_raw`.
 - **Cross-corpus linking:** `LINKS = {target: (my_col, their_col)}` per-corpus; `merge_linked_metadata()` left-joins.
 
