@@ -351,56 +351,58 @@ class CuratedCorpus(SyntheticCorpus):
         if missing_ids:
             try:
                 import lltk
-                ids_df = pd.DataFrame({'_id': missing_ids})
-                lltk.db.conn.register('_ann_missing', ids_df)
-                try:
-                    extra = lltk.db.conn.execute(
-                        "SELECT t.* FROM texts t JOIN _ann_missing m ON t._id = m._id"
-                    ).fetchdf()
-                finally:
-                    lltk.db.conn.unregister('_ann_missing')
+                # ClickHouse batch fetch (tmp Memory table for >10K ids,
+                # injection-safe); replaces the dead DuckDB conn.register path.
+                extra = lltk.db.fetch_metadata(missing_ids)
                 if extra is not None and len(extra):
                     if 'meta' in extra.columns:
                         extra = extra.drop(columns=['meta'])
                     if df.index.name == 'id' and 'id' in extra.columns:
                         extra = extra.set_index('id')
                     df = pd.concat([df, extra], ignore_index=False)
-            except Exception:
-                pass
+            except Exception as e:
+                from lltk.imports import log
+                log.debug(f'[curated] whitelist fetch failed for {len(missing_ids)} ids: {e}')
 
         # Build a consolidated {_id: {col: val}} override map.
         # Start with propagated (match-group siblings), then let direct
         # annotations override propagated values per _id.
         overrides_by_id = {}
 
-        # Match-group propagation: SQL self-join restricted to (annotated source,
-        # df target) pairs in the same group — avoids scanning all match_groups.
+        # Match-group propagation: for each annotated source _id, find df target
+        # _ids in the same match group (ClickHouse tmp Memory-table self-join,
+        # mirroring MetaDBCH.longest_titles/genre_tags). Replaces the dead DuckDB
+        # conn.register path.
         try:
             import lltk
-            conn = lltk.db.match_conn
-            src_df = pd.DataFrame({'_id': list(annotations.keys())})
-            tgt_df = pd.DataFrame({'_id': df['_id'].tolist()})
-            conn.register('_ann_src', src_df)
-            conn.register('_ann_tgt', tgt_df)
-            try:
-                pairs = conn.execute("""
-                    SELECT mg_tgt._id AS target_id, mg_src._id AS source_id
-                    FROM match_db.match_groups mg_src
-                    JOIN match_db.match_groups mg_tgt
-                        ON mg_src.group_id = mg_tgt.group_id
-                    JOIN _ann_src s ON mg_src._id = s._id
-                    JOIN _ann_tgt t ON mg_tgt._id = t._id
-                    WHERE mg_src._id <> mg_tgt._id
-                """).fetchdf()
-            finally:
-                conn.unregister('_ann_src')
-                conn.unregister('_ann_tgt')
+            adapter = lltk.db.adapter
+            adapter.execute(
+                "CREATE TABLE IF NOT EXISTS tmp.ann_src (_id String) ENGINE=Memory")
+            adapter.execute(
+                "CREATE TABLE IF NOT EXISTS tmp.ann_tgt (_id String) ENGINE=Memory")
+            adapter.execute("TRUNCATE TABLE tmp.ann_src")
+            adapter.execute("TRUNCATE TABLE tmp.ann_tgt")
+            adapter.client.insert(
+                'tmp.ann_src', [[i] for i in annotations.keys()], column_names=['_id'])
+            adapter.client.insert(
+                'tmp.ann_tgt', [[i] for i in df['_id'].tolist()], column_names=['_id'])
+            pairs = adapter.query_df("""
+                SELECT mg_tgt._id AS target_id, mg_src._id AS source_id
+                FROM (SELECT _id, group_id FROM lltk.match_groups FINAL) mg_src
+                JOIN (SELECT _id, group_id FROM lltk.match_groups FINAL) mg_tgt
+                    ON mg_src.group_id = mg_tgt.group_id
+                JOIN tmp.ann_src s ON mg_src._id = s._id
+                JOIN tmp.ann_tgt t ON mg_tgt._id = t._id
+                WHERE mg_src._id != mg_tgt._id AND mg_src.group_id != 0
+            """)
             # First pair per target wins (all group members are interchangeable).
-            for tgt, src in zip(pairs['target_id'], pairs['source_id']):
-                if tgt not in overrides_by_id:
-                    overrides_by_id[tgt] = dict(annotations.get(src, {}))
-        except Exception:
-            pass  # match DB not available, skip propagation
+            if pairs is not None and len(pairs):
+                for tgt, src in zip(pairs['target_id'], pairs['source_id']):
+                    if tgt not in overrides_by_id:
+                        overrides_by_id[tgt] = dict(annotations.get(src, {}))
+        except Exception as e:
+            from lltk.imports import log
+            log.debug(f'[curated] match-group propagation skipped: {e}')
 
         # Direct annotations override any propagated values.
         df_ids_set = set(df['_id'])
