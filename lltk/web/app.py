@@ -15,9 +15,10 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Depends
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from lltk.web.auth import require_auth, warn_if_exposed
 
 from lltk.db.adapter import ch_quote
 from lltk.db.metadb import GENRE_VOCAB
@@ -31,7 +32,7 @@ def create_app():
     """Create the LLTK explorer FastAPI app."""
     import lltk
 
-    app = FastAPI(title='LLTK Explorer')
+    app = FastAPI(title='LLTK Explorer', dependencies=[Depends(require_auth)])
     app.mount('/static', StaticFiles(directory=str(STATIC_DIR)), name='static')
 
     # Points at MetaDBCH (ClickHouse-backed). Reads are naturally concurrent
@@ -721,9 +722,11 @@ def create_app():
     return app
 
 
-def run_app(port: int = 8899, host: str = '0.0.0.0', reload: bool = True):
-    """Run the explorer server."""
+def run_app(port: int = 8899, host: str = '127.0.0.1', reload: bool = True):
+    """Run the explorer server. Loopback-only by default; pass host='0.0.0.0'
+    to expose (set LLTK_WEB_USER/LLTK_WEB_PASSWORD first)."""
     import uvicorn
+    warn_if_exposed(host)
     print(f'\n  LLTK Explorer')
     print(f'  http://{host}:{port}\n')
     if reload:

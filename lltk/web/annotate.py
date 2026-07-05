@@ -14,9 +14,10 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, Query, Request, Depends
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from lltk.web.auth import require_auth, warn_if_exposed
 
 import lltk
 from lltk.db.adapter import ch_quote
@@ -29,7 +30,8 @@ TEMPLATES_DIR = WEB_DIR / 'templates'
 def create_app(corpus_id: str):
     """Create a FastAPI app for annotating a specific corpus."""
 
-    app = FastAPI(title=f'LLTK Annotate: {corpus_id}')
+    app = FastAPI(title=f'LLTK Annotate: {corpus_id}',
+                  dependencies=[Depends(require_auth)])
     app.mount('/static', StaticFiles(directory=str(WEB_DIR / 'static')), name='static')
 
     # Load corpus and annotations
@@ -488,9 +490,11 @@ def create_app(corpus_id: str):
     return app
 
 
-def run_annotate(corpus_id: str, port: int = 8989, host: str = '0.0.0.0', reload: bool = True):
-    """Run the annotation server."""
+def run_annotate(corpus_id: str, port: int = 8989, host: str = '127.0.0.1', reload: bool = True):
+    """Run the annotation server. Loopback-only by default; this app has write
+    endpoints, so never expose it without auth (LLTK_WEB_USER/LLTK_WEB_PASSWORD)."""
     import uvicorn
+    warn_if_exposed(host)
     print(f'\n  LLTK Annotate: {corpus_id}')
     print(f'  http://{host}:{port}\n')
     if reload:
