@@ -2,7 +2,7 @@
 
 A Python package for computational literary analysis and digital humanities research. 70+ literary corpora (English, French, German, Spanish), a ClickHouse analytical database for querying 2.8M+ texts across all sources, cross-corpus deduplication, multilingual passage search with embeddings, automated genre classification, language detection, and metrical scansion.
 
-**Package:** [`lltk-dh`](https://pypi.org/project/lltk-dh/) on PyPI | **License:** MIT | **Python:** >=3.8
+**Package:** [`lltk-dh`](https://pypi.org/project/lltk-dh/) on PyPI | **License:** MIT | **Python:** >=3.9
 
 ## Install
 
@@ -343,7 +343,7 @@ python -m pytest tests/ -v
 python -m pytest tests/ --cov=lltk --cov-report=term
 ```
 
-374 tests using the `test_fixture` corpus (Blake, Austen, Shelley) checked into the repo -- no external data needed.
+762 tests using the `test_fixture` corpus (Blake, Austen, Shelley) checked into the repo -- no external data needed.
 
 ### Adding a new corpus
 

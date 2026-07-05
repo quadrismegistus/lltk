@@ -4,7 +4,7 @@
 
 LLTK (Literary Language Toolkit) — Python package for computational literary analysis and digital humanities. 60+ literary corpora, text processing, analysis methods.
 
-**Author:** Ryan Heuser | **Package:** `lltk-dh` (PyPI) | **Version:** 0.7.0 | **Python:** >=3.8
+**Author:** Ryan Heuser | **Package:** `lltk-dh` (PyPI) | **Version:** 0.10.0 | **Python:** >=3.8
 
 ## Key patterns
 
@@ -225,7 +225,7 @@ Parquet caching (CSV -> .parquet, 5-10x). Enriched parquet for ECCO/EEBO_TCP/ECC
 python -m pytest tests/ -v
 ```
 
-206 tests using `test_fixture` corpus (3 texts: Blake, Austen, Shelley) -- no external data. CI via GitHub Actions + Codecov.
+762 tests using `test_fixture` corpus (3 texts: Blake, Austen, Shelley) -- no external data. CI via GitHub Actions + Codecov.
 
 ## Development gotchas
 
