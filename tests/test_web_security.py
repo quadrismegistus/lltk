@@ -71,6 +71,29 @@ def test_auth_accepts_correct_creds(monkeypatch):
 
 # ── ClickHouse URL resolution (credentials / read-only) ──────────────────────
 
+def test_shim_dict_params_bind_not_inline():
+    """A dict of params -> clickhouse-connect bound parameters (never inlined)."""
+    from unittest.mock import MagicMock
+    from lltk.db.metadb_ch import _LegacyResult
+    adapter = MagicMock()
+    adapter.client.query.return_value.result_rows = [(0,)]
+    _LegacyResult(adapter, "SELECT count() WHERE c = {c:String}",
+                  {'c': "x' OR 1=1--"}).fetchone()
+    adapter.client.query.assert_called_once_with(
+        "SELECT count() WHERE c = {c:String}", parameters={'c': "x' OR 1=1--"})
+
+
+def test_shim_positional_params_still_inline_escaped():
+    """Positional list params keep the (backslash-safe) inline path for back-compat."""
+    from unittest.mock import MagicMock
+    from lltk.db.metadb_ch import _LegacyResult
+    adapter = MagicMock()
+    adapter.client.query.return_value.result_rows = []
+    _LegacyResult(adapter, "SELECT * WHERE a = ?", ["o'reilly"]).fetchall()
+    sql = adapter.client.query.call_args[0][0]
+    assert "'o''reilly'" in sql  # inlined + quote-escaped, not a bound param
+
+
 def test_resolve_ch_url_precedence(monkeypatch):
     from lltk.db.metadb_ch import resolve_ch_url, _DEV_FALLBACK_CH_URL
     monkeypatch.delenv('LLTK_CLICKHOUSE_URL', raising=False)

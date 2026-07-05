@@ -20,7 +20,6 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from lltk.web.auth import require_auth, warn_if_exposed
 
-from lltk.db.adapter import ch_quote
 from lltk.db.metadb import GENRE_VOCAB
 
 WEB_DIR = Path(__file__).parent
@@ -152,7 +151,7 @@ def create_app():
     @app.get('/api/genre-timeline')
     async def get_genre_timeline(corpus: str = Query('', description='Filter by corpus')):
         try:
-            corpus_filter = f"AND corpus = '{ch_quote(corpus)}'" if corpus else ""
+            corpus_filter = "AND corpus = {corpus:String}" if corpus else ""
             df = db.conn.execute(f"""
                 SELECT CAST(FLOOR(year / 10.0) * 10 AS INTEGER) as decade,
                        genre,
@@ -163,7 +162,7 @@ def create_app():
                   {corpus_filter}
                 GROUP BY decade, genre
                 ORDER BY decade, genre
-            """).fetchdf()
+            """, {'corpus': corpus} if corpus else {}).fetchdf()
             # Pivot: [{decade, Fiction, Poetry, Drama, ...}, ...]
             decades = sorted(df['decade'].unique())
             genres = sorted(df['genre'].unique())
@@ -200,13 +199,16 @@ def create_app():
         try:
             # Build WHERE
             clauses = []
+            params = {}
             if search:
-                escaped = ch_quote(search)
-                clauses.append(f"(t.title ILIKE '%{escaped}%' OR t.author ILIKE '%{escaped}%')")
+                clauses.append("(t.title ILIKE {search:String} OR t.author ILIKE {search:String})")
+                params['search'] = f'%{search}%'
             if corpus:
-                clauses.append(f"t.corpus = '{ch_quote(corpus)}'")
+                clauses.append("t.corpus = {corpus:String}")
+                params['corpus'] = corpus
             if genre:
-                clauses.append(f"t.genre = '{ch_quote(genre)}'")
+                clauses.append("t.genre = {genre:String}")
+                params['genre'] = genre
             if year_min is not None:
                 clauses.append(f"t.year >= {int(year_min)}")
             if year_max is not None:
@@ -233,7 +235,7 @@ def create_app():
 
             # Count
             count_sql = f"SELECT COUNT(*) FROM texts t {join} WHERE {where} {dedup_clause}"
-            total = db.conn.execute(count_sql).fetchone()[0]
+            total = db.conn.execute(count_sql, params).fetchone()[0]
 
             # Fetch page
             offset = (page - 1) * per_page
@@ -245,7 +247,7 @@ def create_app():
                 ORDER BY t.{sort_by} {'ASC' if sort_dir == 'asc' else 'DESC'} NULLS LAST
                 LIMIT {per_page} OFFSET {offset}
             """
-            rows = db.conn.execute(select_sql).fetchdf().to_dict('records')
+            rows = db.conn.execute(select_sql, params).fetchdf().to_dict('records')
 
             return {
                 'texts': rows,
@@ -274,13 +276,16 @@ def create_app():
         MAX_ROWS = 100_000
         try:
             clauses = []
+            params = {}
             if search:
-                escaped = ch_quote(search)
-                clauses.append(f"(t.title ILIKE '%{escaped}%' OR t.author ILIKE '%{escaped}%')")
+                clauses.append("(t.title ILIKE {search:String} OR t.author ILIKE {search:String})")
+                params['search'] = f'%{search}%'
             if corpus:
-                clauses.append(f"t.corpus = '{ch_quote(corpus)}'")
+                clauses.append("t.corpus = {corpus:String}")
+                params['corpus'] = corpus
             if genre:
-                clauses.append(f"t.genre = '{ch_quote(genre)}'")
+                clauses.append("t.genre = {genre:String}")
+                params['genre'] = genre
             if year_min is not None:
                 clauses.append(f"t.year >= {int(year_min)}")
             if year_max is not None:
@@ -301,7 +306,7 @@ def create_app():
                 WHERE {where} {dedup_clause}
                 ORDER BY t.year ASC NULLS LAST, t.title
                 LIMIT {MAX_ROWS}
-            """).fetchdf()
+            """, params).fetchdf()
             if not len(df):
                 return JSONResponse({'error': 'No results'}, status_code=404)
             # Expand meta JSON

@@ -172,20 +172,23 @@ def create_app(corpus_id: str):
     ):
         """Paginated text list with filters."""
         clauses = []
+        params = {}
         if corpus_filter:
-            clauses.append(f"t.corpus = '{ch_quote(corpus_filter)}'")
+            clauses.append("t.corpus = {corpus_filter:String}")
+            params['corpus_filter'] = corpus_filter
         if genre:
-            clauses.append(f"t.genre = '{ch_quote(genre)}'")
+            clauses.append("t.genre = {genre:String}")
+            params['genre'] = genre
         # genre_raw filtered post-annotation-merge (annotations can override DB value)
         if year_min is not None:
-            clauses.append(f't.year >= {year_min}')
+            clauses.append(f't.year >= {int(year_min)}')
         if year_max is not None:
-            clauses.append(f't.year <= {year_max}')
+            clauses.append(f't.year <= {int(year_max)}')
         if is_translated is not None:
             clauses.append(f't.is_translated = {str(is_translated).lower()}')
         if search:
-            safe = ch_quote(search)
-            clauses.append(f"(t.title ILIKE '%{safe}%' OR t.author ILIKE '%{safe}%')")
+            clauses.append("(t.title ILIKE {search:String} OR t.author ILIKE {search:String})")
+            params['search'] = f'%{search}%'
 
         # Build source filter from corpus SOURCES
         source_filter = ''
@@ -215,7 +218,7 @@ def create_app(corpus_id: str):
 
         # Count
         count_sql = f"SELECT COUNT(*) FROM texts t {dedup_join} WHERE {where} {dedup_sql}"
-        total = lltk.db.conn.execute(count_sql).fetchone()[0]
+        total = lltk.db.conn.execute(count_sql, params).fetchone()[0]
 
         # Fetch page
         offset = (page - 1) * per_page
@@ -228,7 +231,7 @@ def create_app(corpus_id: str):
             ORDER BY {order}
             LIMIT {per_page} OFFSET {offset}
         """
-        rows = lltk.db.conn.execute(sql).fetchdf()
+        rows = lltk.db.conn.execute(sql, params).fetchdf()
 
         # Merge annotations (direct + propagated from match groups)
         texts = []
