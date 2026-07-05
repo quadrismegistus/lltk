@@ -4,7 +4,7 @@
 
 LLTK (Literary Language Toolkit) — Python package for computational literary analysis and digital humanities. 60+ literary corpora, text processing, analysis methods.
 
-**Author:** Ryan Heuser | **Package:** `lltk-dh` (PyPI) | **Version:** 0.10.0 | **Python:** >=3.8
+**Author:** Ryan Heuser | **Package:** `lltk-dh` (PyPI) | **Version:** 0.11.0 | **Python:** >=3.9
 
 ## Key patterns
 
