@@ -67,3 +67,24 @@ def test_auth_accepts_correct_creds(monkeypatch):
     monkeypatch.setenv('LLTK_WEB_USER', 'u')
     monkeypatch.setenv('LLTK_WEB_PASSWORD', 'p')
     assert require_auth(HTTPBasicCredentials(username='u', password='p')) is None
+
+
+# ── ClickHouse URL resolution (credentials / read-only) ──────────────────────
+
+def test_resolve_ch_url_precedence(monkeypatch):
+    from lltk.db.metadb_ch import resolve_ch_url, _DEV_FALLBACK_CH_URL
+    monkeypatch.delenv('LLTK_CLICKHOUSE_URL', raising=False)
+    monkeypatch.delenv('LLTK_CLICKHOUSE_URL_READONLY', raising=False)
+    # nothing set -> dev fallback
+    assert resolve_ch_url() == _DEV_FALLBACK_CH_URL
+    # explicit arg beats everything
+    assert resolve_ch_url('clickhouse://explicit') == 'clickhouse://explicit'
+    # env var
+    monkeypatch.setenv('LLTK_CLICKHOUSE_URL', 'clickhouse://rw')
+    assert resolve_ch_url() == 'clickhouse://rw'
+    # readonly falls back to RW when the RO var is unset
+    assert resolve_ch_url(readonly=True) == 'clickhouse://rw'
+    # readonly prefers the RO var when set; non-readonly still uses RW
+    monkeypatch.setenv('LLTK_CLICKHOUSE_URL_READONLY', 'clickhouse://ro')
+    assert resolve_ch_url(readonly=True) == 'clickhouse://ro'
+    assert resolve_ch_url() == 'clickhouse://rw'

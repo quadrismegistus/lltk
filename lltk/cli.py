@@ -369,12 +369,8 @@ def main():
 	elif args.cmd == 'db-rebuild':
 		from lltk.db.adapter import get_adapter
 		from lltk.db.rebuild import rebuild_clickhouse
-		import os as _os
-		ch_url = _os.environ.get(
-			'LLTK_CLICKHOUSE_URL',
-			'clickhouse://lltk:lltk@localhost:8123/lltk',
-		)
-		ch = get_adapter(ch_url)
+		from lltk.db.metadb_ch import resolve_ch_url
+		ch = get_adapter(resolve_ch_url())
 		corpus_ids = args.corpora if args.corpora else None
 		# `--force` (already present on the parser) is the full-rebuild flag.
 		force = args.force or corpus_ids is None
@@ -472,7 +468,8 @@ def main():
 	elif args.cmd == 'db-tag-genres':
 		from lltk.tools.genre_tags import build_genre_tags
 		from lltk.db.adapter import get_adapter
-		ch = get_adapter('clickhouse://lltk:lltk@localhost:8123/lltk')
+		from lltk.db.metadb_ch import resolve_ch_url
+		ch = get_adapter(resolve_ch_url())
 		build_genre_tags(ch, recognized_only=not args.no_recognition,
 		                 min_sources=args.min_sources)
 
